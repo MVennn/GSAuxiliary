@@ -100,9 +100,15 @@ object StockDetailBarTargets {
      * 实测个股与指数是**同一个 Activity**（`StockFragAct`），靠底栏内部的
      * 两套形态切换。
      *
-     * 这里是**注入的门禁**（见 `StockDetailBarFeature.onActivityResumed`）：
-     * 不在这张表里的页面一次重试都不跑。之所以敢拿类名当门禁，是因为
-     * `StockFragAct` 是唯一承载底栏的页面；App 升级若改了类名，注入会静默失效，
+     * ⚠️ **但分页器是「每一页各带一份底栏」**：同一个资源 id、多个不同实例
+     * （实测一次 3 页就有 3 份 `#stk_detial_bottom_bar`，各带自己的
+     * `#bottom_index_container`）。所以「找底栏 / 找更多 / 找盒子」**必须限定在
+     * 那一条底栏范围内**，别用 `decorView.findViewById` —— 它永远只返回 DFS 里的第一份，
+     * 一翻页就认错页，见 `StockDetailBarFeature.findBars` / `findMoreText` 与
+     * `docs/FEATURE-STOCK-BAR.md` §8.12。
+     *
+     * 这里是**注入的门禁**：不在这张表里的页面一次同步都不跑。之所以敢拿类名当门禁，
+     * 是因为 `StockFragAct` 是唯一承载底栏的页面；App 升级若改了类名，注入会静默失效，
      * 此时应连同下面的资源 id 一起重新侦察（见 `docs/FEATURE-STOCK-BAR.md` §7）。
      */
     val WATCH_ACTIVITIES = arrayOf(
@@ -153,6 +159,16 @@ object StockDetailBarTargets {
 
     /** 注入按钮的 tag，用于幂等判断（同一行里只留一个） */
     const val ENTRY_TAG = "gsaux.stockbar.entry"
+
+    /**
+     * 我们那个「横向容器」的 tag（装 `[我们的按钮] [更多]`）。
+     *
+     * 必须能认出来：注入之后「更多」的**直接父级就是它**，所以
+     * 「找盒子」不能只取 `more.parent` —— 那会取到我们自己套的壳，
+     * 于是记账表里查不到、一层层往里再套（真机实测套了 5 层，底栏直接被撑爆）。
+     * 见 `StockDetailBarFeature.boxOf` / `holderAncestorOf`。
+     */
+    const val ENTRY_HOLDER_TAG = "gsaux.stockbar.holder"
 
     fun isWatchActivity(className: String): Boolean = WATCH_ACTIVITIES.any { it == className }
 }

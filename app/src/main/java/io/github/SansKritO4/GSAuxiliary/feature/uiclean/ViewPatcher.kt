@@ -30,6 +30,14 @@ import java.util.WeakHashMap
  * `weight` 在 `MarginLayoutParams` 的拷贝构造里会丢），所以原值只存
  * **标量**（width / height / weight / visibility / leftMargin / marginStart），
  * 还原时写回同一个 `LayoutParams` 对象 —— 这样宿主自己持有的那个引用也一起被修正。
+ *
+ * ## 为什么还要记「改了几次」（[mutations]）
+ *
+ * 记账是为了**还原**，计数是为了**首帧屏障**：精简类功能经常一拍改不完
+ * （见 `DockCleanFeature.fillRow` 的四招状态机，每招都要等下一帧量过才知道有没有用），
+ * 那些中间态一旦被画出来就是肉眼可见的跳动。[mutations] 让
+ * [UiCleanFeature] 知道「自上一帧以来界面动过」，于是可以只拦那一帧、
+ * 等布局稳定后一次画出来 —— 用户看不到任何中间态。
  */
 class ViewPatcher(private val tag: String) {
 
@@ -50,6 +58,24 @@ class ViewPatcher(private val tag: String) {
     /** 已记账的改动处数（日志用） */
     val size: Int get() = synchronized(snapshots) { snapshots.size }
 
+    /**
+     * 累计改动次数 —— **单调递增**，还原也算一次，永不回退。
+     *
+     * 只服务一件事：[UiCleanFeature] 的「首帧屏障」靠它判断
+     * 「自上一帧以来界面动过没有」。动过就把这一帧拦掉，让下一帧按新布局
+     * 一次画出来 —— 用户永远不会看到「改到一半」的中间态。
+     *
+     * 所以**每个真的改动了视图的方法都必须 [bump]**，漏一个就会出现
+     * 「改了但判定为没改」→ 中间态被画出来（正是本模块要消灭的闪烁）。
+     */
+    @Volatile
+    var mutations: Int = 0
+        private set
+
+    private fun bump() {
+        mutations++
+    }
+
     // ------------------------------------------------------------------ 改
 
     /** 隐藏（`GONE`，不占位）。返回 true = 本次真的改了 */
@@ -57,6 +83,7 @@ class ViewPatcher(private val tag: String) {
         if (v.visibility == View.GONE) return false
         remember(v)
         v.visibility = View.GONE
+        bump()
         GLog.i("$tag：隐藏 $why（${describe(v)}）")
         return true
     }
@@ -80,6 +107,7 @@ class ViewPatcher(private val tag: String) {
         v.visibility = View.GONE
         lp.height = 0
         v.requestLayout()
+        bump()
         GLog.i("$tag：收起 $why（高度归零 + GONE，${describe(v)}）")
         return true
     }
@@ -95,6 +123,7 @@ class ViewPatcher(private val tag: String) {
         remember(v)
         lp.height = height
         v.requestLayout()
+        bump()
         GLog.i("$tag：$why 高度 -> ${height}px（${describe(v)}）")
         return true
     }
@@ -125,6 +154,7 @@ class ViewPatcher(private val tag: String) {
         remember(v)
         lp.width = width
         v.requestLayout()
+        bump()
         GLog.i("$tag：$why 宽度 -> ${width}px（${describe(v)}）")
         return true
     }
@@ -142,6 +172,7 @@ class ViewPatcher(private val tag: String) {
         lp.leftMargin = px
         lp.marginStart = px
         v.requestLayout()
+        bump()
         GLog.i("$tag：$why 左边距 -> ${px}px（${describe(v)}）")
         return true
     }
@@ -154,6 +185,7 @@ class ViewPatcher(private val tag: String) {
         lp.width = 0
         lp.weight = 1f
         v.requestLayout()
+        bump()
         GLog.i("$tag：$why 均分铺满（${describe(v)}）")
         return true
     }
@@ -180,6 +212,7 @@ class ViewPatcher(private val tag: String) {
             parent.removeView(v)
             parent.addView(v)
         }.onFailure { GLog.w("$tag：挪位失败（${describe(v)}）", it); return false }
+        bump()
         GLog.i("$tag：把 ${describe(v)} 从第 $from 位挪到最后一位（宿主栅格按序号摆位，只能这么绕）")
         return true
     }
@@ -191,8 +224,9 @@ class ViewPatcher(private val tag: String) {
             snapshots.clear()
             list
         }
-        restoreOrder()
+        val moved = restoreOrder()
         for ((v, s) in entries) restoreTo(v, s)
+        if (entries.isNotEmpty() || moved) bump()
         if (entries.isNotEmpty()) GLog.i("$tag：已还原 ${entries.size} 处界面改动")
     }
 
@@ -205,11 +239,12 @@ class ViewPatcher(private val tag: String) {
     fun restore(v: View) {
         val s = synchronized(snapshots) { snapshots.remove(v) } ?: return
         restoreTo(v, s)
+        bump()
         GLog.i("$tag：已还原 1 处（${describe(v)}）")
     }
 
-    /** 把挪过位的视图挪回原位置 */
-    private fun restoreOrder() {
+    /** 把挪过位的视图挪回原位置；返回 true = 真的挪过 */
+    private fun restoreOrder(): Boolean {
         val entries = synchronized(orders) {
             val list = orders.entries.toList()
             orders.clear()
@@ -222,6 +257,7 @@ class ViewPatcher(private val tag: String) {
                 parent.addView(v, index.coerceAtMost(parent.childCount))
             }.onFailure { GLog.w("$tag：挪回原位失败（${describe(v)}）", it) }
         }
+        return entries.isNotEmpty()
     }
 
     private fun restoreTo(v: View, s: Snapshot) {

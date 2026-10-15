@@ -48,6 +48,12 @@ class MarketBannerFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketBannerHide
 
+    /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
+    override val idNames = MarketTargets.PAGE_ANCHOR_ID_CANDIDATES +
+        MarketTargets.HOT_BAR_ID_CANDIDATES +
+        MarketTargets.QUICK_ENTRY_ID_CANDIDATES +
+        arrayOf(MarketTargets.QUICK_ENTRY_ITEM_ID)
+
     private var lastBar: WeakReference<View>? = null
     private var lastGrid: WeakReference<View>? = null
 

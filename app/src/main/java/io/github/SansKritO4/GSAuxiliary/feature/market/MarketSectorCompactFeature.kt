@@ -51,6 +51,11 @@ class MarketSectorCompactFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketSectorCompact
 
+    /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
+    override val idNames = MarketTargets.PAGE_ANCHOR_ID_CANDIDATES +
+        MarketTargets.SECTOR_GROUP_ID_CANDIDATES +
+        arrayOf(MarketTargets.SECTOR_ITEM_ID)
+
     private var lastGroup: WeakReference<View>? = null
 
     override fun applyTo(env: FeatureEnv, activity: Activity): Boolean {

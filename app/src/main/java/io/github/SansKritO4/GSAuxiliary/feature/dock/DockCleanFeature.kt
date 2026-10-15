@@ -56,6 +56,10 @@ class DockCleanFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.dockClean
 
+    /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
+    override val idNames =
+        DockCleanTargets.DOCK_ID_CANDIDATES + DockCleanTargets.REMOVE_ITEM_ID_CANDIDATES
+
     /** 上一次隐藏掉的那一格；用于幂等快速通道 + 后续的均分补救 */
     private var lastHidden: WeakReference<View>? = null
 

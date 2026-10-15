@@ -59,6 +59,11 @@ class MarketOverviewCompactFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketOverviewCompact
 
+    /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
+    override val idNames = MarketTargets.PAGE_ANCHOR_ID_CANDIDATES +
+        MarketTargets.OVERVIEW_CHART_ID_CANDIDATES +
+        arrayOf(MarketTargets.OVERVIEW_CHART_AREA_ID)
+
     /** 已经压过的图表区（幂等标记：容器还在树上就算压过了） */
     private var lastArea: WeakReference<View>? = null
 

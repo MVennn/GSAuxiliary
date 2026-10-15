@@ -15,8 +15,8 @@ import android.widget.TextView
 import io.github.SansKritO4.GSAuxiliary.core.ConfigSnapshot
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.core.HookBag
-import io.github.SansKritO4.GSAuxiliary.feature.Feature
 import io.github.SansKritO4.GSAuxiliary.feature.FeatureEnv
+import io.github.SansKritO4.GSAuxiliary.feature.PageSyncFeature
 import io.github.SansKritO4.GSAuxiliary.util.Reflect
 import java.util.Collections
 import java.util.WeakHashMap
@@ -89,15 +89,30 @@ import java.util.concurrent.atomic.AtomicReference
  * `OnItemClickListener`（探针栈 `StockDetailFrag$34#onItemClick` 就是它），
  * 项容器本身不保证 `clickable`。所以必须走 `performItemClick`。
  *
- * ## 四、注入时机
+ * ## 四、注入时机：**不能再靠 `onResume`**
  *
  * `StockFragAct` 继承 `EngineAct`，引擎片段是**异步挂载**的 —— 实测 `onResume`
  * 那一刻 `decorView.findViewById(stk_detial_bottom_bar)` 返回 **null**，
  * 而且底栏容器出现之后里面的按钮还要再晚一点才齐。
- * 所以用**以「注入成功」为准的有限重试**，不是「找到底栏就完事」。
  *
- * 重试之前先按**页面类名**门禁（[StockDetailBarTargets.isWatchActivity]）：
- * 详情页之外的页面直接跳过，否则每个页面都要白跑 6 秒重试并打一条误导性的警告。
+ * 早期版本在这里挂了「60 次 × 100ms 的有限重试」，并且只在 `Activity.onResume`
+ * 重新对齐状态 —— **真机上就掉在这里**：详情页左右翻页/换形态都不会走 `onResume`，
+ * 宿主会把底栏（甚至整块 Fragment）重建一遍，我们注入的按钮跟着旧视图一起消失，
+ * 而「重试」早就跑完了 → 用户看到的就是「翻几次之后智能盯盘没了」。
+ *
+ * 现在改成 [PageSyncFeature] 的调度：**布局回调驱动 + 幂等自愈**。
+ * 宿主每次都靠布局把新视图铺开，所以每次重建都会给我们一次 `sync()`；
+ * 而 [sync] 判的是「**我们的按钮现在还在不在盒子里**」（[liveRecord]），
+ * 不是「我记不记得自己注入过」—— 后者会在宿主把子视图清掉之后永远误判成「已经好了」。
+ *
+ * 于是两种真实场景都被覆盖：
+ *
+ *  - **翻页换形态**（个股 ↔ 指数 / 板块）：两套按钮在同一个 `ConstraintLayout` 里靠
+ *    visibility 互斥，另一种形态的「更多」是**另一个盒子** → 各自注入一份，翻到哪页都有；
+ *  - **宿主重建底栏**：旧记录判为失效 → 摘掉自己的容器 → 重新注入（并重新加宽盒子）。
+ *
+ * 顺带把「注入时机」也钉在**这一帧画出来之前**：改完若还没稳定，首帧屏障会把这一帧拦掉
+ * （见 [PageSyncFeature]），所以不会出现「先原样、再跳一下」。
  *
  * ## 五、图标
  *
@@ -105,12 +120,22 @@ import java.util.concurrent.atomic.AtomicReference
  * `drawableTop`。注入后**异步采集一次**（同样是隐形开一次面板），取到就套到
  * 所有已注入的按钮上；取不到就退化成纯文字按钮，功能不受影响。
  */
-class StockDetailBarFeature : Feature {
+class StockDetailBarFeature : PageSyncFeature() {
 
     override val id = "stock_bar_entry"
     override val title = "个股详情页底栏智能盯盘入口"
 
-    override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stockBarEntry
+    /** 只在这一个页面跑同步：别的页面（H5、资讯、首页…）连一次 `sync` 都不该进来 */
+    override val pages = StockDetailBarTargets.WATCH_ACTIVITIES
+
+    override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.stockBarEntry
+
+    /** 预热：这些 id 名在进入任意页面时就先解析掉（省首帧里的 `getIdentifier`） */
+    override val idNames = StockDetailBarTargets.BOTTOM_BAR_ID_CANDIDATES +
+        StockDetailBarTargets.MORE_TEXT_ID_CANDIDATES +
+        StockDetailBarTargets.MORE_BOX_ID_CANDIDATES +
+        StockDetailBarTargets.MENU_GRID_ID_CANDIDATES +
+        StockDetailBarTargets.MENU_ITEM_TEXT_ID_CANDIDATES
 
     /** 一次注入的现场，用于「关开关立即还原」 */
     private class Injected(
@@ -182,38 +207,16 @@ class StockDetailBarFeature : Feature {
     @Volatile private var menuGridIdCache = 0
     @Volatile private var menuItemTextIdCache = 0
 
+    /** 上一次「部分底栏没同步」的日志指纹（去重用，见 [sync]） */
+    @Volatile private var lastPartialLogged = 0
+
     // ------------------------------------------------------------------ 安装
 
     override fun install(env: FeatureEnv, bag: HookBag) {
-        hookActivityResume(env, bag)
+        // 把「onResume + 布局回调 + 首帧屏障」那套调度挂上（见 PageSyncFeature）
+        super.install(env, bag)
         hookPopupWindow(env, bag)
         hookWindowLayout(env, bag)
-    }
-
-    /** 挂 `Activity.onResume`：每次页面回来都同步一次注入状态 */
-    private fun hookActivityResume(env: FeatureEnv, bag: HookBag) {
-        val cls = Reflect.loadClass("android.app.Activity", env.classLoader)
-        if (cls == null) {
-            GLog.e("底栏入口：找不到 android.app.Activity，功能不会生效")
-            return
-        }
-        var hooked = 0
-        for (m in Reflect.methodsNamed(cls, "onResume")) {
-            bag.add(
-                env.xposed.hook(m)
-                    .setId("stockbar:onResume")
-                    .intercept { chain ->
-                        val result = chain.proceed()
-                        runCatching {
-                            (chain.thisObject as? Activity)?.let { onActivityResumed(env, it) }
-                        }.onFailure { GLog.w("底栏入口：onResume 处理异常", it) }
-                        result
-                    }
-            )
-            hooked++
-        }
-        if (hooked == 0) GLog.e("底栏入口：没挂上 Activity.onResume") else
-            GLog.i("底栏入口：已挂 $hooked 个 Activity.onResume")
     }
 
     /**
@@ -316,100 +319,199 @@ class StockDetailBarFeature : Feature {
         }
     }
 
-    // ------------------------------------------------------------------ 注入
+    // ------------------------------------------------------------------ 同步
 
-    private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
-        if (!env.config.stockBarEntry) {
-            // 关掉开关：把底栏还原成原版
-            removeAllInjected()
-            return
-        }
-        // 只有个股 / 指数详情页才值得跑注入重试。别的页面（H5、资讯、首页…）
-        // 每次 onResume 都要白跑 60 次 × 100ms 的重试，最后再打一条
-        // 「重试 60 次仍没等到可注入的底栏」的警告 —— 纯噪音，而且这条警告会把
-        // 真正「详情页注入失败」的信号淹没。判定方式与 `StgSelectAllFeature` /
-        // `StgStockFilterFeature` 一致：按承载页面的类名。
-        if (!StockDetailBarTargets.isWatchActivity(activity.javaClass.name)) return
-        val root = runCatching { activity.window?.decorView }.getOrNull() ?: return
-        scheduleInject(env, root, 0)
-    }
-
-    /** 以「注入成功」为准的有限重试（引擎片段挂载完成前底栏还不存在） */
-    private fun scheduleInject(env: FeatureEnv, root: View, attempt: Int) {
-        if (!env.config.stockBarEntry) return
-        if (tryInjectOnce(env, root, attempt)) return
-        if (attempt < INJECT_ATTEMPTS) {
-            root.postDelayed(
-                { runCatching { scheduleInject(env, root, attempt + 1) } },
-                INJECT_RETRY_MS,
-            )
-        } else {
-            GLog.w("底栏入口：重试 $INJECT_ATTEMPTS 次仍没等到可注入的底栏，本页放弃")
-        }
-    }
-
-    /** 尝试注入一次；返回 true = 已注入 / 无需再试 */
-    private fun tryInjectOnce(env: FeatureEnv, root: View, attempt: Int): Boolean {
+    /**
+     * 每次「页面进来 / 发生布局」都会走到这里，把底栏状态对齐一次。
+     *
+     * 返回 `true` = 这一趟没什么好做的（含「底栏还没挂上来，等下一次布局」）；
+     * 返回 `false` = 底栏在、却一个都没同步成功 —— 这才是真异常，交给基类累计次数并打快照。
+     */
+    override fun sync(env: FeatureEnv, activity: Activity): Boolean {
+        val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val barId = resolveId(root.context, IdKey.BOTTOM_BAR)
-        if (barId == 0) return true                  // App 里没这个资源，重试也没用
-        val bar = root.findViewById<View>(barId) ?: return false
-        if (attempt == DIAG_ATTEMPT) logDiag(root, bar)
-        return runCatching { inject(env, bar) }.getOrElse {
-            GLog.w("底栏入口：注入失败", it)
-            true                                     // 抛异常就别再重试了
+        if (barId == 0) return true                       // App 里没这个资源，再同步也没用
+        val bars = findBars(root, barId)
+        if (bars.isEmpty()) return true                   // 引擎片段还没挂上：等布局回调
+        var ok = 0
+        for (bar in bars) {
+            val done = runCatching { syncBar(bar) }.getOrElse {
+                GLog.w("底栏入口：同步底栏失败", it)
+                false
+            }
+            if (done) ok++
         }
-    }
-
-    /** 一次性的现场诊断（只在重试到 [DIAG_ATTEMPT] 次、还没成功时打一条） */
-    private fun logDiag(root: View, bar: View) {
-        val ids = StockDetailBarTargets.MORE_TEXT_ID_CANDIDATES.joinToString(" ") {
-            "$it=${resolveIdByName(root.context, it)}"
-        }
-        val kids = (bar as? ViewGroup)?.let { g ->
-            (0 until g.childCount).joinToString(",") { i ->
-                "${g.getChildAt(i).javaClass.simpleName}#${g.getChildAt(i).id}"
+        if (ok == 0) return false
+        if (ok < bars.size) {
+            // 部分没成是常态（还没铺开的那一页的底栏里什么都没有），别每次布局都打一遍
+            val partial = bars.size * 10 + ok
+            if (lastPartialLogged != partial) {
+                lastPartialLogged = partial
+                GLog.d("底栏入口：${bars.size} 份底栏里有 ${bars.size - ok} 份本次未同步（多半是还没铺开的那一页）")
             }
         }
-        GLog.i("底栏入口：注入现场 bar=${bar.javaClass.simpleName} 子项=[$kids] 更多 id: $ids")
+        return true
     }
 
     /**
-     * 幂等地把「智能盯盘」按钮并排塞进「更多」的盒子里。
+     * 页面里**所有**底栏。
      *
-     * 返回 true = 已经注入 / 本来就注入过；false = 这页还没准备好（调用方重试）。
+     * 实测 `StockFragAct` 的分页器**每一页各带一份底栏**（同一个资源 id，三个不同实例，
+     * 各自还有自己的 `bottom_index_container`）。翻页换的就是另一份 —— 所以
+     * `root.findViewById(barId)` 那种「只取第一个」的写法**永远只在给第一页注入**，
+     * 用户一翻页就「智能盯盘没了」（这正是 2.15.0 报上来的现象）。必须全部同步。
      */
-    private fun inject(env: FeatureEnv, bar: View): Boolean {
-        val moreText = findMoreText(bar) ?: return false
-        // 幂等：「更多」已经被我们搬进 holder 了，所以不能只看它的直接父容器
-        if (findInjectedAncestor(moreText) != null) return true
-        val box = moreText.parent as? ViewGroup ?: return false
+    private fun findBars(root: View, id: Int): List<View> {
+        val out = ArrayList<View>(4)
+        fun walk(v: View) {
+            if (v.id == id) {
+                out.add(v)              // 一页只有一份底栏，命中就不必再往下
+                return
+            }
+            if (v !is ViewGroup) return
+            for (i in 0 until v.childCount) walk(v.getChildAt(i))
+        }
+        walk(root)
+        return out
+    }
+
+    /**
+     * 底栏在手：确认「我们的按钮还在不在」，不在就（重新）注入。
+     *
+     * 判据用 [liveRecord]（**现场**）而不是「记账表里有没有这一条」—— 宿主重建底栏
+     * 之后记账表还在，只查它就会永远误判成「已经注入过了」，再也修不回来。
+     */
+    private fun syncBar(bar: View): Boolean {
+        val more = findMoreText(bar) ?: return false
+        val box = boxOf(bar, more) ?: return false
         // 盒子可能是别的页面残留的同一个 id，确认它属于这条底栏
         if (!isDescendant(box, bar)) return false
-
-        val entry = buildEntry(moreText) ?: return false
-        val built = buildInline(moreText, box, entry) ?: return false
+        val live = liveRecord(box, more)
+        if (live != null) {
+            reassert(live)
+            return true
+        }
+        // 硬红线：**绝不把我们的容器套进另一个我们的容器里**。
+        // 正常路径不会走到这里（盒子 + 现场都判过了），但万一记账表与现场对不上，
+        // 宁可什么都不做，也不能再套一层 —— 实测套 5 层就把整条底栏撑爆了。
+        if (holderAncestorOf(more) != null) {
+            GLog.w("底栏入口：「更多」已经在我们的容器里，但现场与记账对不上 —— 本次不重复注入")
+            return true
+        }
+        val entry = buildEntry(more) ?: return false
+        val built = buildInline(more, box, entry) ?: return false
         injected[box] = built
-        applyIcon(built)
+        noteChange()
         GLog.i(
             "底栏入口：已在「自选」与「更多」之间注入「${StockDetailBarTargets.ENTRY_TEXT}」" +
                 "（盒子 ${box.javaClass.simpleName}，原宽 ${built.originalBoxWidth}px）"
         )
-
-        // 首次注入时异步取一次图标（隐形开一次面板，用户看不到）
-        maybeHarvestIcon(moreText)
+        maybeHarvestIcon(more)
         return true
     }
 
-    /** 沿祖先找「已经注入过」的那个盒子（「更多」此刻可能被搬进了 holder） */
-    private fun findInjectedAncestor(v: View): ViewGroup? {
-        var cur: View? = v
-        while (cur != null) {
+    /**
+     * 「更多」真正该待的那个盒子（`#fl_more` / `#fl_bottom_index_more`）。
+     *
+     * ⚠️ **两个「必须在 [bar] 范围内找」的原因**（都踩过）：
+     *
+     *  1. 分页器**每页各带一份底栏**（同一个资源 id），全树 `findViewById` 永远只返回第一份 ——
+     *     拿它去同步第二页的底栏，会得到「这个盒子不是这条底栏的孩子」→ 永远同步失败；
+     *  2. 我们注入之后「更多」的直接父级是**我们自己的容器**，取 `more.parent` 会取到壳，
+     *     记账表里查不到 → 一层层往里再套（实测套了 5 层，底栏被撑爆）。
+     *
+     * 所以：先在 **[bar] 范围内**按资源 id 找盒子（并用 `isDescendant` 确认里面确实是这个「更多」）；
+     * 认不到 id 就沿父链往上找，**跳过我们自己套的壳**（按 [StockDetailBarTargets.ENTRY_HOLDER_TAG] 认）。
+     */
+    private fun boxOf(bar: View, more: View): ViewGroup? {
+        for (name in StockDetailBarTargets.MORE_BOX_ID_CANDIDATES) {
+            val id = resolveIdByName(bar.context, name)
+            if (id == 0) continue
+            val v = bar.findViewById<View>(id) as? ViewGroup ?: continue
+            if (isDescendant(more, v)) return v
+        }
+        var cur: View = more
+        var guard = 0
+        while (guard++ < 12) {
             val p = cur.parent as? ViewGroup ?: return null
-            if (injected.containsKey(p)) return p
+            if (p.tag != StockDetailBarTargets.ENTRY_HOLDER_TAG) return p
             cur = p
         }
         return null
     }
+
+    /** 从 [v] 上溯到它所在的那条底栏（按底栏的资源 id 认） */
+    private fun barAncestorOf(v: View): View? {
+        val id = resolveId(v.context, IdKey.BOTTOM_BAR)
+        if (id == 0) return null
+        var cur: View? = v
+        var guard = 0
+        while (cur != null && guard++ < 20) {
+            if (cur.id == id) return cur
+            cur = cur.parent as? View
+        }
+        return null
+    }
+
+    /** 「更多」的祖先里有没有我们注入的容器（沿父链按 tag 找） */
+    private fun holderAncestorOf(v: View): ViewGroup? {
+        var cur: View = v
+        var guard = 0
+        while (guard++ < 12) {
+            val p = cur.parent as? ViewGroup ?: return null
+            if (p.tag == StockDetailBarTargets.ENTRY_HOLDER_TAG) return p
+            cur = p
+        }
+        return null
+    }
+
+    /**
+     * 现场是否还成立 —— **「我们的按钮现在还在盒子里」**，而不是「我注入过」。
+     *
+     * 三个条件缺一不可：宿主还在用同一个「更多」、我们的容器还挂在盒子里、
+     * 我们的按钮还挂在容器里而且在窗口上。任何一条不成立就说明宿主重建过这一块，
+     * 于是把过期的记账丢掉、顺手把自己留下的容器摘掉，让调用方重新注入。
+     */
+    private fun liveRecord(box: ViewGroup, more: View): Injected? {
+        val e = synchronized(injected) { injected[box] } ?: return null
+        val alive = e.moreText === more &&
+            e.holder.parent === box &&
+            e.button.parent === e.holder &&
+            e.button.isAttachedToWindow
+        if (alive) return e
+
+        synchronized(injected) { injected.remove(box) }
+        cleanupStale(e)
+        GLog.i("底栏入口：宿主重建了底栏（入口已不在树上），重新注入")
+        return null
+    }
+
+    /** 丢掉一次失效注入留下的容器（**不**碰「更多」：它要么已被宿主换掉，要么由重新注入接管） */
+    private fun cleanupStale(e: Injected) {
+        runCatching { e.holder.removeView(e.button) }
+        runCatching { (e.holder.parent as? ViewGroup)?.removeView(e.holder) }
+    }
+
+    /**
+     * 现场还成立时，顺手把宿主改回去的东西再压一次。
+     *
+     * 实测宿主重排底栏时会重新套用它自己的 `LayoutParams`：盒子宽度一旦回到原来的
+     * 固定值，我们的按钮就被挤没了（看着就是「入口消失了」）—— 加宽是「买卖让位」的
+     * 唯一来源，必须重新压回去。图标同理（样式被重置时要补回来）。
+     */
+    private fun reassert(e: Injected) {
+        val lp = e.box.layoutParams
+        if (lp != null && lp.width != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.width = ViewGroup.LayoutParams.WRAP_CONTENT
+            runCatching { e.box.layoutParams = lp }
+            runCatching { e.box.requestLayout() }
+            noteChange()
+            GLog.i("底栏入口：宿主把「更多」盒子宽度改回去了，已重新加宽（买卖重新让位）")
+        }
+        if (runCatching { e.button.compoundDrawables.getOrNull(1) }.getOrNull() == null) applyIcon(e)
+    }
+
+    /** 尝试注入一次；返回 true = 已注入 / 无需再试 */
 
     /**
      * 真正动手：把「更多」搬进一个横向容器，前面并排我们的按钮，再把容器塞回盒子，
@@ -432,6 +534,8 @@ class StockDetailBarFeature : Feature {
         val holder = LinearLayout(moreText.context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            // tag 是「找盒子」的关键：注入后「更多」的父级就是我们，见 boxOf
+            tag = StockDetailBarTargets.ENTRY_HOLDER_TAG
         }
         entry.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -538,14 +642,19 @@ class StockDetailBarFeature : Feature {
     }
 
     /** 关开关 / 撤销注入：把「更多」搬回盒子、盒子宽度改回原值 */
-    private fun removeAllInjected() {
+    override fun restore() {
         val entries = synchronized(injected) {
             val list = injected.values.toList()
             injected.clear()
             list
         }
+        if (entries.isEmpty()) return
         for (e in entries) runCatching { detach(e) }
+        noteChange()
     }
+
+    /** 还有注入在现场时才值得在关开关时打日志（`detach` 自己有逐项日志） */
+    override val hasChanges: Boolean get() = synchronized(injected) { injected.isNotEmpty() }
 
     private fun detach(e: Injected) {
         val holder = e.holder
@@ -568,8 +677,9 @@ class StockDetailBarFeature : Feature {
 
     /** 用户点了我们注入的按钮：触发「更多」→ 由弹层钩子接力点「智能盯盘」 */
     private fun openEntry(v: View) {
-        val root = v.rootView ?: return
-        val moreText = findMoreText(root) ?: run {
+        // 必须找**同一个底栏里**的「更多」：分页器每页各有一份底栏，找错页就点错
+        val bar = barAncestorOf(v) ?: v.rootView ?: return
+        val moreText = findMoreText(bar) ?: run {
             GLog.w("底栏入口：点击时找不到「更多」按钮")
             return
         }
@@ -816,33 +926,32 @@ class StockDetailBarFeature : Feature {
             // 不缩到「更多」的尺寸会把底栏文字顶掉（都踩过）。
             if (e.iconW > 0 && e.iconH > 0) d.setBounds(0, 0, e.iconW, e.iconH)
             e.button.setCompoundDrawables(null, d, null, null)
+            noteChange()          // 图标是在改视图，这一帧同样要先拦下来（见 PageSyncFeature）
         }
     }
 
     // ------------------------------------------------------------------ 查找
 
     /**
-     * 找底栏上的「更多」按钮。
+     * 找**这条底栏里**的「更多」按钮。
+     *
+     * ⚠️ 必须**限定在 [bar] 范围内**：分页器每页各带一份底栏（同一个资源 id），
+     * 全树 `findViewById` 只会返回第一份 —— 用它去同步第二页，整条链都会认错。
      *
      * 两套形态各有一个「更多」，**取当前显示的那个**（另一个是 `GONE`）。
      * 都按不到 id 时，再**只在底栏范围内**按文字兜底 —— 页面别处也有「更多」
      * （K 线周期栏就有一个），全树按文字找会抓错。
      */
-    private fun findMoreText(anyView: View): TextView? {
-        val root = anyView.rootView ?: return null
+    private fun findMoreText(bar: View): TextView? {
         var fallback: TextView? = null
         for (name in StockDetailBarTargets.MORE_TEXT_ID_CANDIDATES) {
-            val id = resolveIdByName(root.context, name)
+            val id = resolveIdByName(bar.context, name)
             if (id == 0) continue
-            val tv = root.findViewById<View>(id) as? TextView ?: continue
+            val tv = bar.findViewById<View>(id) as? TextView ?: continue
             if (tv.isShown) return tv
             if (fallback == null) fallback = tv
         }
         if (fallback != null) return fallback
-
-        val barId = resolveId(root.context, IdKey.BOTTOM_BAR)
-        if (barId == 0) return null
-        val bar = root.findViewById<View>(barId) ?: return null
         return findText(bar, StockDetailBarTargets.MORE_TEXT)
     }
 
@@ -927,11 +1036,8 @@ class StockDetailBarFeature : Feature {
 
     // ------------------------------------------------------------------ 配置
 
-    override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
-        if (cfg.stockBarEntry) return
-        removeAllInjected()
-        GLog.i("底栏入口：已关闭，底栏恢复原版")
-    }
+    // 关开关注解在 `PageSyncFeature.onConfigChanged`：还原（[restore]）+ 摘掉两个回调。
+    // 这里不再覆写 —— 「关掉立刻恢复原版」是骨架的统一契约。
 
     private companion object {
         /** 「更多」面板的显示入口（实测是 PopupWindow，不是 Dialog） */
@@ -943,18 +1049,6 @@ class StockDetailBarFeature : Feature {
         /** 等 `GridView` 子项完成 measure/layout 的重试次数与间隔 */
         const val MAX_ATTEMPTS = 12
         const val RETRY_MS = 16L
-
-        /**
-         * 等底栏出现的重试次数与间隔。
-         *
-         * `EngineAct` 的引擎片段是异步挂载的，实测 `onResume` 时底栏还不存在
-         * （`decorView.findViewById` 返回 null），有时要 3 秒以上才齐。
-         */
-        const val INJECT_ATTEMPTS = 60
-        const val INJECT_RETRY_MS = 100L
-
-        /** 重试到第几次还没成功就打一条现场诊断（成功路径零噪音） */
-        const val DIAG_ATTEMPT = 20
 
         /** 拿不到盒子 margin 时，新按钮与「更多」之间的兜底间距（dp） */
         const val GAP_DP = 10f

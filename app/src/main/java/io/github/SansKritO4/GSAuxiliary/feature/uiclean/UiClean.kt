@@ -231,11 +231,20 @@ object UiClean {
 }
 
 /**
- * 「资源 id 名 → id」解析器，带进程级缓存。
+ * 「资源 id 名 → id」解析器。
  *
  * 宿主被加固，静态反编译拿不到 `R.id`，但**运行时**用
  * `Resources.getIdentifier(name, "id", pkg)` 一定拿得到 ——
  * 这正是本项目「候选名 + 多级兜底」容错模式的基础。
+ *
+ * ## 缓存分两层，因为命中与未命中不一样
+ *
+ *  - **命中**（解析出非 0）：写进 [HITS]，**进程级共享** —— 同一个包里的 id
+ *    与配置、与哪个 `Context` 都无关，一次拿到就永远有效。
+ *  - **未命中**（返回 0）：只写进本实例的 `misses`。理由：0 有可能是**时机问题**
+ *    而不是真的不存在 —— 名字是在启动早期（启动图那会儿）被 [warm] 预解析的，
+ *    那时万一资源还没装配完，进程级缓存会把「这次没查到」永久钉死。
+ *    所以未命中按 `Context` 各记一份，换个页面还会再试一次，代价只是一次函数调用。
  *
  * 反查（id → 名字）走 `getResourceEntryName`，供 [UiClean.dump] 输出可读的名字。
  */
@@ -243,13 +252,37 @@ class IdCache(context: Context, private val pkg: String) {
 
     private val res = (context.applicationContext ?: context).resources
 
-    private val byName = HashMap<String, Int>()
+    /** 本 `Context` 上查不到的 id 名（见类注释：未命中不跨 `Context` 共享） */
+    private val misses = HashMap<String, Int>()
 
-    /** 解析一个 id 名；不存在返回 0（解析结果同样缓存，含 0） */
-    fun of(name: String): Int = synchronized(byName) {
-        byName.getOrPut(name) {
-            runCatching { res.getIdentifier(name, "id", pkg) }.getOrDefault(0)
-        }
+    /**
+     * 解析一个 id 名；不存在返回 0。
+     *
+     * `getIdentifier` 是**按名字扫资源表**，不便宜（每个名字一次）。
+     * 所以启动路径上的解析一定要提前做掉 —— 见 [warm]。
+     */
+    fun of(name: String): Int {
+        synchronized(HITS) { HITS["$pkg/$name"] }?.let { return it }
+        synchronized(misses) { misses[name] }?.let { return it }
+        val id = runCatching { res.getIdentifier(name, "id", pkg) }.getOrDefault(0)
+        if (id != 0) synchronized(HITS) { HITS["$pkg/$name"] = id }
+        else synchronized(misses) { misses[name] = 0 }
+        return id
+    }
+
+    /**
+     * 先把一批名字解析好（幂等，重复调用只剩一次哈希查表）。
+     *
+     * 调用点就是全部意义：`UiCleanFeature` 在**每个页面 resume 时**（早于该页第一次布局）
+     * 就调它，而第一个 resume 的页面通常正是**启动图** —— 那一两秒主线程闲着，
+     * 正好把这十几个 `getIdentifier` 算掉，等真正要改界面时不占首帧的时间。
+     *
+     * 返回解析到的数量（日志用）。
+     */
+    fun warm(names: Array<String>): Int {
+        var hit = 0
+        for (n in names) if (of(n) != 0) hit++
+        return hit
     }
 
     /** 按候选顺序取第一个存在的 id；全都不存在返回 0 */
@@ -264,4 +297,9 @@ class IdCache(context: Context, private val pkg: String) {
     /** id → 资源名（反查失败返回 null，不抛） */
     fun nameOf(id: Int): String? =
         if (id == 0) null else runCatching { res.getResourceEntryName(id) }.getOrNull()
+
+    private companion object {
+        /** `"包名/资源名" -> id`，进程级共享（只存命中的） */
+        val HITS = HashMap<String, Int>()
+    }
 }

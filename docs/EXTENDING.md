@@ -391,7 +391,7 @@ Scaffold { padding ->
 | 钩子生命周期 | `core/HookBag.kt` | 集中卸载 |
 | 配置变更通知 | `Feature.onConfigChanged` | 主线程，异常隔离 |
 | 运行时视图注入 | `feature/strategyselect/StgSelectAllFeature.kt` | 往宿主布局里插控件、克隆同款样式、分帧驱动宿主自己的点击回调 —— 想做「加按钮 / 改布局」类功能先看它 |
-| **界面精简（隐藏 / 压缩现成视图）** | `feature/uiclean/` | `UiClean`（认视图：遍历 / 按文案找 / 按结构判 / id 候选 / **失配时打视图树快照**）、`ViewPatcher`（改 + 一键还原）、`UiCleanFeature`（页面门禁 + 全局布局回调驱动 + 分帧重试）。想做「去掉某一格 / 藏一条横幅 / 压矮某一块」先看它，见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) |
+| **在宿主页面上动视图（隐藏 / 压缩 / 插入）** | `feature/PageSyncFeature.kt`（调度骨架） | 改视图的**时机**（布局回调 + `OnPreDraw` 首帧屏障）、幂等自愈、限速、失配时打视图树快照、资源 id 预热。界面精简五个功能（`feature/uiclean/`，改动走 `ViewPatcher` 记账）与底栏「智能盯盘」入口（`feature/stockbar/`，插入视图 + 现成判据）都在用它。想做「去掉某一格 / 藏一条横幅 / 压矮某一块 / 往底栏插一个入口」先看它，见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)、[FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) |
 
 ---
 

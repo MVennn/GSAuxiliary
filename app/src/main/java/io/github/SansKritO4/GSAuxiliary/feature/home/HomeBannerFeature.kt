@@ -47,6 +47,11 @@ class HomeBannerFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.homeBannerHide
 
+    /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
+    override val idNames = HomeBannerTargets.BANNER_ID_CANDIDATES +
+        HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES +
+        arrayOf(HomeBannerTargets.HOME_ENTRY_ITEM_ID)
+
     private var lastHidden: WeakReference<View>? = null
 
     override fun applyTo(env: FeatureEnv, activity: Activity): Boolean {
