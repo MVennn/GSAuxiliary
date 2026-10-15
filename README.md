@@ -10,6 +10,8 @@ Make GoldenSun Great Again！
 
 [![下载最新版本](https://img.shields.io/badge/下载-最新版本-3DDC84?logo=android&logoColor=white)](../../releases/latest)
 [![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white)](https://github.com/SansKritO4/GSAuxiliary)
+[![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github&logoColor=white)](https://github.com/SansKritO4/GSAuxiliary/issues)
+[![CI](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml/badge.svg)](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml)
 ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white)
 ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
@@ -30,7 +32,7 @@ Make GoldenSun Great Again！
 ## 安装
 
 **需要**：手机已 root，装了 [LSPosed](https://github.com/LSPosed/LSPosed)（要支持 API 102）；
-国信金太阳 8.6.0；Android 8.1 及以上。
+国信金太阳（`com.guosen.android`）；Android 8.1 及以上。
 
 1. 到本仓库的 [**Releases**](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk`，装上
 2. 打开 **LSPosed 管理器 → 模块**，勾选 **GSAuxiliary**
@@ -63,6 +65,10 @@ Make GoldenSun Great Again！
 **Q：需要手动勾作用域吗？**
 正常不用。模块已经固定声明只作用于国信金太阳。
 
+**Q：必须用 8.6 版本的金太阳吗？**
+不用。8.6.0 只是开发时的验证基线 —— 模块靠「候选名 + 多级兜底」去适配界面，
+版本不同大多照常可用。真失效了，去 [Issues](https://github.com/SansKritO4/GSAuxiliary/issues) 反馈。
+
 **Q：会改我的数据 / 账号吗？**
 不会。模块不写数据、不拦截请求、不上传任何信息，只改界面上的显示和操作。
 
@@ -71,6 +77,27 @@ Make GoldenSun Great Again！
 
 **Q：装新版本要先卸载吗？**
 不用，直接覆盖安装，设置会保留。
+
+## 自己编译
+
+不想装环境：推上去让 GitHub 编 —— [Actions](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml)
+里每次提交都会跑一遍，产物在对应 run 的 **Artifacts** 里（零配置，不需要任何密钥）。
+
+想在本机编：见 [构建指南](https://github.com/SansKritO4/GSAuxiliary/blob/main/docs/BUILD.md)。
+需要 JDK 17、Android SDK Platform 37，然后 `./gradlew assembleRelease`。
+
+## 反馈与贡献
+
+用着有问题、想要新功能，或者金太阳升级后某个开关突然失灵了 —— 都欢迎去
+[**Issues**](https://github.com/SansKritO4/GSAuxiliary/issues) 提一条，作者会看。
+
+为了能快速定位，尽量带上：
+
+- 金太阳的**版本号**（应用商店页面，或 App 内的关于 / 设置页）
+- 模块的**版本号**、**安卓版本**与**机型**
+- 出问题的是**哪个功能开关**，以及**复现步骤**
+- 能附上 **LSPosed 日志**最好：
+  `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
 
 ## 免责声明
 
