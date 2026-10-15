@@ -137,7 +137,7 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
 > 与宿主 `AIStkStgDetailAct` 的列表适配器（`AIStkAdapter`）**是同一个 `ArrayList` 对象**。
 > 一旦对它 `clear() + addAll()` 原地换成 `IntentStockInfo`，
 > 宿主第二次点击时会按 `StockInfo` 强转 → `ClassCastException` → **页面崩溃**。
-> 这正是 2.12.0 修掉的 bug（真机 `logcat -b crash` 坐实的根因：
+> 这正是 2.12.1 修掉的 bug（真机 `logcat -b crash` 坐实的根因：
 > `AIStkStgDetailAct.onItemClick:196`）。**改这段代码前先把这条读三遍。**
 
 **为什么这条路径成立**：`EngineAct` 是按 **action** 查路由表的（`router_ai_stk_detail` → `AIStkDetailFragAct`，`quotes.stockDetail` → `StockFragAct`）。
@@ -152,7 +152,7 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
 3. **`stockList` 的存储类型**：行情侧读出来是 `ArrayList`。Bundle 里既可能用
    `putParcelableArrayList` 也可能用 `putSerializable`。**按 `putParcelableArrayList` 优先、
    `putSerializable` 兜底**（见 `StgDirectQuoteFeature` 里那两处 `runCatching` 回退分支）。
-4. **绝不原地改写宿主持有的集合**（2.12.0 起）：`stockList` 与宿主适配器的数据是
+4. **绝不原地改写宿主持有的集合**（2.12.1 起）：`stockList` 与宿主适配器的数据是
    **同一个对象**，必须 `Bundle(b)` 复制一份改写再 `putExtra` 回去。同一条规则也适用于
    「关闭左右滑动」时的单只契约 —— 写 `adapter_key.stockInfo` 时要清掉副本里残留的
    `stockList`，否则行情侧会读到过期的策略列表。
@@ -163,8 +163,14 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
    }
    ```
    找不到就退到 `(String code, String market)` 构造器，从 `codeAndMarket` 拆出来。
-6. **索引匹配**：`stockItem` 与 `stockList` 里的元素是同一个对象引用（同一批数据），
-   优先用 `===` 比引用，退而比 `codeAndMarket` 字符串。
+6. **索引匹配：在转换过程中记录下标，别事后匹配字符串**（2.12.1 定稿）。
+   遍历原始列表做 `StockInfo → IntentStockInfo` 转换时，元素就在手上，
+   用**对象引用**（`e === clicked`）判断"这条就是被点的那只"，并记下它在 `converted` 里的下标。
+   兜底才退到「在**原始列表**里按 `codeAndMarket` 找下标，再映射回 `converted`」。
+   ⚠️ **不能拿 `codeAndMarket` 去 `converted` 里 `indexOfFirst`**：`converted` 的元素是
+   `IntentStockInfo`，它**没有** `codeAndMarket` 字段，会退化成 `mStkCode` + `m_stkMarket` 拼接；
+   一旦与 `StockInfo.codeAndMarket` 的市场号表示不一致就返回 `-1` → 下标被兜底成 `0`
+   → **点第 5 只却打开第 1 只**。这类 bug **不崩、不报错**，只进错股票，比崩溃更难发现。
 7. 钩子里的异常必须 `runCatching` 吞掉，绝不抛给宿主（同 `WatchlistFeature`）。
 
 ### 3.4 降级链
@@ -280,7 +286,7 @@ class StgDirectQuoteFeature : Feature {
 1. 策略详情页点股票 → **不再出现** `AIStkDetailFragAct` → 直达 `StockFragAct`。
 2. `#vp_stocks` 的 **count = 策略股票数**（本例 7），`current` = 被点那只。
 3. 左滑 / 右滑在策略的股票之间切换，顺序与策略列表一致。
-4. **连续点击 ≥ 5 只不同股票，每次都直达、不崩溃**（2.12.0 的验收项；
+4. **连续点击 ≥ 5 只不同股票，每次都直达、不崩溃**（2.12.1 的验收项；
    修复前同操作**必然在第 2 次**抛 `ClassCastException` —— 见 §3.2 的警告）。
 5. 行情 / 自选列表行为**零变化**（hook 只对 `AIStkStgDetailAct` 生效）。
 6. 关掉开关 → 立即恢复原版行为（进中间页），无需重启目标 App。
@@ -320,4 +326,69 @@ bash tools/ui.sh act               # 确认栈顶 Activity
 > 相关环境坑（无线调试掉线、mDNS 抢设备、`adb pull` 路径被改写、
 > LSPosed 不自动启用新模块、`modules_config.db` 是陈旧快照）
 > 见 [`../tools/README.md`](../tools/README.md) 与
-> [`.workbuddy-ai/memory/2026-10-15.md`](../.workbuddy-ai/memory/2026-10-15.md)。
+> [`.workbuddy/memory/2026-10-15.md`](../.workbuddy/memory/2026-10-15.md)。
+
+---
+
+## 8. 2.12.1 修复：二次点击闪退（`stockList` 别名污染）
+
+### 8.1 症状
+
+策略详情页点股票 → **首次**正常直达标准行情个股详情页；返回详情页后**第二次**点任意股票
+→ **闪退回「我的策略」列表页**（策略详情页被系统回收，App 本身没挂）。
+
+### 8.2 根因
+
+宿主构造 `EngineIntent` 时，`adapter_key.stockList` 与 `AIStkStgDetailAct` 的列表适配器
+（`AIStkAdapter`，Activity 字段 `m_stkAdapter`）**持有的是同一个 `ArrayList` 实例**。
+
+早期实现为了「保留 Bundle 原存储方式」，对这个列表做了**原地** `clear() + addAll()`：
+
+```
+首次点击
+  ├─ 策略页构造 EngineIntent，adapter_key.stockList === 适配器数据列表（同一对象）
+  ├─ 我们的钩子在 startEngineAct 里对它 clear() + addAll(IntentStockInfo…)
+  │     ⇒ 适配器数据当场被换成 IntentStockInfo
+  └─ 跳转成功（本次读的是刚写进去的数据，所以"看起来正常")
+
+返回详情页 → 第二次点击
+  └─ AIStkStgDetailAct.onItemClick 从适配器取出 IntentStockInfo，按 StockInfo 强转
+       ⇒ ClassCastException → 页面崩溃
+```
+
+真机 `logcat -b crash`：
+
+```
+java.lang.ClassCastException: com.guosen.android.quotes.data.IntentStockInfo
+        cannot be cast to com.guosen.android.quotes.data.StockInfo
+  at com.guosen.quotation.ui.aistk.AIStkStgDetailAct.onItemClick(AIStkStgDetailAct.java:196)
+```
+
+**"首次正常、第二次必崩"这个不对称现象，就是别名污染的特征指纹** —— 如果是 Intent 契约
+本身写错，第一次就该失败。
+
+### 8.3 改法
+
+1. **新建 `ArrayList`** 承载转换结果，绝不碰宿主那个列表；
+2. 连 `adapter_key` 这个 Bundle 也换成**副本**（`Bundle(bundle)`）再写回；
+3. 索引改为**转换过程中按对象引用记录**（见 §3.3 第 6 条）；
+4. 「关闭左右滑动」分支改走行情侧**单只契约**（`adapter_key.stockInfo`），并清掉副本里残留的 `stockList`。
+
+> ⚠️ **只做第 2 步是不够的。** `Bundle(bundle)` 是**浅拷贝**：它的内部 `map` 是新的，
+> 但每个 value **仍然指向同一个对象**。所以"复制 Bundle"本身并不隔离 `stockList`，
+> 必须**同时**做第 1 步（新建列表）才真正隔离。这是本次最容易写错的地方。
+
+### 8.4 验证结果（真机 2.12.1 / vc32）
+
+真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 金太阳 8.6.0 (vc271)，
+策略 `100e`（32 只股票）。
+
+| # | 验证项 | 结果 |
+|---|---|---|
+| 1 | 连续点击 | **6/6 次**均直达 `StockFragAct`；每次返回都回到 `AIStkStgDetailAct`，**未再回落 `AIStkStgListAct`** |
+| 2 | 落点正确性 | 点第 1/2/3/4/5/6 行，页面分别显示 `新华文轩 601811` / `澳弘电子 605058` / `航天南湖 688552` / `思特威-W 688213` / `华鑫股份 600621` / `大智慧 601519` —— **与所点行一一对应，无下标偏移** |
+| 3 | 左右滑动（`stg_quote_swipe=1`） | 航天南湖 → 左滑 → 思特威-W → 左滑 → 华鑫股份 → 右滑 → 思特威-W，**顺序与策略列表一致** |
+| 4 | 关闭滑动（`stg_quote_swipe=0`） | 进入后显示所点那只；**左滑两次仍停在同一只**（count=1，不可滑） |
+| 5 | 宿主数据未污染 | 连点 6 次后返回，策略详情页 32 行名称 / 最新价 / 涨跌幅**全部正常** |
+| 6 | 崩溃计数 | `logcat -b crash` 中 `ClassCastException` / `FATAL` **计数 0** |
+

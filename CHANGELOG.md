@@ -7,113 +7,127 @@
 
 ## [2.12.1] — 2026-10-15
 
-热重载的反馈闭环：**点一次必有一条提示**（含成功）。
+策略详情页三项增强（直达行情二次点击崩溃修复 / 加入自选黄名返回实时刷新 / 多选栏「全选 · 反选」按钮），
+外加「热重载」点击反馈闭环。
 
 ### 变更
+
+#### 1. 修复：策略详情页「直达标准行情」二次点击闪退
+
+`feature/strategyquote/StgDirectQuoteFeature.kt`
+
+- 症状：首次点股票正常直达个股详情页；**返回后第二次**点任意股票，闪退回「我的策略」列表页。
+- 根因（真机 `logcat -b crash` 坐实）：`adapter_key.stockList` 与宿主 `AIStkStgDetailAct` 的列表适配器
+  （`AIStkAdapter`）**是同一个 `ArrayList` 实例**。原实现对这个列表做**原地** `clear() + addAll()`，
+  首次点击就把适配器的数据换成了 `IntentStockInfo`；第二次点击时宿主按 `StockInfo` 强转 →
+  `ClassCastException: IntentStockInfo cannot be cast to StockInfo`
+  （`AIStkStgDetailAct.onItemClick:196`）→ 页面崩溃。
+  **「首次正常、第二次必崩」的不对称现象，正是别名污染的特征指纹** —— 若 Intent 契约本身写错，
+  第一次就该失败。
+- 改法：构造**全新的 `ArrayList`** + 写进 **Bundle 副本**（`Bundle(bundle)`），**绝不改写宿主持有的集合**。
+  ⚠️ **只做「复制 Bundle」是不够的**：`Bundle(bundle)` 是**浅拷贝**，内部 map 是新的但每个 value
+  仍指向同一个对象 —— 必须**同时**新建列表才真正隔离。存储方式 `putParcelableArrayList` 优先 /
+  `putSerializable` 兜底；「关闭左右滑动」分支改走行情侧单只契约（`adapter_key.stockInfo`），
+  并清掉副本里残留的 `stockList`。
+- **索引落点**改为**转换过程中按对象引用记录**：原实现拿 `codeAndMarket` 字符串去 `converted` 里
+  `indexOfFirst`，而 `IntentStockInfo` 并没有 `codeAndMarket` 字段（会退化成 `mStkCode` + `m_stkMarket`
+  拼接）；格式不一致时返回 `-1` → 下标被兜底成 `0` → **点第 5 只却打开第 1 只**。
+  这类 bug **不崩、不报错**，只静默进错股票，比崩溃更难发现。
+
+#### 2. 修复：加入自选后返回策略详情页，黄名不实时刷新
+
+`feature/watchlist/WatchlistFeature.kt` + `WatchlistTargets.kt`
+
+- 症状：在策略详情页点进个股详情页并加入自选，**返回后名称不变黄**；只有退出策略详情页再重进才变黄。
+- 根因：着色只发生在 `BaseQuickAdapter.getView` 的后置钩子里；返回时行视图已存在、`getView`
+  不再被调用。而 `hookActivityResume → observeConfig(allowRefresh = true)` 在**配置指纹未变化**时
+  直接 `return`，于是根本不触发重绘。
+- 改法：`onResume` 时对策略详情页**无条件强制重绘可见行**（遍历 `#lvStks` 的可见子 View，
+  重新判定 + `setTextColor`），正确处理 ListView 的 header 位置偏移与 `HeaderViewListAdapter` 拆包；
+  不调用 `notifyDataSetChanged`，避免 computing-layout 崩溃。「移除自选还原原色」「关闭开关还原原色」
+  由同一条逻辑覆盖。
+
+#### 3. 新增：策略详情页多选栏「全选 / 反选」按钮
+
+`feature/strategyselect/*` + 配置链 + `ui/FeatureCatalog.kt` + 中英 strings，
+详见 [`docs/FEATURE-SELECT-ALL.md`](docs/FEATURE-SELECT-ALL.md)。
+
+- 实现方式：**LSPosed 运行时视图注入** —— 在「取消」按钮（`#tv_stg_add_zxg`）**左侧**插入一颗
+  **从「取消」克隆**的同款按钮（背景含状态、字色、字号、字体、字距、内边距、对齐、行数、
+  最小尺寸、LayoutParams 逐项复制）。
+- 触发：给 `#tv_stg_add_zxg` 挂 `TextWatcher`，观察其文案在「勾选加入自选股 ↔ 取消」之间切换 ——
+  **不**全局 Hook 超热路径 `TextView.setText`（行情页实时报价会频繁调用）。
+- 动作：逐行调用 `ListView.performItemClick(...)`，走宿主自己的行点击监听器 —— 与用户手动点行
+  **完全同一条**代码路径，宿主选中模型与底部「已选 N」自然同步，无需知道内部字段。
+  - **必须覆盖屏外行**：`index` 从 `0` 走到 `total-1`，屏外行用 `Adapter.getView(pos, null, lv)`
+    现造探针 View；**不能**只看 `ListView.childCount`（那只是可见行数）。
+  - **必须分帧**：每行之间 `postDelayed(16ms)` —— 宿主每次切换后会刷新列表，同帧复用旧子 View 会失效
+    （真机实测踩到过：「反选」只清掉第一行）。
+  - 「是否已全选」以宿主维护的底部计数 `#tv_bottom_zxg_num` 为准（含屏外行）；计数明确（0 / 全部）时
+    跳过逐行探状态，省掉屏外行的 `getView` 开销。`#ct_item` 解析失败时**保守放弃**并记日志 ——
+    拿不到勾选态会把「全选」点成「反选」。
+- **文案随状态切换**：未全选显示「**全选**」（点击勾选全部），已全选显示「**反选**」（点击取消全部选中）。
+  重算时机：进入多选态、每次行点击（包裹宿主 `OnItemClickListener`）、按钮点击后。
+- **与「取消」的间距**：**只加在注入按钮自己的 `rightMargin`（16dp）上，不改「取消」任何属性** ——
+  保证「与取消样式一致」这条验收仍成立（间距是两按钮之间的距离，不是按钮内边距）。
+- 防抖细节：`minWidth` 用 `paint.measureText` 取「全选 / 反选」较宽者（**不是**取 `src.width` ——
+  文案切换途中会拿到旧文案宽度，把按钮撑过头、挤走「取消」）；注入按钮用 `View.generateViewId()`
+  拿**独立 id**，避免与「取消」同 id 造成 `findViewById` 歧义与幂等判断失效。
+- 新增配置键 `stg_select_all`（**功能总开关，出厂默认关**，登记进 `ConfigKeys.FEATURE_KEYS`）。
+
+#### 4. 其他
 
 - **「热重载目标进程」点击后必定给出结果提示**（`ui/SettingsTab.kt` + 中英 strings）。
-  - 症状：目标进程**在后台**（或一切正常）时点「热重载目标进程」，屏幕上**毫无动静**，
+  - 症状：目标进程在后台（或一切正常）时点「热重载目标进程」，屏幕上毫无动静，
     无法判断是否重载成功、是否需要重试。
-  - 根因：`requestHotReload()` 返回 `String?`，设计上**只有**「没在跑目标进程」这一种情况
-    返回文案，成功 / 失败一律 `null` —— 调用方 `?.let { Toast }` 直接跳过。
-    （该简化出自 2.8.0，当时的选择是「成功 / 失败不打扰」，实际代价是唯一的正向反馈也一并没了。）
-  - 改法：`requestHotReload()` 改为返回**非空** `String`，调用方无条件弹 Toast；
-    文案覆盖 `HotReloadResult.Status` 的全部五种终态，另加一档本地「8 秒无回调」超时，
-    以及「服务掉线」（`FrameworkBridge.service()` 为 null，点击瞬间的兜底）与原有的「无目标进程」：
-
-    | 触发 | 文案 |
-    |---|---|
-    | `SUCCEEDED` | 已热重载 |
-    | `FAILED` | 热重载失败，详见模块日志 |
-    | `UNSUPPORTED` | 当前框架不支持热重载 |
-    | `IN_PROGRESS` | 目标进程正在热重载中，请稍候 |
-    | `PROCESS_DIED` | 目标进程已退出 |
-    | `latch.await` 超时 | 热重载超时，目标进程可能无响应 |
-    | `runningTargets` 为空 | 没有正在运行的目标程序 |
-    | 服务为 null | 需要框架连接 |
-
-    新增 6 条字符串（`msg_hot_reload_ok` / `_failed` / `_unsupported` / `_in_progress` /
-    `_died` / `_timeout`），中英同步。
-  - 顺带：回调结果改由 `AtomicReference<HotReloadResult?>` 承接，`latch.await()` 的返回值
-    不再被丢弃 —— 超时与「await 成功但无结果」都是显式分支，不再静默。
-- `docs/UI.md` 设置页表格、`docs/TROUBLESHOOTING.md` §8 热重载排查表同步为「看 Toast 定位问题」。
-- `app/build.gradle.kts`：`versionCode 31 → 32`、`versionName 2.12.0 → 2.12.1`。
-
-### 验证结果
-
-- `:app:assembleDebug` + `:app:assembleRelease` → **BUILD SUCCESSFUL**；badging 2.12.1 / vc32。
-- 状态枚举取值以 libxposed service 102 的 `HotReloadResult.Status` 为准（`javap` 常量池
-  实测 `SUCCEEDED / FAILED / UNSUPPORTED / IN_PROGRESS / PROCESS_DIED`），未臆造分支。
-- ⚠️ **真机回归未做**：需在「金太阳在后台」与「金太阳未运行」两种状态下各点一次，
-  确认分别弹「已热重载」与「没有正在运行的目标程序」。当前目标 App 登录态未恢复，无法进策略页。
-
----
-
-## [2.12.0] — 2026-10-15
-
-三项策略详情页改动的落地（二次点击闪退修复 / 黄名返回实时刷新 / 多选栏「全选」按钮）。
-
-### 变更
-
-- **修复：策略详情页「直达标准行情」二次点击闪退**（`feature/strategyquote/StgDirectQuoteFeature.kt`）。
-  - 症状：首次点股票正常直达个股详情页；返回后**第二次**点任意股票，闪退回「我的策略」列表。
-  - 根因（真机 `logcat -b crash` 确认）：`rewriteExtras()` 对 `adapter_key.stockList` 做**原地**
-    `clear() + addAll()`，而这个 ArrayList 与宿主 `AIStkStgDetailAct` 列表适配器（`AIStkAdapter`）
-    **是同一个对象**。首次点击后适配器数据被换成 `IntentStockInfo`，第二次点击宿主按 `StockInfo`
-    强转 → `ClassCastException: IntentStockInfo cannot be cast to StockInfo`（`AIStkStgDetailAct.onItemClick:196`）→ 页面崩溃。
-  - 修法：构造**新列表**并写进 **Bundle 副本**（`Bundle(bundle)`），**绝不改写宿主持有的集合**；
-    存储方式 `Parcelable` 优先、`Serializable` 兜底。顺带修正「关闭左右滑动」时的单只契约
-    （改走行情侧 `adapter_key.stockInfo`，并清掉残留的策略侧 `stockList`）。
-- **修复：加入自选后返回策略详情页，黄名不实时刷新**（`feature/watchlist/WatchlistFeature.kt` + `WatchlistTargets.kt`）。
-  - 根因：返回时配置指纹未变化 → `observeConfig` 直接 `return`；且行视图已存在、`getView` 不再被调用，
-    后置着色钩子根本没机会跑。
-  - 修法：`onResume` 时对策略详情页**无条件强制重绘可见行**（遍历 `#lvStks` 的可见子 View，重新判定 + `setTextColor`），
-    正确处理 ListView 的 header 位置偏移与 `HeaderViewListAdapter` 拆包。「移除自选变回原色」「开关关闭还原原色」
-    由同一条逻辑覆盖；不调用 `notifyDataSetChanged`，避免 computing-layout 崩溃。
-- **新增：策略详情页多选栏「全选 / 反选」按钮**（`feature/strategyselect/*` + `core/*` + `ui/FeatureCatalog.kt` + 中英 strings）。
-  - 实现方式：**LSPosed 运行时视图注入**，在「取消」按钮左侧插入一颗**从「取消」克隆**的同款按钮
-    （背景含状态、字色、字号、字体、内边距、对齐、行数、最小尺寸、LayoutParams 逐项复制），
-    并给它一个**独立的 `generateViewId()` id**，避免与「取消」的 id 混淆。
-  - **文案随状态切换**：未全选显示「全选」（点击勾选全部），已全选显示「反选」（点击取消全部）。
-    重算文案的时机：进入多选态、每次行点击（包裹宿主 `OnItemClickListener`）、按钮点击后。
-  - **与「取消」的间距**：只在注入按钮自己的 `rightMargin` 上加 **16dp**，**不改「取消」任何属性**
-    （保证「与取消样式一致」这条验收仍成立）；并用 `paint` 量文字设 `minWidth`，避免切字抖动 / 挤走「取消」。
-  - 触发时机：给 `#tv_stg_add_zxg` 挂 `TextWatcher`，观察其文案在「勾选加入自选股 ↔ 取消」之间切换
-    —— **不**全局 Hook 超热路径 `TextView.setText`（行情页实时报价会频繁调用）。
-  - 全选 / 反选动作：逐行调用 `ListView.performItemClick(...)`，走宿主自己的行点击监听器
-    —— 与用户手动点行**完全同一条**代码路径，宿主选中模型与底部「已选 N」自然同步，无需知道内部字段。
-    逐行必须**分帧**（`postDelayed` 一行一帧）：宿主每次切换后会刷新列表，同一帧继续拿旧子 View 会失效
-    （否则「反选」只会清掉第一行 —— 真机实测踩到过）。
-  - 新增配置键 `stg_select_all`（功能总开关，默认关，登记进 `ConfigKeys.FEATURE_KEYS`）。
+  - 根因：`requestHotReload()` 返回 `String?`，设计上**只有**「没在跑目标进程」这一种情况返回文案，
+    成功 / 失败一律 `null` —— 调用方 `?.let { Toast }` 直接跳过。
+  - 改法：改为返回**非空** `String`，调用方无条件弹 Toast；文案覆盖 `HotReloadResult.Status` 的全部
+    五种终态，另加一档本地「8 秒无回调」超时，以及「服务掉线」与原有的「无目标进程」。新增 6 条字符串
+    （中英同步）。回调结果改由 `AtomicReference` 承接，`latch.await()` 的返回值不再被丢弃。
+  - `docs/UI.md` 设置页表格、`docs/TROUBLESHOOTING.md` §8 热重载排查表同步为「看 Toast 定位问题」。
 - `app/DebugConfigProvider.kt` 增加 `stg_direct_quote` / `stg_quote_swipe` / `stg_select_all` 三列，
   供开发期脚本化开关功能（原先只能开关 `enabled` 等四项）。
-- `app/build.gradle.kts`：`versionCode 30 → 31`、`versionName 2.11.2 → 2.12.0`。
+- 文档：新增 [`docs/FEATURE-SELECT-ALL.md`](docs/FEATURE-SELECT-ALL.md)；
+  [`docs/FEATURE-DIRECT-QUOTE.md`](docs/FEATURE-DIRECT-QUOTE.md) 补 §8（崩溃根因、修法、验证）；
+  `README.md` 文件树补 `feature/strategyselect/`。
+- `app/build.gradle.kts`：`versionCode 30 → 32`、`versionName 2.11.2 → 2.12.1`。
+  中间的 `2.12.0` **未单独发布**，其改动全部并入本次。
 
 ### 验证结果
 
-真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 国信金太阳 8.6.0 (vc271)。
+真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 国信金太阳 8.6.0 (vc271)，模块 **2.12.1 (vc32)**。
+被测策略 `100e`，**32 只股票**；列表区 `[0,820][1080,2205]` + 行高 138px ⇒ **一屏约 10 行，22 行在屏外**
+（这是检验「是否只选了可见行」的现成样本）。
 
-- **构建**：`:app:assembleDebug` + `:app:assembleRelease` → **BUILD SUCCESSFUL**；badging 2.12.0 / vc31；
-  release dex `Lio/github/libxposed/api` 定义类 **0**；manifest 无任何 `xposed*` meta-data（四条红线均未触碰）。
-- **任务 #1（要求连续点击 ≥5 次）**：策略详情页连续点 6 只不同股票，**每次都直达 `StockFragAct`**；
-  `logcat -b crash` 中 `ClassCastException` 计数 **0**。修复前同操作**必然在第 2 次崩溃**
-  （已用 crash 栈坐实根因：`AIStkStgDetailAct.onItemClick:196`）。
-- **任务 #2（黄名返回实时刷新）**：
-  - 把一个**不在自选**的股票（中恒集团 600252）在个股详情页「+自选」加入 → 返回策略详情页，
-    `tools/verify.py` 判定其名称由 `#202030` 变为**高亮 `#F88000`**（**无需**退出重进）。
-  - 再「删除自选」移除 → 返回策略详情页，名称**还原为 `#202030`**。
-  - 全程凭 `onResume` 强制重绘生效，未调用 `notifyDataSetChanged`。
-- **任务 #3（多选栏全选 / 反选按钮）**：
-  - 注入的按钮与「取消」**同高同宽**（`[771,664,885,732]` vs `[927,664,1041,732]`，均 114×68），
-    位于「取消」**左侧**，两按钮间距 42px ≈ **16dp**。
-  - 点「全选」→ 全部勾选（真机 8/8、9/9、10/10 三例），文案切「**反选**」，底部「已选 N 只股票」同步；
-    再点「反选」→ 全部取消（**0/9**），文案回到「全选」。
-  - 反复进出多选态 2 次，注入按钮始终**只有一个**（无重复注入）；退出多选态自动移除；
-    关闭开关后按钮**立即消失**（配置变更即时生效）。
-  - 设置界面「功能」页「策略页增强」分区出现「启用「全选」按钮」开关（无二级入口 —— 该功能没有可调参数）。
-- **回归**：直达标准行情（点股仍直达 `StockFragAct`）与自选高亮（`tools/verify.py` 仍正确着色）均正常。
-- 备注：验证期间目标 App 登录态一度短暂失效（跳 `com.guosen.loginmodule.ui.LoginNewAct`），
-  等待后自愈；全程**未做任何登录/身份认证操作**（遵守项目红线）。
+- **构建与红线**：`:app:assembleDebug` + `:app:assembleRelease` → **BUILD SUCCESSFUL**；
+  badging **2.12.1 / vc32**（debug / release 一致）；release dex 中 `Lio/github/libxposed/api`
+  定义类 **0**；release manifest 无任何 `xposed*` meta-data；`ui/`、`app/`、`core/` 未 import
+  `libxposed.api`，`ui/FeatureCatalog` 未引用 `FeatureManager`。四条红线均未触碰。
+- **崩溃修复**：连续点击 **6/6 次**均直达 `StockFragAct`；点第 1/2/3/4/5/6 行，页面分别显示
+  新华文轩 601811 / 澳弘电子 605058 / 航天南湖 688552 / 思特威-W 688213 / 华鑫股份 600621 /
+  大智慧 601519 —— **与所点行一一对应，无下标偏移**；每次返回都停留在策略详情页；
+  `logcat -b crash` 中 `ClassCastException` / `FATAL` 计数 **0**。
+- **左右滑动**：开（`stg_quote_swipe=1`）→ 航天南湖 → 左滑 → 思特威-W → 左滑 → 华鑫股份 →
+  右滑 → 思特威-W，**顺序与策略列表一致**；关（`=0`）→ 左滑两次仍停在同一只（count=1，不可滑）。
+- **黄名实时刷新**（`tools/verify.py` 按像素采样名称主色）：
+  - 不在自选的「思特威-W 688213」在个股页「+自选」→ 返回策略详情页（**未退出重进**）：
+    `#202030` → **`#F88000`**；
+  - 再「删除自选」→ 返回：**还原 `#202030`**。（测试后该股已移出自选，未留痕。）
+- **全选 / 反选**：
+  - 注入按钮 `[771,664][885,732]` 与「取消」`[927,664][1041,732]` **同为 114×68**，位于其**左侧**，
+    间距 **42px ≈ 16dp**；像素采样：两按钮主色均 `#E8E8F8`、文字色均 `#285098`，**样式一致**成立。
+  - 点「全选」→ 底部计数 **「已选 32 只股票」= 全部行数**；按钮文案 → **「反选」**；
+    滚到列表**最底部**，可见的 13 个 `#ct_item` **全部 `checked=true`** ⇒ **屏外行确实被选中**。
+  - 点「反选」→ 计数 → **0**、可见勾选框全部 `checked=false`、文案回「全选」。
+  - 反复进出多选态 ×2：退出后按钮数 **0**、重新进入后 **1**（无重复注入）。
+  - 关掉 `stg_select_all` → 按钮**即时消失**；重新打开并重进多选态 → 恢复 1 个。
+- **未单独回归**：「热重载」那条需在「金太阳在后台」与「金太阳未运行」两种状态下各点一次，
+  确认分别弹「已热重载」与「没有正在运行的目标程序」—— 本次未执行。
+- **备注**：验证期间目标 App 登录态曾一度失效（跳 `com.guosen.loginmodule.ui.LoginNewAct`），
+  等待后自愈；全程**未做任何登录 / 身份认证操作**（遵守项目红线）。
+  另记一条已知限制：`FeatureManager` 的配置变化只走 `onConfigChanged`、**不补装钩子**，而功能出厂默认全关 ——
+  **在设置里新开开关后必须 force-stop + 重启目标 App** 才会生效（关掉的方向即时生效）。
 
 ---
 
