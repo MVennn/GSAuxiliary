@@ -274,7 +274,7 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 |---|---|---|
 | `requires AGP 9.1.0 or higher` | Miuix 版本太高 | 用 0.9.3，别升 |
 | `plugin is no longer required since AGP 9.0` | AGP 9.x 内置 Kotlin | 用 AGP 8.10.1 |
-| `Failed to find target android-37` | platform 没装 / schema 不对 | 见 [BUILD.md](BUILD.md#31-compilesdk-37-没有正式安装包) |
+| `Failed to find target android-37` | platform 没装 / schema 不对 | 见 [BUILD.md §4.1](BUILD.md#41-compilesdk-37-没有正式安装包) |
 | `Could not find method ...` | Gradle 版本太低 | 用仓库自带 Wrapper `./gradlew` |
 | `Error parsing AndroidManifest.xml` | XML 注释里出现了 `--`（非法） | 注释里不要写 `--` |
 
@@ -283,37 +283,21 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 | 报错 / 现象 | 原因 | 解法 |
 |---|---|---|
 | 模块完全不加载，日志里连第 1 行都没有 | manifest 里残留 `xposedminversion` | **删掉全部 `xposed*` meta-data**（见 [EXTENDING.md](EXTENDING.md#21-manifest-里绝对不能出现-xposedminversion)） |
-| `The Xposed API classes are compiled into the module's APK` | `api` 依赖写成了 `implementation` | 改回 `compileOnly`（见 [BUILD.md §3.3](BUILD.md#33-xposed-api-用-maven-依赖libxposed-api-102)） |
+| `The Xposed API classes are compiled into the module's APK` | `api` 依赖写成了 `implementation` | 改回 `compileOnly`（见 [BUILD.md §3.1](BUILD.md#31-xposed-api-用-maven-依赖libxposed-api-102)） |
 | `NoClassDefFoundError: io.github.libxposed.api.…`（模块 App 进程） | `core/` 或 `app/` 里有人 import 了 api 类型 | 用 `GLog.Sink` 那样的函数式接口解耦 |
 | 模块加载了但钩子全没装上 | 现代模块不能调 legacy API | 确认用的是 `hook(Executable).intercept(Chain)` |
 
-**自查：manifest 里到底还有没有 legacy 元数据 key**
+**自查怎么做**：manifest 的 legacy key 扫描、dex 里 api 类的计数，两条命令都在
+[BUILD.md §2「构建后的自查」](BUILD.md#2-依赖版本组合重要) 与
+[§3.1](BUILD.md#31-xposed-api-用-maven-依赖libxposed-api-102) 里 —— 那里是唯一真源，这里不重抄。
 
-```bash
-aapt2 dump xmltree --file AndroidManifest.xml app/build/outputs/apk/debug/app-debug.apk \
-  | grep -iE "xposedminversion|xposedmodule|xposedsharedprefs|xposedscope|xposeddescription"
-# 应无输出
-```
-
-> ⚠️ **不要用 `grep -i xposed`。** 下面两处是**合法且必需**的，用宽匹配会误报，
-> 让人去删一个不该删的东西：
+> ⚠️ 两条容易踩的**误报**，记在这里就够：
 >
-> - `android:description="@string/xposed_description"` —— 那是个**字符串资源名**（带下划线）
-> - `de.robv.android.xposed.category.MODULE_SETTINGS` —— LSPosed 靠这个 category
->   在「模块」列表里找到本模块的设置入口，删了设置入口就没了
->
-> 真正让 LSPosed 判成 legacy 的是 **`xposedminversion`**（无下划线，meta-data key）。
-
-**自查：dex 里有没有被打进 api 类**
-
-```bash
-unzip -o -q app/build/outputs/apk/debug/app-debug.apk 'classes*.dex' -d /tmp/apkx
-dexdump -f /tmp/apkx/classes*.dex | grep "Class descriptor" | grep 'libxposed/api'
-# 应无输出
-```
-
-> 别用 `strings` 判断 —— 模块自己的类里有 `io/github/libxposed/api/...` 的
-> 字符串常量引用，会误报。必须看 dexdump 的 `Class descriptor`。
+> - **别用 `grep -i xposed`**：`android:description="@string/xposed_description"`（字符串资源名）
+>   与 `de.robv.android.xposed.category.MODULE_SETTINGS`（LSPosed 靠它找设置入口）
+>   都是**合法且必需**的。真正判 legacy 的 key 是 **`xposedminversion`**（无下划线）。
+> - **别用 `strings` 数 api 类**：模块自己的类里有 `io/github/libxposed/api/...` 的
+>   字符串常量引用，会误报。必须看 dexdump 的 `Class descriptor`。
 
 ---
 

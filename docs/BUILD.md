@@ -500,26 +500,18 @@ git ls-files -s gradlew      # 必须是 100755
 
 ### 8.2 发布需要的 5 个 Repository secrets
 
-到 `Settings → Secrets and variables → Actions` 加（详细造法见 `docs/RELEASE.md` §1.2）：
+到 `Settings → Secrets and variables → Actions` 加。
+**每个 secret 的造法与取值只见 [`docs/RELEASE.md` §1.2](RELEASE.md#12-ci-发版需要的-5-个-repository-secrets)，这里不重抄。**
 
-| Secret | 内容 |
-|---|---|
-| `GS_KEYSTORE_BASE64` | 你的 keystore 做 base64（单行） |
-| `GS_KEYSTORE_PASSWORD` | keystore 密码 |
-| `GS_KEYSTORE_ALIAS` | key 别名 |
-| `GS_KEYSTORE_KEY_PASSWORD` | key 密码 |
-| `LSPOSED_REPO_TOKEN` | PAT，需要 `repo` scope，且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
-| `GS_CERT_SHA256` | **可选**。签名证书的 SHA-256（小写十六进制）。配了就把 release 包的证书**钉死**，签错直接红 |
+这里只记 `release.yml` 据此做了什么：
 
-`release.yml` **缺任何一个（前 5 个）都直接失败**，不会给你一个「看着成功、实际用户收不到更新」的假象。
-`publish.py` 故意不读 Actions 自带的 `GITHUB_TOKEN` —— 那个只对当前仓库有效，
-拿去写模块仓库会 403；它只认 `GS_GITHUB_TOKEN` / `GH_TOKEN`。
-
-`release.yml` 里还有一步 **`python tools/publish.py --check`**，在装 JDK / SDK **之前**跑：
-它只调 GitHub API，几秒钟确认这个 token 对两个仓库都有写权限。
-值得单独一步 —— `publish.py` 是先发源码仓库、再发模块仓库，token 写不了模块仓库的话，
-源码仓库那份已经建好了、用户却什么都收不到，而日志只报「失败」，
-很容易被当成偶发问题重跑。本地发版前也可以先跑一遍：
+- **缺任何一个（前 5 个）都直接失败**，不会给你一个「看着成功、实际用户收不到更新」的假象。
+- `publish.py` 故意不读 Actions 自带的 `GITHUB_TOKEN` —— 那个只对当前仓库有效，
+  拿去写模块仓库会 403；它只认 `GS_GITHUB_TOKEN` / `GH_TOKEN`。
+- 装 JDK / SDK **之前**先跑 **`python tools/publish.py --check`**：它只调 GitHub API，
+  几秒钟确认 token 对两个仓库都有写权限。值得单独一步 —— `publish.py` 是先发源码仓库、
+  再发模块仓库，token 写不了模块仓库的话，源码仓库那份已经建好了、用户却什么都收不到，
+  而日志只报「失败」，很容易被当成偶发问题重跑。本地发版前也可以先跑一遍：
 
 ```bash
 python tools/publish.py --check

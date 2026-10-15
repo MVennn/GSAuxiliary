@@ -89,29 +89,11 @@ class_defs : 53         ← 只有 53 个类
 
 ### 3.1 探针挂了哪些「万能点」
 
-关键是**不需要预先知道任何业务类名**，全部走框架类：
+关键是**不需要预先知道任何业务类名**，全部走框架类。
 
-| 挂钩点 | 拿到什么 |
-|---|---|
-| `Activity.onCreate` | 页面类名 → 画出页面链路 |
-| `RecyclerView$Adapter.bindViewHolder` | adapter 类名 + item 类全字段（反射）+ holder 内每个 TextView 的 resource-id / 文本 / 当前颜色 |
-| `TextView.setTextColor` | **只记录黄系颜色**（R>0x80 且 G>0x80 且 B<0x80）→ 直接定位"谁在染黄" |
-| `WebView.loadUrl` | 判断某页面是不是 H5 |
-| `SQLiteDatabase.rawQuery` | 抓自选股相关 SQL |
-| `SharedPreferencesImpl.getString` | 抓解密后的配置值 |
-
-这一套下来，**不用反编译一行代码**就拿到了全部需要的信息。
-
-> 仓库里现在的 `tools/probe/`（**v25**）已经**收窄**成三件事：
-> ① 挂 `Activity.onResume` 打页面链路；
-> ② dump `ZXManager` / `ZXWorkflow` 的自选数据并做判定 API 交叉验证（v18）；
-> ③ 挂一整套**通用**的跳转 / 布局侦察钩子 —— `Activity.startActivity*`（`LAUNCH`）、
-> `Dialog.show`（`DLG`）、`PopupWindow.show*`（`POP`）、`Activity.onCreate`（`PAGE`）、
-> 延迟 dump 视图树（`PAGER` / `RV` / `VW`）、`dumpClassMembers`（`CLASS`）—— v19～v25。
-> 第 ③ 组全是框架类方法，**不预设任何业务类名**，用来摸清「点一下到底发生了什么」
-> （详见 [`tools/probe/README.md`](../tools/probe/README.md) 第 4 节）。
->
-> 需要重新做全量侦察时，按上面这张表临时加钩子即可。
+> 挂钩点与各能拿到的信息（`Activity.onCreate` / `bindViewHolder` / `setTextColor` …），
+> 以及 `tools/probe/`（**v25**）现在收窄成的三件事 —— 见 [HOOK-NOTES.md §1](HOOK-NOTES.md)。
+> 那里是这张表与收窄说明的**唯一出处**，避免两边改动不同步。
 
 ---
 
@@ -263,9 +245,9 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场隐藏滚动横幅与快捷入口 / 板块只留三项 / 市场概览压矮 | `feature/market/MarketTargets.kt` |
 
-> **界面精简类功能（底栏 / 首页 / 行情市场）不需要先跑探针**：
-> 它们认不出目标控件时会**自己**把当前页面的视图树（含真实资源 id 名与坐标）
-> 打进模块日志 —— 打开功能、进一次页面、看「设置 → 查看日志」即可，
-> 步骤见 [FEATURE-UI-CLEAN.md §4](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)。
+> **界面精简类功能（底栏 / 首页 / 行情市场）不需要先跑探针** —— 它们认不出目标控件时
+> 会**自己**把当前页面的视图树（含真实资源 id 名与坐标）打进模块日志，
+> 步骤见 [FEATURE-UI-CLEAN.md §4](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)；
+> 该改哪个文件见 [HOOK-NOTES.md §10](HOOK-NOTES.md)。
 
 完整排查流程见 [排错手册 · App 升级后失效](TROUBLESHOOTING.md#6-app-升级后失效)。

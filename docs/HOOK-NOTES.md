@@ -24,18 +24,12 @@
 
 ## 1. 加固：为什么放弃静态反编译
 
-APK 解包后，`classes.dex` 里几乎没有业务代码，只有：
+APK 解包后 `classes.dex` 里几乎没有业务代码，只有 `com.secneo.apkwrapper.AW` /
+`ApplicationWrapper` 两个壳类 —— 这是**梆梆加固企业版**。静态路径被堵死：
+dex 整体加密（运行时由壳在内存解密）、字符串混淆、跟 native 壳解密流程成本极高。
 
-```
-com.secneo.apkwrapper.AW
-com.secneo.apkwrapper.ApplicationWrapper
-```
-
-这是**梆梆加固企业版**。静态路径被堵死：
-
-- dex 被整体加密，运行时由壳在内存中解密
-- 字符串被混淆，`strings` 拿不到有效类名
-- IDA / x64dbg 对 Java 层帮助有限（要跟 native 壳的解密流程，成本极高）
+> 完整证据链（壳入口、`libDexHelper.so` 清单、DEX header 计数、`###HAVEX86###` 标记）
+> 见 [REVERSE-ENGINEERING.md §二](REVERSE-ENGINEERING.md)。
 
 **关键判断：梆梆保护的是静态文件，运行时内存里一定是明文。**
 所以正确路线是**动态**：
@@ -74,16 +68,10 @@ com.secneo.apkwrapper.ApplicationWrapper
 
 ## 2. 页面链路
 
-探针输出的 Activity 序列：
+目标页面在**策略详情页**：`首页 → 智能选股 → 我的策略 → 任一策略`，
+Activity 序列 `MainAct → AIStkIndexAct → AIStkStgListAct → AIStkStgDetailAct`。
 
-```
-MainAct                       首页
- └─ AIStkIndexAct             智能选股
-     └─ AIStkStgListAct       我的策略（策略列表）
-         └─ AIStkStgDetailAct 策略详情  ← 目标页面
-```
-
-对应操作路径：`首页 → 智能选股 → 我的策略 → 任一策略`。
+> 带缩进的完整链路图见 [REVERSE-ENGINEERING.md §四](REVERSE-ENGINEERING.md)。
 
 ---
 
