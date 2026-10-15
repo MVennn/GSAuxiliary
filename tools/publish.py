@@ -7,14 +7,24 @@
 LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**，
 源码仓库发 Release **不会**同步过去。而 LSPosed 的网站与 App 只读模块仓库，
 所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
-并保持模块仓库的 README 与源码仓库一致。手工做很容易漏，本脚本一次做完。
+并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
+
+同步的四个元文件（母本都在源码仓库里，见 `xposed-repo/README.md`）：
+
+| 模块仓库 | 母本 |
+|---|---|
+| `README.md` | `README.md` |
+| `SUMMARY` | `xposed-repo/SUMMARY` |
+| `SOURCE_URL` | 按 `SOURCE_REPO` 生成 |
+| `icon.svg` | `docs/icon.svg` |
 
 ## 用法
 
-    python tools/publish.py                    # 构建 + 发布 + 同步 README
+    python tools/publish.py                    # 构建 + 双仓库发布 + 同步元文件
     python tools/publish.py --skip-build       # 用现有 APK，不重新构建
     python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
     python tools/publish.py --dry-run          # 只打印将要做什么，不写任何东西
+    python tools/publish.py --sync-only        # 只同步元文件，不发 Release
 
 版本号取自 `app/build.gradle.kts` 的 `versionCode` / `versionName`，
 tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
@@ -52,6 +62,23 @@ MODULE_REPO = os.environ.get(
     "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary")
 
 API = "https://api.github.com"
+
+
+def repo_files():
+    """模块仓库里要同步的文件：`模块仓库文件名 -> 内容`。
+
+    `SOURCE_URL` 是派生的（就是源码仓库地址），不单独存一份，免得又一处能改偏。
+    """
+    out = {
+        "README.md": open(README, encoding="utf-8").read(),
+        "SOURCE_URL": "https://github.com/%s\n" % SOURCE_REPO,
+        "icon.svg": open(os.path.join(ROOT, "docs", "icon.svg"), encoding="utf-8").read(),
+    }
+    summary = os.path.join(ROOT, "xposed-repo", "SUMMARY")
+    if not os.path.exists(summary):
+        sys.exit("[X] 缺 %s —— 它是模块页副标题的母本，别绕过它" % summary)
+    out["SUMMARY"] = open(summary, encoding="utf-8").read()
+    return out
 
 
 # --------------------------------------------------------------------------- 基础
@@ -164,11 +191,16 @@ def upsert_release(tok, repo, tag, vn, notes, apk_name=None, apk_path=None, dry=
     return rel.get("html_url")
 
 
-def sync_readme(tok, dry=False):
-    """把源码仓库的 README.md 拷到模块仓库（两者必须逐字一致）。"""
+def sync_repo_files(tok, dry=False):
+    """把源码仓库里那几个母本同步到模块仓库（两边必须逐字一致）。
+
+    只同步 `repo_files()` 列出的文件 —— 模块仓库里不放源码。
+    """
+    files = repo_files()
     clone = os.path.join(WORK, "lsposed-repo")
     if dry:
-        print("      [dry-run] 同步 README.md -> %s" % MODULE_REPO)
+        for name in sorted(files):
+            print("      [dry-run] 同步 %-12s -> %s" % (name, MODULE_REPO))
         return
     if not os.path.isdir(os.path.join(clone, ".git")):
         shutil.rmtree(clone, ignore_errors=True)
@@ -181,16 +213,25 @@ def sync_readme(tok, dry=False):
     run(["git", "config", "user.name", "M.Venn"], cwd=clone)
     run(["git", "config", "user.email",
          "127460743+SansKritO4@users.noreply.github.com"], cwd=clone)
-    shutil.copyfile(README, os.path.join(clone, "README.md"))
-    if not run(["git", "status", "--porcelain"], cwd=clone).stdout.strip():
-        print("      README 已是最新，无需同步")
+
+    changed = []
+    for name, content in sorted(files.items()):
+        dst = os.path.join(clone, name)
+        if os.path.exists(dst) and open(dst, encoding="utf-8").read() == content:
+            continue
+        open(dst, "w", encoding="utf-8", newline="\n").write(content)
+        changed.append(name)
+
+    if not changed:
+        print("      模块仓库元文件已是最新，无需同步")
         return
-    run(["git", "add", "README.md"], cwd=clone)
-    run(["git", "commit", "-q", "-m", "Sync README.md from source repo"], cwd=clone)
+    run(["git", "add", "--"] + changed, cwd=clone)
+    run(["git", "commit", "-q", "-m",
+         "Sync %s from source repo" % ", ".join(changed)], cwd=clone)
     r = run(["git", "push", "-q", "origin", "HEAD"], cwd=clone)
     if r.returncode != 0:
-        sys.exit("[X] 推送 README 失败：%s" % r.stderr[-400:])
-    print("      README.md 已同步")
+        sys.exit("[X] 推送失败：%s" % r.stderr[-400:])
+    print("      已同步：%s" % ", ".join(changed))
 
 
 def notes_from_changelog(vn):
@@ -213,13 +254,14 @@ def main():
     ap.add_argument("--skip-build", action="store_true", help="不重新构建，用现有 APK")
     ap.add_argument("--notes", metavar="FILE", help="Release 说明（Markdown 文件）")
     ap.add_argument("--dry-run", action="store_true", help="只打印，不写任何东西")
-    ap.add_argument("--readme-only", action="store_true",
-                    help="只同步 README 到模块仓库，不发 Release")
+    ap.add_argument("--sync-only", "--readme-only", dest="sync_only",
+                    action="store_true",
+                    help="只同步模块仓库的元文件（README/SUMMARY/SOURCE_URL/icon.svg），不发 Release")
     args = ap.parse_args()
 
-    if args.readme_only:
-        print("只同步 README.md -> %s" % MODULE_REPO)
-        sync_readme("" if args.dry_run else token(), args.dry_run)
+    if args.sync_only:
+        print("只同步模块仓库元文件 -> %s" % MODULE_REPO)
+        sync_repo_files("" if args.dry_run else token(), args.dry_run)
         return
 
     vc, vn = read_version()
@@ -261,8 +303,8 @@ def main():
     mod_url = upsert_release(tok, MODULE_REPO, tag, vn, notes,
                              apk_name, apk_path, args.dry_run)
 
-    print("[5/5] 同步 README")
-    sync_readme(tok, args.dry_run)
+    print("[5/5] 同步模块仓库元文件")
+    sync_repo_files(tok, args.dry_run)
 
     print()
     print("完成。")
@@ -270,7 +312,7 @@ def main():
         print("  源码 Release : %s" % src_url)
     if mod_url:
         print("  模块 Release : %s" % mod_url)
-    print("  模块页（描述填好后 5～60 分钟内出现）: "
+    print("  模块页（描述非空 + 有 release，两项齐了起算 60 分钟内收录）: "
           "https://modules.lsposed.org/module/%s" % MODULE_REPO.split("/")[-1])
 
 

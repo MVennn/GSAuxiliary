@@ -345,12 +345,13 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库** ——
 源码仓库发 Release **不会**同步过去，而 LSPosed 的网站与 App 只读模块仓库。
 所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
-并保持模块仓库的 `README.md` 与源码仓库逐字一致。手工做很容易漏，这个脚本一次做完。
+并把模块仓库那几个元文件从源码仓库同步过去。手工做很容易漏，这个脚本一次做完。
 
 ```bash
-python tools/publish.py                    # 构建 + 发布 + 同步 README
+python tools/publish.py                    # 构建 + 发布 + 同步元文件
 python tools/publish.py --skip-build       # 用现有 APK
 python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
+python tools/publish.py --sync-only        # 只同步元文件，不发 Release
 python tools/publish.py --dry-run          # 只打印将做什么，不写任何东西
 ```
 
@@ -360,7 +361,11 @@ python tools/publish.py --dry-run          # 只打印将做什么，不写任�
 | 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
 | 3 | 在**源码仓库**建/更新 Release 并上传 APK（同名资产会先删再传） |
 | 4 | 在**模块仓库**做同样的操作 |
-| 5 | 把源码仓库的 `README.md` 推到模块仓库 |
+| 5 | 同步四个元文件到模块仓库：`README.md` / `SUMMARY` / `SOURCE_URL` / `icon.svg` |
+
+> 第 5 步的母本都在源码仓库里（`SUMMARY` 在 `xposed-repo/`，见
+> [`xposed-repo/README.md`](../xposed-repo/README.md)）。**别在网页上直接改模块仓库
+> 的那几个文件** —— 下次同步会覆盖掉。
 
 > ⚠️ **不指定 `--notes` 时会拿 CHANGELOG 的该版本段落当 Release 说明** ——
 > 那段是给开发者的（症状 / 根因 / 改法 / 验证结果），对用户是噪音。

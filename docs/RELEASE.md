@@ -48,13 +48,13 @@ python tools/publish.py --notes .work/release-notes.md
 | 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
 | 3 | **源码仓库**建/更新 Release + 传 APK |
 | 4 | **模块仓库**建/更新 Release + 传 APK |
-| 5 | 把源码仓库的 `README.md` 推到模块仓库 |
+| 5 | 把源码仓库的四个母本同步到模块仓库（`README.md` / `SUMMARY` / `SOURCE_URL` / `icon.svg`） |
 
 可选参数：
 
 ```bash
 python tools/publish.py --skip-build          # 用现有 APK，不重新构建
-python tools/publish.py --readme-only         # 只同步 README，不发 Release
+python tools/publish.py --sync-only           # 只同步那四个元文件，不发 Release
 python tools/publish.py --dry-run             # 只打印，不写任何东西
 ```
 
@@ -120,34 +120,51 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 
 ## 4. 只在模块仓库做的事
 
-### 4.1 仓库描述（**必须浏览器手动**）
+### 4.1 仓库描述（**必须浏览器手动**，已完成 ✅）
 
 描述字段同时是模块在 LSPosed 网站与 App 里的**显示名**。为空 ⇒ **模块不会出现在
 modules.lsposed.org**。
 
+当前值：**`GSAuxiliary-国信金太阳APP体验增强`**（另有 Website 与 4 个 Topics）。
+
+要改的话：
+
 1. 打开 https://github.com/Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
 2. 右侧 **About** 区块 → **齿轮 ⚙**
-3. 填 **Description**（建议 `GSAuxiliary — 国信金太阳 体验增强`）
-4. **Save changes**
+3. 改 **Description** → **Save changes**
 
 > ⚠️ **REST API 改不了**：GitHub 权限矩阵里 `Edit a repository's description` 对
 > **Maintain 是允许的**，但 `PATCH /repos/{owner}/{repo}` 这个端点要求 **Admin**，
 > 两者不一致 —— 我们只有 `maintain`，所以接口返回 404。
 > `/settings` 页对 maintain 同样 404，**About 齿轮是唯一入口**。
 
-设好后 **5～60 分钟**收录，期间查
-`https://modules.lsposed.org/module/io.github.SansKritO4.GSAuxiliary` 仍是 404，属正常。
+### 4.1.1 收录周期（别提前催）
+
+bot 在收录 issue 里的原话：
+
+> if your repo didn't appear in more than **60 minutes** (this countdown starts after
+> you complied *ALL OF THE REQUIREMENTS* including repository description),
+> please file an issue to let us know.
+
+条件只有两条：**描述非空** + **至少一个 release**。
+两项齐了才开始算 **60 分钟** —— 期间查模块页是 404 属正常，超过才去
+`Xposed-Modules-Repo/submission` 开 issue。
 
 ### 4.2 模块仓库的文件结构
 
-只放这四个，**不放源码**：
+只放这四个，**不放源码**。四个都由 `publish.py` 自动同步，**不要在网页上直接改** ——
+改了会被下一次同步覆盖：
 
-| 文件 | 内容 |
-|---|---|
-| `SUMMARY` | 模块显示名，一行一种语言 |
-| `README.md` | 与源码仓库**逐字一致**（由 `publish.py` 自动同步） |
-| `SOURCE_URL` | 源码仓库地址 |
-| `icon.svg` | 模块图标（由 `tools/gen_launcher_icons.py` 生成，与 APK 内 launcher 图标同源） |
+| 模块仓库里的文件 | 母本（源码仓库） | 内容 |
+|---|---|---|
+| `README.md` | `README.md` | 与源码仓库**逐字一致** |
+| `SUMMARY` | **`xposed-repo/SUMMARY`** | 模块页标题下面那行**一句话简介** |
+| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/SansKritO4/GSAuxiliary` |
+| `icon.svg` | `docs/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
+
+> ⚠️ **`SUMMARY` 不是名字**。模块的**显示名**来自仓库 Description（见 4.1），
+> `SUMMARY` 只是副标题那一行简介。早期曾把模块名写进去，等于显示了两遍。
+> 它也**不能写注释** —— 文件内容会原样显示。
 
 ---
 
