@@ -100,6 +100,42 @@ object ConfigKeys {
      */
     const val STOCK_BAR_ENTRY = "stock_bar_entry"
 
+    /**
+     * 底栏精简：主界面底栏不再显示「理财」那一格，其余入口重新均分整行。
+     *
+     * 运行时视图精简实现（只改可见性，不删 Tab、不动索引），见
+     * [io.github.SansKritO4.GSAuxiliary.feature.dock.DockCleanFeature]。
+     */
+    const val DOCK_CLEAN = "dock_clean"
+
+    /**
+     * 首页精简：隐藏首页快捷入口下方的那条横幅。
+     *
+     * 见 [io.github.SansKritO4.GSAuxiliary.feature.home.HomeBannerFeature]。
+     */
+    const val HOME_BANNER_HIDE = "home_banner_hide"
+
+    /**
+     * 行情市场精简：隐藏「市场概览图」下方的滚动横幅（跑马灯快讯）与它下方的快捷入口。
+     *
+     * 见 [io.github.SansKritO4.GSAuxiliary.feature.market.MarketBannerFeature]。
+     */
+    const val MARKET_BANNER_HIDE = "market_banner_hide"
+
+    /**
+     * 行情市场精简：板块由六项压缩为三项。
+     *
+     * 见 [io.github.SansKritO4.GSAuxiliary.feature.market.MarketSectorCompactFeature]。
+     */
+    const val MARKET_SECTOR_COMPACT = "market_sector_compact"
+
+    /**
+     * 行情市场精简：市场概览区整体压矮，柱状图高度一并压缩。
+     *
+     * 见 [io.github.SansKritO4.GSAuxiliary.feature.market.MarketOverviewCompactFeature]。
+     */
+    const val MARKET_OVERVIEW_COMPACT = "market_overview_compact"
+
     // ---------------------------------------------------------------- 模块设置
 
     /** 日志等级，见 [LogLevel] */
@@ -217,6 +253,19 @@ object ConfigKeys {
      */
     const val DEFAULT_STOCK_BAR_ENTRY = false
 
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
+     * 以下五项是 2.15.0 新增的「界面精简」系列：底栏去「理财」、首页去横幅、
+     * 行情市场去滚动横幅与快捷入口、板块六项压三项、市场概览压矮。
+     * 出厂一律默认关，由用户自己按需打开。
+     */
+    const val DEFAULT_DOCK_CLEAN = false
+    const val DEFAULT_HOME_BANNER_HIDE = false
+    const val DEFAULT_MARKET_BANNER_HIDE = false
+    const val DEFAULT_MARKET_SECTOR_COMPACT = false
+    const val DEFAULT_MARKET_OVERVIEW_COMPACT = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -240,6 +289,8 @@ object ConfigKeys {
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
         STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
+        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -252,7 +303,11 @@ object ConfigKeys {
      * 不动桌面图标 / 底栏 / 语言 / 深色模式 / 日志等级这类模块级设置。
      */
     val FEATURE_KEYS =
-        arrayOf(ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY)
+        arrayOf(
+            ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+            DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
+            MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT,
+        )
 
     /**
      * 功能自己的参数（不属于开关，但「重置模块」一并恢复默认）。
@@ -272,6 +327,11 @@ object ConfigKeys {
         STG_SELECT_ALL to DEFAULT_STG_SELECT_ALL,
         STG_STOCK_FILTER to DEFAULT_STG_STOCK_FILTER,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
+        DOCK_CLEAN to DEFAULT_DOCK_CLEAN,
+        HOME_BANNER_HIDE to DEFAULT_HOME_BANNER_HIDE,
+        MARKET_BANNER_HIDE to DEFAULT_MARKET_BANNER_HIDE,
+        MARKET_SECTOR_COMPACT to DEFAULT_MARKET_SECTOR_COMPACT,
+        MARKET_OVERVIEW_COMPACT to DEFAULT_MARKET_OVERVIEW_COMPACT,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,

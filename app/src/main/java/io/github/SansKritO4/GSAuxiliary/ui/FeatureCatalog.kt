@@ -8,12 +8,15 @@ import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
  * ## 功能分区归属标准
  *
  * 功能列表按 [FeatureSpec.categoryRes] 分组，**组内顺序 = [FEATURE_CATALOG] 里的出现顺序**
- * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前三个分区：
+ * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前六个分区：
  *
  * | 分区 | 一句话判据 | 归属范围（举例） |
  * |---|---|---|
  * | **策略页增强** `category_strategy` | **改变「策略页」的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、策略列表长按菜单 … |
  * | **股票详情页增强** `category_stock_detail` | **改变「个股 / 指数详情页」的交互行为** —— 判据同「策略页增强」，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
+ * | **底栏精简** `category_dock` | **精简主界面底栏** —— 去掉某一格、改底栏排布 | 底栏去掉「理财」、底栏入口排序、底栏换图标 … |
+ * | **首页精简** `category_home` | **精简首页版块** —— 隐藏首页上某一块 | 隐藏快捷入口下方的横幅、隐藏首页某个卡片 … |
+ * | **行情市场精简** `category_market` | **精简行情市场页版块** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块六项压三项、市场概览压矮 … |
  * | **显示增强** `category_display` | **只改变「看到的样子」** —— 颜色、字号、图标、布局、动效；不改交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
  *
  * ### 归类时怎么判断
@@ -27,6 +30,15 @@ import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
  * 3. **换个不叫「策略页」的页面，它照旧成立吗？** 成立 → 显示增强
  *    （显示类功能天然与业务页面解耦）；只在某个页面成立 → 该页面的「增强」分区。
  *
+ * ### 「精简」类分区与「显示增强」怎么分
+ *
+ * 「精简」类（底栏 / 首页 / 行情市场）虽然改的也是布局，但它们**只对某一个页面成立**
+ * —— 换个页面就不存在这个横幅、这个底栏格子。按判据 3，这类功能进**页面级分区**，
+ * 不进通用的「显示增强」；反过来，「自选股名称高亮」换到任何列表页都成立，
+ * 所以它留在「显示增强」。
+ *
+ * 一句话记法：**显示增强 = 通用的观感；页面精简 = 只属于那一页的结构调整。**
+ *
  * ### 交互类分区怎么选（策略页 / 股票详情页）
  *
  * 按**功能生效的那个页面**选，一个功能只进一个分区：
@@ -36,7 +48,8 @@ import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
  * - **两个页面都成立** → 归到「主战场」那一侧，并在功能说明里点明另一侧也生效
  *   （不为了一个功能同时挂两个分区）。
  *
- * 分区顺序按「具体页面 → 通用外观」排：策略页 → 股票详情页 → 显示增强。
+ * 分区顺序按「具体页面 → 通用外观」排：
+ * 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 显示增强。
  *
  * ### 边界与例外
  *
@@ -134,6 +147,69 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         switchSummaryRes = R.string.feature_stock_bar_switch_summary,
         enableKey = ConfigKeys.STOCK_BAR_ENTRY,
         defaultEnabled = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    // ---- 底栏精简：精简主界面底栏 ----
+    FeatureSpec(
+        id = "dock_clean",
+        categoryRes = R.string.category_dock,
+        titleRes = R.string.feature_dock_clean_title,
+        summaryRes = R.string.feature_dock_clean_summary,
+        switchTitleRes = R.string.feature_dock_clean_switch,
+        switchSummaryRes = R.string.feature_dock_clean_switch_summary,
+        enableKey = ConfigKeys.DOCK_CLEAN,
+        defaultEnabled = ConfigKeys.DEFAULT_DOCK_CLEAN,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    // ---- 首页精简：精简首页版块 ----
+    FeatureSpec(
+        id = "home_banner_hide",
+        categoryRes = R.string.category_home,
+        titleRes = R.string.feature_home_banner_title,
+        summaryRes = R.string.feature_home_banner_summary,
+        switchTitleRes = R.string.feature_home_banner_switch,
+        switchSummaryRes = R.string.feature_home_banner_switch_summary,
+        enableKey = ConfigKeys.HOME_BANNER_HIDE,
+        defaultEnabled = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    // ---- 行情市场精简：精简行情市场页版块 ----
+    FeatureSpec(
+        id = "market_banner_hide",
+        categoryRes = R.string.category_market,
+        titleRes = R.string.feature_market_banner_title,
+        summaryRes = R.string.feature_market_banner_summary,
+        switchTitleRes = R.string.feature_market_banner_switch,
+        switchSummaryRes = R.string.feature_market_banner_switch_summary,
+        enableKey = ConfigKeys.MARKET_BANNER_HIDE,
+        defaultEnabled = ConfigKeys.DEFAULT_MARKET_BANNER_HIDE,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    FeatureSpec(
+        id = "market_sector_compact",
+        categoryRes = R.string.category_market,
+        titleRes = R.string.feature_market_sector_title,
+        summaryRes = R.string.feature_market_sector_summary,
+        switchTitleRes = R.string.feature_market_sector_switch,
+        switchSummaryRes = R.string.feature_market_sector_switch_summary,
+        enableKey = ConfigKeys.MARKET_SECTOR_COMPACT,
+        defaultEnabled = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    FeatureSpec(
+        id = "market_overview_compact",
+        categoryRes = R.string.category_market,
+        titleRes = R.string.feature_market_overview_title,
+        summaryRes = R.string.feature_market_overview_summary,
+        switchTitleRes = R.string.feature_market_overview_switch,
+        switchSummaryRes = R.string.feature_market_overview_switch_summary,
+        enableKey = ConfigKeys.MARKET_OVERVIEW_COMPACT,
+        defaultEnabled = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 

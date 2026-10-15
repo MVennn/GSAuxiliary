@@ -419,6 +419,13 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
    「更多」还有**按文字 + 限定在底栏内**的兜底，id 改名一般不用改代码；
    若面板不再是 `PopupWindow`，日志会明确报出来（见
    [底栏入口实现说明](FEATURE-STOCK-BAR.md)）
+7. **界面精简类（底栏 / 首页 / 行情市场）** → 改
+   `feature/dock/DockCleanTargets.kt` / `feature/home/HomeBannerTargets.kt` /
+   `feature/market/MarketTargets.kt` 的候选数组与结构阈值。
+   **这一类不用跑探针**：认不出目标控件时模块会**自己**把当前页面的视图树
+   （含真实资源 id 名与坐标）打进模块日志 —— 打开开关、进一次页面、
+   看模块 App「设置 → 查看日志」即可。完整手册见
+   [界面精简方案与校准手册](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)
 
 设计上所有关键名字都是**常量数组 + 多级兜底**（每个功能一个 `XxxTargets.kt`），
 就是为了这种时候改一行就能修好。
