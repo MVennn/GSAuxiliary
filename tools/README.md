@@ -335,6 +335,41 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 
 ---
 
+## publish.py ★
+
+**一次把版本同时发到「源码仓库」和「LSPosed 模块仓库」。**
+
+LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库** ——
+源码仓库发 Release **不会**同步过去，而 LSPosed 的网站与 App 只读模块仓库。
+所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
+并保持模块仓库的 `README.md` 与源码仓库逐字一致。手工做很容易漏，这个脚本一次做完。
+
+```bash
+python tools/publish.py                    # 构建 + 发布 + 同步 README
+python tools/publish.py --skip-build       # 用现有 APK
+python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
+python tools/publish.py --dry-run          # 只打印将做什么，不写任何东西
+```
+
+| 步骤 | 做什么 |
+|---|---|
+| 1 | 读 `app/build.gradle.kts` 的 `versionCode` / `versionName`，tag = `{vc}-{vn}` |
+| 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
+| 3 | 在**源码仓库**建/更新 Release 并上传 APK（同名资产会先删再传） |
+| 4 | 在**模块仓库**做同样的操作 |
+| 5 | 把源码仓库的 `README.md` 推到模块仓库 |
+
+> ⚠️ **不指定 `--notes` 时会拿 CHANGELOG 的该版本段落当 Release 说明** ——
+> 那段是给开发者的（症状 / 根因 / 改法 / 验证结果），对用户是噪音。
+> 面向用户的 Release 说明建议另写一份短的传进来（见「发布惯例」）。
+
+凭据从 `git credential fill` 取（Windows 凭据管理器里已存的 GitHub PAT，
+需要 `repo` scope）。**token 只在内存里用，不落盘、不打印。**
+
+环境变量可改仓库名：`GITHUB_SOURCE_REPO` / `GITHUB_MODULE_REPO`。
+
+---
+
 ## 调试产物位置
 
 脚本生成的临时文件统一放在仓库根目录的 `.work/` 下（**已被 `.gitignore` 排除**）。

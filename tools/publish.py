@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""publish.py —— 一次把版本同时发到「源码仓库」和「LSPosed 模块仓库」。
+
+## 为什么需要它
+
+LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**，
+源码仓库发 Release **不会**同步过去。而 LSPosed 的网站与 App 只读模块仓库，
+所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
+并保持模块仓库的 README 与源码仓库一致。手工做很容易漏，本脚本一次做完。
+
+## 用法
+
+    python tools/publish.py                    # 构建 + 发布 + 同步 README
+    python tools/publish.py --skip-build       # 用现有 APK，不重新构建
+    python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
+    python tools/publish.py --dry-run          # 只打印将要做什么，不写任何东西
+
+版本号取自 `app/build.gradle.kts` 的 `versionCode` / `versionName`，
+tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
+
+## 凭据
+
+从 `git credential fill` 读 Windows 凭据管理器里已存的 GitHub 凭据
+（需要 `repo` scope 的 PAT）。**token 只在内存里用，不落盘、不打印、
+不进 git 配置。**
+
+## 环境变量
+
+    GITHUB_SOURCE_REPO   源码仓库，默认 SansKritO4/GSAuxiliary
+    GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.normpath(os.path.join(HERE, ".."))
+GRADLE = os.path.join(ROOT, "app", "build.gradle.kts")
+README = os.path.join(ROOT, "README.md")
+WORK = os.path.join(ROOT, ".work")
+
+SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "SansKritO4/GSAuxiliary")
+MODULE_REPO = os.environ.get(
+    "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary")
+
+API = "https://api.github.com"
+
+
+# --------------------------------------------------------------------------- 基础
+
+def run(cmd, **kw):
+    return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, **kw)
+
+
+def token():
+    """从 git 凭据管理器取 PAT。取不到就明确报错，不静默降级。"""
+    r = run(["git", "credential", "fill"],
+            input="protocol=https\nhost=github.com\n\n")
+    m = re.search(r"^password=(.*)$", r.stdout or "", re.M)
+    if not m or not m.group(1).strip():
+        sys.exit("[X] 取不到 GitHub 凭据。先确认 git 能 push："
+                 "`git push --dry-run`，或 `git config credential.helper` 已配置。")
+    return m.group(1).strip()
+
+
+def read_version():
+    src = open(GRADLE, encoding="utf-8").read()
+    vc = re.search(r"versionCode\s*=\s*(\d+)", src)
+    vn = re.search(r'versionName\s*=\s*"([^"]+)"', src)
+    if not vc or not vn:
+        sys.exit("[X] 读不到 versionCode / versionName（%s）" % GRADLE)
+    return int(vc.group(1)), vn.group(1)
+
+
+def api(tok, method, path, payload=None, raw=None, ctype=None):
+    url = path if path.startswith("http") else API + path
+    if raw is not None:
+        data, headers = raw, {"Content-Type": ctype, "Content-Length": str(len(raw))}
+    elif payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+    else:
+        data, headers = None, {}
+    headers.update({"Authorization": "Bearer " + tok,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"})
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r:
+            body = r.read()
+            return r.status, (json.loads(body) if body else None)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        try:
+            return e.code, json.loads(body)
+        except Exception:
+            return e.code, {"raw": body[:500]}
+
+
+# --------------------------------------------------------------------------- 步骤
+
+def build():
+    print("[1/5] 构建 release …")
+    r = run([os.path.join(ROOT, "gradlew"), "assembleRelease", "--console=plain"])
+    if r.returncode != 0:
+        print(r.stdout[-3000:])
+        print(r.stderr[-2000:])
+        sys.exit("[X] 构建失败")
+    print("      BUILD SUCCESSFUL")
+
+
+def stage_apk(vc, vn):
+    src = os.path.join(ROOT, "app", "build", "outputs", "apk", "release", "app-release.apk")
+    if not os.path.exists(src):
+        sys.exit("[X] 找不到 %s —— 先跑一次 assembleRelease，或去掉 --skip-build" % src)
+    os.makedirs(WORK, exist_ok=True)
+    name = "GSAuxiliary_%d-%s.apk" % (vc, vn)
+    dst = os.path.join(WORK, name)
+    shutil.copyfile(src, dst)
+    print("[2/5] APK %s（%d 字节）" % (name, os.path.getsize(dst)))
+    return name, dst
+
+
+def upsert_release(tok, repo, tag, vn, notes, apk_name=None, apk_path=None, dry=False):
+    """在 repo 上建或更新 tag 对应的 Release，并按需替换 APK 资产。"""
+    status, rel = api(tok, "GET", "/repos/%s/releases/tags/%s" % (repo, tag))
+    exists = status == 200
+    if dry:
+        print("      [dry-run] %s：%s Release %s" %
+              (repo, "更新" if exists else "创建", tag))
+        return (rel or {}).get("html_url")
+    if exists:
+        api(tok, "PATCH", "/repos/%s/releases/%d" % (repo, rel["id"]),
+            {"name": "v" + vn, "body": notes})
+    else:
+        status, rel = api(tok, "POST", "/repos/%s/releases" % repo,
+                          {"tag_name": tag, "name": "v" + vn, "body": notes,
+                           "draft": False, "prerelease": False})
+        if status not in (200, 201):
+            sys.exit("[X] %s 建 Release 失败 HTTP %s：%s" % (repo, status, rel))
+
+    if apk_name:
+        # 同名资产要先删，否则 GitHub 会报 already_exists
+        for a in rel.get("assets", []):
+            if a["name"] == apk_name:
+                api(tok, "DELETE", "/repos/%s/releases/assets/%d" % (repo, a["id"]))
+        data = open(apk_path, "rb").read()
+        up = rel["upload_url"].split("{")[0] + "?name=" + apk_name
+        status, asset = api(tok, "POST", up, raw=data,
+                            ctype="application/vnd.android.package-archive")
+        if status not in (200, 201):
+            sys.exit("[X] %s 传 APK 失败 HTTP %s：%s" % (repo, status, asset))
+        print("      APK 已上传，%d 字节" % asset.get("size", -1))
+    print("      %s  ->  %s" % (repo, rel.get("html_url")))
+    return rel.get("html_url")
+
+
+def sync_readme(tok, dry=False):
+    """把源码仓库的 README.md 拷到模块仓库（两者必须逐字一致）。"""
+    clone = os.path.join(WORK, "lsposed-repo")
+    if dry:
+        print("      [dry-run] 同步 README.md -> %s" % MODULE_REPO)
+        return
+    if not os.path.isdir(os.path.join(clone, ".git")):
+        shutil.rmtree(clone, ignore_errors=True)
+        r = run(["git", "clone", "-q",
+                 "https://github.com/%s.git" % MODULE_REPO, clone])
+        if r.returncode != 0:
+            sys.exit("[X] 克隆 %s 失败：%s" % (MODULE_REPO, r.stderr[-400:]))
+    else:
+        run(["git", "pull", "-q", "--ff-only"], cwd=clone)
+    run(["git", "config", "user.name", "M.Venn"], cwd=clone)
+    run(["git", "config", "user.email",
+         "127460743+SansKritO4@users.noreply.github.com"], cwd=clone)
+    shutil.copyfile(README, os.path.join(clone, "README.md"))
+    if not run(["git", "status", "--porcelain"], cwd=clone).stdout.strip():
+        print("      README 已是最新，无需同步")
+        return
+    run(["git", "add", "README.md"], cwd=clone)
+    run(["git", "commit", "-q", "-m", "Sync README.md from source repo"], cwd=clone)
+    r = run(["git", "push", "-q", "origin", "HEAD"], cwd=clone)
+    if r.returncode != 0:
+        sys.exit("[X] 推送 README 失败：%s" % r.stderr[-400:])
+    print("      README.md 已同步")
+
+
+def notes_from_changelog(vn):
+    """默认说明：从 CHANGELOG 抽该版本段落。**偏开发者向**，
+    想给用户看更短的说明就用 `--notes` 指定文件。"""
+    path = os.path.join(ROOT, "CHANGELOG.md")
+    if not os.path.exists(path):
+        return "v" + vn
+    src = open(path, encoding="utf-8").read()
+    m = re.search(r"^## \[" + re.escape(vn) + r"\].*?$(.*?)(?=^## \[|\Z)",
+                  src, re.M | re.S)
+    body = (m.group(1) if m else "").strip()
+    return body or ("v" + vn)
+
+
+# --------------------------------------------------------------------------- main
+
+def main():
+    ap = argparse.ArgumentParser(description="一次发布到源码仓库 + LSPosed 模块仓库")
+    ap.add_argument("--skip-build", action="store_true", help="不重新构建，用现有 APK")
+    ap.add_argument("--notes", metavar="FILE", help="Release 说明（Markdown 文件）")
+    ap.add_argument("--dry-run", action="store_true", help="只打印，不写任何东西")
+    args = ap.parse_args()
+
+    vc, vn = read_version()
+    tag = "%d-%s" % (vc, vn)
+    print("版本：%s（versionCode %d）  tag：%s" % (vn, vc, tag))
+    print("源码仓库：%s" % SOURCE_REPO)
+    print("模块仓库：%s" % MODULE_REPO)
+    print()
+
+    if args.notes:
+        notes = open(args.notes, encoding="utf-8").read()
+    else:
+        notes = notes_from_changelog(vn)
+        print("! 未指定 --notes，使用 CHANGELOG 的 [%s] 段。" % vn)
+        print("! 那段是给开发者的（症状/根因/改法/验证），面向用户建议另写一份传 --notes。")
+        print()
+
+    if not args.skip_build and not args.dry_run:
+        build()
+    elif args.dry_run:
+        print("[1/5] [dry-run] 跳过构建")
+    else:
+        print("[1/5] 跳过构建（--skip-build）")
+
+    if args.dry_run:
+        apk_name = "GSAuxiliary_%d-%s.apk" % (vc, vn)
+        apk_path = None
+        print("[2/5] [dry-run] 将使用 %s" % apk_name)
+    else:
+        apk_name, apk_path = stage_apk(vc, vn)
+
+    tok = "" if args.dry_run else token()
+
+    print("[3/5] 源码仓库 %s" % SOURCE_REPO)
+    src_url = upsert_release(tok, SOURCE_REPO, tag, vn, notes,
+                             apk_name, apk_path, args.dry_run)
+
+    print("[4/5] 模块仓库 %s" % MODULE_REPO)
+    mod_url = upsert_release(tok, MODULE_REPO, tag, vn, notes,
+                             apk_name, apk_path, args.dry_run)
+
+    print("[5/5] 同步 README")
+    sync_readme(tok, args.dry_run)
+
+    print()
+    print("完成。")
+    if src_url:
+        print("  源码 Release : %s" % src_url)
+    if mod_url:
+        print("  模块 Release : %s" % mod_url)
+    print("  模块页（描述填好后 5～60 分钟内出现）: "
+          "https://modules.lsposed.org/module/%s" % MODULE_REPO.split("/")[-1])
+
+
+if __name__ == "__main__":
+    main()

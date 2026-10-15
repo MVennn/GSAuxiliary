@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/logo.png" width="128" alt="GSAuxiliary">
+<img src="https://raw.githubusercontent.com/SansKritO4/GSAuxiliary/main/docs/logo.png" width="128" alt="GSAuxiliary">
 
 # GSAuxiliary
 
@@ -95,7 +95,3 @@ Make GoldenSun Great Again！
 
 > 「国信金太阳」及其商标、标识的权利均归其权利人所有。
 > 本项目与之不存在任何隶属、合作、授权、认可或支持关系。
-
----
-
-<sub>开发者：构建方式见 [docs/BUILD.md](docs/BUILD.md)，架构与设计走向见 [docs/](docs/)。</sub>
