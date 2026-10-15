@@ -56,8 +56,9 @@ API = "https://api.github.com"
 
 # --------------------------------------------------------------------------- 基础
 
-def run(cmd, **kw):
-    return subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, **kw)
+def run(cmd, cwd=None, **kw):
+    """在指定目录（默认仓库根）跑一条命令。cwd 必须从这里传，不能写死。"""
+    return subprocess.run(cmd, cwd=cwd or ROOT, text=True, capture_output=True, **kw)
 
 
 def token():
@@ -212,7 +213,14 @@ def main():
     ap.add_argument("--skip-build", action="store_true", help="不重新构建，用现有 APK")
     ap.add_argument("--notes", metavar="FILE", help="Release 说明（Markdown 文件）")
     ap.add_argument("--dry-run", action="store_true", help="只打印，不写任何东西")
+    ap.add_argument("--readme-only", action="store_true",
+                    help="只同步 README 到模块仓库，不发 Release")
     args = ap.parse_args()
+
+    if args.readme_only:
+        print("只同步 README.md -> %s" % MODULE_REPO)
+        sync_readme("" if args.dry_run else token(), args.dry_run)
+        return
 
     vc, vn = read_version()
     tag = "%d-%s" % (vc, vn)
