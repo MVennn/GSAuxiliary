@@ -9,6 +9,7 @@
 Make GoldenSun Great Again！
 
 [![下载最新版本](https://img.shields.io/badge/下载-最新版本-3DDC84?logo=android&logoColor=white)](../../releases/latest)
+[![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white)](https://github.com/SansKritO4/GSAuxiliary)
 ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white)
 ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
