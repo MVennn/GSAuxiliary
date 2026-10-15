@@ -22,70 +22,78 @@ Make GoldenSun Great Again！
 
 ## 这是什么
 
-给国信金太阳做界面调整的 LSPosed 模块。不改数据、不动服务端，只在你自己手机上生效。
+一个给国信金太阳做界面增强的 LSPosed 模块。
 
-功能都在模块 App 的「功能」页，一个开关对应一个功能，默认全部关闭。
+在已经 root 并装了 LSPosed 的手机上，给金太阳的界面显示和页面操作做些修补 ——
+有些地方本来要多点一下，有些信息本来要多翻一层。它不碰金太阳的数据，也不碰服务端，
+所有改动只发生在你自己的手机上。
+
+每一项改动都做成一个开关，收在模块 App 的「功能」页里，默认全部关闭，
+想用哪个自己打开。
 
 ## 安装
 
-需要：已 root 的手机、[LSPosed](https://github.com/LSPosed/LSPosed)（API 102）、
-国信金太阳（`com.guosen.android`）、Android 8.1 及以上。
+前提：手机已 root，装有 [LSPosed](https://github.com/LSPosed/LSPosed)（需支持 API 102），
+系统 Android 8.1 及以上，装有国信金太阳（`com.guosen.android`）。
 
-1. 从 [Releases](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk` 装上
-2. LSPosed 管理器 → 模块，勾选 GSAuxiliary
-3. 作用域勾上「国信金太阳」（模块已声明作用域，通常会自动勾好）
-4. 强制停止国信金太阳，重新打开
-5. 打开 GSAuxiliary，进「功能」页按需开开关
+1. 到 [Releases](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk` 并安装
+2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
+3. 作用域中勾上「国信金太阳」（模块已固定声明作用域，一般会自动勾好）
+4. 强制停止国信金太阳，再打开一次
+5. 打开桌面上的 GSAuxiliary，进「功能」页挑选要开的开关
 
-开关从「关」改成「开」要重启一次金太阳才生效 —— LSPosed 在 App 启动时装钩子；
-从「开」改成「关」立刻生效。
+开关从「关」改成「开」之后，要重启一次金太阳才会生效 —— LSPosed 是在 App 启动时
+挂钩子的。反过来，从「开」改成「关」是立刻生效的。
 
 ## 使用
 
-每个开关配一段说明。默认全部关闭，打开即生效，关掉立刻还原。
+功能都收在「功能」页，每个开关下面配了一段说明，讲它改了什么、有没有可调的项。
+默认全部关闭，打开就生效，关掉就还原。
 
-桌面图标找不到的话，去「设置 → 界面 → 桌面图标」看是不是被关掉了；
-也可以从 LSPosed 管理器的模块列表进设置界面。
+桌面上找不到图标的话，去「设置 → 界面 → 桌面图标」看看是不是被关掉了；
+也可以从 LSPosed 管理器的模块列表直接进设置界面。
 
 ## 常见问题
 
-**装上了没变化**
-看模块 App「概览」页顶部的状态卡是「已激活」还是「未激活」。未激活就去 LSPosed
-确认模块和作用域都勾上了，然后强制停止金太阳重开一次。
+**装好了但没变化**
+先看模块 App「概览」页顶部的状态卡，显示的是「已激活」还是「未激活」。
+未激活的话，去 LSPosed 确认模块和作用域都勾上了，然后强制停止金太阳重新打开一次。
 
-**开了开关没反应**
-重启一次金太阳。
+**开关打开了没反应**
+重启一次金太阳 —— 钩子是在启动时挂上去的。
 
 **需要手动勾作用域吗**
-不用，模块已固定声明只作用于国信金太阳。
+不用。模块已经固定声明只作用于国信金太阳，正常情况下会自动勾好。
 
 **必须用 8.6 版本的金太阳吗**
-不用。8.6.0 只是开发时的验证基线，模块靠「候选名 + 多级兜底」适配界面，换版本大多照常可用。
+不用。8.6.0 只是开发时用来验证的版本，模块靠「候选名 + 多级兜底」去适配界面，
+换成别的版本大多照常能用。真失效了，来 Issues 说一声。
 
-**会改我的数据或账号吗**
-不会。不写数据、不拦截请求、不上传任何信息，只改界面显示与操作。
+**会动我的数据或者账号吗**
+不会。模块不写数据、不拦截请求、不上传任何信息，只改界面上的显示和交互。
 
-**升级要先卸载吗**
-不用，直接覆盖安装，设置保留。
+**升级要先卸载旧版吗**
+不用。直接覆盖安装，原来的设置会保留。
 
-## 自己编译
+## 编译
 
-不想装环境：推上去让 GitHub 编 —— [Actions](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml)
-每次提交都会跑，产物在对应 run 的 Artifacts 里。
+不想配环境：直接推到 GitHub，[Actions](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml)
+每次提交都会构建，产物在对应 run 的 Artifacts 里。
 
 本机编译见 [构建指南](https://github.com/SansKritO4/GSAuxiliary/blob/main/docs/BUILD.md)：
-JDK 17 + Android SDK Platform 37，然后 `./gradlew assembleRelease`。
+需要 JDK 17 与 Android SDK Platform 37，然后 `./gradlew assembleRelease`。
 
 ## 反馈
 
-问题、新功能、金太阳升级后某个开关失灵 —— 都去 [Issues](https://github.com/SansKritO4/GSAuxiliary/issues) 提。
+遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，都可以到
+[Issues](https://github.com/SansKritO4/GSAuxiliary/issues) 提一条。
 
-带上这些会快很多：
+带上这些信息会快很多：
 
-- 金太阳版本号
+- 金太阳的版本号
 - 模块版本号、安卓版本、机型
-- 出问题的功能开关与复现步骤
-- LSPosed 日志：
+- 出问题的开关，以及复现步骤
+- LSPosed 日志（能附上最好）：
   `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
 
 ## 免责声明
