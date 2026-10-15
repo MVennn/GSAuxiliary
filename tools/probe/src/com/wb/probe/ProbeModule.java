@@ -27,12 +27,21 @@ import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
 
 /**
- * GSProbe v25 —— 页面 / 点击链 / Intent 契约侦察（现代 libxposed API 102 版）
+ * GSProbe v27 —— 页面 / 点击链 / Intent 契约 / 明文 HTTP 侦察（现代 libxposed API 102 版）
  *
  * 历史:
  *   v18  自选判定 API 交叉验证（ZXManager dump + 20 只真值打分）
  *   v19  新增「策略详情页 → 个股详情」跳转链侦察，服务新功能
  *        「策略页点击股票直达标准行情 + 左右滑动」。
+ *   v26  新增 OkHttp 抓包（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`），
+ *        用于判定「策略详情页个股 100 上限」是客户端还是服务端截断。
+ *        —— 实测对金太阳**全程 0 命中**（它不用 OkHttp）。
+ *   v27  改为**两级网络钩子**：OkHttp 之外，再挂裸 `java.net.Socket` 的
+ *        `getInputStream/getOutputStream`，对返回的实现类沿继承链动态挂
+ *        `read/write(byte[],int,int)` —— 金太阳走自研 HTTP + Conscrypt TLS，
+ *        只有挂到 `ConscryptEngineSocket$SSLOutputStream` 那一层才拿得到明文。
+ *        用「时间窗 + 只抓 HTTP 方法开头 / gzip·JSON 响应 + 总量上限」控制日志量。
+ *        这一组钩子与业务无关，**换任何 App 都能用**。
  *
  * v19 新增钩子（全部是**框架类**，不需要预先知道任何业务类名）:
  *   1. Activity.startActivity / startActivityForResult
@@ -48,16 +57,37 @@ import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
  *        用途: 找到「拦截点击」的挂钩点，以及「喂列表」的目标控件。
  *
  * 阅读方法（真机跑完看 LSPosed 日志）:
+ *   ACTIVITY[...]   页面链路（onResume 顺序）
  *   LAUNCH[...]     一次页面跳转，紧跟一段 extras
  *   DLG[...]        中间 UI 是 Dialog
  *   POP[...]        中间 UI 是 PopupWindow
+ *   PAGE[...]       目标页的 Intent + 实例字段
  *   PAGER / RV[...] 个股详情页里的翻页控件
  *   VW[...]         可点击控件 + 监听器类名（找点击钩子用）
+ *   CLASS[...]      任意类的构造器 / 字段 / 方法签名（找「自带转换构造器」用）
+ *   HTTP-REQ[...]   OkHttp 出站请求（金太阳 0 命中）
+ *   NET-W / NET-R   裸 socket 明文写出 / 读入（配 TLS[...] 看握手）
  *
  * 注意: 本类**不引用任何 legacy `de.robv.android.xposed` 类型**，也不引用 androidx 类型
  *      （探针不走 Gradle，classpath 里没有 androidx，一律按类名反射）。
  */
 public class ProbeModule extends XposedModule {
+
+    /** TCP 抓包窗口长度：够覆盖「进页面 → 请求策略个股 → 回包」 */
+    private static final long NET_CAPTURE_MS = 600000L;
+
+    /** TCP 抓包总量上限，避免行情推送把日志刷爆 */
+    private static final int NET_MAX_CHUNKS = 1500;
+
+    /** 单次 dump 的最大字节数 */
+    private static final int NET_MAX_BYTES = 4096;
+
+    /** Conscrypt 的 SSLSocket 实现类（覆写了 `Socket#getOutputStream`，必须单独挂） */
+    private static final String[] TLS_SOCKET_CLASSES = {
+            "com.android.org.conscrypt.ConscryptEngineSocket",
+            "com.android.org.conscrypt.ConscryptFileDescriptorSocket",
+            "com.android.org.conscrypt.OpenSSLSocketImpl",
+    };
 
     private static final String TAG = "GSRecon";
 
@@ -115,7 +145,7 @@ public class ProbeModule extends XposedModule {
             detach();
             return;
         }
-        log("=== GSProbe v25 (libxposed API 102) 载入 | process=" + process
+        log("=== GSProbe v27 (libxposed API 102) 载入 | process=" + process
                 + " pid=" + Process.myPid()
                 + " framework=" + getFrameworkName() + " " + getFrameworkVersion()
                 + " api=" + getApiVersion() + " ===");
@@ -129,12 +159,19 @@ public class ProbeModule extends XposedModule {
         hookActivityLaunch();
         hookMiddleUi();
         hookPageCreate();
+        hookHttp();
+        hookSocketIo();
         // 构造个股详情 Intent 需要自己 new 出这些数据类，先把可用构造器/字段摸清
         dumpClassMembers("com.guosen.android.quotes.data.IntentStockInfo");
         // 页面跳转全部走引擎路由，签名必须实测（加固 App 猜不得）
         dumpClassMembers("com.guosen.engine.process.EngineAct");
         dumpClassMembers("com.guosen.engine.process.EngineFrag");
         dumpClassMembers("com.guosen.engine.process.EngineIntent");
+        // 策略详情页的列表适配器：要「真正移除被筛掉的股票」必须知道它的数据 API
+        dumpClassMembers("com.guosen.commonui.adapter.BaseQuickAdapter");
+        dumpClassMembers("com.guosen.quotation.adapter.aistk.AIStkAdapter");
+        // 列表数据项：判断「涨幅 / 跌幅」要读它的涨跌幅字段，字段名不能猜
+        dumpClassMembers("com.guosen.android.quotes.data.StockInfo");
     }
 
     /** dump 某类的构造器 / 实例字段 / setter-getter（加固 App 里字段名不可假设，必须实测） */
@@ -366,6 +403,12 @@ public class ProbeModule extends XposedModule {
         }
 
         // 等界面渲染完再 dump 视图树
+        if (isStg) {
+            captureUntil = System.currentTimeMillis() + NET_CAPTURE_MS;
+            netChunks.set(0);
+            log("");
+            log("== NET CAPTURE 开窗 " + (NET_CAPTURE_MS / 1000) + "s（策略详情页）==");
+        }
         scheduleViewDump(act, isQuote ? "QUOTE" : "STG", 1200);
         scheduleViewDump(act, isQuote ? "QUOTE" : "STG", 3500);
     }
@@ -649,11 +692,345 @@ public class ProbeModule extends XposedModule {
         return null;
     }
 
+    // ============================================================ HTTP 抓包（OkHttp）
+
+    /**
+     * 抓 OkHttp 的**出站请求**与**响应正文**。
+     *
+     * 挂 OkHttp 而不是业务类：`okhttp3.OkHttpClient.newCall(Request)` 与
+     * `okhttp3.ResponseBody.string()` 都是库的公开方法，与加固/混淆的业务类名无关。
+     *
+     * 用途：判定「策略详情页个股 100 上限」到底是**客户端截断**还是**服务端截断** ——
+     * 看请求里带不带 pageSize/limit 之类的分页参数、以及响应正文里到底有多少条。
+     */
+    private void hookHttp() {
+        int n = 0;
+
+        try {
+            Class<?> client = Class.forName("okhttp3.OkHttpClient", false, sCL);
+            n += hookNamed(client, "newCall", "probe:http-req", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    if (args == null || args.length == 0) return;
+                    logRequest(args[0]);
+                }
+            });
+        } catch (Throwable t) {
+            log("hookHttp: OkHttpClient 失败 " + t);
+        }
+
+        try {
+            Class<?> rb = Class.forName("okhttp3.ResponseBody", false, sCL);
+            n += hookNamedResult(rb, "string", "probe:http-resp", new ResultAfter() {
+                @Override public void run(Object self, Object[] args, Object result) {
+                    logResponseBody(result);
+                }
+            });
+        } catch (Throwable t) {
+            log("hookHttp: ResponseBody 失败 " + t);
+        }
+
+        log("已挂 HTTP 抓包点 ×" + n);
+    }
+
+    /** 与业务无关的噪声域名，直接跳过 */
+    private static final String[] HTTP_NOISE = {
+            "sensorsdata", "networkbench", "nbs.", "bugly", "umeng", "unitid",
+            "doubleclick", "google-analytics", "crashsight", "growing", "mta.qq",
+    };
+
+    /** 只有「跟策略/AI 选股有关」的请求才值得打出来，否则日志会被行情轮询淹没 */
+    private boolean interestingHttp(String s) {
+        if (s == null || s.isEmpty()) return false;
+        String l = s.toLowerCase();
+        for (String k : HTTP_NOISE) if (l.contains(k)) return false;
+        // v26 第一轮：不按关键词过滤，只排噪声域名 —— 先看清 App 到底走哪些 HTTP 接口
+        return true;
+    }
+
+    /** 打印一个 OkHttp 请求：URL / method / body（body 可能为空） */
+    private void logRequest(Object req) {
+        if (req == null) return;
+        try {
+            String url = strFirst(invoke0(req, "url"));
+            String method = strFirst(invoke0(req, "method"));
+            String body = requestBody(req);
+            String all = String.valueOf(url) + " " + body;
+            if (!interestingHttp(all)) return;
+            log("");
+            log("== HTTP-REQ ==");
+            log("  " + method + " " + url);
+            if (body != null && !body.isEmpty()) {
+                log("  BODY: " + cut(body, 4000));
+            }
+        } catch (Throwable t) {
+            log("HTTP-REQ 异常 " + t);
+        }
+    }
+
+    /** 把 RequestBody 写进一个 okio.Buffer 再取成字符串（只读，不改原体） */
+    private String requestBody(Object req) {
+        try {
+            Object rb = invoke0(req, "body");
+            if (rb == null) return null;
+            Class<?> sink = Class.forName("okio.BufferedSink", false, sCL);
+            Class<?> buf = Class.forName("okio.Buffer", false, sCL);
+            Object buffer = buf.getDeclaredConstructor().newInstance();
+            Method w = rb.getClass().getMethod("writeTo", sink);
+            w.setAccessible(true);
+            w.invoke(rb, buffer);
+            return strFirst(buf.getMethod("readUtf8").invoke(buffer));
+        } catch (Throwable t) {
+            return "(读请求体失败: " + t + ")";
+        }
+    }
+
+    /** 打印响应正文 —— 只留在意的那几类（含 stId / 策略 id / 大列表） */
+    private void logResponseBody(Object body) {
+        if (!(body instanceof String)) return;
+        String s = (String) body;
+        if (s.isEmpty()) return;
+        boolean hit = s.contains("\"total\"") || s.contains("\"list\"") || s.contains("\"stId\"")
+                || s.contains("1569198903482388480") || s.contains("策略")
+                || s.contains("\"stockList\"") || s.contains("个股") || s.contains("\"count\"");
+        if (!hit) return;
+        log("");
+        log("== HTTP-RESP (" + s.length() + " 字节) ==");
+        log("  " + cut(s, 12000));
+    }
+
+    private String strFirst(Object o) {
+        return o == null ? null : String.valueOf(o);
+    }
+
+    // ============================================================ TCP 抓包（自研协议）
+
+    /**
+     * 抓**自定义 TCP 通道**上的原始字节。
+     *
+     * 为什么还需要它：OkHttp 钩子（[hookHttp]）实测 **0 命中** —— 金太阳的行情与选股数据
+     * 走的是通达信式自研协议（`cache/datacache.json` 里的 `BestHost = tdxWifi:…`），
+     * 所以要判定「策略详情页 100 只上限」到底带没带在**请求参数**里，只能看这一层。
+     *
+     * 做法：挂 `java.net.Socket#getInputStream/getOutputStream`，**动态**给返回的那个流
+     * 实现类挂 `read/write(byte[],int,int)`（每个类只挂一次）。为了不把行情推送刷屏，
+     * 只在 [captureUntil] 这个「时间窗」内 dump，且总量有上限。
+     */
+    private volatile long captureUntil = 0L;
+
+    private final Set<String> hookedStreams = new HashSet<>();
+    private final Set<String> seenPeers = new HashSet<>();
+    private final java.util.concurrent.atomic.AtomicInteger netChunks =
+            new java.util.concurrent.atomic.AtomicInteger();
+
+    private void hookSocketIo() {
+        try {
+            Class<?> sock = Class.forName("java.net.Socket", false, sCL);
+
+            int n = hookNamedResult(sock, "getOutputStream", "probe:net-out",
+                    new ResultAfter() {
+                        @Override public void run(Object self, Object[] args, Object result) {
+                            if (result != null) hookStreamMethods(result, true);
+                        }
+                    });
+            n += hookNamedResult(sock, "getInputStream", "probe:net-in",
+                    new ResultAfter() {
+                        @Override public void run(Object self, Object[] args, Object result) {
+                            if (result != null) hookStreamMethods(result, false);
+                        }
+                    });
+            n += hookNamed(sock, "connect", "probe:net-conn", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    logPeer(args);
+                }
+            });
+
+            log("已挂 socket 钩子 ×" + n);
+
+            // TLS：上一步抓到的全是 `17 03 03 …`（TLS Application Data），是密文。
+            // 明文要从 **SSLSocket 的流** 上取 —— Conscrypt 的实现类覆写了
+            // `Socket#getOutputStream`，所以挂父类那条路不生效，得逐个股实现类挂。
+            int m = 0;
+            for (String cn : TLS_SOCKET_CLASSES) {
+                Class<?> c = Class.forName(cn, false, sCL);
+                if (c == null) continue;
+                m += hookNamedResult(c, "getOutputStream", "probe:tls-out", new ResultAfter() {
+                    @Override public void run(Object self, Object[] args, Object result) {
+                        if (result != null) hookStreamMethods(result, true);
+                    }
+                });
+                m += hookNamedResult(c, "getInputStream", "probe:tls-in", new ResultAfter() {
+                    @Override public void run(Object self, Object[] args, Object result) {
+                        if (result != null) hookStreamMethods(result, false);
+                    }
+                });
+                log("TLS 流入口 " + cn + " ×" + m);
+            }
+            log("已挂 TLS 明文流入口 ×" + m);
+        } catch (Throwable t) {
+            log("hookSocketIo 失败 " + t);
+        }
+    }
+
+    /** 认一下 API 主机 + 调用方（谁在连、连去哪） */
+    private void logPeer(Object[] args) {
+        try {
+            String s = (args != null && args.length > 0 && args[0] != null)
+                    ? String.valueOf(args[0]) : "(null)";
+            synchronized (seenPeers) {
+                if (!seenPeers.add(s)) return;
+            }
+            log("");
+            log("== NET-PEER " + s + " ==");
+            StackTraceElement[] st = Thread.currentThread().getStackTrace();
+            for (int i = 1; i < Math.min(st.length, 22); i++) {
+                String c = st[i].getClassName();
+                if (c.startsWith("com.wb.probe") || c.startsWith("java.lang.Thread")) continue;
+                log("    at " + c + "#" + st[i].getMethodName() + ":" + st[i].getLineNumber());
+                if (c.startsWith("com.guosen")) break;
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** 给「流实现类」挂 read/write —— 每个类只挂一次（沿继承链找，方法常声明在父类） */
+    private void hookStreamMethods(final Object stream, final boolean out) {
+        final Class<?> concrete = stream.getClass();
+        String key = concrete.getName() + (out ? "#w" : "#r");
+        synchronized (hookedStreams) {
+            if (!hookedStreams.add(key)) return;
+        }
+        log("");
+        log("== NET-STREAM " + (out ? "OUT" : "IN") + " = " + concrete.getName() + " ==");
+        int hooked = 0;
+        Class<?> c = concrete;
+        while (c != null && c != Object.class) {
+            int before = hooked;
+            for (final Method m : c.getDeclaredMethods()) {
+                final String name = m.getName();
+                if (out) {
+                    if (!name.equals("write")) continue;
+                } else {
+                    if (!name.equals("read") && !name.equals("readFully")) continue;
+                }
+                Class<?>[] ps = m.getParameterTypes();
+                if (ps.length != 3 || ps[0] != byte[].class) continue;   // (byte[], int, int)
+                try {
+                    m.setAccessible(true);
+                    final boolean isRead = !out;
+                    hook(m)
+                            .setId("probe:net:" + c.getSimpleName() + ":" + name)
+                            .intercept(new XposedInterface.Hooker() {
+                                @Override
+                                public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                    if (isRead) {
+                                        Object r = chain.proceed();
+                                        try {
+                                            if (System.currentTimeMillis() < captureUntil) {
+                                                Object[] a = chain.getArgs().toArray();
+                                                int n = (r instanceof Integer) ? (Integer) r : 0;
+                                                if (n > 0) {
+                                                    dumpChunk(true, (byte[]) a[0],
+                                                            (Integer) a[1], n);
+                                                }
+                                            }
+                                        } catch (Throwable ignored) {
+                                        }
+                                        return r;
+                                    }
+                                    try {
+                                        if (System.currentTimeMillis() < captureUntil) {
+                                            Object[] a = chain.getArgs().toArray();
+                                            dumpChunk(false, (byte[]) a[0],
+                                                    (Integer) a[1], (Integer) a[2]);
+                                        }
+                                    } catch (Throwable ignored) {
+                                    }
+                                    return chain.proceed();
+                                }
+                            });
+                    hooked++;
+                    log("  已挂 " + c.getName() + "#" + name + "(" + sig(ps) + ")");
+                } catch (Throwable t) {
+                    log("  挂流方法失败 " + c.getName() + "#" + name + " " + t);
+                }
+            }
+            c = c.getSuperclass();
+            // 只挂「最具体的那一层」：SocketOutputStream → FileOutputStream → OutputStream
+            // 三个都有同名方法，全挂会把同一段字节重复 dump 三遍
+            if (hooked > before) break;
+        }
+        if (hooked == 0) log("  （这个流实现类上没有可挂的 3 参 read/write）");
+    }
+
+    /** 一次读/写的原始字节：hex + 可打印 ASCII（Tdx 请求里带字符串，直接能认出来） */
+    private void dumpChunk(boolean read, byte[] buf, int off, int len) {
+        // 只抓「写出方向的 HTTP 明文请求」：要判定的是**请求参数**里带没带 limit/count，
+        // 回包（行情推送）与 TLS 握手记录会把日志淹没。挂在 SSL 明文流上时，
+        // 一次请求（含 body）通常是一次 write，所以整套 headers+body 都在这里。
+        if (len < 8) return;
+        int b0 = buf[off] & 0xff;
+        if (read) {
+            // 响应：只看「像正文」的 —— gzip(1f 8b) / JSON({ 或 [) / chunked 长度行
+            if (!(b0 == 0x1f || b0 == '{' || b0 == '[')) return;
+        } else {
+            // 请求：只看 HTTP 方法开头
+            if (!(b0 == 'P' || b0 == 'G' || b0 == 'H' || b0 == 'D')) return;
+        }
+        if (netChunks.incrementAndGet() > NET_MAX_CHUNKS) return;
+        int n = Math.min(len, NET_MAX_BYTES);
+        StringBuilder hex = new StringBuilder();
+        StringBuilder asc = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            int b = buf[off + i] & 0xff;
+            hex.append(String.format("%02x", b));
+            asc.append(b >= 32 && b < 127 ? (char) b : '.');
+        }
+        log((read ? "NET-R " : "NET-W ") + "len=" + len
+                + (len > n ? "(截断到" + n + ")" : ""));
+        log("  " + hex);
+        log("  " + asc);
+    }
+
     // ============================================================ 通用钩子工具
 
     /** 钩子回调体：原方法执行完后拿到 this 与参数 */
     private interface After {
         void run(Object self, Object[] args);
+    }
+    /** 带返回值的钩子回调体 */
+    private interface ResultAfter {
+        void run(Object self, Object[] args, Object result);
+    }
+
+    /** 同 [hookNamed]，但回调里额外拿到原方法的返回值 */
+    private int hookNamedResult(Class<?> cls, String name, final String idPrefix,
+                               final ResultAfter after) {
+        int n = 0;
+        for (final Method m : cls.getDeclaredMethods()) {
+            if (!m.getName().equals(name)) continue;
+            if (Modifier.isAbstract(m.getModifiers())) continue;
+            try {
+                m.setAccessible(true);
+                hook(m)
+                        .setId(idPrefix + ":" + m.getName() + ":" + m.getParameterCount())
+                        .intercept(new XposedInterface.Hooker() {
+                            @Override
+                            public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                Object result = chain.proceed();
+                                try {
+                                    after.run(chain.getThisObject(), chain.getArgs().toArray(), result);
+                                } catch (Throwable t) {
+                                    log("hook[" + idPrefix + "] 回调异常 " + t);
+                                }
+                                return result;
+                            }
+                        });
+                n++;
+            } catch (Throwable t) {
+                log("hook " + cls.getSimpleName() + "." + name + " 失败 " + t);
+            }
+        }
+        return n;
     }
 
     /**
