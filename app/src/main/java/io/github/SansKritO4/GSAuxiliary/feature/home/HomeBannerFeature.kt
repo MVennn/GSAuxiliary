@@ -13,7 +13,7 @@ import io.github.SansKritO4.GSAuxiliary.feature.uiclean.UiCleanFeature
 import java.lang.ref.WeakReference
 
 /**
- * 功能：**首页快捷入口下方的横幅不再显示**。
+ * 功能：**首页快捷入口下方的那条横幅不再显示**。
  *
  * ## 做什么
  *
@@ -22,8 +22,8 @@ import java.lang.ref.WeakReference
  *
  * ## 认法
  *
- * 见 [HomeBannerTargets]：**先按 id 候选直取**，拿不到就
- * 「先认快捷入口网格 → 再往上爬几层、取网格后面第一个像横幅的兄弟」。
+ * 见 [HomeBannerTargets]：**先按 id 候选直取**（实测 `layout_banner`），
+ * 拿不到就「先认快捷入口网格 → 再往上爬几层、取网格后面第一个像横幅的兄弟」。
  *
  * 为什么要先认网格再找横幅：首页上「像横幅的块」不止一个（顶部的搜索条、
  * 中间的行情卡片都能被宽高判据命中）。用**快捷入口当锚点**，
@@ -53,21 +53,27 @@ class HomeBannerFeature : UiCleanFeature() {
         if (alreadyHidden(lastHidden?.get())) return true
 
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
-
-        // ① 候选 id 直取：命中且确实「像横幅」才动手
         val ids = UiClean.idsFor(activity, HomeBannerTargets.TARGET_PKG)
+
+        // ① 候选 id 直取。
+        //
+        //    候选是按**真机实测**维护的，命中就认它是对的，只做一个最低限度的
+        //    合理性检查（可见 + 量得出高度），**不**再套 looksLikeBanner ——
+        //    广告位里是三个 ViewPager 页，严格判据（范围内文案 ≤ 2 条）反而会把
+        //    正确的目标拒掉。结构判据留给下面那条兜底路径。
         val byId = ids.firstOf(HomeBannerTargets.BANNER_ID_CANDIDATES)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
-            if (v != null && v.isShown && looksLikeBanner(v)) {
+            if (v != null && v.isShown && UiClean.heightOf(v) > 0) {
                 patcher.hide(v, "首页横幅（id 命中）")
                 lastHidden = WeakReference(v)
                 return true
             }
         }
 
-        // ② 结构：快捷入口网格 → 它下面那条横幅
-        //    认不出「快捷入口」= 还没铺开或不在首页 → 返回 false 让基类重试（重试窗口外会打快照）
+        // ② 结构：快捷入口网格 → 它下面那条横幅。
+        //    认不出「快捷入口」= 还没铺开或不在首页 → 返回 false 让基类重试
+        //    （重试窗口用尽后会打视图树快照，那就是校准入口）。
         val grid = findEntryGrid(root, ids) ?: return false
         val banner = findBannerAfter(grid) ?: return true
         patcher.hide(banner, "首页横幅（快捷入口下方）")
@@ -77,17 +83,26 @@ class HomeBannerFeature : UiCleanFeature() {
 
     // ------------------------------------------------------------------ 定位
 
-    /** 可见的「快捷入口网格」：先按候选 id，再按结构（前序取最外层） */
+    /**
+     * 可见的「首页快捷入口网格」：先按候选 id，再按结构（前序取最外层）。
+     *
+     * 拿到之后还要过一次 [isHomeEntryGrid] ——
+     * 行情页的 ETF 子页复用了同一个 `rv_home_func`，不区分的话会在那一页
+     * 把它自己的广告位当成「首页横幅」藏掉。
+     */
     private fun findEntryGrid(root: View, ids: IdCache): ViewGroup? {
+        val itemId = ids.of(HomeBannerTargets.HOME_ENTRY_ITEM_ID)
+
         val byId = ids.firstOf(HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
-            if (v is ViewGroup && v.isShown) return v
+            if (v is ViewGroup && v.isShown && isHomeEntryGrid(v, itemId)) return v
         }
+
         var hit: ViewGroup? = null
         UiClean.walk(root) { v ->
             if (hit != null) return@walk true
-            if (v is ViewGroup && v.isShown && isEntryGrid(v)) {
+            if (v is ViewGroup && v.isShown && isEntryGrid(v) && isHomeEntryGrid(v, itemId)) {
                 hit = v
                 true
             } else {
@@ -96,6 +111,16 @@ class HomeBannerFeature : UiCleanFeature() {
         }
         return hit
     }
+
+    /**
+     * 「首页那一版」快捷入口的确认。
+     *
+     * [itemId] 是实测到的格子 id（`home_func_icon`）。**解析不到时一律放行** ——
+     * 那说明宿主改版了，这时宁可退回纯结构判据，
+     * 也不能因为一个辅助 id 失效就把整个功能停掉。
+     */
+    private fun isHomeEntryGrid(grid: ViewGroup, itemId: Int): Boolean =
+        itemId == 0 || grid.findViewById<View>(itemId) != null
 
     private fun isEntryGrid(g: ViewGroup): Boolean {
         val n = g.childCount
@@ -135,7 +160,13 @@ class HomeBannerFeature : UiCleanFeature() {
         return null
     }
 
-    /** 「像横幅」的保守判据：高度适中 + 够宽 + 有图 + 文案极少 */
+    /**
+     * 「像横幅」的保守判据：高度适中 + 够宽 + 有图 + **范围内的**文案极少。
+     *
+     * 为什么文案要限定在范围内：广告位是 `ViewPager`，离屏那几页同样 `VISIBLE`，
+     * 里面的标题也会被 `findAll` 数到 —— 真机上三个页面一共 6 条文案，
+     * 不限定范围的话「≤ 2 条」这条判据永远不成立。
+     */
     private fun looksLikeBanner(v: View): Boolean {
         val h = UiClean.heightOf(v)
         if (h <= 0) return false
@@ -147,14 +178,18 @@ class HomeBannerFeature : UiCleanFeature() {
 
         if (!UiClean.hasIcon(v)) return false
 
+        val w = v.width
         val labels = UiClean.findAll(
             v,
             { it is TextView && !UiClean.textOf(it).isNullOrEmpty() },
-            limit = HomeBannerTargets.BANNER_MAX_LABELS + 1,
-        )
-        if (labels.size > HomeBannerTargets.BANNER_MAX_LABELS) return false
+            limit = 64,
+        ).count { tv ->
+            val r = UiClean.rectIn(v, tv)
+            r != null && r.left >= 0 && (w <= 0 || r.right <= w)
+        }
+        if (labels > HomeBannerTargets.BANNER_MAX_LABELS) return false
 
-        GLog.i("$id：命中横幅 ${v.javaClass.simpleName}（高 ${h}px，文案 ${labels.size} 条）")
+        GLog.i("$id：命中横幅 ${v.javaClass.simpleName}（高 ${h}px，范围内文案 $labels 条）")
         return true
     }
 }

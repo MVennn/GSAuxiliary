@@ -283,3 +283,109 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 
 这几条是刻意的：精简类功能一旦开始「改逻辑」，风险就从「界面不好看」跳到
 「业务出错」，不值得。
+
+---
+
+## 7. 8.6.0 真机实测：控件定位基准
+
+> **采集方式**：`adb shell dumpsys -t 60 activity top` —— **`-t` 必须带**，
+> 不带的话 ViewDebug 那条 10s 超时会让整份 dump 只剩半页。
+> 视图树每行长这样，`app:id/` 后面就是**真实资源名**：
+>
+> ```
+> com.guosen.commonui.LottieTabView{4d311af VFE...C.. ........ 720,0-900,130 #7f1b022b app:id/cb_main_tab_money}
+> ```
+>
+> ⚠️ **别用 `uiautomator dump` 当校准依据**：它会滤掉没有无障碍意义的节点
+> （图标 `ImageView`、装饰容器都不出现），而且自定义 View 会被它报成基类 ——
+> 实测 `com.guosen.commonui.SingleGridLayout` 被报成 `FrameLayout`。
+> `uiautomator` 只适合看**文案与坐标**，真实类名与 id 认准 `dumpsys` 那份。
+
+实测环境：MEIZU 20 / Android 16 / 1080×2400 / 416dpi（`density = 2.6`）/
+国信金太阳 8.6.0（versionCode 271）。
+
+### 7.1 底栏（`MainAct`）
+
+| 位置 | 类 | 资源 id | 实测坐标 |
+|---|---|---|---|
+| 整行容器 | `com.guosen.commonui.SingleGridLayout` | `fl_main_tab` | 0,2205-1080,2335（高 130px ≈ 50dp） |
+| 首页 | `com.guosen.commonui.LottieTabView` | `cb_main_tab_home` | 0,0-180,130 |
+| 行情 | 同上 | `cb_main_tab_quotes` | 180,0-360,130 |
+| 自选 | 同上 | `cb_main_tab_zx` | 360,0-540,130 |
+| 交易 | 同上 | `cb_main_tab_trade` | 540,0-720,130 |
+| **理财** | 同上 | **`cb_main_tab_money`** | 720,0-900,130 |
+| 账户 | 同上 | `cb_main_tab_mine` | 900,0-1080,130 |
+
+每格内部：`LinearLayout` →（`FrameLayout` → `ImageView` + `LottieAnimationView`(GONE)）
++ `TextView`（**文字这一层没有资源 id**，所以「按文案找 + 上溯到直属于行的那一格」
+这一招是必需的）。
+
+底栏正好 6 格，卡在 `MAX_ITEMS = 6` 的边界上 —— 宿主再多一格（比如加「基金」），
+结构判据就会失效，这时靠 `fl_main_tab` / `cb_main_tab_money` 两个 id 兜住。
+
+### 7.2 首页横幅（`MainAct`）
+
+| 位置 | 类 | 资源 id | 实测坐标 |
+|---|---|---|---|
+| 快捷入口网格 | `androidx.recyclerview.widget.RecyclerView` | `rv_home_func` | 整块 1080×328（5 列 × 2 行） |
+| 快捷入口每一格 | `com.guosen.commonui.BubbleTextView`（用 `drawableTop` 画图标） | `home_func_icon` | 216×150 |
+| 骨架占位（GONE） | `com.guosen.commonui.ShimmerView` | `home_func_shimmer` | — |
+| **横幅** | `androidx.constraintlayout.widget.ConstraintLayout` | **`layout_banner`** | 39,354-1041,549（1002×195 ≈ 75dp） |
+| 横幅里的轮播 | `com.guosen.commonui.view.banner.RecyclingViewPager` | `vp_ad` | 0,0-1002,195 |
+| 轮播每页的图 | `androidx.appcompat.widget.AppCompatImageView` | `iv_item_ad` | 1002×195 |
+| 轮播每页两条文案 | `androidx.appcompat.widget.AppCompatTextView` | `tv_item_ad_title_top` / `tv_item_ad_title_bottom` | — |
+| 页码指示器 | `com.guosen.commonui.view.banner.RecyclingCirclePageIndicator` | `indicator_ad` | 894,169-963,182 |
+
+网格与横幅是**同一个父容器的相邻兄弟**（横幅紧跟在网格后面），
+所以「网格当锚点、取它后面第一个像横幅的兄弟」在真机上成立，爬 0 层就够。
+
+### 7.3 与候选数组的对应
+
+| 常量 | 真机实测值（已排在候选数组最前） |
+|---|---|
+| `DockCleanTargets.DOCK_ID_CANDIDATES` | `fl_main_tab` |
+| `DockCleanTargets.REMOVE_ITEM_ID_CANDIDATES` | `cb_main_tab_money` |
+| `HomeBannerTargets.BANNER_ID_CANDIDATES` | `layout_banner` |
+| `HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES` | `rv_home_func` |
+| `HomeBannerTargets.HOME_ENTRY_ITEM_ID` | `home_func_icon` |
+
+### 7.4 底栏「均分铺满」为什么改成「量了再说」
+
+实测根容器是 `SingleGridLayout`（等分栅格），**不是 `LinearLayout`** ——
+原先「改 `weight` 均分」那条路在真机上根本走不到。去掉一格之后有两种可能：
+
+- 宿主按**可见子项**重算格子宽度 → 自己就铺满了；
+- 宿主拿 `getChildCount()` 当列数 → `GONE` 的那格继续占位，留一条空档。
+
+两种实现都很常见，**静态看不出来**。所以 `DockCleanFeature.fillRow` 改成
+「**量到空档才动手**」：改完下一帧再量一次验证，最后把结论写进日志 ——
+真机跑一次看日志就能知道是哪一种：
+
+```
+I GSZXEnhance dock_clean：底栏已铺满（宿主自己重排，不用我们插手）
+I GSZXEnhance dock_clean：底栏留了 180px 空档，按宽度重排 5 格（每格 216px，改了 5 处）
+I GSZXEnhance dock_clean：底栏已铺满（补救生效，5 格）
+W GSZXEnhance dock_clean：底栏去格后仍留 180px 空档，宿主栅格不吃 layoutParams —— 保持原样（不再重试）
+```
+
+### 7.5 行情市场那一组：8.6.0 实测**没有**对应落点
+
+把主界面每个页签 + 相关独立页都导了一遍视图树，
+**没有**找到「概览图 → 滚动快讯 → 快捷入口 → 板块六项 → 市场概览柱状图」这种版式。
+实测到的是：
+
+| 页面 | 实际内容 | 那四块在不在 |
+|---|---|---|
+| 行情 → A股 | 沪深京/创业板/科创板/北交所 分类 + 榜单切换（涨幅榜 / 涨速榜 / 成交额 / 换手率 / 净流入）+ 股票列表 | 都不在 |
+| 行情 → 港股 | 港股指数 + 港股通 / 沪股通 / 深股通 + `rv_hy_list`（行业）/ `rv_gn_list`（概念） | 只有板块**列表**（不是六格） |
+| 行情 → 全球 | 全球指数 / 基本汇率 + 世界地图 + 6 档 `stk_info_N` ×2 组 | 都不在 |
+| 行情 → 美股 | 道指 / 纳指 / 标普 + `ll_header_bkhq_overview_category_hy`（`ll_bkhq_category_container` 行业板块概览）+ 同名概念概览 + 若干列表 | 有板块概览，但没有概览图 / 滚动横幅 / 快捷入口 |
+| 行情 → ETF | `rv_home_func` 快捷入口 + `vp_ad` / `indicator_ad` 广告轮播 + 行业 / 指数 ETF 列表 | 有快捷入口与轮播，但没有概览图 / 板块 |
+| 自选 | `index_fs_group_view`（指数分时 `index_fs_chart` + 成交量 `index_fs_volumn`）+ 自选分组 + `rl_ad` / `avf_ad` 广告条 + 自选股列表 | 有概览图 + 柱状图 + 滚动条，但没有快捷入口 / 板块 |
+| 行情 → 更多市场 | `gv_more_marekt` 市场网格 | 都不在 |
+| `MarketOverviewAct`（市场概览） | **整体是 H5** —— native 层只有 `common_top` + `webView_market`（`com.guosen.*.HybirdWebView`），大盘走势与涨跌分布柱状图都在网页里 | 按块精简无从下手（模块不注入脚本） |
+| `HSBKMainAct`（板块） | 热门 / 行业 / 概念 / 风格 / 地区 + 涨幅榜 Top10 列表 | 没有概览图 / 横幅 / 快捷入口 |
+
+**结论**：这三个开关目前没有可靠的落点，`MarketTargets` 里的候选 id
+（`ll_marquee` / `gv_bk` / `ll_market_overview` 等）是**按命名习惯猜的**，
+真机上一条都没命中过。落点确认后再按 §7.1 / §7.2 那样把实测值补进候选数组。

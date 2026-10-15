@@ -2,6 +2,7 @@ package io.github.SansKritO4.GSAuxiliary.feature.uiclean
 
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.MarginLayoutParams
 import android.widget.LinearLayout
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import java.util.Collections
@@ -27,8 +28,8 @@ import java.util.WeakHashMap
  *
  * `LayoutParams` 没有通用的拷贝构造函数（`LinearLayout.LayoutParams` 的
  * `weight` 在 `MarginLayoutParams` 的拷贝构造里会丢），所以原值只存
- * **标量**（width / height / weight / visibility），还原时写回同一个
- * `LayoutParams` 对象 —— 这样宿主自己持有的那个引用也一起被修正。
+ * **标量**（width / height / weight / visibility / leftMargin / marginStart），
+ * 还原时写回同一个 `LayoutParams` 对象 —— 这样宿主自己持有的那个引用也一起被修正。
  */
 class ViewPatcher(private val tag: String) {
 
@@ -37,6 +38,8 @@ class ViewPatcher(private val tag: String) {
         val width: Int,
         val height: Int,
         val weight: Float,
+        val leftMargin: Int,
+        val marginStart: Int,
     )
 
     private val snapshots = Collections.synchronizedMap(WeakHashMap<View, Snapshot>())
@@ -83,6 +86,40 @@ class ViewPatcher(private val tag: String) {
         return setHeight(v, (now * factor).toInt().coerceAtLeast(1), why)
     }
 
+    /**
+     * 把宽度钉成 [width] px（也接受 `WRAP_CONTENT` / `MATCH_PARENT` 这两个负值常量）。
+     *
+     * 用在「等分栅格里去掉一格之后把剩下的重新铺开」：宿主自己的栅格布局
+     * （实测是 `com.guosen.commonui.SingleGridLayout`）不一定按可见子项重算格子宽度，
+     * 也可能拿 `getChildCount()` 当列数、让 `GONE` 的那格继续占位。
+     */
+    fun setWidth(v: View, width: Int, why: String): Boolean {
+        val lp = v.layoutParams ?: return false
+        if (lp.width == width) return false
+        remember(v)
+        lp.width = width
+        v.requestLayout()
+        GLog.i("$tag：$why 宽度 -> ${width}px（${describe(v)}）")
+        return true
+    }
+
+    /**
+     * 设置左边距（`leftMargin` 与 `marginStart` 一起设，免得 RTL 下只有一个生效）。
+     *
+     * 只有在「子项位置本来就是靠边距排的」时候才该调用 —— 位置由布局自己算的栅格
+     * 再叠一层边距会被推到两倍，见 `DockCleanFeature.fillRow` 的判据。
+     */
+    fun setLeftMargin(v: View, px: Int, why: String): Boolean {
+        val lp = v.layoutParams as? MarginLayoutParams ?: return false
+        if (lp.leftMargin == px && lp.marginStart == px) return false
+        remember(v)
+        lp.leftMargin = px
+        lp.marginStart = px
+        v.requestLayout()
+        GLog.i("$tag：$why 左边距 -> ${px}px（${describe(v)}）")
+        return true
+    }
+
     /** 在横向 `LinearLayout` 里让该项「吃掉剩余空间」（`width=0` + `weight=1`） */
     fun stretch(v: View, why: String): Boolean {
         val lp = v.layoutParams as? LinearLayout.LayoutParams ?: return false
@@ -111,6 +148,10 @@ class ViewPatcher(private val tag: String) {
                     lp.width = s.width
                     lp.height = s.height
                     (lp as? LinearLayout.LayoutParams)?.let { it.weight = s.weight }
+                    (lp as? MarginLayoutParams)?.let {
+                        it.leftMargin = s.leftMargin
+                        it.marginStart = s.marginStart
+                    }
                 }
                 v.requestLayout()
             }.onFailure { GLog.w("$tag：还原失败（${describe(v)}）", it) }
@@ -123,12 +164,14 @@ class ViewPatcher(private val tag: String) {
     private fun remember(v: View) {
         if (snapshots.containsKey(v)) return
         val lp = v.layoutParams
-        val weight = (lp as? LinearLayout.LayoutParams)?.weight ?: 0f
+        val mlp = lp as? MarginLayoutParams
         snapshots[v] = Snapshot(
             visibility = v.visibility,
             width = lp?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT,
             height = lp?.height ?: ViewGroup.LayoutParams.WRAP_CONTENT,
-            weight = weight,
+            weight = (lp as? LinearLayout.LayoutParams)?.weight ?: 0f,
+            leftMargin = mlp?.leftMargin ?: 0,
+            marginStart = mlp?.marginStart ?: 0,
         )
     }
 

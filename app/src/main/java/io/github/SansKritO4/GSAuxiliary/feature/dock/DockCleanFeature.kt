@@ -3,6 +3,7 @@ package io.github.SansKritO4.GSAuxiliary.feature.dock
 import android.app.Activity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.MarginLayoutParams
 import android.widget.LinearLayout
 import io.github.SansKritO4.GSAuxiliary.core.ConfigSnapshot
 import io.github.SansKritO4.GSAuxiliary.core.GLog
@@ -10,29 +11,38 @@ import io.github.SansKritO4.GSAuxiliary.feature.FeatureEnv
 import io.github.SansKritO4.GSAuxiliary.feature.uiclean.UiClean
 import io.github.SansKritO4.GSAuxiliary.feature.uiclean.UiCleanFeature
 import java.lang.ref.WeakReference
+import kotlin.math.abs
 
 /**
- * 功能：**主界面底栏去掉「理财」**。
+ * 功能：**主界面底栏去掉「理财」那一格**。
  *
  * ## 做什么
  *
  * 把底栏那一行里文案为「理财」的**那一格**设成 `GONE`，并把剩下的格子重新铺满整行。
  * 不改任何跳转逻辑、不碰任何数据 —— 只是那一格不再占位、不再显示。
  *
- * ## 怎么认（两级兜底）
+ * ## 怎么认（真机实测见 [DockCleanTargets]）
  *
- *  1. **资源 id 候选**：`DockCleanTargets.DOCK_ID_CANDIDATES` 里命中哪个用哪个；
- *  2. **结构判据**：屏幕底部 25% 区域内、横向排布、3~6 格、每格「图标 + 文字」
- *     的那一行（见 [DockCleanTargets] 的注释）。
+ *  1. **那一格自己的 id**：`cb_main_tab_money` 命中直接藏（8.6.0 实测）；
+ *  2. **认行 + 按文案找**：先按 `fl_main_tab` 或结构判据认出底栏那一行，
+ *     再在行里找文案为「理财」的格子，上溯到**直属于行**的那个子视图（实测是
+ *     `LottieTabView`，文字 `TextView` 自己没有 id）。
  *
- * 认到行之后**按文案**定位「理财」那一格 —— 不按下标，
- * 因为不同账号 / 版本底栏项数可能不同（有的没有「交易」，有的多一个「基金」）。
+ * 不按下标：不同账号 / 版本底栏项数可能不同（有的没有「交易」，有的多一个「基金」）。
  *
  * ## 为什么不删掉整个 tab
  *
  * 底栏通常和一个 `ViewPager` 的索引绑死，删掉中间的 tab 会让索引错位
  * （点「交易」进「理财」页）。所以这里**只藏不删**：
  * 那一格从界面上消失，用户看不到也点不到，宿主自己的索引一个都没动。
+ *
+ * ## 「均分铺满」为什么不能直接改 weight
+ *
+ * 实测底栏根容器是宿主自己的 `com.guosen.commonui.SingleGridLayout`
+ * —— 一个**等分栅格**，不是 `LinearLayout`，`weight` 那套根本不存在。
+ * 去掉一格之后有两种可能：宿主按可见子项重算格子宽度（自己就铺满了），
+ * 或者拿 `getChildCount()` 当列数、让 `GONE` 的那格继续占位（留一条空档）。
+ * 两种都合理，**只有跑起来量一下才知道** —— 所以这里不猜，见 [fillRow]。
  */
 class DockCleanFeature : UiCleanFeature() {
 
@@ -43,31 +53,52 @@ class DockCleanFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.dockClean
 
-    /** 上一次隐藏掉的那一格；用于幂等快速通道（布局回调会被高频触发） */
+    /** 上一次隐藏掉的那一格；用于幂等快速通道 + 后续的均分补救 */
     private var lastHidden: WeakReference<View>? = null
 
+    /** 均分补救的状态：还没试过 / 试过了（等下一帧验证）/ 不用再管了 */
+    private enum class Reflow { TODO, APPLIED, SETTLED }
+
+    private var reflow = Reflow.TODO
+
     override fun applyTo(env: FeatureEnv, activity: Activity): Boolean {
-        if (alreadyHidden(lastHidden?.get())) return true
+        val hidden = lastHidden?.get()
+        if (alreadyHidden(hidden)) {
+            // 走到这里说明「隐藏之后又布局过一帧」：宿主要么自己把剩下的格子重排了，
+            // 要么留了空档。量一次就能分辨，见 fillRow。
+            if (reflow != Reflow.SETTLED) fillRow(hidden!!)
+            return true
+        }
 
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
-        val dock = findDock(root, activity) ?: return false
 
+        // ① 那一格自己的 id（实测 cb_main_tab_money）—— 命中直接藏
+        val ids = UiClean.idsFor(activity, DockCleanTargets.TARGET_PKG)
+        val itemId = ids.firstOf(DockCleanTargets.REMOVE_ITEM_ID_CANDIDATES)
+        if (itemId != 0) {
+            val v = root.findViewById<View>(itemId)
+            if (v != null && v.isShown) {
+                hideItem(v, "id 命中")
+                return true
+            }
+        }
+
+        // ② 认底栏那一行，再按文案找那一格
+        val dock = findDock(root, activity) ?: return false
         val label = UiClean.findText(dock, DockCleanTargets.REMOVE_TEXT)
         if (label == null) {
             // 底栏里没有这一项（版本差异 / 已被隐藏但视图已回收）→ 本页无事可做
             GLog.i("$id：底栏里没有「${DockCleanTargets.REMOVE_TEXT}」，无需处理")
             return true
         }
-
-        val item = directChildOf(dock, label) ?: label
-        // 宽度必须在隐藏**之前**量：GONE 之后宽度就归零了
-        val refWidth = item.width.takeIf { it > 0 } ?: 0
-
-        if (patcher.hide(item, "底栏「${DockCleanTargets.REMOVE_TEXT}」")) {
-            if (DockCleanTargets.REFLOW_SIBLINGS) reflow(dock, item, refWidth)
-        }
-        lastHidden = WeakReference(item)
+        hideItem(directChildOf(dock, label) ?: label, "按文案找到")
         return true
+    }
+
+    private fun hideItem(item: View, how: String) {
+        patcher.hide(item, "底栏「${DockCleanTargets.REMOVE_TEXT}」格（$how）")
+        lastHidden = WeakReference(item)
+        reflow = Reflow.TODO
     }
 
     // ------------------------------------------------------------------ 定位
@@ -127,21 +158,105 @@ class DockCleanFeature : UiCleanFeature() {
         return null
     }
 
-    // ------------------------------------------------------------------ 铺满
+    // ------------------------------------------------------------------ 均分铺满
 
     /**
-     * 去掉一格之后，让同一行里**尺寸相近**的其它格子重新均分整行。
+     * 去掉一格之后，把这一行重新铺满 —— **量到空档才动手**。
      *
-     * 只在行是横向 `LinearLayout` 时做：这种情况下去掉一格会留下一条明显的空档；
-     * 换成 `ConstraintLayout` 的话子项本来就在链上，`GONE` 之后宿主自己会重排，
-     * 我们插手反而可能把链搞散（`StockDetailBarFeature` 踩过这个坑）。
+     * 每次布局回调都会走到这里（[UiCleanFeature] 全局布局回调驱动），所以
+     * 很自然地可以做「改完 → 下一帧再量一次」的验证，不会误判：
+     *
+     *  1. **已经铺满** → 宿主自己按可见子项重排过了，什么都不做（这是最好的一种，
+     *     别去干扰它）；
+     *  2. **还没量出来**（容器宽度为 0）→ 保持 [Reflow.TODO]，下一帧再来；
+     *  3. **确实留了空档** → 试一次补救（见下），状态转 [Reflow.APPLIED]；
+     *  4. **补救之后仍然留空档** → 说明宿主栅格不吃 `layoutParams`，
+     *     记一条警告、保持原样退出（**不反复试**，免得每帧都改一遍布局）。
+     *
+     * 补救本身分两种版式，顺序即优先级：
+     *
+     *  - 横向 `LinearLayout` → 改 `weight` 均分（位置交给宿主自己算）；
+     *  - 等分栅格 → 宽度改成均分值，**并且只有「位置本来就靠边距排」时才动边距** ——
+     *    位置由布局自己算的栅格再叠一层边距会被推到两倍。
+     *
+     * 子项宽度不一致的行（分隔线、居中凸起按钮混在里面）**一律不碰**：
+     * 改坏宿主排版比留一条空档严重得多。
      */
-    private fun reflow(row: ViewGroup, hidden: View, hiddenWidth: Int) {
-        if (row !is LinearLayout || row.orientation != LinearLayout.HORIZONTAL) return
-        val peers = UiClean.peersOf(hidden, hiddenWidth)
-        if (peers.isEmpty()) return
-        var n = 0
-        for (p in peers) if (patcher.stretch(p, "底栏其余入口")) n++
-        if (n > 0) GLog.i("$id：底栏 $n 个入口已重新均分整行")
+    private fun fillRow(hidden: View) {
+        val row = hidden.parent as? ViewGroup
+        if (row == null) {
+            reflow = Reflow.SETTLED
+            return
+        }
+        val containerW = row.width
+        if (containerW <= 0) return                     // 还没量出来，下一帧再看
+
+        val cells = (0 until row.childCount)
+            .map { row.getChildAt(it) }
+            .filter { it !== hidden && it.visibility == View.VISIBLE && it.width > 0 }
+        if (cells.isEmpty()) {
+            GLog.i("$id：底栏只剩被隐藏的那一格，跳过均分")
+            reflow = Reflow.SETTLED
+            return
+        }
+
+        val cell = containerW / cells.size
+        val covered = cells.sumOf { it.width }
+
+        // ① 已经是铺满的 → 宿主自己重排过了
+        if (covered >= containerW - cell / 2) {
+            GLog.i(
+                if (reflow == Reflow.APPLIED) "$id：底栏已铺满（补救生效，${cells.size} 格）"
+                else "$id：底栏已铺满（宿主自己重排，不用我们插手）"
+            )
+            reflow = Reflow.SETTLED
+            return
+        }
+
+        // ④ 补救过了还是不行
+        if (reflow == Reflow.APPLIED) {
+            GLog.w(
+                "$id：底栏去格后仍留 ${containerW - covered}px 空档，" +
+                    "宿主栅格不吃 layoutParams —— 保持原样（不再重试）"
+            )
+            reflow = Reflow.SETTLED
+            return
+        }
+
+        // 只处理「原本等宽平铺」这一种版式
+        val w0 = cells.first().width
+        if (cells.any { abs(it.width - w0) > w0 / 4 }) {
+            GLog.i("$id：底栏格子宽度不一致（${cells.joinToString { it.width.toString() }}），不强行均分")
+            reflow = Reflow.SETTLED
+            return
+        }
+
+        // ② 横向 LinearLayout：改 weight 最稳，位置由宿主自己算
+        if (row is LinearLayout && row.orientation == LinearLayout.HORIZONTAL) {
+            var n = 0
+            for (v in cells) if (patcher.stretch(v, "底栏其余入口")) n++
+            if (n > 0) {
+                GLog.i("$id：底栏留了 ${containerW - covered}px 空档，$n 个入口已按 weight 均分整行")
+                reflow = Reflow.APPLIED
+                return
+            }
+        }
+
+        // ③ 等分栅格：宽度重算；位置靠边距排的才动边距
+        val byMargin = cells.any {
+            (it.layoutParams as? MarginLayoutParams)
+                ?.let { lp -> lp.leftMargin != 0 || lp.marginStart != 0 } ?: false
+        }
+        var changed = 0
+        for ((i, v) in cells.withIndex()) {
+            if (patcher.setWidth(v, cell, "底栏入口")) changed++
+            if (byMargin) patcher.setLeftMargin(v, i * cell, "底栏入口")
+        }
+        GLog.i(
+            "$id：底栏留了 ${containerW - covered}px 空档，按" +
+                "${if (byMargin) "宽度 + 左边距" else "宽度"}重排 ${cells.size} 格" +
+                "（每格 ${cell}px，改了 $changed 处）"
+        )
+        reflow = Reflow.APPLIED
     }
 }
