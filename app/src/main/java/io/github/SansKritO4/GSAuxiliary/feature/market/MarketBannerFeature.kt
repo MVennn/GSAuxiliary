@@ -57,11 +57,15 @@ class MarketBannerFeature : UiCleanFeature() {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val ids = UiClean.idsFor(activity, MarketTargets.TARGET_PKG)
 
+        // 页面门禁：不在行情市场页就什么都不做（也**不报告** —— 首页上也有轮播容器
+        // 与入口网格，没有这道门禁会误伤）
+        if (!MarketTargets.onMarketPage(root, ids)) return true
+
         var hit = 0
         findHotBar(root, ids)?.let { lastBar = collapseIt(it, "滚动横幅"); hit++ }
         findEntryGrid(root, ids)?.let { lastGrid = collapseIt(it, "快捷入口"); hit++ }
 
-        // 两块都没认出来：可能不在行情市场页，也可能还没铺开 —— 交给基类重试 / 打快照
+        // 在这一页却没认出来：可能还没铺开 —— 交给基类重试 / 打快照
         return hit > 0
     }
 

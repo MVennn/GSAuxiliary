@@ -60,6 +60,9 @@ class MarketSectorCompactFeature : UiCleanFeature() {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val ids = UiClean.idsFor(activity, MarketTargets.TARGET_PKG)
 
+        // 页面门禁：不在行情市场页就什么都不做（也不报告）
+        if (!MarketTargets.onMarketPage(root, ids)) return true
+
         val group = findSectorGroup(root, ids) ?: return false
         if (!compact(group)) return false      // 还没量出高度 → 下一帧再来，别打「已处理」标记
 

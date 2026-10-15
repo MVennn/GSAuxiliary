@@ -44,6 +44,9 @@ class ViewPatcher(private val tag: String) {
 
     private val snapshots = Collections.synchronizedMap(WeakHashMap<View, Snapshot>())
 
+    /** 被 [moveToEnd] 挪过位的视图 → 原来的序号 */
+    private val orders = Collections.synchronizedMap(WeakHashMap<View, Int>())
+
     /** 已记账的改动处数（日志用） */
     val size: Int get() = synchronized(snapshots) { snapshots.size }
 
@@ -157,6 +160,30 @@ class ViewPatcher(private val tag: String) {
 
     // ------------------------------------------------------------------ 还原
 
+    /**
+     * 把 [v] 挪到父容器的**最后一位**（其余子项整体前移），并记住原位置。
+     *
+     * 用在「宿主栅格按子项序号摆位」这种版式上：想把少掉的那一格的影响挪到最右边
+     * （屏幕外），就只能改变它的序号 —— 实测 `SingleGridLayout` 既不吃子项宽度、
+     * 也不吃边距，只按「序号 × 行宽 ÷ 子项数」摆。
+     *
+     * ⚠️ **动了顺序就可能影响宿主的「tab 序号 → 页面」映射**：如果宿主在点击回调里
+     * 用 `indexOfChild` 现算序号（而不是在注册时捕获），后面的 tab 就会点错页。
+     * 所以调用方必须自己验证一次再决定要不要留着。
+     */
+    fun moveToEnd(v: View): Boolean {
+        val parent = v.parent as? ViewGroup ?: return false
+        val from = parent.indexOfChild(v)
+        if (from < 0 || from == parent.childCount - 1) return false
+        if (synchronized(orders) { orders.getOrPut(v) { from } } != from) return false
+        runCatching {
+            parent.removeView(v)
+            parent.addView(v)
+        }.onFailure { GLog.w("$tag：挪位失败（${describe(v)}）", it); return false }
+        GLog.i("$tag：把 ${describe(v)} 从第 $from 位挪到最后一位（宿主栅格按序号摆位，只能这么绕）")
+        return true
+    }
+
     /** 把全部改动还原成宿主原样；幂等，重复调用安全 */
     fun restoreAll() {
         val entries = synchronized(snapshots) {
@@ -164,22 +191,53 @@ class ViewPatcher(private val tag: String) {
             snapshots.clear()
             list
         }
-        for ((v, s) in entries) {
-            runCatching {
-                v.visibility = s.visibility
-                v.layoutParams?.let { lp ->
-                    lp.width = s.width
-                    lp.height = s.height
-                    (lp as? LinearLayout.LayoutParams)?.let { it.weight = s.weight }
-                    (lp as? MarginLayoutParams)?.let {
-                        it.leftMargin = s.leftMargin
-                        it.marginStart = s.marginStart
-                    }
-                }
-                v.requestLayout()
-            }.onFailure { GLog.w("$tag：还原失败（${describe(v)}）", it) }
-        }
+        restoreOrder()
+        for ((v, s) in entries) restoreTo(v, s)
         if (entries.isNotEmpty()) GLog.i("$tag：已还原 ${entries.size} 处界面改动")
+    }
+
+    /**
+     * 只还原**某一个**视图，其余改动保留。
+     *
+     * 用于「某一招试了没用，退回去别留后患」——例如把整行加宽之后发现
+     * 宿主栅格把最后一格推出了屏幕，就得把加宽撤掉、退回到留一条空档。
+     */
+    fun restore(v: View) {
+        val s = synchronized(snapshots) { snapshots.remove(v) } ?: return
+        restoreTo(v, s)
+        GLog.i("$tag：已还原 1 处（${describe(v)}）")
+    }
+
+    /** 把挪过位的视图挪回原位置 */
+    private fun restoreOrder() {
+        val entries = synchronized(orders) {
+            val list = orders.entries.toList()
+            orders.clear()
+            list
+        }
+        for ((v, index) in entries) {
+            val parent = v.parent as? ViewGroup ?: continue
+            runCatching {
+                parent.removeView(v)
+                parent.addView(v, index.coerceAtMost(parent.childCount))
+            }.onFailure { GLog.w("$tag：挪回原位失败（${describe(v)}）", it) }
+        }
+    }
+
+    private fun restoreTo(v: View, s: Snapshot) {
+        runCatching {
+            v.visibility = s.visibility
+            v.layoutParams?.let { lp ->
+                lp.width = s.width
+                lp.height = s.height
+                (lp as? LinearLayout.LayoutParams)?.let { it.weight = s.weight }
+                (lp as? MarginLayoutParams)?.let {
+                    it.leftMargin = s.leftMargin
+                    it.marginStart = s.marginStart
+                }
+            }
+            v.requestLayout()
+        }.onFailure { GLog.w("$tag：还原失败（${describe(v)}）", it) }
     }
 
     // ------------------------------------------------------------------ 内部

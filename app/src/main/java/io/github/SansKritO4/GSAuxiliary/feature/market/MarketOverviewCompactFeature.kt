@@ -44,7 +44,11 @@ import java.lang.ref.WeakReference
  * 概览区里三张图（涨跌分布 / 大盘股 / 净流入）**轮流占位，同时只有一张可见**，
  * 各自是宿主自绘的图表控件，id 分别是 `zdfb_chart_view` / `dxpg_chart_view` /
  * `jlr_chart_view` —— 三张都压一遍，用户切到哪张都是矮的。
- * 认不到 id 时退回「类名带 chart / bar / trend 且够高的自绘控件」的结构兜底。
+ *
+ * **只认 id，不做结构兜底**：首轮真机测试里那条「类名像图表 / 自绘 + 够宽」的兜底
+ * 在首页命中了 `AppBarLayout`、`CollapsingToolbarLayout`、快捷入口网格、广告图
+ * 乃至 `DecorView`，一共压坏 8 个视图。这种「长得像就压」的判据风险太大，
+ * 认不到 id 就什么都不做（并由 [MarketTargets.onMarketPage] 保证不在别的页面乱跑）。
  */
 class MarketOverviewCompactFeature : UiCleanFeature() {
 
@@ -65,8 +69,13 @@ class MarketOverviewCompactFeature : UiCleanFeature() {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val ids = UiClean.idsFor(activity, MarketTargets.TARGET_PKG)
 
+        // 页面门禁：不在行情市场页就什么都不做（也不报告）
+        if (!MarketTargets.onMarketPage(root, ids)) return true
+
+        // 只认 id：结构兜底在首轮真机测试里把首页的 AppBarLayout / 快捷入口网格 /
+        // 广告图乃至 DecorView 都当成了「概览图表」，压坏了 8 个视图 —— 已删除。
         val area = findChartArea(root, ids) ?: return false
-        if (!compact(area, ids)) return false        // 还没布局出来 → 下一帧再来，别打「已处理」标记
+        if (!compact(area, ids)) return false    // 还没布局出来 → 下一帧再来，别打「已处理」标记
 
         lastArea = WeakReference(area)
         return true
@@ -74,53 +83,21 @@ class MarketOverviewCompactFeature : UiCleanFeature() {
 
     // ------------------------------------------------------------------ 定位
 
-    /** 图表区：先按 id，再退回「子树里有够高的自绘图表控件」的最内层容器 */
+    /** 概览图表区：只按 id（实测 `#fl_content`） */
     private fun findChartArea(root: View, ids: IdCache): View? {
         val byId = ids.of(MarketTargets.OVERVIEW_CHART_AREA_ID)
-        if (byId != 0) {
-            val v = root.findViewById<View>(byId)
-            if (v != null && v.isShown && chartsOf(v, ids).isNotEmpty()) return v
-        }
-        var best: View? = null
-        UiClean.walk(root) { v ->
-            if (v.isShown && chartsOf(v, ids).isNotEmpty()) {
-                best = v
-                true
-            } else {
-                false
-            }
-        }
-        return best
+        if (byId == 0) return null
+        val v = root.findViewById<View>(byId)
+        return if (v != null && v.isShown) v else null
     }
 
-    /**
-     * [v] 子树里的图表控件：先按候选 id 取，取不到再按类名 / 自绘 + 高度判。
-     */
-    private fun chartsOf(v: View, ids: IdCache): List<View> {
-        val byId = MarketTargets.OVERVIEW_CHART_ID_CANDIDATES
+    /** [area] 子树里**可见且量得出高度**的图表控件（三个 id，取可见的那个） */
+    private fun chartsOf(area: View, ids: IdCache): List<View> =
+        MarketTargets.OVERVIEW_CHART_ID_CANDIDATES
             .map { ids.of(it) }
             .filter { it != 0 }
-            .mapNotNull { v.findViewById<View>(it) }
-            .filter { it.isShown }
-        if (byId.isNotEmpty()) return byId
-
-        return UiClean.findAll(v, { looksLikeChart(it) }, limit = 8)
-    }
-
-    /** 「自绘图表控件」的判据：类名带关键词，或者是够高够宽的非标准控件 */
-    private fun looksLikeChart(v: View): Boolean {
-        if (!v.isShown) return false
-        val h = UiClean.heightOf(v)
-        if (h < UiClean.dp(v, MarketTargets.CHART_MIN_HEIGHT_DP)) return false
-
-        val name = v.javaClass.simpleName.lowercase()
-        if (MarketTargets.CHART_CLASS_KEYWORDS.any { name.contains(it) }) return true
-
-        // 非 android.widget.* / android.view.* 标准控件，且明显是横的长条 → 自绘图表
-        val pkg = v.javaClass.name
-        if (pkg.startsWith("android.widget.") || pkg.startsWith("android.view.")) return false
-        return v.width >= h * 2
-    }
+            .mapNotNull { area.findViewById<View>(it) }
+            .filter { it.isShown && UiClean.heightOf(it) > 0 }
 
     // ------------------------------------------------------------------ 压缩
 

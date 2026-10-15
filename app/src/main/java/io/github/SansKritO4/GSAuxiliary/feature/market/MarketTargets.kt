@@ -1,6 +1,8 @@
 package io.github.SansKritO4.GSAuxiliary.feature.market
 
 import io.github.SansKritO4.GSAuxiliary.core.TargetApp
+import android.view.View
+import io.github.SansKritO4.GSAuxiliary.feature.uiclean.IdCache
 
 /**
  * 「行情市场」三个功能共用的定位常量。
@@ -72,6 +74,30 @@ object MarketTargets {
     val PAGES = arrayOf(
         "com.guosen.app.goldsun.ui.MainAct",
     )
+
+    /**
+     * 「行情市场页现在在屏幕上吗」的锚点（候选）。
+     *
+     * 三个功能都只作用在**行情 tab 顶部那几个版块**上，而首页、自选页也在同一个
+     * `MainAct` 里 —— 没有这道门禁，首页上那些长得像的控件会被误认成目标。
+     * 首轮真机测试就踩了这个坑：`market_overview_compact` 在首页把
+     * `AppBarLayout` / `CollapsingToolbarLayout` / 快捷入口网格 / 广告图
+     * 一共 8 个视图当成「概览图表」压了一遍，还压到了 `DecorView` 上。
+     *
+     * 认不到任何锚点时按「不在这一页」处理 —— 宁可什么都不做。
+     */
+    val PAGE_ANCHOR_ID_CANDIDATES = arrayOf(
+        "rv_markets_hs",
+        "ptr_markets_hs",
+        "container_a_stock",
+    )
+
+    /** 行情市场页是否在屏幕上 */
+    fun onMarketPage(root: View, ids: IdCache): Boolean =
+        PAGE_ANCHOR_ID_CANDIDATES.any { name ->
+            val rid = ids.of(name)
+            rid != 0 && root.findViewById<View>(rid)?.isShown == true
+        }
 
     /** 整页的纵向容器：每个版块是它的一个子项（隐藏版块时要连子项一起处理） */
     const val PAGE_LIST_ID = "rv_markets_hs"
@@ -168,12 +194,4 @@ object MarketTargets {
      * 想调手感就改这一个数，不用动逻辑。
      */
     const val OVERVIEW_HEIGHT_FACTOR = 0.6f
-
-    /** 柱状图视图的类名特征（小写匹配），结构兜底用 */
-    val CHART_CLASS_KEYWORDS = arrayOf(
-        "chart", "bar", "histogram", "kline", "graph", "column", "trend",
-    )
-
-    /** 自绘图表视图的最小高度（dp）——比这矮的多半是分隔线 */
-    const val CHART_MIN_HEIGHT_DP = 60
 }
