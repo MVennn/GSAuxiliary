@@ -208,4 +208,4 @@ bash tools/ui.sh list | grep -E "已选|只股票"
 
 > 环境坑（无线调试掉线、mDNS 抢设备、`adb pull` 路径被改写、`/data/adb/lspd/config/modules_config.db`
 > 是陈旧快照）见 [`../tools/README.md`](../tools/README.md) 与
-> [`.workbuddy/memory/2026-10-15.md`](../.workbuddy/memory/2026-10-15.md)。
+> [TROUBLESHOOTING.md §9「设备相关（自动化脚本）」](TROUBLESHOOTING.md#9-设备相关自动化脚本)。

@@ -86,7 +86,7 @@ startAllocCounting / resetGlobalAllocCount / resetGlobalClassInitTime
 解析结果：**814 个 Activity 声明，其中 `com.guosen.*` 占 662 个，类名完全未混淆。**
 
 这意味着不用反编译就能拿到 App 的完整页面结构。完整清单见
-`analysis/guosen_activities.txt`。
+[`activities-guosen.txt`](activities-guosen.txt)。
 
 ### 模块分布（Top 40）
 
@@ -230,4 +230,5 @@ h5_cache_zip/
 3. 确定功能的技术路线（原生 hook / H5 注入 / 纯 Activity 跳转）
 4. 搭模块工程
 
-抓取工具：`tools/capture-ui.ps1`
+抓取工具：`tools/ui.sh`（列元素 / 点击，见 `tools/README.md`）与 `tools/probe/`
+（运行时探针，见 `tools/probe/README.md`）。

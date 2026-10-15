@@ -14,8 +14,8 @@
 | `SettingsActivity.kt` | Activity、主题 / 本地化、**两层布局**（一级底衬 / 二级滑入）、顶栏、返回与可预测返回、弹窗宿主装配 |
 | `Glass.kt` | 液态玻璃：`GlassTopBar`（顶栏，无边框 + `extra()` 插槽）、`glassSurfaceTint()`（面色）、`LocalTopInset` / `LocalDarkTheme`、`DockScrollState` + `dockScrollConnection`（下滑收起） |
 | `AppDialog.kt` | 自绘弹窗宿主 `DialogHost` + `DialogController` / `ChoiceDialogSpec` / `ConfirmDialogSpec` / `LocalDialogController`（见 §1.3） |
-| `PrefState.kt` | 读取配置的 Composable（`rememberBoolPref` / `rememberIntPref` / `rememberStringPref` / `rememberConnected` / `rememberDarkTheme` / `rememberPredictiveBack`） |
-| `SystemBars.kt` | 系统栏沉浸：`SyncSystemBars`（图标明暗 + 窗口底色跟随**生效的**深浅色）、`Context.findActivity()` |
+| `PrefState.kt` | 读取配置的 Composable（`rememberBoolPref` / `rememberLocalBoolPref` / `rememberIntPref` / `rememberStringPref` / `rememberConnected` / `rememberDarkTheme` / `rememberPredictiveBack`） |
+| `SystemBars.kt` | 系统栏沉浸：`SyncSystemBars`（图标明暗 + 窗口底色跟随**生效的**深浅色）、`LocalNavBarInset`、`Context.findActivity()` |
 | `FeatureCatalog.kt` | 功能展示元数据（`FeatureSpec` + `FEATURE_CATALOG`） |
 | `Widgets.kt` | 共用小部件（`cardPadding()` 卡片留白、颜色预设项、预览行、卡片注脚、`openUrl`） |
 | `AppIcons.kt` | 自绘 `ImageVector` 图标（不引第三方图标库，见 §10） |
@@ -103,7 +103,7 @@ Box(根容器，铺 MiuixTheme.colorScheme.surface)
 
 ### 1.0.1 板块切换动画
 
-四个主板块（模块 / 功能 / 设置 / 关于）的切换动画在 `HomeScaffold` 的内容区，
+四个主板块（概览 / 功能 / 设置 / 关于）的切换动画在 `HomeScaffold` 的内容区，
 用 `AnimatedContent` 按 `Tab.ordinal` 顺序做「淡入 + 轻微横移」：
 
 ```kotlin
@@ -725,7 +725,7 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前十个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前十一个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
@@ -739,6 +739,7 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 | 行情市场 | 行情市场隐藏滚动横幅与快捷入口 | `market_banner_hide` | 无 |
 | 行情市场 | 行情市场板块只留三项 | `market_sector_compact` | 无 |
 | 行情市场 | 行情市场概览压矮 | `market_overview_compact` | 无 |
+| 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 染色设置（`WatchlistDetail`） |
 
 > 上表第一列写的是**分区名**，第二列写的是 `titleRes`（完整功能名，只喂搜索）；
@@ -965,8 +966,8 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 {
   "format": "gszx-config",
   "formatVersion": 1,
-  "moduleVersion": "2.12.1",
-  "versionCode": 32,
+  "moduleVersion": "2.16.0",
+  "versionCode": 37,
   "exportedAt": "2026-10-15 12:00:00",
   "config": { "enabled": true, "color": -32768, "...": "..." },
   "defaults": { "...": "..." }
@@ -974,7 +975,7 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 ```
 
 > `moduleVersion` / `versionCode` 取 `BuildConfig`，**随每次构建刷新**；
-> 上面是 2.12.1 的样例值，不是固定文本。
+> 上面是 2.16.0 的样例值，不是固定文本。
 > `defaults` 段直接来自 `ConfigKeys.DEFAULTS`，与「重置模块」同源。
 
 恢复时**只认 `ConfigKeys.ALL_KEYS` 白名单里的键**，文件里多出来的字段一律忽略，
@@ -1050,7 +1051,7 @@ Box(modifier) {
     ))
     Column {
         SmallTopAppBar(title, subtitle, color = Color.Transparent)
-        extra()                                    // ← 功能页的搜索框挂这里
+        extra()                                    // ← 顶栏下挂内容的能力；2.9.3 起搜索框已移到功能列表顶部，不再挂这里
     }
 }
 ```
@@ -1065,9 +1066,10 @@ Box(modifier) {
 > `SmallTopAppBar` 的 `defaultWindowInsetsPadding` 默认开启，所以它已经含了状态栏高度，
 > `matchParentSize` 的玻璃会一并盖住状态栏那条，视觉上是一整块。
 
-> **2.8.0：功能搜索框在 `extra()` 插槽里**，因此它和顶栏共用同一块玻璃 ——
+> **2.8.0（历史做法）：功能搜索框当时挂在 `extra()` 插槽里**，因此它和顶栏共用同一块玻璃 ——
 > 列表滚动时搜索框不动。纯色模式下同一段内容挂在 `SmallTopAppBar` 下方
-> （外面包一层带底色的 `Column`）。
+> （外面包一层带底色的 `Column`）。**2.9.3 已把搜索框移到功能列表顶部**（见 §4.1）——
+> 它现在是列表的第一个元素、随列表滚动；`extra()` 插槽本身保留（顶栏下挂内容的能力还在）。
 
 **底栏**内部是**四个同级节点**，顺序即图层顺序：
 
@@ -1121,16 +1123,21 @@ Box(modifier) {                      // modifier 带 align/navigationBarsPadding
 | 外投影（`Shadow`） | 有 | **无** |
 | 内阴影（`InnerShadow`） | 有 | **无** |
 | 顶部高光 / 白边（`Highlight`） | **有** | **有** |
-| 胶囊底色 alpha | **0.30** | **0.70** |
+| 胶囊底色 alpha | **0.30** | **不透明纯黑 / 纯白（无 alpha）** |
 
 **简约版去掉的是「模糊」和「投影」，不是白边。** 白边（`Highlight.Default`）
 两种形态都给，因为它是胶囊的轮廓线，去掉之后整条底栏会「糊」进背景里、
-看不出边界。底色 alpha 在 `Glass.kt` 里由两个常量给出：`GlassAlphaFull` / `GlassAlphaMinimal`。
+看不出边界。完整版的底色 alpha 由 `Glass.kt` 的常量 `GlassAlphaFull` 给出；
+简约版已经没有 alpha 常量了 —— 光效关掉后它是一块**不透明纯色**，理由见下。
 
-> **2.9.0 提高通透度**：`GlassAlphaFull` `0.52 → 0.30`、`GlassAlphaMinimal` `0.84 → 0.70`。
-> 面色越淡、底下内容透出来越多，就越「通透」。完整版有 `blur()` 兜底，
-> 0.30 的模糊足够压住底层文字、保证可读，所以可以放得比较低；
-> 简约版**没有模糊**，再透明字就糊了，0.70 是「通透」与「可读」的平衡点。
+> **2.9.0 提高通透度**：`GlassAlphaFull` `0.52 → 0.30`。面色越淡、底下内容透出来越多，
+> 就越「通透」；完整版有 `blur()` 兜底，0.30 足够压住底层文字、保证可读，所以可以放得比较低。
+>
+> **2.11.1：简约版改为不透明纯色**。此前简约版面色是 0.70 半透明（由 `GlassAlphaMinimal`
+> 常量给出），但光效关掉时**没有模糊兜底** —— 底下滚过去的文字 / 图标直接透上来、
+> 跟当前内容糊在一起，字都看不清。既然不做模糊，就不该再叫「玻璃」，
+> 于是 `effect = false` 时 `glassSurfaceTint()` 直接返回**不透明**的纯黑 / 纯白，
+> 常量 `GlassAlphaMinimal` 随之删除。
 > 顶栏与底栏共用 `glassSurfaceTint()`，所以「玻璃光效」这一个开关同时决定
 > 两处的模糊与底色厚薄。
 
@@ -1598,14 +1605,15 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 
 ### 10.1 前后对比
 
-| 指标 | 2.3.1 | 2.4.0（刚开 R8） | **2.12.1（当前）** |
-| --- | --- | --- | --- |
-| release APK | 11.45 MB | **1.34 MB** | **1.43 MB** |
-| dex 内类总数 | 26 553 | **2 987** | **3 068** |
-| `classes.dex` 未压缩 | 30.9 MB | 2.6 MB | 2.57 MB |
+| 指标 | 2.3.1 | 2.4.0（刚开 R8） | 2.12.1 | **2.16.0（当前）** |
+| --- | --- | --- | --- | --- |
+| release APK | 11.45 MB | **1.34 MB** | **1.43 MB** | **1.50 MB** |
+| dex 内类总数 | 26 553 | **2 987** | **3 068** | 未实测 |
+| `classes.dex` 未压缩 | 30.9 MB | 2.6 MB | 2.57 MB | 未实测 |
 
-> 当前值比 2.4.0 略涨，是因为此后新增了两个功能（策略直达标准行情、
-> 多选全选）与一套自绘弹层、液态玻璃组件 —— 涨幅约 6%，属于正常增长。
+> 2.16.0 比 2.12.1 略涨，是因为此后累计新增八个功能（2.13.0 策略筛选股票、
+> 2.14.0 底栏智能盯盘入口、2.15.0 界面精简五项、2.16.0 手势导航条同色）——
+> 涨幅不大，属于正常增长。
 > 若某天又出现 **数倍级** 跳涨，先去查是不是有人引回了图标库（见 §10.2）。
 
 安装后占用 ≈ APK 解压 + `dex2oat` 产物，通常是 APK 的 3～5 倍，
@@ -1637,7 +1645,8 @@ implementation("androidx.compose.material:material-icons-extended:1.7.5")
 | `assets/dexopt/baseline.prof` | 3.4 KB | 基线剖面，用于提速首次启动 |
 | `res/` 单个最大项 | 1.7 KB | 图标位图 |
 
-（上表为 2.12.1 release 包实测。**结论不变**：不存在「打包了奇怪东西」的情况，
+（上表为 2.12.1 release 包实测；2.16.0 的 release APK 为 1 567 896 B（≈ 1.50 MB），
+类总数 / dex 未重测。**结论不变**：不存在「打包了奇怪东西」的情况，
 唯一异常就是图标库。）
 
 ### 10.4 R8
@@ -1686,7 +1695,7 @@ new WindowInsetsControllerCompat(window, view).apply {
 | 主题 | `values/themes.xml` | 两个系统栏色透明；`enforceStatusBarContrast` / `enforceNavigationBarContrast` = `false`；`windowLightStatusBar` / `windowLightNavigationBar` = `true` |
 | 主题（深色） | `values-night/themes.xml` | 同上，两个 light 标志改 `false`，`windowBackground` 换成深色 |
 | Activity | `SettingsActivity.onCreate` | `enableEdgeToEdge(SystemBarStyle.auto(TRANSPARENT, TRANSPARENT) × 2)`；API 29+ 再显式 `window.isNavigationBarContrastEnforced = false`（双保险） |
-| Compose | `ui/SystemBars.kt` → `SyncSystemBars` | 按**实际生效**的深浅色设 `isAppearanceLightStatusBars` / `isAppearanceLightNavigationBars`，并把窗口底色换成 Miuix 的真实背景色 |
+| Compose | `ui/SystemBars.kt` → `SyncSystemBars` | 按**实际生效**的深浅色设 `isAppearanceLightStatusBars` / `isAppearanceLightNavigationBars`，并把窗口底色换成 `MiuixTheme.colorScheme.surface` |
 
 为什么主题层关掉了还要在代码里再关一次：主题属性只在**窗口创建时**读一次，
 而 `enableEdgeToEdge()` 是在 `onCreate` 里、窗口已经建好之后跑的，
@@ -1707,11 +1716,11 @@ new WindowInsetsControllerCompat(window, view).apply {
 ### 11.4 窗口底色
 
 `android:windowBackground` 只在 Compose 内容之外的缝隙里露出来（冷启动首帧、
-系统栏过渡动画、圆角裁剪）。取值必须和 Miuix 的 `colorScheme.background` 对齐，
+系统栏过渡动画、圆角裁剪）。取值必须和 Miuix 的 `colorScheme.surface` 对齐，
 否则那条缝隙会是一条**不一致的颜色**。
 
 XML 里的值只能按系统深色开关选（`values-night`），所以 `SyncSystemBars` 在
-Compose 起来之后再用 `MiuixTheme.colorScheme.background` 覆盖一次 ——
+Compose 起来之后再用 `MiuixTheme.colorScheme.surface` 覆盖一次 ——
 这样即使「系统亮色 + 用户强制暗色」这种组合，也不会闪错色。
 
 ### 11.5 自检

@@ -163,7 +163,7 @@ data class ConfigSnapshot(
     val color: Int,
     val scopeStrategy: Boolean,
     val logLevel: Int,
-    val stgDirectQuote: Boolean,         // 以下四项为 2.12.x 现状
+    val stgDirectQuote: Boolean,         // 以下四项仅为示意，实际字段以 core/ConfigSnapshot.kt 为准
     val stgQuoteSwipe: Boolean,
     val stgSelectAll: Boolean,
     val boldWatchlist: Boolean,          // ← 新增
@@ -384,7 +384,7 @@ Scaffold { padding ->
 | 能力 | 位置 | 说明 |
 |---|---|---|
 | 反射找类 / 找方法 / 读字段 | `util/Reflect.kt` | 沿继承链查找；`methodsNamed` 自动过滤 abstract 方法 |
-| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。每加一个功能就多一份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets`、`stgfilter/StgStockFilterTargets`、`stockbar/StockDetailBarTargets`、`dock/DockCleanTargets`、`home/HomeBannerTargets`、`market/MarketTargets` |
+| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。每加一个功能就多一份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets`、`stgfilter/StgStockFilterTargets`、`stockbar/StockDetailBarTargets`、`dock/DockCleanTargets`、`home/HomeBannerTargets`、`market/MarketTargets`、`navbar/NavBarTargets` |
 | 自选判定 | `feature/watchlist/ZxWatchlist.kt` | 与行情页同源，20/20 校准过 |
 | 配置读取 | `env.config`（`ConfigSnapshot`） | 内存快照，热路径零 IO |
 | 日志 | `core/GLog.kt` | 两个进程共用，自动选落点 |
@@ -438,6 +438,6 @@ Scaffold { padding ->
 | `Error parsing AndroidManifest.xml` | XML 注释里出现了 `--`（非法） | 注释里不要写 `--` |
 | `requires AGP 9.1.0 or higher` | Miuix 版本过高 | 用 0.9.3，别升（见 [BUILD.md](BUILD.md)） |
 | 点中设置页的下拉 / 确认项**当场闪退** | 用了 Miuix 的 `OverlayDropdownPreference` / `OverlayDialog` | 改用自绘 `DialogHost`（见本文第 4 步的警告框、`docs/UI.md` §1.3） |
-| 切完语言点设置页闪退 | `LocaleHelper.wrap()` 直接返回了 `ContextImpl` | 必须包一层 `ContextWrapper`（见 `docs/UI.md` §9） |
+| 切完语言点设置页闪退 | `LocaleHelper.wrap()` 直接返回了 `ContextImpl` | 必须包一层 `ContextWrapper`（见 `docs/UI.md` §5.4） |
 
 更多运行时问题见 [排错手册](TROUBLESHOOTING.md)。

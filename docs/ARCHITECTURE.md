@@ -54,6 +54,8 @@
 
 ## 2. 代码分层
 
+**入口与公共层**
+
 | 文件 | 职责 | 运行位置 |
 |---|---|---|
 | `GszxModule.kt` | 判进程、装配配置通道、驱动 `FeatureManager`、热重载 | 目标进程 |
@@ -67,6 +69,12 @@
 | `feature/Feature.kt` | 功能扩展接口 | 目标进程 |
 | `feature/FeatureEnv.kt` | 功能运行环境（xposed / classLoader / config） | 目标进程 |
 | `feature/FeatureManager.kt` | 功能注册表 + 安装/分发/卸载 | 目标进程 |
+| `feature/PageSyncFeature.kt` | 「在宿主页面上动视图」类功能的调度骨架（布局回调 + 首帧屏障 + 幂等自愈 + 限速 + 失配快照 + id 预热） | 目标进程 |
+
+**功能包（`feature/*/`，每个功能一份候选常量）**
+
+| 文件 | 职责 | 运行位置 |
+|---|---|---|
 | `feature/watchlist/WatchlistFeature.kt` | **自选高亮**功能本体（渲染后补色） | 目标进程 |
 | `feature/watchlist/WatchlistTargets.kt` | 该功能的宿主类名/字段名候选常量 | 目标进程 |
 | `feature/watchlist/ZxWatchlist.kt` | 自选判定（`ZXWorkflow` + 兜底） | 目标进程 |
@@ -74,6 +82,27 @@
 | `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
 | `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
+| `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（三点菜单注入 + 换适配器数据） | 目标进程 |
+| `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
+| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs） | 目标进程 |
+| `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（视图注入） | 目标进程 |
+| `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
+| `feature/uiclean/UiCleanFeature.kt` | 「界面精简」类功能的公共骨架（认现成视图 → 隐藏 / 压缩，走 `PageSyncFeature`） | 目标进程 |
+| `feature/uiclean/UiClean.kt` | 视图树遍历 / 文案查找 / 结构判据等共用工具 | 目标进程 |
+| `feature/uiclean/ViewPatcher.kt` | 改动记账（隐藏 / 压缩 / 缩放），支持一键还原（首帧屏障判据来源） | 目标进程 |
+| `feature/dock/DockCleanFeature.kt` · `DockCleanTargets.kt` | **底栏隐藏「理财」项**本体 + 定位常量 | 目标进程 |
+| `feature/home/HomeBannerFeature.kt` · `HomeBannerTargets.kt` | **首页隐藏横幅**本体 + 定位常量 | 目标进程 |
+| `feature/market/MarketBannerFeature.kt` | **行情市场隐藏滚动横幅与快捷入口**功能本体 | 目标进程 |
+| `feature/market/MarketSectorCompactFeature.kt` | **行情市场板块六项压三项**功能本体 | 目标进程 |
+| `feature/market/MarketOverviewCompactFeature.kt` | **行情市场「市场概览」压矮**功能本体 | 目标进程 |
+| `feature/market/MarketTargets.kt` | 行情市场三个功能**共用**的定位常量 | 目标进程 |
+| `feature/navbar/NavBarBlendFeature.kt` | **手势导航条同色**功能本体 | 目标进程 |
+| `feature/navbar/NavBarTargets.kt` · `NavBarTint.kt` | 定位 / 调参常量 + 取色上色实现 | 目标进程 |
+
+**模块 App 进程（`app/`）**
+
+| 文件 | 职责 | 运行位置 |
+|---|---|---|
 | `app/GszxApp.kt` | `Application`：初始化配置仓库、服务监听、日志等级、桌面图标状态 | 模块进程 |
 | `app/FrameworkBridge.kt` | 与 LSPosed 服务通信，拿 binder | 模块进程 |
 | `app/ModulePreferences.kt` | 配置仓库（REMOTE / LOCAL 双后端） | 模块进程 |
@@ -81,6 +110,11 @@
 | `app/LauncherIcon.kt` | 桌面图标开关（切 `activity-alias` 的 enabled 状态） | 模块进程 |
 | `app/LocaleHelper.kt` | 界面语言（`attachBaseContext` 包装 Context） | 模块进程 |
 | `app/DebugConfigProvider.kt` | adb 调试通道（仅 root/shell） | 模块进程 |
+
+**设置界面（`ui/`）**
+
+| 文件 | 职责 | 运行位置 |
+|---|---|---|
 | `ui/SettingsActivity.kt` | Activity + 三层布局 + 极简路由 + Dock / 顶栏 / 弹窗装配 | 模块进程 |
 | `ui/Dock.kt` | 默认底栏 / 液态玻璃悬浮底栏（`LocalDockInset`） | 模块进程 |
 | `ui/Glass.kt` | 液态玻璃：顶栏、色料、下滑收起状态机 | 模块进程 |
@@ -94,15 +128,14 @@
 
 ### 2.1 分层规则
 
-| 规则 | 原因 |
-|---|---|
-| `core/` 与 `app/` **不得** import `io.github.libxposed.api.*` | 模块 App 进程的 APK 里没有这些类（`compileOnly`），会 `NoClassDefFoundError` |
-| `feature/` **只**通过 `FeatureEnv` 拿框架接口 | 统一入口，便于热重载与测试 |
-| `GszxModule` 不写业务逻辑 | 它只做编排，功能变更不应触碰它 |
-| 挂钩子必须把句柄放进 `HookBag` | API 102 靠句柄卸载，否则热重载会残留旧钩子 |
+四条硬红线 —— `core/` 与 `app/` 不得 import `io.github.libxposed.api.*`；
+`feature/` 只经 `FeatureEnv` 拿框架接口；`GszxModule` 不写业务逻辑；
+挂钩子必须把句柄放进 `HookBag` —— **以
+[EXTENDING.md §2「四条架构红线」](EXTENDING.md#2-四条架构红线) 为权威**：
+逐条理由、违反后果与自查命令都在那里，本节不重抄。
 
-> `core/GLog.kt` 是这条规则的典型示例：框架接口通过纯 Java 函数式接口 `Sink` 注入，
-> 而不是直接持有 `XposedInterface`。
+> `core/GLog.kt` 是「不得 import api 类型」这条红线的典型示例（EXTENDING.md 没有这个例子）：
+> 框架接口通过纯 Java 函数式接口 `Sink` 注入，而不是直接持有 `XposedInterface`。
 
 ---
 
@@ -147,28 +180,43 @@ onHotReloaded(param)
    └─ install(cl)                        用新代码重装钩子
 ```
 
-### 3.2 三个功能的挂载点
+### 3.2 全部功能的挂载点
 
 功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
 没有一个功能依赖另一个功能的运行结果。
+
+**挂钩子改行为 / 注入视图**（共 6 个）：
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
 | **自选高亮** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor` | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色（见 [HOOK-NOTES](HOOK-NOTES.md#6-关闭开关后颜色不还原)） |
 | **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态）+ 包裹宿主 `OnItemClickListener` | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型 | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效 |
+| **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后**换掉适配器 `data` 字段**（真删不是藏），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
+| **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
+| **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
+
+**界面精简**（其余 5 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
+**认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
+（可一键还原）。挂载点即 `PageSyncFeature` 骨架本身：
+
+| 功能 | `Feature` 实现 | 目标页面（`pages` 门禁） | 做什么 |
+|---|---|---|---|
+| **底栏隐藏理财项** | `DockCleanFeature` | `MainAct` | 把底栏「理财」那一格 `GONE` + 其余格均分铺满 |
+| **首页隐藏横幅** | `HomeBannerFeature` | `MainAct` | 隐藏首页快捷入口下方那条横幅 |
+| **行情市场隐藏滚动横幅与快捷入口** | `MarketBannerFeature` | `MainAct` | 收起轮播横幅 + 快捷入口两个版块 |
+| **行情市场板块只留三项** | `MarketSectorCompactFeature` | `MainAct` | 板块 3 列 × 2 行压成一行（限高） |
+| **行情市场概览压矮** | `MarketOverviewCompactFeature` | `MainAct` | 概览图表区与柱状图一起压矮 |
 
 三条共同约定：钩子里的异常一律 `runCatching` 吞掉（绝不抛给宿主）、
 所有句柄进 `HookBag`、`onConfigChanged` 必须在主线程处理。
+精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
+[界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> 本表只列最早三个**挂钩子改行为**的功能（写本节时的全部）。2.13.0 的
-> `stg_stock_filter`（策略详情筛选股票）与 2.14.0 的 `stock_bar_entry`
-> （底栏智能盯盘入口）也是钩子类，思路与上表一致，各自的坑记在
-> [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md) / [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)。
->
-> 2.15.0 新增的**界面精简**五个功能（底栏 / 首页 / 行情市场）**不挂钩子改行为** ——
-> 它们在 `Activity.onResume` + 全局布局回调里**认现成的视图**再隐藏 / 压缩，
-> 走的是 `feature/uiclean/` 那套骨架，见 [界面精简实现方案](FEATURE-UI-CLEAN.md)。
+> **当前状态（2.16.0，共 11 个功能）**：上面两张表就是全部功能的现行挂载方式。
+> 2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、`stock_bar_entry`
+> （底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
+> `nav_bar_blend`（手势导航条同色）—— 它们都已在上表，不再是「前瞻」。
 
 ### 3.3 染色主流程（自选高亮）
 
@@ -252,13 +300,21 @@ env.xposed.hook(m)
 
 ```kotlin
 data class ConfigSnapshot(
-    val enabled: Boolean,        // 自选高亮总开关
-    val color: Int,              // 高亮色（ARGB）
-    val scopeStrategy: Boolean,  // 自选高亮：是否作用于策略详情页
-    val logLevel: Int,           // 日志等级（两个进程都读）
-    val stgDirectQuote: Boolean, // 策略详情直达个股详情
-    val stgQuoteSwipe: Boolean,  // 直达时是否支持左右滑动换股
-    val stgSelectAll: Boolean,   // 多选栏「全选 / 反选」按钮
+    val enabled: Boolean,                // 自选高亮总开关
+    val color: Int,                      // 高亮色（ARGB）
+    val scopeStrategy: Boolean,          // 自选高亮：是否作用于策略详情页
+    val logLevel: Int,                   // 日志等级（两个进程都读）
+    val stgDirectQuote: Boolean,         // 策略详情点股票直达个股详情
+    val stgQuoteSwipe: Boolean,          // 直达时是否支持左右滑动换股
+    val stgSelectAll: Boolean,           // 多选栏「全选 / 反选」按钮
+    val stgStockFilter: Boolean,         // 策略详情三点菜单「筛选股票」
+    val stockBarEntry: Boolean,          // 个股详情页底栏「智能盯盘」入口
+    val dockClean: Boolean,              // 底栏不再显示「理财」那一格
+    val homeBannerHide: Boolean,         // 隐藏首页快捷入口下方的横幅
+    val marketBannerHide: Boolean,       // 隐藏行情市场滚动横幅与快捷入口
+    val marketSectorCompact: Boolean,    // 行情市场板块由六项压缩为三项
+    val marketOverviewCompact: Boolean,  // 行情市场「市场概览」整体压矮
+    val navBarBlend: Boolean,            // 手势导航条填充与紧邻界面一致的颜色
 ) {
     val fingerprint: Int get() = …   // 稳定指纹，只在内容变化时改变
 }
@@ -306,7 +362,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
-| **功能总开关** | `ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` | 目标进程 | ✅ | **一律 `false`** |
+| **功能总开关** | `FEATURE_KEYS` 全表（11 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `NAV_BAR_BLEND` | 目标进程 | ✅ | **一律 `false`** |
 | **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 | 跨两类 | `LOG_LEVEL` | 两边都读（目标进程控制日志等级） | ✅ | `INFO` |
@@ -332,13 +388,19 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 ## 5. 反射兜底策略
 
 因为目标 App 被加固，**类名 / 字段名都不能硬编码假设**，所有关键名字都做成候选数组 + 多级兜底。
-每个功能各带一份 `XxxTargets.kt`，互不干扰：
+每个功能包各带一份 `XxxTargets.kt`（行情市场三个功能共用一份），互不干扰：
 
 | 功能 | 候选常量文件 |
 |---|---|
 | 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
 | 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
+| 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
+| 底栏隐藏理财项 | `feature/dock/DockCleanTargets.kt` |
+| 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
+| 行情市场（滚动横幅 / 板块 / 概览，三功能共用） | `feature/market/MarketTargets.kt` |
+| 手势导航条同色 | `feature/navbar/NavBarTargets.kt` |
 
 以自选高亮为例：
 
@@ -421,10 +483,15 @@ com.guosen.android
     android:description="@string/xposed_description"   <!-- 模块描述 -->
     … >
 
-    <!-- 真正的设置界面，不带 LAUNCHER -->
+    <!-- 设置界面本体：MAIN + MODULE_SETTINGS（LSPosed 的「打开设置」入口），不带 LAUNCHER -->
     <activity
         android:name=".ui.SettingsActivity"
-        android:exported="true" />
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+        </intent-filter>
+    </activity>
 
     <!-- 桌面入口别名：开关只切它的 enabled 状态 -->
     <activity-alias

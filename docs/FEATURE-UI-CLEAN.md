@@ -316,7 +316,7 @@ adb pull /sdcard/ui.xml
 grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 ```
 
-`tools/uidump.py` / `tools/uifind.py` 是本项目自带的封装（见 `tools/README.md`）。
+`tools/uidump.py` 是本项目自带的控件树解析封装（见 `tools/README.md`）。
 
 ### 4.3 往哪里加
 

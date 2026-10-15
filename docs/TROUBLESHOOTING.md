@@ -23,20 +23,22 @@ adb logcat -s GSZXEnhance
 > 这是最容易浪费时间的误区：`logcat -s GSZXEnhance` 看不到目标进程的日志，
 > 因为 `XposedInterface.log()` 被 LSPosed 收进了自己的日志文件。
 
-正常加载时应该看到（以 2.12.1 为例，**三个功能全开**）：
+正常加载时应该看到（以 2.16.0 为例，**11 个功能全开**）。每个启用功能的
+钩子日志先打，随后才是 `FeatureManager` 的「已安装功能 [id] 标题」那一行：
 
 ```
-GSZXEnhance: === GSAuxiliary v2.12.1 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
-GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true)
-GSZXEnhance: 已安装功能 [watchlist_highlight] 自选股高亮
+GSZXEnhance: === GSAuxiliary v2.16.0 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
+GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
 GSZXEnhance: 已挂 com.guosen.commonui.adapter.BaseQuickAdapter.getView ×1
 GSZXEnhance: 已挂 com.guosen.quotation.adapter.aistk.AIStkAdapter.getView ×1
 GSZXEnhance: 已挂 android.app.Activity.onResume
-GSZXEnhance: 已安装功能 [stg_direct_quote] 策略详情直达标准行情
+GSZXEnhance: 已安装功能 [watchlist_highlight] 自选股高亮
 GSZXEnhance: 策略直达标准行情：已挂 2 个引擎跳转点
-GSZXEnhance: 已安装功能 [stg_select_all] 策略详情页多选全选
+GSZXEnhance: 已安装功能 [stg_direct_quote] 策略详情直达标准行情
 GSZXEnhance: 策略全选：已挂 1 个 Activity.onResume
-GSZXEnhance: 功能安装完成：3/3，共 N 个钩子
+GSZXEnhance: 已安装功能 [stg_select_all] 策略详情页多选全选
+…（其余功能各打一条「已安装功能 [id] 标题」+ 自己的挂载日志）…
+GSZXEnhance: 功能安装完成：11/11，共 N 个钩子
 ```
 
 > ⚠️ **功能开关出厂默认全是关的**（2.11.2 起的硬约定）。
@@ -45,11 +47,11 @@ GSZXEnhance: 功能安装完成：3/3，共 N 个钩子
 > ```
 > GSZXEnhance: 跳过功能 [watchlist_highlight]：当前配置下未启用
 > GSZXEnhance: 跳过功能 [stg_direct_quote]：当前配置下未启用
-> GSZXEnhance: 跳过功能 [stg_select_all]：当前配置下未启用
-> GSZXEnhance: 功能安装完成：0/3，共 0 个钩子
+> …（11 个功能各一条，id / 顺序同上一段）…
+> GSZXEnhance: 功能安装完成：0/11，共 0 个钩子
 > ```
 >
-> `0/3` **不是故障**。先去设置界面「功能」页把要用的开关打开。
+> `0/11` **不是故障**。先去设置界面「功能」页把要用的开关打开。
 
 | 缺哪一行 | 说明 |
 |---|---|
@@ -210,15 +212,14 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 
 ## 4. 关掉开关后，已经变黄的行还是黄的
 
-**原因**：RecyclerView 复用视图，黄颜色残留在 `TextView` 上。
+**现象一句话**：关掉开关，已经渲染过的行仍然是黄的。
 
-**解法**：钩子里**不能提前 return**。无论开关开还是关都要走一遍染色逻辑，
-关闭时用"原始色"覆盖回去。代码里已经这样处理（`WatchlistFeature.onGetView`）。
+机理（`if (!cfg.enabled) return` 导致跳过 + RecyclerView 复用视图残留颜色）与解法
+（无论开关开还是关都走一遍染色逻辑，关闭时用原始色覆盖）已在
+[HOOK-NOTES.md §6](HOOK-NOTES.md#6-关闭开关后颜色不还原) 讲透，这里不重抄。仍复现时按序排查：
 
-如果仍然残留：
-
-- 滚动一下列表，或退出重进页面（触发重新绑定）
-- 确认 `enabled=0` 真的写进去了
+1. 滚动一下列表，或退出重进页面（触发重新绑定）
+2. 确认 `enabled=0` 真的写进去了（见 [第 3 节](#3-设置里改了开关但-app-里没反应)）
 
 ---
 
@@ -239,15 +240,19 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 ## 6. App 升级后失效
 
 按这个顺序改，**大概率只需要改一个常量**。
-三个功能各自带一份候选常量文件，哪一列出问题就改哪一份：
+每个功能各自带一份候选常量文件（总表见 [`reference/README.md`](reference/README.md)），
+哪一列出问题就改哪一份：
 
 | 步骤 | 检查什么 | 改哪里 |
 |---|---|---|
-| 1 | 看 LSPosed 日志，钩子有没有装上 | — |
-| 2 | **自选高亮**：适配器类名 / 名称控件 id / 代码市场字段 | `feature/watchlist/WatchlistTargets.kt` → `TARGET_ADAPTERS`、`CLS_BASE_QUICK_ADAPTER`、`NAME_ID_CANDIDATES`、`CAM_FIELDS`、`CODE_FIELDS`、`MARKET_FIELDS` |
-| 3 | **自选高亮**：自选判定 API | `feature/watchlist/ZxWatchlist.kt`（兜底是直接查 `ZXManager.m_stkGrpMap`） |
-| 4 | **直达标准行情**：引擎基类 / action / extra key | `feature/strategyquote/StgDirectQuoteTargets.kt` |
-| 5 | **多选全选**：多选按钮 id / 列表 id / 复选框 id | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 1 | 看 LSPosed 日志，钩子有没有装上（见 [第 0 节](#0-先学会看日志)） | — |
+| 2 | **自选高亮**：适配器类名 / 名称控件 id / 代码市场字段 / 自选判定 API | `feature/watchlist/WatchlistTargets.kt`（`TARGET_ADAPTERS`、`CLS_BASE_QUICK_ADAPTER`、`NAME_ID_CANDIDATES`、`CAM_FIELDS`、`CODE_FIELDS`、`MARKET_FIELDS`）+ `feature/watchlist/ZxWatchlist.kt`（兜底是直接查 `ZXManager.m_stkGrpMap`） |
+| 3 | **直达标准行情**：引擎基类 / action / extra key | `feature/strategyquote/StgDirectQuoteTargets.kt`（见 [FEATURE-DIRECT-QUOTE.md](FEATURE-DIRECT-QUOTE.md)） |
+| 4 | **多选全选**：多选按钮 id / 列表 id / 复选框 id | `feature/strategyselect/StgSelectAllTargets.kt`（见 [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md)） |
+| 5 | **策略详情筛选股票**：三点菜单 / 筛选面板 id | `feature/stgfilter/StgStockFilterTargets.kt`（见 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md)） |
+| 6 | **底栏「智能盯盘」入口**：底栏 / 弹层面板 id | `feature/stockbar/StockDetailBarTargets.kt`（见 [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md)） |
+| 7 | **界面精简五个**（底栏 / 首页 / 行情市场）：各版块的资源 id | `feature/dock/DockCleanTargets.kt`、`feature/home/HomeBannerTargets.kt`、`feature/market/MarketTargets.kt`（骨架与真机校准见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)） |
+| 8 | **手势导航条同色**：取色带 / 调参常量 | `feature/navbar/NavBarTargets.kt`（见 [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md)） |
 
 **重新定位类名的方法**：用 `tools/probe/` 里的运行时探针。
 

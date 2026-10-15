@@ -22,51 +22,35 @@
 
 ## 怎么用
 
-### 1. 定位页面类名
+本目录的 txt 是**比对基准**：App 升级后，用新版数据与这里的旧版逐行 diff，定位变化的
+类名 / 字段名 / 控件 id。各主题的结论与证据都在专门文档里，这里只留「该用哪份数据、
+结论看哪篇」的索引：
 
-`recon-yellow-log.txt` 里有完整的页面跳转序列：
+| 主题 | 结论 / 证据看哪 | 依据这里哪份数据 |
+|---|---|---|
+| 定位页面类名 | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（过程与证据）、[`../HOOK-NOTES.md`](../HOOK-NOTES.md) §2（页面链路） | `recon-yellow-log.txt`（完整的页面跳转序列）+ `activities-guosen.txt`（按包归类，据此知道每个 Activity 属于哪个业务模块） |
+| 自选数据来源 | [`../HOOK-NOTES.md`](../HOOK-NOTES.md) §3 | `recon-databases.txt`：自选股确实存在 SQLite（`gs_zxstock_db`），但**实际染色不读 DB、走内存的 `ZXManager` 单例**，DB 只是持久层 |
+| 染色证据（为什么不能只看颜色） | [`../HOOK-NOTES.md`](../HOOK-NOTES.md) §3 | `recon-yellow-log.txt`：行情页「技术指标」也是黄系 `#fff5a623`，与自选黄 `#fff58000` 不同 —— 所以**判自选要看 `isZx` / `ZXWorkflow`，不能只看颜色** |
+| 探针怎么跑、挂了哪些点 | [`../../tools/probe/README.md`](../../tools/probe/README.md) | —（探针只负责产出上面的 `recon-*.txt`） |
 
-```
-ACTIVITY > com.guosen.quotation.ui.aistk.AIStkIndexAct
-ACTIVITY > com.guosen.quotation.ui.aistk.AIStkStgListAct
-ACTIVITY > com.guosen.quotation.ui.aistk.AIStkStgDetailAct
-```
-
-对照 `activities-guosen.txt` 就能知道每个 Activity 属于哪个业务模块。
-
-### 2. 自选数据来源
-
-`recon-databases.txt` 显示自选股存在 SQLite：
-
-```
-gs_zxstock_db   (53 KB)   <- 自选股数据库
-```
-
-但**实际染色不读 DB，走内存的 `ZXManager` 单例**（见 `HOOK-NOTES.md`）。DB 只是持久层。
-
-### 3. 染色证据
-
-`recon-yellow-log.txt` 顶部：
-
-```
-YELLOW > color=#fff5a623 (245,166,35) id=tv_tech_val2  act=com.guosen.quotation.ui.StockFragAct
-```
-
-这说明行情页的"技术指标"也是这个黄色系（`#fff5a623`），与自选黄名 `#fff58000` 不同——所以**判自选要看 `isZx` 字段，不能只看颜色**。
-
-### 4. App 升级后怎么核对
+### App 升级后怎么核对
 
 新版国信金太阳到来时：
 
-1. 重跑探针（`tools/probe/`），拿到新的 `recon-yellow-log.txt`
+1. 重跑探针（[`tools/probe/`](../../tools/probe/README.md)），拿到新的 `recon-*.txt`
 2. 和这里的旧版**逐行 diff**
-3. 按功能改对应的候选常量文件（三个功能各一份，互不影响）：
+3. 按功能改对应的候选常量文件（**每个功能一份，互不影响**）：
 
-| 功能 | 改哪里 | 主要常量 |
-|---|---|---|
-| 自选高亮 | `feature/watchlist/WatchlistTargets.kt` | `TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER` / `NAME_ID_CANDIDATES` / `CAM_FIELDS` / `CODE_FIELDS` / `MARKET_FIELDS` |
-| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` | `CLS_ENGINE_ACT` / `LAUNCH_METHODS` / `ACTION_*` / `KEY_STOCK_*` |
-| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` | `CANCEL_BUTTON_ID_CANDIDATES` / `LIST_ID_CANDIDATES` / `CHECKBOX_ID_CANDIDATES` |
-| 自选判定 API | `feature/watchlist/ZxWatchlist.kt` | `ZXWorkflow.isBelongByStock` / `ZXManager.m_stkGrpMap` 兜底 |
+| 功能 | 候选常量文件 |
+|---|---|
+| 自选高亮 | `feature/watchlist/WatchlistTargets.kt`（判定 API 在 `feature/watchlist/ZxWatchlist.kt`：`ZXWorkflow.isBelongByStock` + `ZXManager.m_stkGrpMap` 兜底） |
+| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
+| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
+| 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
+| 底栏隐藏理财项 | `feature/dock/DockCleanTargets.kt` |
+| 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
+| 行情市场（滚动横幅 / 板块 / 概览，三功能共用一份） | `feature/market/MarketTargets.kt` |
+| 手势导航条同色 | `feature/navbar/NavBarTargets.kt` |
 
 完整排查流程见 [`../TROUBLESHOOTING.md` §6](../TROUBLESHOOTING.md#6-app-升级后失效)。
