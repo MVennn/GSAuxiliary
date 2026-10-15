@@ -268,9 +268,9 @@ Activity.onResume
 | `core/ConfigKeys.kt` | 加 `STOCK_BAR_ENTRY` / `DEFAULT_STOCK_BAR_ENTRY`，进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
 | `core/ConfigSnapshot.kt` | 加 `stockBarEntry` 字段 + 进 `fingerprint`（乘数 1877） |
 | `core/ConfigSource.kt` | `read()` 补一行 |
-| `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`，分区 `category_stock_detail`（**股票详情页增强**，无二级菜单） |
+| `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`，分区 `category_stock_detail`（**股票详情页**，无二级菜单） |
 | `app/DebugConfigProvider.kt` | 加 `stock_bar_entry` 列（开发期脚本化开关） |
-| `res/values/strings.xml`、`values-en/strings.xml` | 新增 `category_stock_detail`（股票详情页增强 / Stock detail page enhancements） |
+| `res/values/strings.xml`、`values-en/strings.xml` | 新增 `category_stock_detail`（股票详情页 / Stock detail page） |
 | `res/values/strings.xml` + `values-en/strings.xml` | 中英文案 |
 
 **不动**：`GszxModule.kt`、其它四个功能、`ConfigKeys.GROUP`、`scope.list`、

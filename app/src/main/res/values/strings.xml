@@ -52,39 +52,39 @@
     <!-- ============================ 功能页 ============================ -->
     <!-- 搜索框不写占位文字（提示词留空），靠左侧放大镜图标说明用途 -->
     <string name="search_hint"></string>
-    <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」 -->
-    <string name="category_strategy">策略页增强</string>
-    <string name="category_stock_detail">股票详情页增强</string>
-    <string name="category_display">显示增强</string>
+    <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」；文案与命名规范见 docs/NAMING.md -->
+    <string name="category_strategy">策略页</string>
+    <string name="category_stock_detail">股票详情页</string>
+    <string name="category_display">显示</string>
     <string name="feature_empty">没有匹配的功能</string>
     <string name="feature_watchlist_title">自选股高亮</string>
     <string name="feature_watchlist_summary">策略详情页里，把已加入自选的股票名称显示为高亮色</string>
-    <string name="feature_watchlist_switch">启用自选股高亮</string>
+    <string name="feature_watchlist_switch">自选股高亮</string>
     <string name="feature_watchlist_switch_summary">把已加入自选的股票名称显示为高亮色</string>
     <string name="feature_detail_entry">染色设置</string>
     <string name="feature_detail_entry_summary">作用域、颜色、预览</string>
 
     <string name="feature_stg_direct_title">策略直达标准行情</string>
-    <string name="feature_stg_direct_summary">「我的策略」里点股票直接进个股详情，不用再点一次「标准行情」</string>
-    <string name="feature_stg_direct_switch">启用直达标准行情</string>
+    <string name="feature_stg_direct_summary">我的策略里点股票直接进个股详情，不用再点一次标准行情</string>
+    <string name="feature_stg_direct_switch">直达标准行情</string>
     <string name="feature_stg_direct_switch_summary">在策略详情页点股票，直接进入个股详情页</string>
     <string name="feature_stg_direct_detail_entry">滑动设置</string>
     <string name="feature_stg_direct_detail_entry_summary">是否支持左右滑动换股</string>
 
     <string name="feature_select_all_title">策略多选全选</string>
-    <string name="feature_select_all_summary">策略详情页多选时，在「取消」左侧多一个「全选」按钮，一键勾选全部股票</string>
-    <string name="feature_select_all_switch">启用「全选」按钮</string>
-    <string name="feature_select_all_switch_summary">在策略详情的多选栏里显示「全选」按钮</string>
+    <string name="feature_select_all_summary">策略详情页多选时，取消按钮左侧多一个全选按钮，一键勾选全部股票</string>
+    <string name="feature_select_all_switch">增加 全选 按钮</string>
+    <string name="feature_select_all_switch_summary">在策略详情的多选栏里显示全选按钮</string>
 
     <string name="feature_stg_filter_title">策略筛选股票</string>
-    <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个「筛选股票」，可按涨幅 / 跌幅 / 自选筛掉不看的股票</string>
-    <string name="feature_stg_filter_switch">启用「筛选股票」</string>
-    <string name="feature_stg_filter_switch_summary">在策略详情页的三点菜单里显示「筛选股票」</string>
+    <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个筛选股票，可按涨幅、跌幅、自选筛掉不看的股票</string>
+    <string name="feature_stg_filter_switch">增加 筛选股票 菜单项</string>
+    <string name="feature_stg_filter_switch_summary">在策略详情页的三点菜单里显示筛选股票</string>
 
-    <string name="feature_stock_bar_title">底栏「智能盯盘」入口</string>
-    <string name="feature_stock_bar_summary">个股详情页底栏，「自选」与「更多」之间多一个「智能盯盘」，一点直达，不用再进「更多」里找</string>
-    <string name="feature_stock_bar_switch">启用底栏「智能盯盘」入口</string>
-    <string name="feature_stock_bar_switch_summary">底栏多出一个「智能盯盘」按钮，买卖按钮自动让位</string>
+    <string name="feature_stock_bar_title">底栏智能盯盘入口</string>
+    <string name="feature_stock_bar_summary">个股详情页底栏，自选与更多之间多一个智能盯盘，一点直达，不用再进更多里找</string>
+    <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
+    <string name="feature_stock_bar_switch_summary">底栏多出一个智能盯盘按钮，买卖按钮自动让位</string>
 
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
@@ -93,7 +93,7 @@
     <string name="item_stg_quote_swipe">左右滑动切换股票</string>
     <string name="item_stg_quote_swipe_summary_on">在个股详情页左右滑动，切换策略内的其它股票</string>
     <string name="item_stg_quote_swipe_summary_off">只显示当前这一只，不能左右滑动</string>
-    <string name="note_stg_swipe">与「行情 / 自选」列表点进去的效果一致</string>
+    <string name="note_stg_swipe">与行情、自选列表点进去的效果一致</string>
 
     <!-- ============================ 染色设置（二级菜单） ============================ -->
     <string name="detail_color_title">染色设置</string>

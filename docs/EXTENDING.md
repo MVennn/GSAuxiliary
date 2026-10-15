@@ -246,6 +246,10 @@ val features: List<Feature> = listOf(
 **约定**：一级页面（功能 Tab）只放**开关**；具体参数一律收进**二级菜单**。
 打开开关后，其下方才会展开「XX设置」入口。
 
+> **文案与命名规范见 [文案与命名规范](NAMING.md)** —— 名称里不写「启用 / 增强」
+> （开关本身就是启用），新增类元素写成「增加 + 内容 + 控件类型」。
+> 写 `FeatureSpec` 之前先过一遍那份规范。
+
 1）在 `ui/FeatureCatalog.kt` 的 `FEATURE_CATALOG` 加一条 `FeatureSpec`，
    填好分类 / 标题 / 说明 / 开关文案 / 开关对应的配置键，
    以及二级菜单的标题与入口名：
@@ -253,7 +257,7 @@ val features: List<Feature> = listOf(
 ```kotlin
 FeatureSpec(
     id = "watchlist_bold",
-    categoryRes = R.string.category_display,     // 「显示增强」；详见下面的「分区怎么选」
+    categoryRes = R.string.category_display,     // 「显示」；详见下面的「分区怎么选」
     titleRes = R.string.feature_bold_title,
     summaryRes = R.string.feature_bold_summary,
     switchTitleRes = R.string.feature_bold_switch,
@@ -266,8 +270,8 @@ FeatureSpec(
 )
 ```
 
-> 当前只存在三个分类资源：`category_strategy`（策略页增强）、
-> `category_stock_detail`（股票详情页增强）与 `category_display`（显示增强）。
+> 当前只存在三个分类资源：`category_strategy`（策略页）、
+> `category_stock_detail`（股票详情页）与 `category_display`（显示）。
 > 引一个不存在的 `category_*` 会直接编译失败。
 
 开关与「开启后展开二级入口」是 `FeatureTab` 统一渲染的，不用自己写。
@@ -289,20 +293,20 @@ FeatureSpec(
 
 | 分区 | 一句话判据 | 归属范围 |
 |---|---|---|
-| `R.string.category_strategy` **策略页增强** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、长按菜单 … |
-| `R.string.category_stock_detail` **股票详情页增强** | **改变「个股 / 指数详情页」的交互行为** —— 判据同上，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
-| `R.string.category_display` **显示增强** | **只改变看到的样子** —— 颜色、字号、图标、布局、动效，不动交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
+| `R.string.category_strategy` **策略页** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、长按菜单 … |
+| `R.string.category_stock_detail` **股票详情页** | **改变「个股 / 指数详情页」的交互行为** —— 判据同上，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
+| `R.string.category_display` **显示** | **只改变看到的样子** —— 颜色、字号、图标、布局、动效，不动交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
 
-判不准时按顺序问：**① 关掉它，用户的操作路径会变吗？**（会 → 该页面的「增强」分区）
-**② 挂钩子的是「点击/跳转/数据流」还是「渲染」？**（渲染 → 显示增强）
-**③ 换个不叫「策略页」的页面它还成立吗？**（成立 → 显示增强）
+判不准时按顺序问：**① 关掉它，用户的操作路径会变吗？**（会 → 该页面的分区）
+**② 挂钩子的是「点击/跳转/数据流」还是「渲染」？**（渲染 → 显示）
+**③ 换个不叫「策略页」的页面它还成立吗？**（成立 → 显示）
 
 两个交互类分区之间按**功能生效的那个页面**选，一个功能只进一个分区；
 两个页面都成立时归「主战场」那一侧，并在说明里点明另一侧也生效。
 
 > **组内顺序 = `FEATURE_CATALOG` 的出现顺序**（`FeatureTab` 用 `groupBy` 分组，
 > 首次出现的分组排最前）。所以想让某分区排在前面，就把它的一条 `FeatureSpec`
-> 写在前面。分区顺序按「具体页面 → 通用外观」排：策略页 → 股票详情页 → 显示增强。
+> 写在前面。分区顺序按「具体页面 → 通用外观」排：策略页 → 股票详情页 → 显示。
 > **新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
 > 本表，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`。
 

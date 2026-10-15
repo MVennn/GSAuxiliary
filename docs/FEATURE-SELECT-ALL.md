@@ -145,7 +145,7 @@ toggleAll()
 | `core/ConfigKeys.kt` | `STG_SELECT_ALL` 键 + `DEFAULT_*=false` + 进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
 | `core/ConfigSnapshot.kt` | `stgSelectAll` 字段 + 进 `fingerprint` + `DEFAULT` |
 | `core/ConfigSource.kt` | `read()` 补一行 |
-| `ui/FeatureCatalog.kt` | 展示元数据（挂在「策略页增强」分区，无二级页 —— 没有可调参数） |
+| `ui/FeatureCatalog.kt` | 展示元数据（挂在「策略页」分区，无二级页 —— 没有可调参数） |
 | `res/values/strings.xml` + `values-en/strings.xml` | 功能标题 / 摘要 / 开关文案（中英同步） |
 | `app/DebugConfigProvider.kt` | `stg_select_all` 列，供脚本化开关 |
 
