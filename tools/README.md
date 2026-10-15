@@ -339,6 +339,9 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 
 **一次把版本同时发到「源码仓库」和「LSPosed 模块仓库」。**
 
+> **发版请看 [`docs/RELEASE.md`](../docs/RELEASE.md)** —— 那里是完整清单；
+> 这里只讲脚本本身。
+
 LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库** ——
 源码仓库发 Release **不会**同步过去，而 LSPosed 的网站与 App 只读模块仓库。
 所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
