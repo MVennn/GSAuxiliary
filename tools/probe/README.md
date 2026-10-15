@@ -61,7 +61,9 @@ hookAllMethods(android.app.Activity, "onResume")
 | D | `ZXWorkflow.getAllStock()` 结果里是否包含该股 |
 | E | `ZXWorkflow.getZXDefaultGroupStocks()` 结果里是否包含该股 |
 
-对每只股票打印一行对照表，最后打印命中数：
+对每只股票打印一行对照表，最后打印命中数。**输出格式**如下
+（数值是示意，真实结果以真机跑出来的为准；真值样本 `HQ_TRUTH` 里
+20 只只有 2 只为 `true`，其余 18 只为 `false`）：
 
 ```
     cam        truth | A:isBelong | B:anyGroup | C:grpDefault | D:inAll | E:inDef
@@ -69,10 +71,12 @@ hookAllMethods(android.app.Activity, "onResume")
     ...
     300006.1  T     | T          | T         | T            | T      | T
     ------------------------------------------------------------
-    命中: A=20/20  B=20/20  C=20/20  D=20/20  E=20/20
+    命中: A=__/20  B=__/20  C=__/20  D=__/20  E=__/20
 ```
 
-**20/20 全对的那个候选，就是可以放心用的判定 API。**
+**命中数最高、且与行情页真值完全一致的那个候选，就是可以放心用的判定 API。**
+若某项打出 `ERR`，说明该 API 在那个线程上取不到数据（例如
+`ZXManager.instance()` 返回 `null`）—— 这种候选直接排除。
 
 > 为什么必须这么验？因为探针 v16 版直接用了 `isBelongByStock`，在策略详情页 10/11 判 true，看起来"能用"；但拿行情页 20 只真值一比对，发现它语义有偏差。**不交叉验证就不知道哪个 API 是真的对。**
 >

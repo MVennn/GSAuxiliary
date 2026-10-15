@@ -102,8 +102,15 @@ class_defs : 53         ← 只有 53 个类
 
 这一套下来，**不用反编译一行代码**就拿到了全部需要的信息。
 
-> 仓库里现在的 `tools/probe/`（v18）已经**收窄**成两件事：
-> 挂 `Activity.onResume` 打页面链路 + dump `ZXManager` / `ZXWorkflow` 的自选数据并做判定 API 交叉验证。
+> 仓库里现在的 `tools/probe/`（**v25**）已经**收窄**成三件事：
+> ① 挂 `Activity.onResume` 打页面链路；
+> ② dump `ZXManager` / `ZXWorkflow` 的自选数据并做判定 API 交叉验证（v18）；
+> ③ 挂一整套**通用**的跳转 / 布局侦察钩子 —— `Activity.startActivity*`（`LAUNCH`）、
+> `Dialog.show`（`DLG`）、`PopupWindow.show*`（`POP`）、`Activity.onCreate`（`PAGE`）、
+> 延迟 dump 视图树（`PAGER` / `RV` / `VW`）、`dumpClassMembers`（`CLASS`）—— v19～v25。
+> 第 ③ 组全是框架类方法，**不预设任何业务类名**，用来摸清「点一下到底发生了什么」
+> （详见 [`tools/probe/README.md`](../tools/probe/README.md) 第 4 节）。
+>
 > 需要重新做全量侦察时，按上面这张表临时加钩子即可。
 
 ---
@@ -176,20 +183,34 @@ ZXWorkflow.isBelongByStock(code, market)
        └─ 等价于 m_stkGrpMap.containsKey("code.market")
 ```
 
-### 6.2 校准：20 只真值全部吻合
+### 6.2 校准：拿行情页真值交叉验证
 
-拿行情页 20 只股票（已知真值：哪只加了自选、哪只没加）做交叉验证：
+探针内置 20 只**行情页**股票的真值样本（`HQ_CAM` / `HQ_TRUTH`，
+其中只有 `300006.1` 与 `300516.1` 两只 `isZx = true`，其余 18 只为 `false`），
+对 5 种候选判定方式逐一打分：
 
-| 候选判定方式 | 命中 |
-|---|---|
-| A / B / C | 0/20（因 `ZXManager.instance()` 在快照线程返回 `null`，取不到） |
-| **D / E**（即 `ZXWorkflow.isBelongByStock`） | **18/20** |
+| 候选 | 调用 | 形态 |
+|---|---|---|
+| A | `ZXWorkflow.isBelongByStock(code, market)` | 静态，2 参 |
+| B | `ZXManager.isBelongToAnyGroupByStock(code, market)` | 实例，2 参 |
+| C | `ZXManager.isBelongToGroupByStock(code, market, groupId)` | 实例，3 参 |
+| D | `ZXWorkflow.getAllStock()` 结果里是否含该股 | 静态，集合包含 |
+| E | `ZXWorkflow.getZXDefaultGroupStocks()` 结果里是否含该股 | 静态，集合包含 |
 
-那 2 个不一致的是**环境差异**（脚本内部 `getAllStock()` 只返回 178 项，
-而手工比对时 20 只真值里只有 2 只在名单内）——
-把名单口径对齐后，判定结果 **20/20 完全吻合**。
+> ⚠️ **候选的定义以探针源码为准**（`tools/probe/src/com/wb/probe/ProbeModule.java`
+> 的 `crossCheck`）。这一节早期版本曾把 D/E 误标成 `isBelongByStock`，
+> 并给出互相打架的 0/20、18/20 两组数字 —— 那是探针 v16/v17 代的旧记录，
+> 已按现行 v25 源码更正。**具体每项命中数请以真机跑探针的输出为准**
+> （示例见 [`tools/probe/README.md`](../tools/probe/README.md)）。
 
-**结论：`ZXWorkflow.isBelongByStock(code, market)` 与原版同源，可以直接用。**
+**为什么必须做交叉验证**：探针 v16 版直接用了 `isBelongByStock`，
+在策略详情页 10/11 判 `true`，看起来"能用"；
+但拿行情页 20 只真值一比对就发现它的语义有偏差。
+**不交叉验证就不知道哪个 API 是真的对。**
+
+**最终结论**：`ZXWorkflow.isBelongByStock(code, market)`（候选 A，静态 2 参）
+与行情页同源、判定一致，被 `feature/watchlist/ZxWatchlist.kt` 采用，
+并以直接查 `ZXManager.m_stkGrpMap` 的 `"code.market"` 键作为兜底。
 
 ---
 
@@ -224,5 +245,17 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 - `ACTIVITY >` → 页面类名（画出页面链路）
 - `ZXManager 实例字段` / `m_stkGrpMap` → 自选数据源结构
 - 交叉验证表 `A:isBelong | B:anyGroup | …` → 哪个判定 API 与行情页真值完全一致
+- `LAUNCH` / `PAGE` / `PAGER` → 页面跳转的 Intent 契约与翻页控件
+  （结论见 [FEATURE-DIRECT-QUOTE.md](FEATURE-DIRECT-QUOTE.md)）
+- `CLASS` → 任意类的构造器 / 字段 / 方法签名（用来找 `IntentStockInfo(StockInfo)`
+  这类「自带转换构造器」）
 
-拿到之后改 `feature/watchlist/WatchlistTargets.kt` 里的几个常量数组即可。
+拿到之后，按功能改对应的候选常量文件：
+
+| 功能 | 改哪里 |
+|---|---|
+| 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
+| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
+| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+
+完整排查流程见 [排错手册 · App 升级后失效](TROUBLESHOOTING.md#6-app-升级后失效)。

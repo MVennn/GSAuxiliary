@@ -60,6 +60,13 @@ YELLOW > color=#fff5a623 (245,166,35) id=tv_tech_val2  act=com.guosen.quotation.
 
 1. 重跑探针（`tools/probe/`），拿到新的 `recon-yellow-log.txt`
 2. 和这里的旧版**逐行 diff**
-3. 类名变了 → 改 `feature/watchlist/WatchlistTargets.kt` 的常量数组
-4. adapter 类变了 → 同上（`TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER`）
-5. `ZXWorkflow.isBelongByStock` / `ZXManager.m_stkGrpMap` 变了 → 改 `feature/watchlist/ZxWatchlist.kt` 的常量
+3. 按功能改对应的候选常量文件（三个功能各一份，互不影响）：
+
+| 功能 | 改哪里 | 主要常量 |
+|---|---|---|
+| 自选高亮 | `feature/watchlist/WatchlistTargets.kt` | `TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER` / `NAME_ID_CANDIDATES` / `CAM_FIELDS` / `CODE_FIELDS` / `MARKET_FIELDS` |
+| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` | `CLS_ENGINE_ACT` / `LAUNCH_METHODS` / `ACTION_*` / `KEY_STOCK_*` |
+| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` | `CANCEL_BUTTON_ID_CANDIDATES` / `LIST_ID_CANDIDATES` / `CHECKBOX_ID_CANDIDATES` |
+| 自选判定 API | `feature/watchlist/ZxWatchlist.kt` | `ZXWorkflow.isBelongByStock` / `ZXManager.m_stkGrpMap` 兜底 |
+
+完整排查流程见 [`../TROUBLESHOOTING.md` §6](../TROUBLESHOOTING.md#6-app-升级后失效)。

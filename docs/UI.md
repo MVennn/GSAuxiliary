@@ -24,8 +24,10 @@
 | `FeatureTab.kt` | Tab 2 功能（搜索框在**列表顶部**随列表滚动 + 按 `query` 过滤 + 功能卡片 + 二级入口） |
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
 | `AboutTab.kt` | Tab 4 关于（含免责声明二级页正文 `DisclaimerContent`） |
-| `WatchlistDetail.kt` | 二级页：自选股高亮的染色设置 |
+| `WatchlistDetail.kt` | 二级页：自选股高亮的**染色设置**（作用域 / 高亮颜色 / 效果预览） |
+| `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
 | `LogViewer.kt` | 二级页：查看日志（筛选 / 复制 / **保存到任意位置** / 清空） |
+| `MarkdownText.kt` | 轻量 Markdown 渲染（`AboutTab` 的免责声明正文用；不引 Markdown 库） |
 
 一级页面的骨架：
 
@@ -469,10 +471,13 @@ LaunchedEffect(controller.closing) {
 
 | 页面 | 放什么 | 不放什么 |
 |---|---|---|
-| **设置** | **模块范围内**的设置：桌面图标、Dock 设置（液态玻璃 / 玻璃光效）、语言、备份/恢复/重置、日志等级、查看日志 | 任何具体功能的开关与参数 |
+| **设置** | **模块范围内**的设置：桌面图标、材质设置（液态玻璃 / 玻璃光效）、通用（主题设置 / 语言 / 可预测返回）、数据管理（备份 / 恢复 / 重置）、框架操作（热重载）、日志（等级 / 查看） | 任何具体功能的开关与参数 |
 | **功能** | 每个功能一行**开关**；开关打开后在下方展开该功能的「XX设置」入口 | 具体参数（都在二级菜单里） |
 
-具体功能自己的可调项（染色设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
+具体功能自己的可调项（染色设置 / 滑动设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
+
+> 有二级入口的才展开 —— 「策略多选全选」没有可调参数，所以只有开关，不展开入口
+> （`FeatureSpec.hasDetail` 为 `false`）。
 
 ---
 
@@ -708,6 +713,11 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 │ 染色设置                           ›     │
 │ 作用域、颜色、预览                        │
 └─────────────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│ 启用「全选」按钮                [开关]   │   ← 没有可调参数，不展开入口
+│ 在策略详情的多选栏里显示「全选」按钮      │
+└─────────────────────────────────────────┘
 ```
 
 **统一交互约定**：一级页面只放「开关」；**打开开关后**，其下方展开「XX设置」入口，
@@ -715,8 +725,38 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
+当前三个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」）：
+
+| 分区 | 功能 | 开关配置键 | 二级入口 |
+|---|---|---|---|
+| 策略页增强 | 策略直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
+| 策略页增强 | 策略多选全选 | `stg_select_all` | 无 |
+| 显示增强 | 自选股高亮 | `enabled` | 染色设置（`WatchlistDetail`） |
+
+**所有开关出厂默认都是「关」**（2.11.2 起）。
+功能是侵入目标 App 行为的增强，装完模块不代表用户同意被改 ——
+`FeatureSpec.defaultEnabled` 一律取 `ConfigKeys.DEFAULT_*`，而那些默认值全是 `false`。
+
 功能清单的数据源是 `FeatureCatalog.FEATURE_CATALOG`（展示元数据），
 运行期真正生效的实现类登记在 `feature/FeatureManager.features` —— 两处都要加。
+
+#### 4.3 二级页：「染色设置」与「滑动设置」
+
+| 二级页 | 入口（功能 Tab） | 内容 |
+|---|---|---|
+| `WatchlistDetail.kt` | 启用自选股高亮 → 染色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设 + 预览）/ 效果预览 |
+| `StrategyQuoteDetail.kt` | 启用直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，带 `note_stg_swipe` 注脚） |
+
+**二级页只放「总开关之外」的参数。**
+
+> **同一个配置键绝不允许在两级页面各渲染一次开关。** 2.11.2 修过这个病灶：
+> `stg_direct_quote` 曾在功能 Tab 与「直达设置」二级页各画一遍，
+> 用户在二级页关掉它 → 一级页的「XX设置」入口**当场收起**，人被弹回一级，
+> 看着像页面崩了。现在二级页里那一项已删除，页标题也从「直达设置」改为
+> **「滑动设置」** —— 因为里面只剩滑动这一项了。
+>
+> 「左右滑动」的 `enabled` 仍跟随 `stg_direct_quote`：正常路径下恒为 `true`，
+> 留着是兜住非常规路径（进程重建后路由被恢复、而配置已被重置）。
 
 ---
 
@@ -913,13 +953,17 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 {
   "format": "gszx-config",
   "formatVersion": 1,
-  "moduleVersion": "2.6.0",
-  "versionCode": 13,
-  "exportedAt": "2026-10-14 21:43:00",
+  "moduleVersion": "2.12.1",
+  "versionCode": 32,
+  "exportedAt": "2026-10-15 12:00:00",
   "config": { "enabled": true, "color": -32768, "...": "..." },
   "defaults": { "...": "..." }
 }
 ```
+
+> `moduleVersion` / `versionCode` 取 `BuildConfig`，**随每次构建刷新**；
+> 上面是 2.12.1 的样例值，不是固定文本。
+> `defaults` 段直接来自 `ConfigKeys.DEFAULTS`，与「重置模块」同源。
 
 恢复时**只认 `ConfigKeys.ALL_KEYS` 白名单里的键**，文件里多出来的字段一律忽略，
 避免被塞进无关键。格式版本高于当前支持时直接拒绝。
@@ -1377,7 +1421,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `BasicComponent` | Miuix | 标题 + 副标题的信息行 |
 | `SwitchPreference` | Miuix | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回） |
 | `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言 / 日志等级、备份、恢复、重置、热重载、开源链接、免责声明） |
-| `TextField` + `rememberTextFieldState` | Miuix / Compose | 功能搜索框（挂在顶栏的 `extra()` 插槽里） |
+| `TextField` + `rememberTextFieldState` | Miuix / Compose | 功能搜索框（2.9.3 起是**功能列表的第一个元素**，随列表滚动；`GlassTopBar` 的 `extra()` 插槽保留但已不被搜索框使用，见 §4.1） |
 | `TabRow` | Miuix | 日志页的级别筛选（参数名是 `tabs` / `selectedTabIndex` / `onTabSelected`） |
 | `Surface` | Miuix | 长按气泡的底板 |
 | `TextButton` / `IconButton` / `Icon` | Miuix | 日志页按钮、返回按钮、图标 |
@@ -1542,14 +1586,18 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 
 ### 10.1 前后对比
 
-| 指标 | 2.3.1 | 2.4.0 |
-| --- | --- | --- |
-| release APK | 11.45 MB | **1.34 MB** |
-| dex 内类总数 | 26 553 | **2 987** |
-| `classes.dex` 未压缩 | 30.9 MB | 2.6 MB |
+| 指标 | 2.3.1 | 2.4.0（刚开 R8） | **2.12.1（当前）** |
+| --- | --- | --- | --- |
+| release APK | 11.45 MB | **1.34 MB** | **1.43 MB** |
+| dex 内类总数 | 26 553 | **2 987** | **3 068** |
+| `classes.dex` 未压缩 | 30.9 MB | 2.6 MB | 2.57 MB |
+
+> 当前值比 2.4.0 略涨，是因为此后新增了两个功能（策略直达标准行情、
+> 多选全选）与一套自绘弹层、液态玻璃组件 —— 涨幅约 6%，属于正常增长。
+> 若某天又出现 **数倍级** 跳涨，先去查是不是有人引回了图标库（见 §10.2）。
 
 安装后占用 ≈ APK 解压 + `dex2oat` 产物，通常是 APK 的 3～5 倍，
-所以把 APK 压到 1.34 MB 后，安装占用回到正常量级。
+所以把 APK 压在 1.4 MB 量级后，安装占用回到正常范围。
 
 ### 10.2 主因：`material-icons-extended`
 
@@ -1561,22 +1609,24 @@ implementation("androidx.compose.material:material-icons-extended:1.7.5")
 
 这个 AAR 把 Material 全量图标（Filled / Outlined / Rounded / Sharp / TwoTone 五种风格）
 都编进了 dex，实测 **11 400 个类**，占当时类总数（26 553）的 **43%**；
-而界面实际只用 7 个：返回箭头、对勾、放大镜、齿轮、信息、九宫格、拼图块。
+而界面实际只用得到几个：返回箭头、对勾、放大镜、齿轮、信息、九宫格、拼图块、
+圆对勾、圆感叹号（`AppIcons` 当前共 **9 个**）。
 
 现已改为 `ui/AppIcons.kt` 用 Material 官方 24×24 网格的 path 数据自建 `ImageVector`，
-零依赖、只生成 7 个类。**新增图标不要引回这个依赖。**
+零依赖、只生成这几个类。**新增图标不要引回这个依赖。**
 
 ### 10.3 其余部分都很小
 
 | 部分 | 体积 | 说明 |
 | --- | --- | --- |
-| `classes.dex` | 2.6 MB | 唯一的大头 |
-| `resources.arsc` | 148 KB | 资源索引 |
+| `classes.dex` | 2.57 MB | 唯一的大头 |
+| `resources.arsc` | 172 KB | 资源索引 |
 | `lib/*/libandroidx.graphics.path.so` | 约 37 KB | 4 个 ABI，Compose 路径绘制 |
-| `assets/dexopt/baseline.prof` | 4 KB | 基线剖面，用于提速首次启动 |
+| `assets/dexopt/baseline.prof` | 3.4 KB | 基线剖面，用于提速首次启动 |
 | `res/` 单个最大项 | 1.7 KB | 图标位图 |
 
-结论：**不存在「打包了奇怪东西」的情况，唯一异常就是图标库**。
+（上表为 2.12.1 release 包实测。**结论不变**：不存在「打包了奇怪东西」的情况，
+唯一异常就是图标库。）
 
 ### 10.4 R8
 

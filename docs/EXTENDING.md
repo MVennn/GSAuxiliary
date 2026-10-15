@@ -125,8 +125,8 @@ object GLog {
 ```bash
 cd app/src/main/java/gsauxiliary/m/venn
 # 模块 App 进程侧引用了哪些 core/feature 类
-grep -rn "^import com\.wb\.gszx\.\(core\|feature\)" app/ ui/
-# 期望：只有 core.ConfigKeys / core.GLog / core.LogLevel 这类无 api 依赖的类
+grep -rn "^import gsauxiliary\.m\.venn\.\(core\|feature\)" app/ ui/
+# 期望：只有 core.ConfigKeys / core.GLog（含 core.LogLevel）这类无 api 依赖的类
 grep -rn "^import io\.github\.libxposed" app/ ui/ core/
 # 期望：app/ 只有 service.*（已打包）；ui/ 只有 service.*；core/ 只有 ConfigSource、HookBag 出现 api.*
 ```
@@ -163,11 +163,26 @@ data class ConfigSnapshot(
     val color: Int,
     val scopeStrategy: Boolean,
     val logLevel: Int,
+    val stgDirectQuote: Boolean,         // 以下四项为 2.12.x 现状
+    val stgQuoteSwipe: Boolean,
+    val stgSelectAll: Boolean,
     val boldWatchlist: Boolean,          // ← 新增
 ) {
-    val fingerprint: Int get() = … + (if (boldWatchlist) 1 else 0) * 977
+    val fingerprint: Int
+        get() = ((if (enabled) 1 else 0) * 31
+                + color * 7
+                + (if (scopeStrategy) 1 else 0) * 131
+                + logLevel * 17
+                + (if (stgDirectQuote) 1 else 0) * 977
+                + (if (stgQuoteSwipe) 1 else 0) * 1231
+                + (if (stgSelectAll) 1 else 0) * 1543
+                + (if (boldWatchlist) 1 else 0) * 1877)   // ← 新增，取一个未占用的质数
 }
 ```
+
+> **指纹里的乘数互不相同**（31 / 7 / 131 / 17 / 977 / 1231 / 1543 / …），
+> 且必须是质数风格的无关联值 —— 两个不同字段偶然算出同一个指纹，
+> 就会漏掉一次配置刷新。新增字段时挑一个没被占用的数。
 
 `core/ConfigSource.kt` 的 `read()` 里补一行：
 
@@ -238,7 +253,7 @@ val features: List<Feature> = listOf(
 ```kotlin
 FeatureSpec(
     id = "watchlist_bold",
-    categoryRes = R.string.category_stock,
+    categoryRes = R.string.category_display,     // 「显示增强」；策略页增强用 category_strategy
     titleRes = R.string.feature_bold_title,
     summaryRes = R.string.feature_bold_summary,
     switchTitleRes = R.string.feature_bold_switch,
@@ -250,6 +265,9 @@ FeatureSpec(
     detailEntrySummaryRes = R.string.feature_bold_detail_entry_summary,
 )
 ```
+
+> 当前只存在两个分类资源：`category_strategy`（策略页增强）与 `category_display`（显示增强）。
+> 引一个不存在的 `category_*` 会直接编译失败。
 
 开关与「开启后展开二级入口」是 `FeatureTab` 统一渲染的，不用自己写。
 
@@ -302,17 +320,28 @@ Scaffold { padding ->
 > 一级页里的对应物是 `LocalDockInset`（悬浮底栏让位）。**二级页里它恒为 0**
 > —— 那口子是 `HomeScaffold` 给的，二级页不在它的内容树里。
 
-2）写二级菜单内容：仿照 `ui/WatchlistDetail.kt`，
+2）写二级菜单内容：仿照 `ui/WatchlistDetail.kt` / `ui/StrategyQuoteDetail.kt`，
    在 `ui/` 下新建一个 `XxxDetailScreen()`，用 `SmallTitle` + `Card` 分组，
    参数项用 Miuix 的 `SwitchPreference` / `ArrowPreference`，
-   需要**选择列表**时用 Miuix 的 `OverlayDropdownPreference`，
-   需要**二次确认**时用 Miuix 的 `OverlayDialog`（`show` 受控 + `onDismissRequest`，
-   按钮用 `TextButton` 自己排）——
-   这两个组件由 `Scaffold` 内部的 `MiuixPopupHost` 渲染，
-   **注意挂在 `Scaffold` 外面的浮层会盖住它们**（原因见 `docs/UI.md` §1.3），
    颜色选择用 `Widgets.kt` 里的 `ColorPresetItem`（带预览与选中态），
+   卡片注脚用 `Widgets.kt` 的 `CardNote`，
    图标用 `AppIcons`（自绘 `ImageVector`，**不要引回 `material-icons-extended`**，
    原因见 `docs/UI.md` §10）。
+
+   > ⚠️ **选择列表 / 二次确认一律走自绘 `DialogHost`，不要用 Miuix 的
+   > `OverlayDropdownPreference` / `OverlayDialog`。**
+   >
+   > 这两个组件在库内部的 `onClick` 里**同步**开始收起动画，同时又同步回写配置状态，
+   > 动画与重组互相打架 —— 表现为**一点就闪退**，调用侧无法规避
+   > （2.8.0 已整体换成自绘，根因分析见 `docs/UI.md` §1.3 与 `ui/AppDialog.kt` 顶部注释）。
+   >
+   > 自绘弹层的用法：在 `HomeScaffold` 里取 `LocalDialogController.current`，
+   > 调 `show(ChoiceDialogSpec(...))` / `show(ConfirmDialogSpec(...))`；
+   > 写配置一律走 `ModulePreferences.editDeferred { }`（延迟写入，避开弹层收起动画窗口）。
+   >
+   > 顺带一条层级约定：**挂在 `Scaffold` 外面的浮层会盖住弹层** ——
+   > `DialogHost` 与内容都在 content 内，液态悬浮底栏因此也放在 content 里
+   > （见 `docs/UI.md` §1.3.3）。
 
 3）在 `SettingsActivity.kt` 的 `Route` 里加一个 `data object`，
    并在 `MainScreen` 的 `when` 里挂上 `SubScreen(title = ..., onBack = ...) { XxxDetailScreen() }`。
@@ -332,12 +361,13 @@ Scaffold { padding ->
 | 能力 | 位置 | 说明 |
 |---|---|---|
 | 反射找类 / 找方法 / 读字段 | `util/Reflect.kt` | 沿继承链查找；`methodsNamed` 自动过滤 abstract 方法 |
-| 候选名 + 多级兜底 | `feature/watchlist/WatchlistTargets.kt` | App 升级后只改常量，不用重做逆向 |
+| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。现有三份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets` |
 | 自选判定 | `feature/watchlist/ZxWatchlist.kt` | 与行情页同源，20/20 校准过 |
 | 配置读取 | `env.config`（`ConfigSnapshot`） | 内存快照，热路径零 IO |
 | 日志 | `core/GLog.kt` | 两个进程共用，自动选落点 |
 | 钩子生命周期 | `core/HookBag.kt` | 集中卸载 |
 | 配置变更通知 | `Feature.onConfigChanged` | 主线程，异常隔离 |
+| 运行时视图注入 | `feature/strategyselect/StgSelectAllFeature.kt` | 往宿主布局里插控件、克隆同款样式、分帧驱动宿主自己的点击回调 —— 想做「加按钮 / 改布局」类功能先看它 |
 
 ---
 
@@ -382,5 +412,7 @@ Scaffold { padding ->
 | `Reification of an intersection type` | `arrayOf(...)` 传给泛型擦除的参数 | 写成 `arrayOf<Any>(...)` |
 | `Error parsing AndroidManifest.xml` | XML 注释里出现了 `--`（非法） | 注释里不要写 `--` |
 | `requires AGP 9.1.0 or higher` | Miuix 版本过高 | 用 0.9.3，别升（见 [BUILD.md](BUILD.md)） |
+| 点中设置页的下拉 / 确认项**当场闪退** | 用了 Miuix 的 `OverlayDropdownPreference` / `OverlayDialog` | 改用自绘 `DialogHost`（见本文第 4 步的警告框、`docs/UI.md` §1.3） |
+| 切完语言点设置页闪退 | `LocaleHelper.wrap()` 直接返回了 `ContextImpl` | 必须包一层 `ContextWrapper`（见 `docs/UI.md` §9） |
 
 更多运行时问题见 [排错手册](TROUBLESHOOTING.md)。

@@ -23,24 +23,41 @@ adb logcat -s GSZXEnhance
 > 这是最容易浪费时间的误区：`logcat -s GSZXEnhance` 看不到目标进程的日志，
 > 因为 `XposedInterface.log()` 被 LSPosed 收进了自己的日志文件。
 
-正常加载时应该看到：
+正常加载时应该看到（以 2.12.1 为例，**三个功能全开**）：
 
 ```
-GSZXEnhance: === GSAuxiliary v2.6.0 载入 === process=com.guosen.android pid=12345 framework=LSPosed 1.9.x api=102 caps=0x…
-GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2)
+GSZXEnhance: === GSAuxiliary v2.12.1 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
+GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true)
 GSZXEnhance: 已安装功能 [watchlist_highlight] 自选股高亮
 GSZXEnhance: 已挂 com.guosen.commonui.adapter.BaseQuickAdapter.getView ×1
 GSZXEnhance: 已挂 com.guosen.quotation.adapter.aistk.AIStkAdapter.getView ×1
 GSZXEnhance: 已挂 android.app.Activity.onResume
-GSZXEnhance: 功能安装完成：1/1，共 3 个钩子
+GSZXEnhance: 已安装功能 [stg_direct_quote] 策略详情直达标准行情
+GSZXEnhance: 策略直达标准行情：已挂 2 个引擎跳转点
+GSZXEnhance: 已安装功能 [stg_select_all] 策略详情页多选全选
+GSZXEnhance: 策略全选：已挂 1 个 Activity.onResume
+GSZXEnhance: 功能安装完成：3/3，共 N 个钩子
 ```
+
+> ⚠️ **功能开关出厂默认全是关的**（2.11.2 起的硬约定）。
+> 全新安装、还没打开任何开关时，上面这几行是**这样的**：
+>
+> ```
+> GSZXEnhance: 跳过功能 [watchlist_highlight]：当前配置下未启用
+> GSZXEnhance: 跳过功能 [stg_direct_quote]：当前配置下未启用
+> GSZXEnhance: 跳过功能 [stg_select_all]：当前配置下未启用
+> GSZXEnhance: 功能安装完成：0/3，共 0 个钩子
+> ```
+>
+> `0/3` **不是故障**。先去设置界面「功能」页把要用的开关打开。
 
 | 缺哪一行 | 说明 |
 |---|---|
 | 第 1 行 | 模块没被注入 → 检查 LSPosed 是否勾选模块、作用域是否包含国信金太阳 |
 | 「配置通道」 | 框架不支持 remote 能力，或 remote prefs 打不开（见第 3 节） |
 | 「已挂 …getView」 | 宿主类名变了 → 用 `tools/probe/` 重新定位 |
-| 「已安装功能」 | 当前配置下功能未启用（开关关了） |
+| 「已安装功能」 | 该功能开关是关的（正常现象，见上方警告） |
+| 「已挂 N 个引擎跳转点」/「已挂 Activity.onResume」 | 对应功能的宿主类名变了 → 见第 6 节 |
 
 ---
 
@@ -56,7 +73,9 @@ adb shell su -c "grep -i gszx /data/adb/lspd/log/modules_*.log | head -5"
 adb shell su -c "content query --uri content://gsauxiliary.m.venn.config/config"
 ```
 
-也可以直接看设置界面 **「模块」Tab**：它会显示**框架连接状态**和**配置通道**。
+也可以直接看设置界面「**概览**」页：顶部状态卡会显示**框架连接状态**，一眼能看出问题。
+（该页 2.6.0 起由「模块」改名「概览」；页面上**不再单独列「配置通道」行**，
+排障信息统一去「查看日志」。）
 
 **常见原因**
 
@@ -100,6 +119,35 @@ adb shell su -c "content query --uri content://gsauxiliary.m.venn.config/config"
 | 只有部分行变色 | 列表没重绘 | 滚动一下，或退出重进页面 |
 | 名称找不到 | 控件 id 变了 | 改 `WatchlistTargets.NAME_ID_CANDIDATES` |
 
+### 2.1 直达标准行情不生效（点股票还是进中间页）
+
+先看日志里有没有这两行：
+
+```
+已安装功能 [stg_direct_quote] 策略详情直达标准行情
+策略直达标准行情：已挂 2 个引擎跳转点
+```
+
+| 现象 | 原因 | 解法 |
+|---|---|---|
+| 日志里是「找不到 `com.guosen.engine.process.EngineAct`，功能不会生效」 | 引擎基类改名 | 用探针定位后改 `StgDirectQuoteTargets.CLS_ENGINE_ACT` |
+| 日志里是「没有挂上任何钩子」 | `startEngineAct*` 方法改名了 | 往 `StgDirectQuoteTargets.LAUNCH_METHODS` 里加候选方法名 |
+| 有「已改写成 `quotes.stockDetail`」但界面没动 | 改对了但被 App 覆盖 | 看有没有 `EngineIntent 改写异常` 告警 |
+| 日志里是「没有 `adapter_key`，放弃改写」 | 策略页的 extra key 变了 | 改 `StgDirectQuoteTargets.KEY_ADAPTER` / `KEY_STOCK_LIST` / `KEY_STOCK_ITEM` |
+| 直达正常，但**不能左右滑动** | 滑动开关被关了，或 `stockList` 写入失败 | 先去「功能 → 直达标准行情 → 滑动设置」确认开着；日志里若见「列表不可用，退化为单只」则说明数据项结构变了 |
+
+> 完整链路、Intent 契约与降级链见 [FEATURE-DIRECT-QUOTE.md](FEATURE-DIRECT-QUOTE.md)。
+
+### 2.2 多选栏里没有「全选」按钮
+
+| 现象 | 原因 | 解法 |
+|---|---|---|
+| 日志里是「找不到 `…tv_stg_add_zxg…`」 | 多选按钮的控件 id 变了 | 改 `StgSelectAllTargets.CANCEL_BUTTON_ID_CANDIDATES` |
+| 日志里是「没挂上 `Activity.onResume`」 | 框架没给 `android.app.Activity` | 确认框架工作正常（这通常与其它功能同时失效） |
+| 进了多选态但按钮没出现 | 注入被布局挤掉 / 插入位置变了 | 看有没有「插入按钮失败」；确认 `CANCEL_BUTTON_ID_CANDIDATES` 找到的是**那个**「取消」 |
+| 按钮出现了，但点「全选」只勾中一部分 | 宿主切换后会刷新列表 | 这是已修过的点（必须分帧 `postDelayed`）；若复现，检查 `StgSelectAllFeature` 的逐行调度 |
+| 按钮出现**两个** | 重复注入 | 退出多选态再进一次应只剩一个；持续复现则检查 `onResume` 的注入守卫 |
+
 ---
 
 ## 3. 设置里改了开关，但 App 里没反应
@@ -122,7 +170,7 @@ bash tools/sh.sh --root "grep '配置已更新' /data/adb/lspd/log/modules_*.log
 
 ### 原因 A：框架未连接（配置后端 = LOCAL）
 
-设置界面「模块」Tab 会显示 **配置通道 = 本地暂存（框架未连接）**。
+设置界面「**概览**」页的顶部状态卡会显示「未激活 / 未连接到 LSPosed 框架」。
 
 含义：模块 App 拿不到 LSPosed 服务的 binder，改动只写在本地，
 **目标进程看不到**。
@@ -190,15 +238,16 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 
 ## 6. App 升级后失效
 
-按这个顺序改，**大概率只需要改一个常量**：
+按这个顺序改，**大概率只需要改一个常量**。
+三个功能各自带一份候选常量文件，哪一列出问题就改哪一份：
 
 | 步骤 | 检查什么 | 改哪里 |
 |---|---|---|
 | 1 | 看 LSPosed 日志，钩子有没有装上 | — |
-| 2 | 适配器类名 | `feature/watchlist/WatchlistTargets.kt` → `TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER` |
-| 3 | 名称控件 id | 同上 → `NAME_ID_CANDIDATES` |
-| 4 | 数据项里的代码/市场字段名 | 同上 → `CAM_FIELDS` / `CODE_FIELDS` / `MARKET_FIELDS` |
-| 5 | 自选判定 API | `feature/watchlist/ZxWatchlist.kt`（兜底是直接查 `ZXManager.m_stkGrpMap`） |
+| 2 | **自选高亮**：适配器类名 / 名称控件 id / 代码市场字段 | `feature/watchlist/WatchlistTargets.kt` → `TARGET_ADAPTERS`、`CLS_BASE_QUICK_ADAPTER`、`NAME_ID_CANDIDATES`、`CAM_FIELDS`、`CODE_FIELDS`、`MARKET_FIELDS` |
+| 3 | **自选高亮**：自选判定 API | `feature/watchlist/ZxWatchlist.kt`（兜底是直接查 `ZXManager.m_stkGrpMap`） |
+| 4 | **直达标准行情**：引擎基类 / action / extra key | `feature/strategyquote/StgDirectQuoteTargets.kt` |
+| 5 | **多选全选**：多选按钮 id / 列表 id / 复选框 id | `feature/strategyselect/StgSelectAllTargets.kt` |
 
 **重新定位类名的方法**：用 `tools/probe/` 里的运行时探针。
 
@@ -206,8 +255,12 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 bash tools/probe/build.sh
 adb install -r tools/probe/out/GoldSunProbe.apk
 # 在 LSPosed 里启用探针，作用域勾国信金太阳
-# 然后正常操作 App，探针会把 adapter 类名 / item 字段 / 控件 id 全打到 LSPosed 日志
+# 然后正常操作 App，探针会把 adapter 类名 / item 字段 / 控件 id / 跳转 Intent 全打到 LSPosed 日志
 ```
+
+探针现在挂的不只是页面链路，还有一整套**通用**钩子（`LAUNCH` / `DLG` / `POP` /
+`PAGE` / `PAGER` / `CLASS`），用来摸清「点一下到底发生了什么」——
+定位 `IntentStockInfo(StockInfo)` 这类构造器就靠它。
 
 详见 [tools/probe/README.md](../tools/probe/README.md)。
 
@@ -234,12 +287,22 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 | `NoClassDefFoundError: io.github.libxposed.api.…`（模块 App 进程） | `core/` 或 `app/` 里有人 import 了 api 类型 | 用 `GLog.Sink` 那样的函数式接口解耦 |
 | 模块加载了但钩子全没装上 | 现代模块不能调 legacy API | 确认用的是 `hook(Executable).intercept(Chain)` |
 
-**自查：manifest 里到底还有没有 `xposed*`**
+**自查：manifest 里到底还有没有 legacy 元数据 key**
 
 ```bash
-aapt2 dump xmltree --file AndroidManifest.xml app/build/outputs/apk/debug/app-debug.apk | grep -i xposed
+aapt2 dump xmltree --file AndroidManifest.xml app/build/outputs/apk/debug/app-debug.apk \
+  | grep -iE "xposedminversion|xposedmodule|xposedsharedprefs|xposedscope|xposeddescription"
 # 应无输出
 ```
+
+> ⚠️ **不要用 `grep -i xposed`。** 下面两处是**合法且必需**的，用宽匹配会误报，
+> 让人去删一个不该删的东西：
+>
+> - `android:description="@string/xposed_description"` —— 那是个**字符串资源名**（带下划线）
+> - `de.robv.android.xposed.category.MODULE_SETTINGS` —— LSPosed 靠这个 category
+>   在「模块」列表里找到本模块的设置入口，删了设置入口就没了
+>
+> 真正让 LSPosed 判成 legacy 的是 **`xposedminversion`**（无下划线，meta-data key）。
 
 **自查：dex 里有没有被打进 api 类**
 

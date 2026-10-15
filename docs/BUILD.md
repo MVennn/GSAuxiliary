@@ -6,7 +6,7 @@
 |---|---|---|
 | JDK | 17 或 21 | AGP 8.10.1 要求 17+；探针手工构建也要求 17+ |
 | Android SDK Platform | **compileSdk 37** | Miuix 0.9.3 硬性要求 |
-| Android SDK Build-Tools | 35.0.0 | 探针模块手工构建时用 |
+| Android SDK Build-Tools | 任意一个即可 | 只有**探针**手工构建时用到；`tools/probe/build.sh` 默认取 `build-tools/` 下**版本号最大**的那个，也可用 `BUILD_TOOLS` 指定。本机实测 35.0.0 |
 | Gradle | 8.11.1 | 仓库自带 Wrapper，无需预装 |
 
 ```bash
@@ -121,7 +121,9 @@ buildTypes {
 }
 ```
 
-裁剪效果：dex 类数 26 553 → 2 987，APK 11.45 MB → 1.34 MB。
+裁剪效果（2.4.0 首次开启 R8 时实测）：dex 类数 26 553 → 2 987，APK 11.45 MB → 1.34 MB。
+**2.12.1 当前实测**：类数 3 068、`classes.dex` 2.57 MB、release APK 1.43 MB
+（比 2.4.0 略涨是因为此后新增了两个功能与自绘弹层 / 液态玻璃组件，属正常增长）。
 
 **keep 规则的底线**（`app/proguard-rules.pro`）：凡是「R8 从代码里看不出、
 但运行期确实会被反射/系统调用」的入口都必须显式 keep，目前包括 ——
@@ -142,21 +144,39 @@ buildTypes {
 构建后的自查（红线仍然成立）：
 
 ```bash
+APK=app/build/outputs/apk/release/app-release.apk
+
+# 版本号（当前应为 2.12.1 / versionCode 32）
+aapt2 dump badging "$APK" | head -2
+
 # 类总数与入口类
-dexdump -f classes.dex | grep -c "Class descriptor"
-dexdump -f classes.dex | grep "Lgsauxiliary/m/venn/GszxModule;"
+unzip -o -q "$APK" 'classes*.dex' -d /tmp/apkx
+dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor"
+dexdump -f /tmp/apkx/classes*.dex | grep "Lgsauxiliary/m/venn/GszxModule;"
 
 # 红线：libxposed api 必须为 0 个
-dexdump -f classes.dex | grep -c "Class descriptor.*Lio/github/libxposed/api"
+dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor.*Lio/github/libxposed/api"
 
-# 清单里不能有 legacy 元数据
-aapt2 dump xmltree --file AndroidManifest.xml app-release.apk | grep -i xposedminversion
+# 清单里不能有 legacy 元数据 —— 精确查那几个 key，别用 grep -i xposed
+aapt2 dump xmltree --file AndroidManifest.xml "$APK" \
+  | grep -iE "xposedminversion|xposedmodule|xposedsharedprefs|xposedscope|xposeddescription"
+#   应无输出
+#
+#   ⚠️ 不要用 `grep -i xposed` —— 下面两处是**合法且必需**的，会被误报：
+#     · android:description="@string/xposed_description"（字符串资源名，带下划线）
+#     · de.robv.android.xposed.category.MODULE_SETTINGS（LSPosed 靠它找设置入口）
+#   真正的 legacy 判定 key 是 **`xposedminversion`**（无下划线），见 EXTENDING.md 红线 1。
 
 # 系统栏沉浸的属性必须真的进包（默认 + night 两个变体）
-aapt2 dump resources app-release.apk | grep -A 8 "style/Theme.GSZX"
+aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 #   期望看到 windowLightNavigationBar / windowLightStatusBar = true（night 变体为 false）
 #   以及 enforceStatusBarContrast / enforceNavigationBarContrast = false
 ```
+
+> `versionName` / `versionCode` 的**唯一来源**是 `app/build.gradle.kts`，
+> 每次发版两处必须同时改（见仓库根 `CHANGELOG.md` 的惯例）。
+> `BuildConfig.BUILD_TIME` 是配置期求值的，所以同一份代码不同时间构建，
+> 设置界面「概览」页显示的构建时间会不同 —— 这正常。
 
 > R8 会输出一批 `An error occurred when parsing kotlin metadata` 警告，
 > 原因是 Kotlin 2.4.0 比当前 AGP 内置的 R8 版本新。**属于已知无害警告**，

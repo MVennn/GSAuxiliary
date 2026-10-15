@@ -124,12 +124,21 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
   ├─ val idx = indexOf(b.get("stockItem"), stocks)     // 被点那只是第几个
   ├─ val list = ArrayList<Any>()
   │     stocks.forEach { list += IntentStockInfo(it) } // ★ 复用 App 自带构造器做类型转换
-  ├─ b.remove("stockItem")
-  ├─ b.putParcelableArrayList("stockList", list)       // 优先「原地清空重填」，保留 Bundle 原存储方式
+  ├─ val copy = Bundle(b)                              // ★★ 关键：先复制一份 Bundle
+  ├─ copy.remove("stockItem")
+  ├─ copy.putParcelableArrayList("stockList", list)    // Parcelable 优先，Serializable 兜底
+  ├─ ei.putExtra("adapter_key", copy)                  // ★★ 写回**副本**，绝不碰原 Bundle
   ├─ ei.putExtra("stockIndex", idx)                    // ★ 顶层 extra，不在 Bundle 里
   ├─ ei.setAction("quotes.stockDetail")                // ★ 关键：不再去中间页
   └─ chain.proceed()                                    // 交给 App 路由 → StockFragAct（7 页可滑）
 ```
+
+> ⚠️ **必须写 Bundle 副本，不能原地改。** `adapter_key` 里那个 `stockList`
+> 与宿主 `AIStkStgDetailAct` 的列表适配器（`AIStkAdapter`）**是同一个 `ArrayList` 对象**。
+> 一旦对它 `clear() + addAll()` 原地换成 `IntentStockInfo`，
+> 宿主第二次点击时会按 `StockInfo` 强转 → `ClassCastException` → **页面崩溃**。
+> 这正是 2.12.0 修掉的 bug（真机 `logcat -b crash` 坐实的根因：
+> `AIStkStgDetailAct.onItemClick:196`）。**改这段代码前先把这条读三遍。**
 
 **为什么这条路径成立**：`EngineAct` 是按 **action** 查路由表的（`router_ai_stk_detail` → `AIStkDetailFragAct`，`quotes.stockDetail` → `StockFragAct`）。
 把 action 换掉，目标页自然就变了；再补上行情页那三个 extra 的语义，`StockFragAdapter` 就会拿到 7 条数据、pager 就有 7 页。
@@ -141,18 +150,22 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
 2. **`node_level` 暂不动**（策略侧恰好是 5，行情侧是 2）。它是引擎返回栈的层级记账，
    先保持原值；若实测发现返回行为异常，再改（候选：沿用原值 / 对齐行情侧 2）。
 3. **`stockList` 的存储类型**：行情侧读出来是 `ArrayList`。Bundle 里既可能用
-   `putParcelableArrayList` 也可能用 `putSerializable`。**先按 `putParcelableArrayList` 试**，
-   不通就换 `putSerializable`（真机一轮即可判定）。
-4. **`IntentStockInfo` 的构造器要按类型探测**，不能写死：
+   `putParcelableArrayList` 也可能用 `putSerializable`。**按 `putParcelableArrayList` 优先、
+   `putSerializable` 兜底**（见 `StgDirectQuoteFeature` 里那两处 `runCatching` 回退分支）。
+4. **绝不原地改写宿主持有的集合**（2.12.0 起）：`stockList` 与宿主适配器的数据是
+   **同一个对象**，必须 `Bundle(b)` 复制一份改写再 `putExtra` 回去。同一条规则也适用于
+   「关闭左右滑动」时的单只契约 —— 写 `adapter_key.stockInfo` 时要清掉副本里残留的
+   `stockList`，否则行情侧会读到过期的策略列表。
+5. **`IntentStockInfo` 的构造器要按类型探测**，不能写死：
    ```kotlin
    val ctor = isiClass.declaredConstructors.firstOrNull { c ->
        c.parameterTypes.size == 1 && c.parameterTypes[0].isAssignableFrom(item.javaClass)
    }
    ```
    找不到就退到 `(String code, String market)` 构造器，从 `codeAndMarket` 拆出来。
-5. **索引匹配**：`stockItem` 与 `stockList` 里的元素是同一个对象引用（同一批数据），
+6. **索引匹配**：`stockItem` 与 `stockList` 里的元素是同一个对象引用（同一批数据），
    优先用 `===` 比引用，退而比 `codeAndMarket` 字符串。
-6. 钩子里的异常必须 `runCatching` 吞掉，绝不抛给宿主（同 `WatchlistFeature`）。
+7. 钩子里的异常必须 `runCatching` 吞掉，绝不抛给宿主（同 `WatchlistFeature`）。
 
 ### 3.4 降级链
 
@@ -181,6 +194,8 @@ EngineAct.startEngineAct(EngineIntent ei) 被调用
 
 ```kotlin
 object StgDirectQuoteTargets {
+    const val TARGET_PKG = TargetApp.PACKAGE
+
     /** 点击来源（判定 `this` 用） */
     const val CLS_STG_DETAIL = "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
     /** 引擎路由基类（挂钩子用） */
@@ -193,16 +208,21 @@ object StgDirectQuoteTargets {
     /** 行情页进个股详情的 action（改写成它） */
     const val ACTION_STOCK_DETAIL = "quotes.stockDetail"
 
-    /** extras key（Bundle 名 + 三个条目名） */
+    /** 要挂的引擎跳转方法（候选数组，App 升级后加一项即可） */
+    val LAUNCH_METHODS = arrayOf("startEngineAct", "startEngineActForResult")
+
+    /** extras key（Bundle 名 + 各条目名） */
     const val KEY_ADAPTER = "adapter_key"
     const val KEY_STOCK_LIST = "stockList"
     const val KEY_STOCK_ITEM = "stockItem"
+    /** 关掉左右滑动时走行情侧的单只契约 */
+    const val KEY_STOCK_INFO = "stockInfo"
     const val KEY_STOCK_INDEX = "stockIndex"
 
     /** 判定「这只股票」用的字段候选（沿用 WatchlistTargets 的候选数组风格） */
     val CAM_FIELDS = arrayOf("codeAndMarket", "m_codeAndMarket")
-    val CODE_FIELDS = arrayOf("m_stkCode", "mStkCode", "code")
-    val MARKET_FIELDS = arrayOf("m_stkMarket", "mStkMarket", "market")
+    val CODE_FIELDS = arrayOf("m_stkCode", "mStkCode", "code", "mCode")
+    val MARKET_FIELDS = arrayOf("m_stkMarket", "mStkMarket", "market", "mMarket")
 }
 ```
 
@@ -260,9 +280,11 @@ class StgDirectQuoteFeature : Feature {
 1. 策略详情页点股票 → **不再出现** `AIStkDetailFragAct` → 直达 `StockFragAct`。
 2. `#vp_stocks` 的 **count = 策略股票数**（本例 7），`current` = 被点那只。
 3. 左滑 / 右滑在策略的股票之间切换，顺序与策略列表一致。
-4. 行情 / 自选列表行为**零变化**（hook 只对 `AIStkStgDetailAct` 生效）。
-5. 关掉开关 → 立即恢复原版行为（进中间页），无需重启目标 App。
-6. 目标 App 无新增崩溃；release 包 `Lio/github/libxposed/api` 定义类 **0**。
+4. **连续点击 ≥ 5 只不同股票，每次都直达、不崩溃**（2.12.0 的验收项；
+   修复前同操作**必然在第 2 次**抛 `ClassCastException` —— 见 §3.2 的警告）。
+5. 行情 / 自选列表行为**零变化**（hook 只对 `AIStkStgDetailAct` 生效）。
+6. 关掉开关 → 立即恢复原版行为（进中间页），无需重启目标 App。
+7. 目标 App 无新增崩溃；release 包 `Lio/github/libxposed/api` 定义类 **0**。
 
 ---
 

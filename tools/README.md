@@ -326,11 +326,22 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 
 ## 调试产物位置
 
-脚本生成的临时文件统一放在仓库根目录的 `.work/` 下（已 gitignore）：
+脚本生成的临时文件统一放在仓库根目录的 `.work/` 下（**已被 `.gitignore` 排除**）。
+实际用到的路径如下 —— 没有约定的话，就放在 `.work/` 根：
 
 ```
 .work/
-├── shots/        截图
-├── logs/         日志
-└── ui_tmp.xml    最近一次控件树 dump
+├── shots/              drive.sh 的 shot 指令 → .work/shots/NAME.png
+├── lspd.log            glog.sh tail 拉下来的日志
+├── log.mark            glog.sh mark 记录的行号游标
+├── icons-check.png     verify_icons.py 的默认输出
+├── ui*.xml             ui.sh / drive.sh 的控件树 dump（ui.xml / ui_tmp.xml / app_ui.xml …）
+└── *.png / *.raw       drive.sh 截图、手工取色留下的裸帧
 ```
+
+> **`.work/` 是纯暂存区，可以随时整体删除**（`rm -rf .work`）——
+> 里面的东西全部由脚本按需重建。它不属于交付物，
+> 仓库里也确实留过一批历史截图与反编译产物，已清理过一次；
+> 日常跑完脚本后不必刻意收拾，攒多了直接删掉整个目录即可。
+>
+> `.work/` 不会进 Git（`.gitignore` 有 `/.work/`），所以删它不影响仓库。

@@ -59,11 +59,14 @@ fi
 
 # --- python ---
 if [ -z "${PYTHON:-}" ]; then
-    local_py=(
-        "${HOME:-}/.workbuddy-ai/binaries/python/versions/3.13.12/python.exe"
-        "${HOME:-}/.workbuddy-ai/binaries/python/versions/3.12.10/python.exe"
-    )
-    for p in "${local_py[@]}"; do
+    # 优先用 WorkBuddy 托管的解释器（版本目录名可能变，所以用 glob 而不是写死版本号）。
+    # 注意 `.workbuddy` 与 `.workbuddy-ai` 是**两套并存的目录**：
+    #   · ~/.workbuddy/binaries      —— 现行托管位置
+    #   · ~/.workbuddy-ai/binaries   —— 早期版本的托管位置，本机仍在用，保留作兜底
+    for p in \
+        "${HOME:-}"/.workbuddy/binaries/python/versions/*/python.exe \
+        "${HOME:-}"/.workbuddy-ai/binaries/python/versions/*/python.exe
+    do
         [ -x "$p" ] && { PYTHON="$p"; break; }
     done
     if [ -z "${PYTHON:-}" ]; then

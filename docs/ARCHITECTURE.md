@@ -11,26 +11,29 @@
 
 ```
 ┌─────────────────────────────────────┐    ┌─────────────────────────────────────┐
-│ gsauxiliary.m.venn （模块自己的进程）      │    │ com.guosen.android（目标 App 进程） │
+│ gsauxiliary.m.venn（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
 │                                     │    │                                     │
-│ ui/SettingsActivity.kt  ← 路由      │    │ GszxModule.kt      ← 被注入执行     │
-│   ├─ ui/Dock.kt                     │    │   └─ FeatureManager                 │
-│   ├─ ui/{Module,Feature,Settings,   │    │        └─ WatchlistFeature          │
-│   │      About}Tab.kt               │    │ core/ConfigSource                   │
-│   ├─ ui/{WatchlistDetail,LogViewer} │    │ core/HookBag                        │
-│   │      .kt        ← 二级页        │    │ core/{ConfigKeys,ConfigSnapshot,    │
-│   └─ ui/{PrefState,FeatureCatalog,  │    │       GLog,TargetApp}.kt            │
-│          Widgets}.kt                │    │ util/Reflect.kt                     │
-│ app/GszxApp.kt                      │    │                                     │
-│ app/{FrameworkBridge,ModulePrefs,   │    │                                     │
-│      ConfigBackup,LauncherIcon,     │    │                                     │
-│      LocaleHelper,DebugConfig}.kt   │    │                                     │
-│                                     │    │                                     │
-│         │ 写                        │    │         │ 读                        │
-│         ▼                           │    │         ▼                           │
-│   XposedService.                    │    │   XposedInterface.                  │
-│   getRemotePreferences("config")    │    │   getRemotePreferences("config")    │
-└─────────────────────────────────────┘    └─────────────────────────────────────┘
+│ ui/SettingsActivity.kt  ← 路由       │    │ GszxModule.kt      ← 被注入执行      │
+│   ├─ ui/{Dock,Glass,AppDialog,      │    │   └─ FeatureManager                  │
+│   │      SystemBars}.kt             │    │        ├─ WatchlistFeature           │
+│   ├─ ui/{Module,Feature,Settings,   │    │        ├─ StgDirectQuoteFeature      │
+│   │      About}Tab.kt               │    │        └─ StgSelectAllFeature        │
+│   ├─ ui/{WatchlistDetail,           │    │ core/ConfigSource                    │
+│   │      StrategyQuoteDetail,       │    │ core/HookBag                         │
+│   │      LogViewer}.kt  ← 二级页    │    │ core/{ConfigKeys,ConfigSnapshot,     │
+│   └─ ui/{PrefState,FeatureCatalog,  │    │       GLog,TargetApp}.kt             │
+│          Widgets,AppIcons,          │    │ util/Reflect.kt                      │
+│          MarkdownText}.kt           │    │                                      │
+│ app/GszxApp.kt                      │    │                                      │
+│ app/{FrameworkBridge,ModulePrefs,   │    │                                      │
+│      ConfigBackup,LauncherIcon,     │    │                                      │
+│      LocaleHelper,DebugConfig}.kt   │    │                                      │
+│                                     │    │                                      │
+│         │ 写                        │    │         │ 读                         │
+│         ▼                           │    │         ▼                            │
+│   XposedService.                    │    │   XposedInterface.                   │
+│   getRemotePreferences("config")    │    │   getRemotePreferences("config")     │
+└─────────────────────────────────────┘    └──────────────────────────────────────┘
                   ▲                                        ▲
                   │          LSPosed 守护进程托管          │
                   └───────────remote preferences───────────┘
@@ -57,16 +60,20 @@
 | `core/ConfigSource.kt` | 打开 remote prefs、注册变更监听、产出 `ConfigSnapshot` | 目标进程 |
 | `core/ConfigSnapshot.kt` | 不可变配置快照 + 稳定指纹 | 两处共用 |
 | `core/ConfigKeys.kt` | 配置键与默认值（**纯常量，不引用任何框架类**） | 两处共用 |
-| `core/GLog.kt` | 统一日志出口（**不引用 api 类型**） | 两处共用 |
+| `core/GLog.kt` | 统一日志出口 + `LogLevel`（**不引用 api 类型**） | 两处共用 |
 | `core/HookBag.kt` | 钩子句柄集合，支持一次性卸载 | 目标进程 |
 | `core/TargetApp.kt` | 目标包名 | 两处共用 |
 | `util/Reflect.kt` | 反射：候选名、继承链查找、过滤 abstract | 目标进程 |
 | `feature/Feature.kt` | 功能扩展接口 | 目标进程 |
 | `feature/FeatureEnv.kt` | 功能运行环境（xposed / classLoader / config） | 目标进程 |
 | `feature/FeatureManager.kt` | 功能注册表 + 安装/分发/卸载 | 目标进程 |
-| `feature/watchlist/WatchlistFeature.kt` | 染色功能本体 | 目标进程 |
-| `feature/watchlist/WatchlistTargets.kt` | 宿主类名/字段名候选常量 | 目标进程 |
-| `feature/watchlist/ZxWatchlist.kt` | 自选判定 | 目标进程 |
+| `feature/watchlist/WatchlistFeature.kt` | **自选高亮**功能本体（渲染后补色） | 目标进程 |
+| `feature/watchlist/WatchlistTargets.kt` | 该功能的宿主类名/字段名候选常量 | 目标进程 |
+| `feature/watchlist/ZxWatchlist.kt` | 自选判定（`ZXWorkflow` + 兜底） | 目标进程 |
+| `feature/strategyquote/StgDirectQuoteFeature.kt` | **策略详情直达标准行情 + 左右滑动**功能本体（改写 `EngineIntent`） | 目标进程 |
+| `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
+| `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
+| `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
 | `app/GszxApp.kt` | `Application`：初始化配置仓库、服务监听、日志等级、桌面图标状态 | 模块进程 |
 | `app/FrameworkBridge.kt` | 与 LSPosed 服务通信，拿 binder | 模块进程 |
 | `app/ModulePreferences.kt` | 配置仓库（REMOTE / LOCAL 双后端） | 模块进程 |
@@ -74,10 +81,15 @@
 | `app/LauncherIcon.kt` | 桌面图标开关（切 `activity-alias` 的 enabled 状态） | 模块进程 |
 | `app/LocaleHelper.kt` | 界面语言（`attachBaseContext` 包装 Context） | 模块进程 |
 | `app/DebugConfigProvider.kt` | adb 调试通道（仅 root/shell） | 模块进程 |
-| `ui/SettingsActivity.kt` | Activity + 极简路由 + Dock 装配 | 模块进程 |
-| `ui/Dock.kt` | 默认底栏 / 液态玻璃悬浮底栏 | 模块进程 |
+| `ui/SettingsActivity.kt` | Activity + 三层布局 + 极简路由 + Dock / 顶栏 / 弹窗装配 | 模块进程 |
+| `ui/Dock.kt` | 默认底栏 / 液态玻璃悬浮底栏（`LocalDockInset`） | 模块进程 |
+| `ui/Glass.kt` | 液态玻璃：顶栏、色料、下滑收起状态机 | 模块进程 |
+| `ui/AppDialog.kt` | 自绘弹窗宿主（绕开 Miuix 弹层的闪退路径） | 模块进程 |
+| `ui/SystemBars.kt` | 系统栏沉浸（`LocalNavBarInset`） | 模块进程 |
+| `ui/AppIcons.kt` | 自绘 `ImageVector` 图标（零图标库依赖） | 模块进程 |
+| `ui/MarkdownText.kt` | 轻量 Markdown 渲染（免责声明正文） | 模块进程 |
 | `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
-| `ui/WatchlistDetail.kt` · `ui/LogViewer.kt` | 二级页（染色设置 / 查看日志） | 模块进程 |
+| `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` · `ui/LogViewer.kt` | 二级页（染色设置 / 滑动设置 / 查看日志） | 模块进程 |
 | `ui/PrefState.kt` · `ui/FeatureCatalog.kt` · `ui/Widgets.kt` | 配置读取、功能展示元数据、共用部件 | 模块进程 |
 
 ### 2.1 分层规则
@@ -120,7 +132,7 @@ onPackageReady(param)                    ← classLoader 已就绪
    ▼
 （运行期）
    ├─ 配置变化 → 框架推送 → ConfigSource 监听 → FeatureManager.onConfigChanged（切主线程）
-   └─ 目标 App 列表渲染 → 钩子触发 → WatchlistFeature 补色
+   └─ 目标 App 触发钩子 → 对应 Feature 处理（见 §3.2）
    │
    ▼
 onHotReloading(param): Boolean           ← 允许/拒绝
@@ -135,7 +147,21 @@ onHotReloaded(param)
    └─ install(cl)                        用新代码重装钩子
 ```
 
-### 3.2 染色主流程
+### 3.2 三个功能的挂载点
+
+功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
+没有一个功能依赖另一个功能的运行结果。
+
+| 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
+|---|---|---|---|---|
+| **自选高亮** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor` | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色（见 [HOOK-NOTES](HOOK-NOTES.md#6-关闭开关后颜色不还原)） |
+| **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
+| **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态）+ 包裹宿主 `OnItemClickListener` | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型 | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效 |
+
+三条共同约定：钩子里的异常一律 `runCatching` 吞掉（绝不抛给宿主）、
+所有句柄进 `HookBag`、`onConfigChanged` 必须在主线程处理。
+
+### 3.3 染色主流程（自选高亮）
 
 ```
 列表要显示一行
@@ -177,7 +203,7 @@ env.xposed.hook(m)
 > **双保险**：除了 `BaseQuickAdapter.getView`，还会尝试挂目标适配器
 > `AIStkAdapter.getView`（若某版本覆写了它）。
 
-### 3.3 配置变更后如何自动刷新
+### 3.4 配置变更后如何自动刷新
 
 ```
 （模块进程）设置界面改动
@@ -217,10 +243,13 @@ env.xposed.hook(m)
 
 ```kotlin
 data class ConfigSnapshot(
-    val enabled: Boolean,        // 总开关
+    val enabled: Boolean,        // 自选高亮总开关
     val color: Int,              // 高亮色（ARGB）
-    val scopeStrategy: Boolean,  // 是否作用于策略详情页
-    val logLevel: Int,           // 日志等级
+    val scopeStrategy: Boolean,  // 自选高亮：是否作用于策略详情页
+    val logLevel: Int,           // 日志等级（两个进程都读）
+    val stgDirectQuote: Boolean, // 策略详情直达个股详情
+    val stgQuoteSwipe: Boolean,  // 直达时是否支持左右滑动换股
+    val stgSelectAll: Boolean,   // 多选栏「全选 / 反选」按钮
 ) {
     val fingerprint: Int get() = …   // 稳定指纹，只在内容变化时改变
 }
@@ -262,23 +291,28 @@ Collections.synchronizedList(mutableListOf<XposedInterface.HookHandle>())
 API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能卸载**。
 把句柄集中管理，热重载 / 关闭功能 / 进程退出时一次性 `unhookAll()`。
 
-### 4.5 配置的两类归属
+### 4.5 配置的三层归属
 
-`ConfigKeys` 里的键刻意分成两类，这是「设置页只管模块自身」这条产品规则的代码落点：
+`ConfigKeys` 里的键刻意分成三类，这是「设置页只管模块自身」这条产品规则的代码落点：
 
-| 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ |
-|---|---|---|---|
-| **功能开关** | `ENABLED` / `COLOR` / `SCOPE_STRATEGY` | 目标进程（染色要用） | ✅ |
-| **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` | 只有模块 App 进程 | ❌ |
-| 跨两类 | `LOG_LEVEL` | 两边都读（目标进程控制日志等级） | ✅ |
+| 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
+|---|---|---|---|---|
+| **功能总开关** | `ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` | 目标进程 | ✅ | **一律 `false`** |
+| **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` | 目标进程 | ✅ | 开启 / 默认值 |
+| **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
+| 跨两类 | `LOG_LEVEL` | 两边都读（目标进程控制日志等级） | ✅ | `INFO` |
 
 判定标准很简单：**目标进程需不需要它**。
 
-- 需要 → 必须进快照，否则染色逻辑拿不到
+- 需要 → 必须进快照，否则功能逻辑拿不到
 - 不需要 → 留在模块进程，避免把「底栏长什么样」这类纯 UI 偏好塞进目标进程的内存
 
-`DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` 都**不在** `ConfigSnapshot` 里，
-目标进程对它们一无所知 —— 这正是「设置页只负责本模块范围内的设置项」在架构上的体现。
+前两类对应 `ConfigKeys.FEATURE_KEYS` 与 `FEATURE_PARAM_KEYS`，
+是「重置模块」的分工依据：**开关一律关掉，参数恢复默认**（见 [EXTENDING.md](EXTENDING.md) 第 4 步）。
+
+`DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK`
+都**不在** `ConfigSnapshot` 里，目标进程对它们一无所知 ——
+这正是「设置页只负责本模块范围内的设置项」在架构上的体现。
 
 > `ui/FeatureCatalog.kt` 是 `feature/` 的**镜像表**：`ui/` 不能引用 `FeatureManager`
 > （红线推论），所以它用一份静态的 `FeatureSpec` 列表描述「有哪些功能、叫什么、说明是什么」。
@@ -288,8 +322,16 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 
 ## 5. 反射兜底策略
 
-因为目标 App 被加固，**类名 / 字段名都不能硬编码假设**，所有关键名字都做成候选数组 + 多级兜底
-（集中在 `feature/watchlist/WatchlistTargets.kt`）：
+因为目标 App 被加固，**类名 / 字段名都不能硬编码假设**，所有关键名字都做成候选数组 + 多级兜底。
+每个功能各带一份 `XxxTargets.kt`，互不干扰：
+
+| 功能 | 候选常量文件 |
+|---|---|
+| 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
+| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
+| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+
+以自选高亮为例：
 
 ```kotlin
 // 目标适配器候选

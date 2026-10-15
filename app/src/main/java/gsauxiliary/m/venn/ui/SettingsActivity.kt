@@ -77,8 +77,10 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  *
  * 系统栏（状态栏 / 手势导航条）的沉浸处理在 [SyncSystemBars]，理由见该函数。
  *
- * 弹层（Miuix 的 `OverlayDropdownPreference` / `OverlayDialog`）由 `Scaffold` 内部
- * 的 `MiuixPopupHost` 渲染，不需要也不应该再叠一层自绘覆盖层 —— 详见 [SettingsTab] 的注释。
+ * 弹层走 [AppDialog] 的**自绘** `DialogHost`（2.8.0 起），**不用** Miuix 的
+ * `OverlayDropdownPreference` / `OverlayDialog` —— 后者在库内部的 `onClick` 里
+ * 同步开始收起动画，与同步回写的配置状态打架会闪退，调用侧无法规避。
+ * 详见 `ui/AppDialog.kt` 顶部注释与 `docs/UI.md` §1.3。
  */
 class SettingsActivity : ComponentActivity() {
 
@@ -412,10 +414,11 @@ private fun MainScreen() {
  *
  * ## 悬浮底栏为什么放在 `Scaffold` 的 content **里面**
  *
- * Miuix 的弹层由 `Scaffold` 内部的 `MiuixPopupHost` 渲染，位置在内容之上、
- * 但在 `Scaffold` **之外**的兄弟节点之下。如果 Dock 挂在 `Scaffold` 外面，
- * 它就会盖住设置页的下拉弹层和重置对话框。所以 Dock 放进 content 的 Box 里，
- * 用 `align(BottomCenter)` 浮在底部。
+ * 自绘的 `DialogHost`（`ui/AppDialog.kt`）挂在 content 的 `Box` 里，是 content 的最后一个子节点。
+ * 如果一个浮层挂在 `Scaffold` **外面**，它会排在 `Scaffold` 之后绘制 ——
+ * 于是盖住 content 内的 Dock 与 `DialogHost`。所以 Dock 放进 content 的 Box 里，
+ * 用 `align(BottomCenter)` 浮在底部，并排在 `DialogHost` 之前。
+ * （`DialogHost` 自己必须是最后一个子节点，才能压住包括 Dock 在内的一切。）
  *
  * ## 底部占位与导航条沉浸
  *

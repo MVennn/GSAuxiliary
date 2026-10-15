@@ -60,8 +60,14 @@ com.secneo.apkwrapper.ApplicationWrapper
 
 这一套下来，**不用反编译一行代码**就拿到了全部需要的信息。
 
-> 仓库里现在的 `tools/probe/`（v18）已经**收窄**成两件事：
-> 挂 `Activity.onResume` 打页面链路 + dump `ZXManager` / `ZXWorkflow` 的自选数据并做判定 API 交叉验证。
+> 仓库里现在的 `tools/probe/`（**v25**）已经**收窄**成三件事：
+> ① 挂 `Activity.onResume` 打页面链路；
+> ② dump `ZXManager` / `ZXWorkflow` 的自选数据并做判定 API 交叉验证（v18）；
+> ③ 挂一整套**通用**的跳转 / 布局侦察钩子 —— `Activity.startActivity*`（`LAUNCH`）、
+> `Dialog.show`（`DLG`）、`PopupWindow.show*`（`POP`）、`Activity.onCreate`（`PAGE`）、
+> 延迟 dump 视图树（`PAGER` / `RV` / `VW`）、`dumpClassMembers`（`CLASS`）—— v19～v25。
+> 第 ③ 组全是框架类方法，**不预设任何业务类名**，用来摸清「点一下到底发生了什么」。
+>
 > 需要重新做全量侦察时，按上面这张表临时加钩子即可。
 
 ---
@@ -389,19 +395,28 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
 
 ## 10. 失效预案（App 升级后怎么办）
 
-如果国信升级后模块不生效，按顺序检查：
+如果国信升级后模块不生效，按顺序检查。**三个功能各自带一份候选常量文件，
+互不影响** —— 先看日志判断是哪个功能挂了，再去改对应的那一份：
 
-1. **看 LSPosed 日志**确认模块有没有载入、钩子有没有装上
-2. **类名变了** → 用 [`tools/probe/`](../tools/probe/) 重新跑一遍探针，拿到新的 adapter 类名，
-   改 `feature/watchlist/WatchlistTargets.kt` 的 `TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER`
-3. **控件 id 变了** → 改 `WatchlistTargets.NAME_ID_CANDIDATES`
-4. **自选判定 API 变了** → 改 `feature/watchlist/ZxWatchlist.kt`，兜底逻辑是直接查
-   `ZXManager.m_stkGrpMap` 的 `"code.market"` 键
-5. **数据项字段名变了** → 往 `WatchlistTargets` 的 `CAM_FIELDS` / `CODE_FIELDS` /
-   `MARKET_FIELDS` 里加候选名
+1. **看 LSPosed 日志**确认模块有没有载入、钩子有没有装上、哪个功能被跳过
+2. **自选高亮**
+   - 适配器类名变了 → 改 `feature/watchlist/WatchlistTargets.kt` 的
+     `TARGET_ADAPTERS` / `CLS_BASE_QUICK_ADAPTER`
+   - 控件 id 变了 → 改 `NAME_ID_CANDIDATES`
+   - 数据项字段名变了 → 往 `CAM_FIELDS` / `CODE_FIELDS` / `MARKET_FIELDS` 加候选名
+   - 自选判定 API 变了 → 改 `feature/watchlist/ZxWatchlist.kt`，
+     兜底逻辑是直接查 `ZXManager.m_stkGrpMap` 的 `"code.market"` 键
+3. **直达标准行情 + 左右滑动** → 改 `feature/strategyquote/StgDirectQuoteTargets.kt`：
+   `CLS_ENGINE_ACT` / `LAUNCH_METHODS` / `ACTION_*` / `KEY_STOCK_*` /
+   `CLS_INTENT_STOCK_INFO` / 三个字段候选数组
+4. **多选栏全选 / 反选** → 改 `feature/strategyselect/StgSelectAllTargets.kt`：
+   `CANCEL_BUTTON_ID_CANDIDATES` / `LIST_ID_CANDIDATES` / `CHECKBOX_ID_CANDIDATES` /
+   `COUNT_ID_CANDIDATES` / `WATCH_ACTIVITIES`
 
-设计上所有关键名字都是**常量数组 + 多级兜底**（集中在
-`feature/watchlist/WatchlistTargets.kt` 一个文件里），就是为了这种时候改一行就能修好。
+设计上所有关键名字都是**常量数组 + 多级兜底**（每个功能一个 `XxxTargets.kt`），
+就是为了这种时候改一行就能修好。
 
 > **改完功能后重装模块 APK**：不用重启金太阳。模块声明了 `autoHotReload=true`，
-> LSPosed 会自动热重载目标进程；也可以在设置界面「模块 → 框架操作 → 热重载目标进程」手动触发。
+> LSPosed 会自动热重载目标进程；也可以在设置界面「设置 → 框架操作 → 热重载目标进程」手动触发。
+> 2.12.1 起点一次必有一条 Toast 反馈（成功也会说「已热重载」），
+> 详见 [排错手册 · 热重载相关](TROUBLESHOOTING.md#8-热重载相关)。
