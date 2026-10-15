@@ -54,6 +54,9 @@
     <!-- Feature sections: see the rule at the top of ui/FeatureCatalog.kt; naming rules in docs/NAMING.md -->
     <string name="category_strategy">Strategy page</string>
     <string name="category_stock_detail">Stock detail page</string>
+    <string name="category_dock">Dock</string>
+    <string name="category_home">Home</string>
+    <string name="category_market">Market</string>
     <string name="category_display">Display</string>
     <string name="feature_empty">No matching features</string>
     <string name="feature_watchlist_title">Watchlist highlight</string>
@@ -84,6 +87,34 @@
     <string name="feature_stock_bar_summary">Adds a "Smart Watch" entry between "+Watchlist" and "More" on the stock detail bottom bar, one tap instead of digging into "More"</string>
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
     <string name="feature_stock_bar_switch_summary">Show a "Smart Watch" button on the bottom bar; the buy/sell buttons give up the space</string>
+
+    <!-- Dock -->
+    <string name="feature_dock_clean_title">Hide "Wealth" in dock</string>
+    <string name="feature_dock_clean_summary">The dock no longer shows the "Wealth" tab; the remaining entries spread out to fill the row</string>
+    <string name="feature_dock_clean_switch">Hide "Wealth" entry</string>
+    <string name="feature_dock_clean_switch_summary">The dock drops the "Wealth" tab; the remaining entries spread out to fill the row</string>
+
+    <!-- Home -->
+    <string name="feature_home_banner_title">Hide home banner</string>
+    <string name="feature_home_banner_summary">The banner below the home quick entries is hidden; the content underneath moves up</string>
+    <string name="feature_home_banner_switch">Hide banner</string>
+    <string name="feature_home_banner_switch_summary">The banner below the quick entries no longer takes up space; the content underneath moves up</string>
+
+    <!-- Market -->
+    <string name="feature_market_banner_title">Hide ticker and quick entries</string>
+    <string name="feature_market_banner_summary">Hides both the scrolling news ticker below the market overview chart and the quick-entry row under it, so the sector block moves up</string>
+    <string name="feature_market_banner_switch">Hide ticker and quick entries</string>
+    <string name="feature_market_banner_switch_summary">The ticker and quick entries give up their space; the sector block moves up</string>
+
+    <string name="feature_market_sector_title">Sectors: keep the top three</string>
+    <string name="feature_market_sector_summary">The sector block normally fills six slots; keep only the top three and collapse the rest</string>
+    <string name="feature_market_sector_switch">Keep top three sectors</string>
+    <string name="feature_market_sector_switch_summary">Show only the top three sectors; the sector block gets shorter</string>
+
+    <string name="feature_market_overview_title">Shorter market overview</string>
+    <string name="feature_market_overview_summary">The market overview block gets shorter and the bar charts inside are compressed to match</string>
+    <string name="feature_market_overview_switch">Shorter market overview</string>
+    <string name="feature_market_overview_switch_summary">Market overview and bar chart heights are compressed together</string>
 
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only -->

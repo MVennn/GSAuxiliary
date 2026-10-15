@@ -725,7 +725,7 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前五个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前十个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
@@ -734,7 +734,16 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 | 策略页 | 策略多选全选 | `stg_select_all` | 无 |
 | 策略页 | 策略筛选股票 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 股票详情页 | 底栏智能盯盘入口 | `stock_bar_entry` | 无 |
+| 底栏 | 底栏隐藏理财项 | `dock_clean` | 无 |
+| 首页 | 首页隐藏横幅 | `home_banner_hide` | 无 |
+| 行情市场 | 行情市场隐藏滚动横幅与快捷入口 | `market_banner_hide` | 无 |
+| 行情市场 | 行情市场板块只留三项 | `market_sector_compact` | 无 |
+| 行情市场 | 行情市场概览压矮 | `market_overview_compact` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 染色设置（`WatchlistDetail`） |
+
+> 上表第一列写的是**分区名**，第二列写的是 `titleRes`（完整功能名，只喂搜索）；
+> 卡片上用户看到的是 `switchTitleRes`，与第二列不一定逐字相同 —— 对照表见
+> [文案与命名规范](NAMING.md) §5。
 
 **所有开关出厂默认都是「关」**（2.11.2 起）。
 功能是侵入目标 App 行为的增强，装完模块不代表用户同意被改 ——

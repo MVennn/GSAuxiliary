@@ -259,5 +259,13 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
 | 策略详情页筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
+| 底栏移除「理财」 | `feature/dock/DockCleanTargets.kt` |
+| 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
+| 行情市场隐藏横幅 / 板块压缩 / 概览压缩 | `feature/market/MarketTargets.kt` |
+
+> **界面精简类功能（底栏 / 首页 / 行情市场）不需要先跑探针**：
+> 它们认不出目标控件时会**自己**把当前页面的视图树（含真实资源 id 名与坐标）
+> 打进模块日志 —— 打开功能、进一次页面、看「设置 → 查看日志」即可，
+> 步骤见 [FEATURE-UI-CLEAN.md §4](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)。
 
 完整排查流程见 [排错手册 · App 升级后失效](TROUBLESHOOTING.md#6-app-升级后失效)。

@@ -5,6 +5,11 @@ import android.os.Looper
 import io.github.SansKritO4.GSAuxiliary.core.ConfigSnapshot
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.core.HookBag
+import io.github.SansKritO4.GSAuxiliary.feature.dock.DockCleanFeature
+import io.github.SansKritO4.GSAuxiliary.feature.home.HomeBannerFeature
+import io.github.SansKritO4.GSAuxiliary.feature.market.MarketBannerFeature
+import io.github.SansKritO4.GSAuxiliary.feature.market.MarketOverviewCompactFeature
+import io.github.SansKritO4.GSAuxiliary.feature.market.MarketSectorCompactFeature
 import io.github.SansKritO4.GSAuxiliary.feature.stgfilter.StgStockFilterFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
@@ -36,6 +41,11 @@ class FeatureManager(private val env: FeatureEnv) {
         StgSelectAllFeature(),
         StgStockFilterFeature(),
         StockDetailBarFeature(),
+        DockCleanFeature(),
+        HomeBannerFeature(),
+        MarketBannerFeature(),
+        MarketSectorCompactFeature(),
+        MarketOverviewCompactFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

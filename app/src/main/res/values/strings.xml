@@ -55,6 +55,9 @@
     <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」；文案与命名规范见 docs/NAMING.md -->
     <string name="category_strategy">策略页</string>
     <string name="category_stock_detail">股票详情页</string>
+    <string name="category_dock">底栏</string>
+    <string name="category_home">首页</string>
+    <string name="category_market">行情市场</string>
     <string name="category_display">显示</string>
     <string name="feature_empty">没有匹配的功能</string>
     <string name="feature_watchlist_title">自选股高亮</string>
@@ -85,6 +88,34 @@
     <string name="feature_stock_bar_summary">个股详情页底栏，自选与更多之间多一个智能盯盘，一点直达，不用再进更多里找</string>
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
     <string name="feature_stock_bar_switch_summary">底栏多出一个智能盯盘按钮，买卖按钮自动让位</string>
+
+    <!-- 底栏 -->
+    <string name="feature_dock_clean_title">底栏隐藏理财项</string>
+    <string name="feature_dock_clean_summary">主界面底栏不再显示理财那一格，其余入口自动均分铺满整行</string>
+    <string name="feature_dock_clean_switch">隐藏理财项</string>
+    <string name="feature_dock_clean_switch_summary">底栏不再显示理财那一格，其余入口自动均分铺满整行</string>
+
+    <!-- 首页 -->
+    <string name="feature_home_banner_title">首页隐藏横幅</string>
+    <string name="feature_home_banner_summary">首页快捷入口下方的那条横幅不再显示，下面的内容顺势上移</string>
+    <string name="feature_home_banner_switch">隐藏横幅</string>
+    <string name="feature_home_banner_switch_summary">快捷入口下方的那条横幅不再占位，下面的内容顺势上移</string>
+
+    <!-- 行情市场 -->
+    <string name="feature_market_banner_title">行情市场隐藏滚动横幅与快捷入口</string>
+    <string name="feature_market_banner_summary">行情市场页概览图下方的滚动横幅、以及它下面那排快捷入口一并隐藏，板块直接顶上来</string>
+    <string name="feature_market_banner_switch">隐藏滚动横幅与快捷入口</string>
+    <string name="feature_market_banner_switch_summary">概览图下方的滚动横幅与快捷入口不再占位，板块直接顶上来</string>
+
+    <string name="feature_market_sector_title">行情市场板块只留三项</string>
+    <string name="feature_market_sector_summary">行情市场页的板块原本一屏六个，只保留最上面三个，其余收起</string>
+    <string name="feature_market_sector_switch">板块只留三项</string>
+    <string name="feature_market_sector_switch_summary">板块只显示最上面三个，板块区整体变矮</string>
+
+    <string name="feature_market_overview_title">行情市场概览压矮</string>
+    <string name="feature_market_overview_summary">行情市场页的市场概览区整体压矮，里面的柱状图高度一并压缩</string>
+    <string name="feature_market_overview_switch">市场概览压矮</string>
+    <string name="feature_market_overview_switch_summary">市场概览与柱状图高度一并压缩</string>
 
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
