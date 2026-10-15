@@ -270,8 +270,9 @@ FeatureSpec(
 )
 ```
 
-> 当前只存在三个分类资源：`category_strategy`（策略页）、
-> `category_stock_detail`（股票详情页）与 `category_display`（显示）。
+> 当前只存在六个分类资源：`category_strategy`（策略页）、
+> `category_stock_detail`（股票详情页）、`category_dock`（底栏）、
+> `category_home`（首页）、`category_market`（行情市场）与 `category_display`（显示）。
 > 引一个不存在的 `category_*` 会直接编译失败。
 
 开关与「开启后展开二级入口」是 `FeatureTab` 统一渲染的，不用自己写。

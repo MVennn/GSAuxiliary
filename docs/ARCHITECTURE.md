@@ -161,6 +161,15 @@ onHotReloaded(param)
 三条共同约定：钩子里的异常一律 `runCatching` 吞掉（绝不抛给宿主）、
 所有句柄进 `HookBag`、`onConfigChanged` 必须在主线程处理。
 
+> 本表只列最早三个**挂钩子改行为**的功能（写本节时的全部）。2.13.0 的
+> `stg_stock_filter`（策略详情筛选股票）与 2.14.0 的 `stock_bar_entry`
+> （底栏智能盯盘入口）也是钩子类，思路与上表一致，各自的坑记在
+> [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md) / [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)。
+>
+> 2.15.0 新增的**界面精简**五个功能（底栏 / 首页 / 行情市场）**不挂钩子改行为** ——
+> 它们在 `Activity.onResume` + 全局布局回调里**认现成的视图**再隐藏 / 压缩，
+> 走的是 `feature/uiclean/` 那套骨架，见 [界面精简实现方案](FEATURE-UI-CLEAN.md)。
+
 ### 3.3 染色主流程（自选高亮）
 
 ```

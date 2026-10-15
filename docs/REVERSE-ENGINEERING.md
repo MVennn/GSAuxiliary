@@ -259,9 +259,9 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
 | 策略详情页筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
-| 底栏移除「理财」 | `feature/dock/DockCleanTargets.kt` |
+| 底栏隐藏理财项 | `feature/dock/DockCleanTargets.kt` |
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
-| 行情市场隐藏横幅 / 板块压缩 / 概览压缩 | `feature/market/MarketTargets.kt` |
+| 行情市场隐藏滚动横幅与快捷入口 / 板块只留三项 / 市场概览压矮 | `feature/market/MarketTargets.kt` |
 
 > **界面精简类功能（底栏 / 首页 / 行情市场）不需要先跑探针**：
 > 它们认不出目标控件时会**自己**把当前页面的视图树（含真实资源 id 名与坐标）
