@@ -55,7 +55,6 @@ Thumbs.db
 /tools/**/ui_tmp.xml
 /tools/**/ui_dump.xml
 /tools/**/ui_stg.xml
-/docs/images/*-debug.png
 /.work/
 
 # ---------------------------------------------------------------------------
