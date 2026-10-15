@@ -2,7 +2,6 @@ package io.github.SansKritO4.GSAuxiliary.feature.market
 
 import android.app.Activity
 import android.view.View
-import android.view.ViewGroup
 import io.github.SansKritO4.GSAuxiliary.core.ConfigSnapshot
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.feature.FeatureEnv
@@ -16,30 +15,36 @@ import java.lang.ref.WeakReference
  *
  * ## 做什么
  *
- *  1. 找到市场概览分组容器，把高度压到原来的
- *     [MarketTargets.OVERVIEW_HEIGHT_FACTOR]（默认 0.6）；
- *  2. 再把它子树里**固定高度**的柱状图视图按同一比例压一遍。
+ * 「市场概览」那一块里的**图表区**整体压矮，里面的**柱状图**高度一并压缩。
+ * 图表区变矮之后，下面的滚动横幅 / 快捷入口 / 板块顺势上移。
  *
- * ## 为什么第 2 步要「只压固定高度的」
+ * ## 真机实测（见 [MarketTargets]）：只压图表那一份，不整块等比
  *
- * 柱状图有两种写法：
+ * ```
+ * [行2] 市场概览块（696px）
+ *   ├ 标题行「市场概览 + 成交额」            111px
+ *   ├ 三张指标卡（涨跌分布 / 主力净流入 / 大盘股>小盘股）  161px
+ *   └ FrameLayout #fl_content  图表区         411px  ← 压这一块
+ *       └ ZdfbChartView #zdfb_chart_view      268px  ← 柱状图，也压
+ *          涨 / 跌 比例条 + 涨停 / 跌停 行       143px
+ * ```
  *
- *  - **自适应**（`match_parent` / `wrap_content`）：高度跟着容器走，
- *    容器压了它就跟着矮 —— 再压一次会**双重压缩**，图直接被压扁到看不清；
- *  - **固定高度**（`layoutParams.height > 0`）：不跟容器走，必须单独压。
+ * 为什么**不**把整块等比压到 0.6：标题行与三张指标卡里是两三行文字
+ * （「涨 430 跌 5108」这种），等比压只会把字裁掉一半，看着像坏了。
+ * 所以压缩量全部来自图表区：
  *
- * 所以这里用 `layoutParams.height > 0` 精确区分，各压一次、不重不漏。
+ * ```
+ * 图表区新高度 = 柱状图 × factor + 图表区其余部分（原样）
+ * ```
  *
- * ## 怎么认「市场概览」
+ * 这样柱状图明显变矮、比例条与涨跌停行不被裁，整块自然跟着矮一截。
  *
- * 候选 id 优先；否则找**子树里有 ≥ 2 个柱状图视图**的最内层容器。
+ * ## 「压哪些视图」
  *
- * 「柱状图视图」的判据（[isChartView]）：
- *  - 类名里带 `chart` / `bar` / `histogram` / `kline` / `graph` / `column` / `trend`；或
- *  - 是**自绘控件**（不是 `android.widget.*` / `android.view.*` 的标准控件），
- *    且高度 ≥ [MarketTargets.CHART_MIN_HEIGHT_DP]、宽度至少是高度的 2 倍。
- *
- * 第二条是给「宿主自己写的图表控件、类名里没有 chart」这种情况兜底的。
+ * 概览区里三张图（涨跌分布 / 大盘股 / 净流入）**轮流占位，同时只有一张可见**，
+ * 各自是宿主自绘的图表控件，id 分别是 `zdfb_chart_view` / `dxpg_chart_view` /
+ * `jlr_chart_view` —— 三张都压一遍，用户切到哪张都是矮的。
+ * 认不到 id 时退回「类名带 chart / bar / trend 且够高的自绘控件」的结构兜底。
  */
 class MarketOverviewCompactFeature : UiCleanFeature() {
 
@@ -50,82 +55,105 @@ class MarketOverviewCompactFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketOverviewCompact
 
-    private var lastSection: WeakReference<View>? = null
+    /** 已经压过的图表区（幂等标记：容器还在树上就算压过了） */
+    private var lastArea: WeakReference<View>? = null
 
     override fun applyTo(env: FeatureEnv, activity: Activity): Boolean {
-        // 幂等：处理过的容器还在树上 = 已经压过（改的是容器和子控件的高度）
-        if (stillAttached(lastSection?.get())) return true
+        // 幂等：处理过的图表区还在树上 = 已经压过
+        if (stillAttached(lastArea?.get())) return true
 
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val ids = UiClean.idsFor(activity, MarketTargets.TARGET_PKG)
-        val section = findOverviewSection(root, ids) ?: return false
 
-        // 认到了但还没布局（量不出高度）→ 返回 false 等下一帧，别把「已处理」标记打上去
-        val changed = compressCharts(section) or
-            patcher.scaleHeight(section, MarketTargets.OVERVIEW_HEIGHT_FACTOR, "市场概览")
-        if (!changed) return false
+        val area = findChartArea(root, ids) ?: return false
+        if (!compact(area, ids)) return false        // 还没布局出来 → 下一帧再来，别打「已处理」标记
 
-        lastSection = WeakReference(section)
+        lastArea = WeakReference(area)
         return true
     }
 
     // ------------------------------------------------------------------ 定位
 
-    private fun findOverviewSection(root: View, ids: IdCache): View? {
-        val byId = ids.firstOf(MarketTargets.OVERVIEW_GROUP_ID_CANDIDATES)
+    /** 图表区：先按 id，再退回「子树里有够高的自绘图表控件」的最内层容器 */
+    private fun findChartArea(root: View, ids: IdCache): View? {
+        val byId = ids.of(MarketTargets.OVERVIEW_CHART_AREA_ID)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
-            if (v != null && v.isShown) return v
+            if (v != null && v.isShown && chartsOf(v, ids).isNotEmpty()) return v
         }
-
-        // 子树里含 ≥ 2 个柱状图的最内层容器（前序覆盖 → 取最后一个 = 最深的那个）
         var best: View? = null
         UiClean.walk(root) { v ->
-            if (v is ViewGroup && v.isShown &&
-                UiClean.findAll(v, { isChartView(it) }, limit = 2).size >= 2
-            ) {
+            if (v.isShown && chartsOf(v, ids).isNotEmpty()) {
                 best = v
+                true
+            } else {
+                false
             }
-            false
         }
-        val hit = best
-        if (hit != null) {
-            GLog.i("$id：概览区命中 ${hit.javaClass.simpleName}（${(hit as? ViewGroup)?.childCount ?: 0} 个子项）")
-        }
-        return hit
+        return best
+    }
+
+    /**
+     * [v] 子树里的图表控件：先按候选 id 取，取不到再按类名 / 自绘 + 高度判。
+     */
+    private fun chartsOf(v: View, ids: IdCache): List<View> {
+        val byId = MarketTargets.OVERVIEW_CHART_ID_CANDIDATES
+            .map { ids.of(it) }
+            .filter { it != 0 }
+            .mapNotNull { v.findViewById<View>(it) }
+            .filter { it.isShown }
+        if (byId.isNotEmpty()) return byId
+
+        return UiClean.findAll(v, { looksLikeChart(it) }, limit = 8)
+    }
+
+    /** 「自绘图表控件」的判据：类名带关键词，或者是够高够宽的非标准控件 */
+    private fun looksLikeChart(v: View): Boolean {
+        if (!v.isShown) return false
+        val h = UiClean.heightOf(v)
+        if (h < UiClean.dp(v, MarketTargets.CHART_MIN_HEIGHT_DP)) return false
+
+        val name = v.javaClass.simpleName.lowercase()
+        if (MarketTargets.CHART_CLASS_KEYWORDS.any { name.contains(it) }) return true
+
+        // 非 android.widget.* / android.view.* 标准控件，且明显是横的长条 → 自绘图表
+        val pkg = v.javaClass.name
+        if (pkg.startsWith("android.widget.") || pkg.startsWith("android.view.")) return false
+        return v.width >= h * 2
     }
 
     // ------------------------------------------------------------------ 压缩
 
     /**
-     * 只压**固定高度**的柱状图；自适应高度的交给容器一起压，避免双重压缩。
-     *
-     * 返回 true = 至少压到了东西。
+     * 压缩图表区。返回 `false` = 还没量出高度（**别打「已处理」标记**），
+     * `true` = 处理完了（含「认得出但形状不认识」这种放弃情形）。
      */
-    private fun compressCharts(section: View): Boolean {
-        val charts = UiClean.findAll(section, { isChartView(it) }, limit = 16)
-        var n = 0
-        for (c in charts) {
-            val lp = c.layoutParams ?: continue
-            if (lp.height > 0 && patcher.scaleHeight(c, MarketTargets.OVERVIEW_HEIGHT_FACTOR, "柱状图")) n++
+    private fun compact(area: View, ids: IdCache): Boolean {
+        val areaH = UiClean.heightOf(area)
+        if (areaH <= 0) return false
+
+        val charts = chartsOf(area, ids).filter { UiClean.heightOf(it) > 0 }
+        if (charts.isEmpty()) {
+            GLog.i("$id：图表区里没找到量得出高度的图表控件，本页跳过")
+            return true
         }
-        if (charts.isNotEmpty()) GLog.i("$id：概览区柱状图 ${charts.size} 个，其中固定高度 $n 个已单独压缩")
-        return n > 0
-    }
 
-    private fun isChartView(v: View): Boolean {
-        if (v is ViewGroup) return false
-        if (!v.isShown) return false
+        var saved = 0
+        for (c in charts) {
+            val before = UiClean.heightOf(c)
+            if (patcher.scaleHeight(c, MarketTargets.OVERVIEW_HEIGHT_FACTOR, "概览图表")) {
+                saved += before - (before * MarketTargets.OVERVIEW_HEIGHT_FACTOR).toInt()
+            }
+        }
 
-        val name = v.javaClass.name.lowercase()
-        if (MarketTargets.CHART_CLASS_KEYWORDS.any { name.contains(it) }) return true
+        // 图表区自身高度可能是写死的（不跟子项走），那就连着一起收：
+        // 只收「图表那一份」，比例条 / 涨跌停行保持原样，避免把字裁掉
+        val chartH = charts.sumOf { UiClean.heightOf(it) }
+        val rest = (areaH - chartH).coerceAtLeast(0)
+        val target = (chartH * MarketTargets.OVERVIEW_HEIGHT_FACTOR).toInt() + rest
+        if (target in 1 until areaH) patcher.setHeight(area, target, "概览图表区")
 
-        // 标准控件不可能是图表
-        if (name.startsWith("android.widget.") || name.startsWith("android.view.")) return false
-
-        // 自绘控件：够高、够宽（柱状图都是扁的）
-        val h = UiClean.heightOf(v)
-        val w = v.width
-        return h >= UiClean.dp(v, MarketTargets.CHART_MIN_HEIGHT_DP) && w >= h * 2
+        GLog.i("$id：概览图表区 ${areaH}px -> ${target}px（压了 ${charts.size} 张图，省 ${areaH - target}px）")
+        return true
     }
 }

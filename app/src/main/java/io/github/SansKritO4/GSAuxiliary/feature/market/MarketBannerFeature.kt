@@ -1,10 +1,8 @@
 package io.github.SansKritO4.GSAuxiliary.feature.market
 
 import android.app.Activity
-import android.text.TextUtils
 import android.view.View
 import android.view.ViewGroup
-import android.widget.TextView
 import io.github.SansKritO4.GSAuxiliary.core.ConfigSnapshot
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.feature.FeatureEnv
@@ -14,28 +12,32 @@ import io.github.SansKritO4.GSAuxiliary.feature.uiclean.UiCleanFeature
 import java.lang.ref.WeakReference
 
 /**
- * 功能：**行情市场页——滚动横幅与快捷入口一起隐藏**。
+ * 功能：**行情市场页——滚动横幅与快捷入口一起收起**。
  *
  * ## 做什么
  *
- * 把「市场概览图」下方那条**滚动横幅**（跑马灯快讯）、以及它下面那排**快捷入口**
- * 一并设成 `GONE`，让板块直接顶上来。
+ * 把「市场概览」下面那条**滚动横幅**（热门专题轮播）、以及它下面那排**快捷入口**
+ * 一起收起来，让板块直接顶上来。
  *
- * ## 怎么认滚动横幅
+ * ## 与初版设想最大的不同：这两块是 `RecyclerView` 的子项
  *
- *  1. 候选 id（[MarketTargets.MARQUEE_BAR_ID_CANDIDATES]）；
- *  2. 结构：**跑马灯文字**——`ellipsize = MARQUEE` 且文案够长
- *     （[MarketTargets.MIN_MARQUEE_TEXT] 个字以上，滤掉标签类的短文案），
- *     再从这个文字往上找第一个高度不超过
- *     [MarketTargets.MARQUEE_BAR_MAX_HEIGHT_DP] 的祖先，那就是「条」本身。
+ * 实测行情 tab 的 A股 页整体是一个横向 `RecyclerView`（`#rv_markets_hs`），
+ * **每个版块都是它的一个子项**。`RecyclerView` 的 `LayoutManager` 不判
+ * `visibility`，会把所有已挂上的子项照样测一遍、摆一遍 —— 所以只设 `GONE`
+ * 会留下一条等高的空档，必须用
+ * [io.github.SansKritO4.GSAuxiliary.feature.uiclean.ViewPatcher.collapse]
+ * （高度归零 + `GONE`）连高度一起收掉。
  *
- * 用 `ellipsize = MARQUEE` 当判据是稳的：跑马灯在 Android 上只有这一种标准做法
- * （`setEllipsize(MARQUEE)` + `setSelected(true)`），比猜 id 可靠得多。
+ * ## 怎么认（实测值见 [MarketTargets]）
  *
- * ## 怎么认快捷入口
+ *  1. **滚动横幅**：`#avf_hotpoint`（`AdapterViewFlipper`）——
+ *     注意它是「热门专题轮播」，**不是跑马灯**。全树扫过，这一页里没有任何
+ *     `ellipsize = MARQUEE` 的 `TextView`，所以「按跑马灯文字找」那条路在真机上
+ *     永远认不出来。这里改成按 id + 「轮播容器（`ViewAnimator` 家族）且不高」的结构兜底。
+ *  2. **快捷入口**：`#rv_entra`，并确认里面确实是 `#item_marktes_entra` 那种格子。
  *
- * 候选 id 优先；否则取页面上**第一个**「可见 + 每格都是图标加文字」的网格，
- * 并且要求它的顶边在滚动横幅**下方**（横幅认到了才有这个约束）。
+ * 两块都认不出来时返回 `false`，交给基类重试；重试窗口用尽后基类会打一份
+ * 当前页面的视图树快照，那就是校准入口。
  */
 class MarketBannerFeature : UiCleanFeature() {
 
@@ -55,91 +57,65 @@ class MarketBannerFeature : UiCleanFeature() {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         val ids = UiClean.idsFor(activity, MarketTargets.TARGET_PKG)
 
-        val bar = findMarqueeBar(root, ids)
-        if (bar != null) {
-            patcher.hide(bar, "行情市场滚动横幅")
-            lastBar = WeakReference(bar)
-        }
+        var hit = 0
+        findHotBar(root, ids)?.let { lastBar = collapseIt(it, "滚动横幅"); hit++ }
+        findEntryGrid(root, ids)?.let { lastGrid = collapseIt(it, "快捷入口"); hit++ }
 
-        val grid = findEntryGrid(root, ids, bar)
-        if (grid != null) {
-            patcher.hide(grid, "行情市场快捷入口")
-            lastGrid = WeakReference(grid)
-        }
-
-        if (bar == null && grid == null) {
-            // 两个都没认出来：可能不在行情市场页，也可能还没铺开 —— 交给基类重试 / 打快照
-            return false
-        }
-        return true
+        // 两块都没认出来：可能不在行情市场页，也可能还没铺开 —— 交给基类重试 / 打快照
+        return hit > 0
     }
 
-    // ------------------------------------------------------------------ 滚动横幅
+    // ------------------------------------------------------------------ 定位
 
-    private fun findMarqueeBar(root: View, ids: IdCache): View? {
-        val byId = ids.firstOf(MarketTargets.MARQUEE_BAR_ID_CANDIDATES)
+    /** 滚动横幅：先按候选 id，再按「轮播容器」的结构兜底 */
+    private fun findHotBar(root: View, ids: IdCache): View? {
+        val byId = ids.firstOf(MarketTargets.HOT_BAR_ID_CANDIDATES)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
             if (v != null && v.isShown) return v
         }
-
-        val tv = UiClean.find(root) { v ->
-            v.isShown && v is TextView &&
-                v.ellipsize == TextUtils.TruncateAt.MARQUEE &&
-                (UiClean.textOf(v)?.length ?: 0) >= MarketTargets.MIN_MARQUEE_TEXT
-        } as? TextView ?: return null
-
-        GLog.i("$id：认到跑马灯文字「${UiClean.textOf(tv)?.take(16)}…」")
-        return barOf(tv)
-    }
-
-    /** 从跑马灯文字往上找「条状容器」：第一个高度不超过上限的祖先 */
-    private fun barOf(tv: TextView): View {
-        var cur: View = tv
-        var hops = 0
-        while (hops < 3) {
-            val p = cur.parent as? ViewGroup ?: break
-            val h = UiClean.heightOf(p)
-            if (h in 1..UiClean.dp(p, MarketTargets.MARQUEE_BAR_MAX_HEIGHT_DP)) return p
-            cur = p
-            hops++
+        return UiClean.find(root) { v ->
+            v.isShown && isFlipper(v) &&
+                UiClean.heightOf(v) in 1..UiClean.dp(v, MarketTargets.HOT_BAR_MAX_HEIGHT_DP)
         }
-        return tv
     }
 
-    // ------------------------------------------------------------------ 快捷入口
+    /** `ViewAnimator` 家族（`ViewFlipper` / `AdapterViewFlipper`）—— 轮播类容器的共同祖先 */
+    private fun isFlipper(v: View): Boolean = hasSuper(v.javaClass, "android.widget.ViewAnimator")
 
-    private fun findEntryGrid(root: View, ids: IdCache, bar: View?): View? {
+    /**
+     * 快捷入口：先按候选 id（并确认里面是行情页那排入口的格子），
+     * 再按「可见 + 每格都是图标加文字 + 不高」的结构兜底。
+     */
+    private fun findEntryGrid(root: View, ids: IdCache): View? {
+        val itemId = ids.of(MarketTargets.QUICK_ENTRY_ITEM_ID)
+
         val byId = ids.firstOf(MarketTargets.QUICK_ENTRY_ID_CANDIDATES)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
-            if (v is ViewGroup && v.isShown) return v
+            if (v is ViewGroup && v.isShown && isQuickEntryGrid(v, itemId)) return v
         }
 
-        val barTop = bar?.let { UiClean.rectIn(root, it)?.top } ?: -1
         var hit: ViewGroup? = null
         UiClean.walk(root) { v ->
             if (hit != null) return@walk true
-            if (v is ViewGroup && v.isShown && isEntryGrid(v)) {
-                // 认到横幅时要求网格在横幅下方 —— 避免抓到概览图上方那一排
-                if (barTop < 0) {
-                    hit = v
-                    true
-                } else {
-                    val top = UiClean.rectIn(root, v)?.top ?: return@walk false
-                    if (top >= barTop) {
-                        hit = v
-                        true
-                    } else {
-                        false
-                    }
-                }
+            if (v is ViewGroup && v.isShown && isEntryGrid(v) && isQuickEntryGrid(v, itemId)) {
+                hit = v
+                true
             } else {
                 false
             }
         }
         return hit
     }
+
+    /**
+     * 确认「这就是行情页那排入口」。
+     *
+     * [itemId] 解析不到时一律放行 —— 宿主改版后不该因为一个辅助 id 失效就整个功能瘫掉。
+     */
+    private fun isQuickEntryGrid(grid: ViewGroup, itemId: Int): Boolean =
+        itemId == 0 || grid.findViewById<View>(itemId) != null
 
     private fun isEntryGrid(g: ViewGroup): Boolean {
         val n = g.childCount
@@ -152,5 +128,48 @@ class MarketBannerFeature : UiCleanFeature() {
         val h = UiClean.heightOf(g)
         if (h > 0 && h > UiClean.dp(g, MarketTargets.MAX_ENTRY_GRID_HEIGHT_DP)) return false
         return true
+    }
+
+    // ------------------------------------------------------------------ 收起
+
+    /**
+     * 收起 [v] 所在的**版块**（= 列表里的那一个子项），返回收起来的视图。
+     *
+     * 为什么收子项而不是收 [v] 自己：
+     *
+     *  - 版块的内边距都在子项上，只藏 [v] 会留下那段间距；
+     *  - 子项才是 `RecyclerView` 的直接子视图，高度归零才真正「不占地方」。
+     */
+    private fun collapseIt(v: View, why: String): WeakReference<View> {
+        val item = itemOf(v)
+        patcher.collapse(item, "行情市场$why")
+        return WeakReference(item)
+    }
+
+    /** [v] 所在的列表项：爬到「父级是列表」的那一层；爬不到就退回 [v] 自己 */
+    private fun itemOf(v: View): View {
+        var cur: View = v
+        var guard = 0
+        while (guard++ < 8) {
+            val parent = cur.parent as? ViewGroup ?: return v
+            if (isList(parent)) return cur
+            cur = parent
+        }
+        return v
+    }
+
+    private fun isList(p: ViewGroup): Boolean {
+        if (p is android.widget.AdapterView<*>) return true
+        return hasSuper(p.javaClass, "androidx.recyclerview.widget.RecyclerView")
+    }
+
+    private fun hasSuper(cls: Class<*>, name: String): Boolean {
+        var c: Class<*>? = cls
+        var depth = 0
+        while (c != null && depth++ < 10) {
+            if (c.name == name) return true
+            c = c.superclass
+        }
+        return false
     }
 }

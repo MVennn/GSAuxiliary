@@ -135,7 +135,11 @@ if (stillAttached(lastGroup?.get())) return true
 
 ### 3.3 隐藏滚动横幅 + 快捷入口（`MarketBannerFeature`）
 
-**滚动横幅**用「跑马灯」特征认：
+> 8.6.0 真机实测后的写法见 §7.5 —— 下面是**初版设想**，保留作对照，
+> 其中「跑马灯」那条已被实测否掉（真机上那条横幅是 `AdapterViewFlipper` 轮播，
+> 页面里没有任何 `ellipsize = MARQUEE` 的文字）。
+
+**滚动横幅**初版设想用「跑马灯」特征认：
 
 ```
 ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
@@ -145,12 +149,22 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 跑马灯在 Android 上只有 `setEllipsize(MARQUEE)` + `setSelected(true)` 这一种标准做法，
 比猜 id 可靠得多。要求文案够长是为了滤掉「单行超长文案」的误伤（板块名、股票名）。
 
-**快捷入口**：候选 id 优先，否则取页面上第一个「每格都是图标 + 文字」的网格，
-并且在横幅认到时要求它**在横幅下方** —— 免得抓到概览图上方那一排。
+**实测后的做法**：按 id（`avf_hotpoint`）取，兜底改成「`ViewAnimator` 家族
+（`ViewFlipper` / `AdapterViewFlipper`）里高度不超过 80dp 的那一个」。
+
+**快捷入口**：候选 id 优先（实测 `rv_entra`，用 `item_marktes_entra` 确认），
+否则取页面上第一个「每格都是图标 + 文字」的网格。
+
+**两块都要「收起子项」而不是「隐藏自己」**：它们是 `#rv_markets_hs` 的子项，
+`RecyclerView` 不判 `visibility`，`GONE` 会留一条等高空档 —— 见 §7.5 第 2 条。
 
 ### 3.4 板块六项 → 三项（`MarketSectorCompactFeature`）
 
-三种版式，三种压法：
+> 实测结论：容器是 `LockViewPager` + 内部 `RecyclerView`，6 格是 **3 列 × 2 行**，
+> 所以实现收敛成**一条**：对板块容器限高到 `SECTOR_KEEP / SECTOR_TOTAL`。
+> 下面那张「三种版式」表是初版设想，只在结构兜底里还留着一点影子。
+
+初版设想过的三种版式，三种压法：
 
 | 容器形态 | 判据 | 压法 |
 |---|---|---|
@@ -158,13 +172,19 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 | 两行 × 三列 | 子视图数 == 2，每行 3 格 | 第二行 `GONE`；容器固定高则改 `wrap_content` |
 | 可滚动列表 | `AbsListView` / `RecyclerView` | 藏子项没用（一滚就回来），改成**限高**为原来的 3/6 |
 
-**结构兜底怎么找容器**：子视图正好 6 个、宽度基本一致、每项都有文案，
-并且**排除「图标 + 文字」网格**（快捷入口也是 6 个，但每格都有图标）。
+实测落在第三行 —— 而且前两行的「藏子项」在 `RecyclerView` 子项上根本不成立
+（`GONE` 照样占位），所以现在统一走**限高**。
 
-**为什么要 `relaxFixedHeight`**：容器是固定高度的话，藏掉子项之后会留一片空白，
-得把容器一起改成 `wrap_content`。
+**结构兜底怎么找容器**：子视图至少 6 个、宽度基本一致、每项都有文案，
+并且**排除「图标 + 文字」网格**（快捷入口也是等宽的，但每格都有图标）。
 
 ### 3.5 市场概览压矮（`MarketOverviewCompactFeature`）
+
+> 实测后的写法见 §7.5：压的是**图表区**（`fl_content`）与它里面的三张图表控件
+> （`zdfb_chart_view` / `dxpg_chart_view` / `jlr_chart_view`），
+> **不整块等比** —— 标题行与三张指标卡里是两三行文字，等比压只会把字裁掉。
+
+初版设想：
 
 ```
 ① 候选 id；否则找「子树里有 ≥ 2 个柱状图视图」的最内层容器
@@ -180,7 +200,11 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 
 用 `layoutParams.height > 0` 精确区分，各压一次、不重不漏。
 
-**「柱状图视图」的判据**：类名带 `chart` / `bar` / `histogram` / `kline` /
+**实测后的第 ③ 步**：不再整块等比，改成
+`图表区新高度 = 柱状图 × factor + 图表区其余部分（原样）` ——
+这样比例条与涨跌停行不被裁，整块仍然跟着矮一截。
+
+**「柱状图视图」的判据**（结构兜底用）：类名带 `chart` / `bar` / `histogram` / `kline` /
 `graph` / `column` / `trend`；或者是**自绘控件**（非 `android.widget.*` /
 `android.view.*` 标准控件）且高度 ≥ 60dp、宽度至少是高度的 2 倍。
 
@@ -368,24 +392,59 @@ I GSZXEnhance dock_clean：底栏已铺满（补救生效，5 格）
 W GSZXEnhance dock_clean：底栏去格后仍留 180px 空档，宿主栅格不吃 layoutParams —— 保持原样（不再重试）
 ```
 
-### 7.5 行情市场那一组：8.6.0 实测**没有**对应落点
+### 7.5 行情市场（行情 tab → **A股** 子页的顶部）
 
-把主界面每个页签 + 相关独立页都导了一遍视图树，
-**没有**找到「概览图 → 滚动快讯 → 快捷入口 → 板块六项 → 市场概览柱状图」这种版式。
-实测到的是：
+> ⚠️ **采集教训**：这一页最初怎么导都导不到，因为**recyclerView 已经被滚下去了** ——
+> 顶部那几块（市场概览 / 滚动横幅 / 快捷入口 / 板块）都是 `#rv_markets_hs` 的子项，
+> 滑出屏幕就被回收了，视图树里根本不在。**先把页面滑回顶部再导。**
 
-| 页面 | 实际内容 | 那四块在不在 |
-|---|---|---|
-| 行情 → A股 | 沪深京/创业板/科创板/北交所 分类 + 榜单切换（涨幅榜 / 涨速榜 / 成交额 / 换手率 / 净流入）+ 股票列表 | 都不在 |
-| 行情 → 港股 | 港股指数 + 港股通 / 沪股通 / 深股通 + `rv_hy_list`（行业）/ `rv_gn_list`（概念） | 只有板块**列表**（不是六格） |
-| 行情 → 全球 | 全球指数 / 基本汇率 + 世界地图 + 6 档 `stk_info_N` ×2 组 | 都不在 |
-| 行情 → 美股 | 道指 / 纳指 / 标普 + `ll_header_bkhq_overview_category_hy`（`ll_bkhq_category_container` 行业板块概览）+ 同名概念概览 + 若干列表 | 有板块概览，但没有概览图 / 滚动横幅 / 快捷入口 |
-| 行情 → ETF | `rv_home_func` 快捷入口 + `vp_ad` / `indicator_ad` 广告轮播 + 行业 / 指数 ETF 列表 | 有快捷入口与轮播，但没有概览图 / 板块 |
-| 自选 | `index_fs_group_view`（指数分时 `index_fs_chart` + 成交量 `index_fs_volumn`）+ 自选分组 + `rl_ad` / `avf_ad` 广告条 + 自选股列表 | 有概览图 + 柱状图 + 滚动条，但没有快捷入口 / 板块 |
-| 行情 → 更多市场 | `gv_more_marekt` 市场网格 | 都不在 |
-| `MarketOverviewAct`（市场概览） | **整体是 H5** —— native 层只有 `common_top` + `webView_market`（`com.guosen.*.HybirdWebView`），大盘走势与涨跌分布柱状图都在网页里 | 按块精简无从下手（模块不注入脚本） |
-| `HSBKMainAct`（板块） | 热门 / 行业 / 概念 / 风格 / 地区 + 涨幅榜 Top10 列表 | 没有概览图 / 横幅 / 快捷入口 |
+这一页整体是一个横向的 `RecyclerView #rv_markets_hs`，**每个版块是一个子项**：
 
-**结论**：这三个开关目前没有可靠的落点，`MarketTargets` 里的候选 id
-（`ll_marquee` / `gv_bk` / `ll_market_overview` 等）是**按命名习惯猜的**，
-真机上一条都没命中过。落点确认后再按 §7.1 / §7.2 那样把实测值补进候选数组。
+| # | 版块 | 子项坐标 | 关键控件（id） |
+|---|---|---|---|
+| 行1 | 指数概览 | 0,0-1080,229 | `rv_index` → `ll_content` ×4（上证 / 深证 / 北证50 …） |
+| 行2 | **市场概览** | 0,229-1080,925（696px） | `line_content`（标题 + 成交额 `tv_cje`）、三张指标卡 `ll_header_zdfb` / `_jlr` / `_dxp`、图表区 **`fl_content`**（411px）→ **`zdfb_chart_view`**（柱状图，268px）/ `dxpg_chart_view` / `jlr_chart_view` |
+| 行3 | **滚动横幅** | 0,925-1080,1091（166px） | **`avf_hotpoint`**（`AdapterViewFlipper`，39,0-1041,140） |
+| 行4 | **快捷入口** | 0,1107-1080,1310（203px） | **`rv_entra`**（0,31-1080,166）→ `item_marktes_entra` ×5 |
+| 行5 | 板块标题 | 0,1326-1080,1443 | `tv_top_title` + `tv_header_bk_more` |
+| 行6 | **板块** | 0,1443-1080,2002 | `rg_bk`（涨幅榜 / 涨速榜 / 成交额 / 连涨天 / 净流入）+ **`vp_bk_content`**（39,91-1041,559）→ `RecyclerView` 内 **`BKHQOverviewItemView` ×6**，3 列 × 2 行，一格 264×234 |
+
+三条实测结论：
+
+1. **「滚动横幅」是热门专题轮播，不是跑马灯**：它是一个 `AdapterViewFlipper`
+   （`#avf_hotpoint`）。用视图标志位扫过全树，这一页**没有任何**
+   `ellipsize = MARQUEE` 的 `TextView` —— 初版「找跑马灯文字」那条路在真机上
+   永远认不出来，只能按 id。
+2. **四个目标版块都是 `#rv_markets_hs` 的子项**：`RecyclerView` 的 `LayoutManager`
+   不判 `visibility`，只设 `GONE` 会留下等高空档 → 必须用 `ViewPatcher.collapse`
+   （高度归零 + `GONE`）连高度一起收。
+3. **板块是 3 列 × 2 行共 6 格**：「只留三项」= 留一整行 = 容器限高到
+   `SECTOR_KEEP / SECTOR_TOTAL`（0.5）。藏子项没用（`RecyclerView` 子项 `GONE` 照样占位）。
+
+| 常量 | 真机实测值（已排在候选数组最前） |
+|---|---|
+| `MarketTargets.HOT_BAR_ID_CANDIDATES` | `avf_hotpoint` |
+| `MarketTargets.QUICK_ENTRY_ID_CANDIDATES` | `rv_entra` |
+| `MarketTargets.QUICK_ENTRY_ITEM_ID` | `item_marktes_entra` |
+| `MarketTargets.SECTOR_GROUP_ID_CANDIDATES` | `vp_bk_content` |
+| `MarketTargets.SECTOR_ITEM_ID` | `tv_item_bkhq_overview_name` |
+| `MarketTargets.OVERVIEW_CHART_AREA_ID` | `fl_content` |
+| `MarketTargets.OVERVIEW_CHART_ID_CANDIDATES` | `zdfb_chart_view` / `dxpg_chart_view` / `jlr_chart_view` |
+
+### 7.6 顺带记下：另外几个页面的实测情况
+
+同一趟把所有页签都导了一遍，结论对以后新增功能有用：
+
+- **`MarketOverviewAct`（市场概览独立页）整页是 H5**：native 层只有
+  `common_top` + `webView_market`（`HybirdWebView`），大盘走势与涨跌分布都在网页里 ——
+  按块精简无从下手（模块不注入脚本），所以它**不在** `MarketTargets.PAGES` 里。
+- **`HSBKMainAct`（板块）**：热门 / 行业 / 概念 / 风格 / 地区 + 涨幅榜 Top10 列表。
+- **行情 → 美股**：`ll_us_index`（道指 / 纳指 / 标普）+ 行业 / 概念板块概览
+  （`ll_header_bkhq_overview_category_hy` / `_gn` → `ll_bkhq_category_container`）。
+- **行情 → 港股**：`llv_hk_index` + 港股通 / 沪股通 / 深股通 + `rv_hy_list`（行业）/
+  `rv_gn_list`（概念）。
+- **行情 → ETF**：`rv_home_func` 快捷入口（格子是 `iv_home_func` + `tv_home_func`，
+  与首页那个同名不同款）+ `vp_ad` / `indicator_ad` 广告轮播 + 各类 ETF 列表。
+- **行情 → 全球**：全球指数 / 基本汇率 + 世界地图 + 6 档 `stk_info_N` ×2 组。
+- **自选页**：`index_fs_group_view`（指数分时 `index_fs_chart` + 成交量
+  `index_fs_volumn`）+ 自选分组 + `rl_ad` / `avf_ad` 广告条 + `stklv_zxg` 列表。

@@ -59,6 +59,29 @@ class ViewPatcher(private val tag: String) {
     }
 
     /**
+     * 隐藏**并且**把高度压成 0 —— `GONE` 在 `RecyclerView` 的子项上不生效。
+     *
+     * 普通 `ViewGroup`（`LinearLayout` / `FrameLayout` / `RelativeLayout`）在测量时
+     * 会主动跳过 `GONE` 的子视图，所以 `hide()` 就够了。但 `RecyclerView` 不是 ——
+     * 它的 `LayoutManager` 会把**所有已挂上的子项**都测一遍并摆放，
+     * 不判 `visibility`，于是 `GONE` 的那一项照样占着一条等高的空档。
+     *
+     * 实测行情市场页的「市场概览 / 滚动横幅 / 快捷入口 / 板块」都是
+     * `#rv_markets_hs` 的**子项**，所以这里必须把 `layoutParams.height` 一起设成 0：
+     * `getChildMeasureSpec` 拿到 0 就会按 `EXACTLY 0` 去测，那一项自然不占地方。
+     */
+    fun collapse(v: View, why: String): Boolean {
+        val lp = v.layoutParams ?: return false
+        if (v.visibility == View.GONE && lp.height == 0) return false
+        remember(v)
+        v.visibility = View.GONE
+        lp.height = 0
+        v.requestLayout()
+        GLog.i("$tag：收起 $why（高度归零 + GONE，${describe(v)}）")
+        return true
+    }
+
+    /**
      * 把高度钉成 [height] px（也接受 `WRAP_CONTENT` / `MATCH_PARENT` 这两个负值常量）。
      * 返回 true = 本次真的改了。
      */
