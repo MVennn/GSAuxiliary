@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """verify_icons.py —— 自绘图标（ui/AppIcons.kt）结构校验与可视化
 
-背景：界面图标是手写的 SVG path 数据（见 docs/UI.md §10）。
+背景：界面图标是手写的 SVG path 数据（见 docs/UI.md §3.3）。
 path 数据写错一个数字，编译一样能过，只有装到机器上才看得出来。
 这个脚本把 path 解析出来做**结构检查**，并渲染成 PNG 便于肉眼比对。
 
@@ -41,13 +41,20 @@ EXPECTED_SUBPATHS = {
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC = os.path.join(HERE, "..", "app", "src", "main", "java", "com", "wb", "gszx", "ui", "AppIcons.kt")
+REPO = os.path.dirname(HERE)
+# 注意：包路径改过一次名（com.wb.gszx → gsauxiliary.m.venn → io.github.SansKritO4.GSAuxiliary），
+# 这里跟着 applicationId 走。再改名时记得同步。
+SRC = os.path.join(REPO, "app", "src", "main", "java",
+                   "io", "github", "SansKritO4", "GSAuxiliary", "ui", "AppIcons.kt")
 
 
 # --------------------------------------------------------------------------
 # 从 Kotlin 源码里读 path 数据（避免脚本和源码两份数据不同步）
 # --------------------------------------------------------------------------
 def load_icons(src_path=SRC):
+    if not os.path.isfile(src_path):
+        raise SystemExit("找不到 AppIcons.kt：%s\n"
+                         "包路径可能又改了，请同步本脚本的 SRC 常量。" % src_path)
     with open(src_path, encoding="utf-8") as f:
         src = f.read()
     pat = re.compile(
