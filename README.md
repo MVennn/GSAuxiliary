@@ -8,7 +8,7 @@
 
 Make GoldenSun Great Again！
 
-[![下载最新版本](https://img.shields.io/badge/下载-最新版本-3DDC84?logo=android&logoColor=white)](/releases/latest)
+[![下载最新版本](https://img.shields.io/badge/下载-最新版本-3DDC84?logo=android&logoColor=white)](../../releases/latest)
 ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white)
 ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
@@ -31,7 +31,7 @@ Make GoldenSun Great Again！
 **需要**：手机已 root，装了 [LSPosed](https://github.com/LSPosed/LSPosed)（要支持 API 102）；
 国信金太阳 8.6.0；Android 8.1 及以上。
 
-1. 到本仓库的 [**Releases**](/releases/latest) 下载最新的 `GSAuxiliary_*.apk`，装上
+1. 到本仓库的 [**Releases**](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk`，装上
 2. 打开 **LSPosed 管理器 → 模块**，勾选 **GSAuxiliary**
 3. **作用域**里勾上「国信金太阳」（模块已固定声明作用域，通常会自动勾好）
 4. **强制停止**国信金太阳，再重新打开一次
