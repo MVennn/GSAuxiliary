@@ -33,6 +33,9 @@
 ## 1. 发版
 
 ```bash
+# 0. 先确认凭据对两个仓库都有写权限（几秒钟，只调 API，不写任何东西）
+python tools/publish.py --check
+
 # 先干跑一遍，看清楚它要做什么
 python tools/publish.py --dry-run
 
@@ -79,25 +82,40 @@ vim docs/release-notes/2.14.0.md      # 文件名 = versionName
 git tag 34-2.14.0 && git push origin 34-2.14.0
 ```
 
-然后 CI 依次做：
+然后 CI 依次做（前 5 步都在装 JDK / SDK **之前** —— 几秒就能判定的事，
+不该等构建跑完 5 分钟才告诉你）：
 
 | 步骤 | 动作 | 失败会怎样 |
 |---|---|---|
-| 1 | 校验 5 个 Secrets 齐全 | 直接报错，列出缺哪几个 |
-| 2 | 校验 tag == `versionCode-versionName` | 直接报错（防止给未完工版本建假 Release） |
-| 3 | 解码 keystore 并用 `keytool` 验密码 / 别名 | 直接报错 |
-| 4 | `./gradlew assembleRelease` | 直接报错 |
-| 5 | `python tools/ci/verify_apk.py` 跑红线 | 直接报错，产物不发 |
-| 6 | `python tools/publish.py --skip-build --notes docs/release-notes/<vn>.md` | 直接报错 |
+| 1 | 校验 tag == `versionCode-versionName` | 直接报错（防止给未完工版本建假 Release），并把对比结果写进 job summary |
+| 2 | 校验 5 个 Secrets 齐全 | 直接报错，列出缺哪几个 |
+| 3 | `python tools/publish.py --check` 查 token 对两个仓库的写权限 | 直接报错 |
+| 4 | 解码 keystore 并用 `keytool` 验密码 / 别名 | 直接报错 |
+| 5 | `./gradlew assembleRelease` | 直接报错 |
+| 6 | `python tools/ci/verify_apk.py --reject-debug-cert` 跑红线 | 直接报错，产物不发 |
+| 7 | `python tools/publish.py --skip-build --notes docs/release-notes/<vn>.md` | 直接报错 |
 
-第 6 步就是本机那条命令的同一份代码 —— **双仓库发布 + 元文件同步的逻辑只有一处**，
+第 7 步就是本机那条命令的同一份代码 —— **双仓库发布 + 元文件同步的逻辑只有一处**，
 不会出现「CI 发了一套、本机发了一套，两边不一样」。
 
-也支持 `workflow_dispatch` 手动触发（填一个已存在的 tag）。
+第 3 步和第 6 步是这一版新加的，各自堵一个坑：
+
+- **第 3 步**：`publish.py` 是先发源码仓库、再发模块仓库。如果 token 写不了模块仓库，
+  源码仓库那份已经建好了、用户却什么都收不到，而日志只报「失败」，
+  很容易被当成偶发问题重跑。提前几秒查掉。
+- **第 6 步的 `--reject-debug-cert`**：`app/build.gradle.kts` 在四个 `GS_KEYSTORE_*`
+  不齐全时会**安静地**退回 debug 签名。那样签出来的包签名和以前不一样 ——
+  已装用户必须卸载重装才能更新。这条检查会让它直接变红，而不是发出去。
+  想更狠一点，再配一个可选的 `GS_CERT_SHA256`（见 §1.2），把证书指纹也钉死。
+
+也支持 `workflow_dispatch` 手动触发（填一个已存在的 tag），并且多一个
+**`dry_run` 开关**：打开后照常构建、照常跑红线，但**不往任何仓库写东西**。
+第一次用 CI 发版、或者只想确认密钥配对了没有，先拿它演一遍。
 
 > **为什么 `LSPOSED_REPO_TOKEN` 缺了要直接失败**：如果 CI 只发源码仓库就报成功，
 > 你会以为发完了，而 modules.lsposed.org 和 LSPosed App 一个字都收不到（见 §0）。
 > 宁可红，不要假绿。
+
 
 ## 1.2 CI 发版需要的 5 个 Repository secrets
 
@@ -110,13 +128,27 @@ git tag 34-2.14.0 && git push origin 34-2.14.0
 | `GS_KEYSTORE_ALIAS` | 你的 key 别名 |
 | `GS_KEYSTORE_KEY_PASSWORD` | 你的 key 密码 |
 | `LSPOSED_REPO_TOKEN` | PAT（classic，勾 `repo`），且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
+| `GS_CERT_SHA256` | **可选**。签名证书的 SHA-256（小写十六进制，无冒号）。配了就把 release 包的证书钉死 |
 
 这四个 `GS_KEYSTORE_*` 由 `app/build.gradle.kts` 直接读（见该文件「签名配置」段）。
 **四个必须齐全**才生效，半套配置会静默退回 debug 签名 —— 而
 **用 debug 签名发版会让已装用户必须卸载重装**，所以宁可它不生效时看得见。
+（现在它真的「看得见」了：`release.yml` 里那条 `--reject-debug-cert` 会直接把它拦下来。）
+
+`GS_CERT_SHA256` 怎么取（本机现成的 APK 就行）：
+
+```bash
+python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
+  | grep '证书 SHA-256'
+#   [OK] 已签名（scheme v2）证书 SHA-256: a7fc6034bc5937df133973c9bd60d0191d0beb143b705b1f304692ed107ac325
+```
+
+那个值就是你的模块身份。配上之后，`release.yml` 会逐字比对 ——
+签名变了就别指望能发出去，也就不会出现「用户必须卸载重装」这种事。
 
 > ⚠️ **不要**用 `secrets.GITHUB_TOKEN` 替代 `LSPOSED_REPO_TOKEN`：
 > Actions 自带的 token 作用域只在本仓库内，写不了模块仓库。
+
 
 ---
 
@@ -155,17 +187,27 @@ git tag 34-2.14.0 && git push origin 34-2.14.0
 
 ## 3. 发版前检查
 
-> **走 CI 发版（§1.1）的话，下面第 3~6 条由 `release.yml` 自动做了**，
-> 你只需要保证第 1、2、7 条 —— 也就是「版本号递增了、CHANGELOG 写了、
+> **走 CI 发版（§1.1）的话，下面第 3~9 条由 `release.yml` 自动做了**，
+> 你只需要保证第 1、2、10 条 —— 也就是「版本号递增了、CHANGELOG 写了、
 > 没有在途开发」。手工在本机发版才需要全部自己过一遍。
 
 - [ ] `app/build.gradle.kts` 的 `versionCode` / `versionName` 已递增
 - [ ] `CHANGELOG.md` 顶部已加该版本的段落
 - [ ] `docs/release-notes/<versionName>.md` 已写（CI 找它当 Release 说明）
+- [ ] `python tools/publish.py --check` 说两个仓库都可写
 - [ ] `./gradlew assembleDebug assembleRelease` 通过
 - [ ] `python tools/ci/verify_apk.py <apk>` 全部 `[OK]`（红线自动化，见 `docs/BUILD.md` §8.3）
-- [ ] release dex 里 `Lio/github/libxposed/api` 定义类为 **0**（红线）
+- [ ] release dex 里 `Lio/github/libxposed/api` 与 `.../annotation` 定义类为 **0**（红线）
 - [ ] manifest 无 legacy `xposed*` meta-data（**别用 `grep -i xposed`**，见下）
+- [ ] **release 包签名证书是你的，不是 Android 调试证书** —— 一条命令：
+
+  ```bash
+  python tools/ci/verify_apk.py --reject-debug-cert \
+      app/build/outputs/apk/release/app-release.apk
+  ```
+
+  指纹要和上一版一致；不一致就说明签名配置掉回了 debug 签名，
+  **发出去会让所有用户必须卸载重装**。
 - [ ] **没有正在进行的在途开发** —— 否则版本号可能是下一个未完工的版本
 
 > manifest 自查要精确匹配 key，不能用宽匹配：
@@ -244,3 +286,14 @@ bot 在收录 issue 里的原话：
   会给一个还没完工的版本建出假 Release。
 - 模块仓库的 `README.md` 若引用 `docs/` 下的文件，会变成**坏图 / 死链** ——
   那边没有 `docs/`。logo 因此用**绝对 raw 地址**引用，两个仓库都能显示。
+- **签名会「静默」退回 debug**：`app/build.gradle.kts` 判定 `hasEnvKeystore` 要求
+  四个 `GS_KEYSTORE_*` **全部**存在且文件真的在。少一个就安静地走 debug 签名分支，
+  构建照样成功、包照样能装 —— 只是签名和以前不一样。
+  CI 上靠 `--reject-debug-cert` 拦，本机靠发版清单里那条命令。
+- **`publish.py` 是「先源码、后模块」两步**：token 对模块仓库没有写权限时，
+  源码仓库那份 Release 已经建好了、用户却收不到。所以有了 `publish.py --check`，
+  以及 `release.yml` 里那一步前置检查 —— 发之前先问一句「到底能不能写」。
+- **平台目录名不等于元数据里的版本号**：官方 SDK 包里遇到过目录叫 `android-37.2`、
+  `package.xml` 里却写 `37.0` 的。`setup-sdk37.sh` 因此**不按目录名猜版本**，
+  而是把所有 `37.x` 一律压成 `37`（见 `docs/BUILD.md` §8.1）。
+

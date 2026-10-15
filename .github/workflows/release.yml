@@ -5,16 +5,20 @@ name: Release
 #
 #   1. 校验 tag 与 app/build.gradle.kts 的 versionCode-versionName 完全一致
 #      （不一致直接失败 —— 防止给一个还没完工的版本建出假 Release）
-#   2. 用 Secrets 里的 keystore 签名构建 release
-#   3. 跑红线校验
-#   4. 调 tools/publish.py 一次发到「源码仓库」+「LSPosed 模块仓库」，并同步元文件
+#   2. 检查 5 个 Secrets 齐全，并**提前**确认 token 对两个仓库都有写权限
+#   3. 用 Secrets 里的 keystore 签名构建 release
+#   4. 跑红线校验（含「签名证书不能是 Android 调试证书」这条硬校验）
+#   5. 调 tools/publish.py 一次发到「源码仓库」+「LSPosed 模块仓库」，并同步元文件
 #
-# ⚠️ 为什么第 4 步必须两个仓库一起发：见 docs/RELEASE.md §0 ——
+# ⚠️ 为什么第 5 步必须两个仓库一起发：见 docs/RELEASE.md §0 ——
 #    只发源码仓库，modules.lsposed.org 与 LSPosed App 收不到任何东西，
 #    用户拿不到更新。所以本工作流**要求** LSPOSED_REPO_TOKEN，缺了就报错退出，
 #    不会给你一个「看着成功、实际用户收不到」的假象。
 #
-# 需要的 Repository secrets（5 个）见 docs/RELEASE.md §1.2。
+# 需要的 Repository secrets（5 个，另有一个可选的 GS_CERT_SHA256）见 docs/RELEASE.md §1.2。
+#
+# 手动触发时可以把 dry_run 打开，整条流水线只「演一遍」：照常构建、照常校验，
+# 但不往任何仓库写东西。
 # ---------------------------------------------------------------------------
 
 on:
@@ -27,13 +31,20 @@ on:
         description: '要发布的 tag（形如 34-2.14.0，必须已经存在）'
         required: true
         type: string
+      dry_run:
+        description: '只演练不发布（照常构建 + 校验，但不写任何仓库）'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# 本工作流对 GitHub API 的写操作全部走 LSPOSED_REPO_TOKEN（PAT），
+# 不用 Actions 自带的 GITHUB_TOKEN —— 所以这里只要读权限就够了。
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
@@ -49,6 +60,10 @@ jobs:
       GS_KEYSTORE_PASSWORD: ${{ secrets.GS_KEYSTORE_PASSWORD }}
       GS_KEYSTORE_ALIAS: ${{ secrets.GS_KEYSTORE_ALIAS }}
       GS_KEYSTORE_KEY_PASSWORD: ${{ secrets.GS_KEYSTORE_KEY_PASSWORD }}
+      # 要发布的 tag：手动触发用输入值，推 tag 用 ref 名。
+      # 走 env 而不是直接塞进 shell —— tag 是外部字符串，不该拼进命令行。
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      DRY_RUN: ${{ inputs.dry_run }}
 
     steps:
       - name: 检出源码
@@ -56,8 +71,41 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
+          # 发布用的是 PAT（见下面的 GS_GITHUB_TOKEN），不需要 checkout 留下的凭据
+          persist-credentials: false
 
-      # 先查密钥，别等构建了 5 分钟才发现发不出去
+      # ---------------------------------------------------------- 先失败，再干活
+      # 下面几步都是「几秒就能判定、判错了却要浪费 5 分钟构建」的检查，
+      # 所以全部排在装 JDK / SDK 之前。
+
+      - name: 确认 gradlew 有可执行位
+        run: |
+          if [ ! -x ./gradlew ]; then
+            echo "::error file=gradlew::gradlew 没有可执行位（git 里必须是 100755）。修：git update-index --chmod=+x gradlew"
+            ls -l gradlew
+            exit 1
+          fi
+
+      - name: 校验 tag 与版本号一致
+        run: |
+          set +e
+          OUT="$(python3 tools/ci/version.py --check-tag "$RELEASE_TAG" 2>&1)"
+          rc=$?
+          set -e
+          echo "$OUT"
+          if [ "$rc" -ne 0 ]; then
+            {
+              echo "## ❌ tag 与版本号对不上"
+              echo ""
+              echo '```'
+              echo "$OUT"
+              echo '```'
+              echo ""
+              echo "先改 \`app/build.gradle.kts\` 的 versionCode / versionName，再打 tag。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
       - name: 检查发布所需的 Secrets
         env:
           LSPOSED_REPO_TOKEN: ${{ secrets.LSPOSED_REPO_TOKEN }}
@@ -85,6 +133,15 @@ jobs:
           fi
           echo "[OK] 5 个 secrets 都在"
 
+      - name: 前置检查 —— token 对两个仓库都有写权限吗
+        # publish.py 是先发源码仓库、再发模块仓库。如果 token 写不了模块仓库，
+        # 源码仓库那份已经建好了、用户却什么都收不到 —— 提前拦住，别浪费一次构建。
+        env:
+          GS_GITHUB_TOKEN: ${{ secrets.LSPOSED_REPO_TOKEN }}
+        run: python3 tools/publish.py --check
+
+      # ---------------------------------------------------------------- 环境
+
       - name: 装 JDK 17
         uses: actions/setup-java@v5
         with:
@@ -101,26 +158,8 @@ jobs:
 
       - name: 配置 Gradle（含依赖缓存）
         uses: gradle/actions/setup-gradle@v5
-
-      - name: 校验 tag 与版本号一致
-        run: |
-          TAG="${{ inputs.tag || github.ref_name }}"
-          EXPECT="$(python3 tools/ci/version.py --tag)"
-          echo "tag=$TAG  期望=$EXPECT"
-          if [ "$TAG" != "$EXPECT" ]; then
-            {
-              echo "## ❌ tag 与版本号对不上"
-              echo ""
-              echo "| | 值 |"
-              echo "|---|---|"
-              echo "| 推的 tag | \`$TAG\` |"
-              echo "| app/build.gradle.kts | \`$EXPECT\` |"
-              echo ""
-              echo "先改 \`app/build.gradle.kts\` 的 versionCode / versionName，再打 tag。"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "[X] tag=$TAG 但 app/build.gradle.kts 是 $EXPECT" >&2
-            exit 1
-          fi
+        with:
+          validate-wrappers: true
 
       - name: 解码签名密钥
         run: |
@@ -129,24 +168,42 @@ jobs:
           # 顺手验一下密码 / 别名对不对，别等到构建完才发现签名失败
           if ! keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
                  -storepass "$GS_KEYSTORE_PASSWORD" -alias "$GS_KEYSTORE_ALIAS" >/dev/null 2>&1; then
-            echo "[X] keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS" >&2
+            echo "::error::keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS"
             exit 1
           fi
           echo "[OK] keystore 与密码 / 别名匹配"
           echo "GS_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
+      # ---------------------------------------------------------- 构建与校验
+
       - name: 构建 release
-        run: ./gradlew --no-daemon assembleRelease
+        run: ./gradlew --no-daemon --console=plain assembleRelease
 
       - name: 校验产物红线
-        run: python3 tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
+        env:
+          # 可选：钉死签名证书指纹（没配就只把实际值打印出来，人工核对）
+          GS_EXPECT_CERT_SHA256: ${{ secrets.GS_CERT_SHA256 }}
+        run: |
+          # --reject-debug-cert 是这里的关键守卫：只要 app/build.gradle.kts 因为
+          # 任何原因退回了 debug 签名（比如某个 GS_KEYSTORE_* 没传到 Gradle），
+          # 这一步直接红 —— 而不是签出一个「签名和以前不一样」的包让所有用户重装。
+          python3 tools/ci/verify_apk.py --reject-debug-cert \
+            app/build/outputs/apk/release/app-release.apk
 
       - name: 整理产物
+        if: always()
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk \
-             "dist/GSAuxiliary_$(python3 tools/ci/version.py --tag).apk"
-          ls -l dist
+          TAG="$(python3 tools/ci/version.py --tag)"
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/GSAuxiliary_${TAG}.apk"
+          fi
+          if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
+            cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
+          fi
+          ls -l dist || true
+
+      # ---------------------------------------------------------------- 发布
 
       - name: 发布到两个仓库
         env:
@@ -154,6 +211,13 @@ jobs:
           GS_GITHUB_TOKEN: ${{ secrets.LSPOSED_REPO_TOKEN }}
         run: |
           VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
+
+          if [ "${DRY_RUN:-}" = "true" ]; then
+            echo "::notice::dry_run 已打开 —— 只演练，不往任何仓库写东西"
+            python3 tools/publish.py --dry-run
+            exit 0
+          fi
+
           NOTES="docs/release-notes/$VN.md"
           if [ -f "$NOTES" ]; then
             echo "用 $NOTES 作为 Release 说明"
@@ -168,6 +232,6 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: release-apk
-          path: dist/*.apk
+          path: dist/*
           if-no-files-found: ignore
           retention-days: 30

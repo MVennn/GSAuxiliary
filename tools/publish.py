@@ -25,6 +25,7 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
     python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
     python tools/publish.py --dry-run          # 只打印将要做什么，不写任何东西
     python tools/publish.py --sync-only        # 只同步元文件，不发 Release
+    python tools/publish.py --check            # 只查凭据有没有两个仓库的写权限
 
 版本号取自 `app/build.gradle.kts` 的 `versionCode` / `versionName`，
 tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
@@ -187,6 +188,49 @@ def api(tok, method, path, payload=None, raw=None, ctype=None):
             return e.code, {"raw": body[:500]}
 
 
+def _brief(data):
+    """把 API 的错误体压成一行，便于贴进日志。"""
+    if isinstance(data, dict):
+        return str(data.get("message") or data.get("raw") or data)[:200]
+    return str(data)[:200]
+
+
+# --------------------------------------------------------------------------- 前置检查
+
+def check_publish_access(tok):
+    """发版前的前置检查：这个 token 真的能写进**两个**仓库吗？
+
+    为什么值得单独一步：publish.py 是先建源码仓库的 Release、再发模块仓库。
+    如果 token 对模块仓库没有写权限，源码仓库那份已经建好了 —— 用户却什么都收不到，
+    而日志报的是「失败」，很容易被当成偶发问题重跑。提前查，红在构建之前。
+    """
+    ok = True
+
+    status, me = api(tok, "GET", "/user")
+    if status != 200:
+        print("  [X] token 本身无效（GET /user -> HTTP %s：%s）" % (status, _brief(me)))
+        return False
+    print("  [OK] token 有效，身份：%s" % (me or {}).get("login", "?"))
+
+    for repo in (SOURCE_REPO, MODULE_REPO):
+        status, data = api(tok, "GET", "/repos/" + repo)
+        if status != 200:
+            print("  [X] %s 读不到（HTTP %s：%s）" % (repo, status, _brief(data)))
+            ok = False
+            continue
+        perms = (data or {}).get("permissions") or {}
+        if not perms.get("push"):
+            print("  [X] %s **没有写权限**（push=%s，admin=%s）—— "
+                  "token 需要 repo scope，且要对该仓库有 push 权限"
+                  % (repo, perms.get("push"), perms.get("admin")))
+            ok = False
+            continue
+        print("  [OK] %s 可写（默认分支 %s）"
+              % (repo, (data or {}).get("default_branch", "?")))
+
+    return ok
+
+
 # --------------------------------------------------------------------------- 步骤
 
 def build():
@@ -311,12 +355,23 @@ def main():
     ap.add_argument("--sync-only", "--readme-only", dest="sync_only",
                     action="store_true",
                     help="只同步模块仓库的元文件（README/SUMMARY/SOURCE_URL/icon.svg），不发 Release")
+    ap.add_argument("--check", action="store_true",
+                    help="只做前置检查：token 是否对两个仓库都有写权限（不构建、不发布）")
     args = ap.parse_args()
+
+    if args.check:
+        print("发版前置检查（不构建、不发布）")
+        print("  源码仓库：%s" % SOURCE_REPO)
+        print("  模块仓库：%s" % MODULE_REPO)
+        ok = check_publish_access(token())
+        print()
+        print("结论：%s" % ("可以发版" if ok else "发不了 —— 见上面的 [X]"))
+        return 0 if ok else 1
 
     if args.sync_only:
         print("只同步模块仓库元文件 -> %s" % MODULE_REPO)
         sync_repo_files("" if args.dry_run else token(), args.dry_run)
-        return
+        return 0
 
     vc, vn = read_version()
     tag = "%d-%s" % (vc, vn)
@@ -368,7 +423,8 @@ def main():
         print("  模块 Release : %s" % mod_url)
     print("  模块页（描述非空 + 有 release，两项齐了起算 60 分钟内收录）: "
           "https://modules.lsposed.org/module/%s" % MODULE_REPO.split("/")[-1])
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

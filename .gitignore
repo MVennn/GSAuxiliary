@@ -14,12 +14,18 @@ bin/
 gen/
 release/
 build/
+# CI 与 publish.py 整理产物的目录（.github/workflows/*.yml、tools/publish.py）
+dist/
 .gradle/
 .kotlin/
 captures/
 .externalNativeBuild/
 .cxx/
 local.properties
+
+# tools/ 下的 python 脚本被 import 时会留下这些
+__pycache__/
+*.pyc
 
 # ---------------------------------------------------------------------------
 # 签名与凭据 —— 绝对不要提交

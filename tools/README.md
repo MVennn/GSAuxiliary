@@ -353,7 +353,13 @@ python tools/publish.py --skip-build       # 用现有 APK
 python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
 python tools/publish.py --sync-only        # 只同步元文件，不发 Release
 python tools/publish.py --dry-run          # 只打印将做什么，不写任何东西
+python tools/publish.py --check            # 只查凭据有没有两个仓库的写权限
 ```
+
+> `--check` 是**发版前的探针**：只调 GitHub API，不构建、不写任何东西，
+> 几秒钟就能回答「这个 token 到底能不能写进模块仓库」。
+> 值得先跑它 —— 脚本是先发源码仓库、再发模块仓库，token 写不了模块仓库的话，
+> 源码仓库那份已经建好了、用户却什么都收不到。`release.yml` 里也插了这一步。
 
 | 步骤 | 做什么 |
 |---|---|
@@ -391,21 +397,30 @@ python tools/publish.py --dry-run          # 只打印将做什么，不写任�
 
 | 脚本 | 干什么 |
 |---|---|
-| `ci/setup-sdk37.sh` | 装好 compileSdk 37 平台并归一化成 AGP 认得的 `platforms/android-37`。幂等。 |
+| `ci/setup-sdk37.sh` | 装好 compileSdk 37 平台并归一化成 AGP 认得的 `platforms/android-37`。幂等；下载失败自动重试，37.2 装不上会退到 37.1 / 37.0。 |
 | `ci/export-sdk-env.sh` | 把 SDK 路径交给后续步骤（CI 里写 `$GITHUB_ENV` + 补 `local.properties`）。 |
-| `ci/verify_apk.py` | 产物红线自查：libxposed api 类定义必须 0、无 legacy `assets/xposed_init`、manifest 无 `xposedminversion`、入口类被 R8 保留…… |
-| `ci/version.py` | 读 `app/build.gradle.kts` 的版本号（CI 里唯一来源）。 |
+| `ci/verify_apk.py` | 产物红线自查：libxposed api / annotation 类定义必须 0、无 legacy `assets/xposed_init`、manifest 无 `xposedminversion`、入口类被 R8 保留、元文件与源码母本逐字一致、**APK 已签名且不是 debug 证书**…… |
+| `ci/version.py` | 读 `app/build.gradle.kts` 的版本号（CI 里唯一来源），并提供 `--check-tag` 做 tag 一致性校验。 |
 
 ```bash
 # 干净机器 / CI 上补 compileSdk 37
 ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
 
-# 产物红线自查（纯标准库，不需要 dexdump / aapt2）
+# 产物红线自查（纯标准库，不需要 dexdump / aapt2 / apksigner）
 python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
 
-# 版本号
-python tools/ci/version.py --tag      # 34-2.14.0
+# 发版包再加两条硬校验：证书不能是调试证书、可钉死指纹
+python tools/ci/verify_apk.py --reject-debug-cert \
+    --expect-cert-sha256 a7fc6034… app/build/outputs/apk/release/app-release.apk
+
+# 版本号 / tag 一致性
+python tools/ci/version.py --tag                  # 34-2.14.0
+python tools/ci/version.py --check-tag 34-2.14.0  # 不一致就 exit 1
 ```
+
+`verify_apk.py` 的输出分三级：`[OK]` 通过、`[!]` 提醒（不影响退出码）、
+`[X]` 踩红线（退出码 1）。签名证书是**纯标准库解析 APK Signing Block** 拿到的，
+不依赖 `apksigner` —— 实测与本机 `apksigner verify --print-certs` 的指纹完全一致。
 
 > `setup-sdk37.sh` 为什么必须存在：官方 SDK 仓库里根本没有 `platforms;android-37`，
 > 只有 `platforms;android-37.2`（Android 16 之后新引入的次要版本命名），

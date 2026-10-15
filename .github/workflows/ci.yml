@@ -6,6 +6,8 @@ name: CI
 #
 # 这一套是**零密钥**的：仓库没配任何 Secret 也能跑，release 会退回 debug 签名，
 # 产物只当测试包用（见 docs/BUILD.md §8）。
+#
+# 产物**无论成败都上传** —— 红线校验没过时，APK 正是排查要用的东西。
 # ---------------------------------------------------------------------------
 
 on:
@@ -42,6 +44,19 @@ jobs:
     steps:
       - name: 检出源码
         uses: actions/checkout@v5
+        with:
+          # 这个 job 只读不写，没必要把 token 留在 .git/config 里
+          persist-credentials: false
+
+      - name: 确认 gradlew 有可执行位
+        # 在 Windows 上开发时很容易把它提交成 100644，到 Linux runner 上
+        # 就变成一句没头没尾的 `./gradlew: Permission denied`。提前说清楚。
+        run: |
+          if [ ! -x ./gradlew ]; then
+            echo "::error file=gradlew::gradlew 没有可执行位（git 里必须是 100755）。修：git update-index --chmod=+x gradlew"
+            ls -l gradlew
+            exit 1
+          fi
 
       - name: 装 JDK 17
         uses: actions/setup-java@v5
@@ -62,33 +77,76 @@ jobs:
 
       - name: 配置 Gradle（含依赖缓存）
         uses: gradle/actions/setup-gradle@v5
+        with:
+          # 顺手校验 gradle-wrapper.jar 的 checksum，防止被替换
+          validate-wrappers: true
 
       - name: 读版本号
         id: ver
         run: python3 tools/ci/version.py >> "$GITHUB_OUTPUT"
 
       - name: 构建
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: ./gradlew --no-daemon --console=plain assembleDebug assembleRelease
 
       - name: 校验产物红线
+        env:
+          # 可选：钉死签名证书指纹（没配就只把实际值打印出来）
+          GS_EXPECT_CERT_SHA256: ${{ secrets.GS_CERT_SHA256 }}
+          HAVE_KEYSTORE: ${{ secrets.GS_KEYSTORE_BASE64 }}
         run: |
-          python3 tools/ci/verify_apk.py \
+          EXTRA=()
+          if [ -n "${HAVE_KEYSTORE:-}" ]; then
+            # 配了签名密钥 —— release 包就不该再是 debug 签名，踩到直接红
+            echo "已配置签名密钥：release 包不允许退回 debug 签名"
+            EXTRA+=(--reject-debug-cert)
+          else
+            echo "未配置签名密钥（零密钥 CI）：release 包会用 debug 签名，只提醒不报错"
+          fi
+
+          python3 tools/ci/verify_apk.py "${EXTRA[@]}" \
             app/build/outputs/apk/debug/app-debug.apk \
             app/build/outputs/apk/release/app-release.apk
 
       - name: 整理产物
+        # 就算上面红线校验红了，也要把 APK 留下来 —— 那正是排查时要看的东西
+        if: always()
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk \
-             "dist/GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk \
-             "dist/GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}-debug.apk"
-          ls -l dist
+          VC="${{ steps.ver.outputs.vc }}"
+          VN="${{ steps.ver.outputs.vn }}"
+          for t in release debug; do
+            src="app/build/outputs/apk/$t/app-$t.apk"
+            if [ ! -f "$src" ]; then
+              echo "跳过 $t（没有 $src）"
+              continue
+            fi
+            suffix=""
+            [ "$t" = "debug" ] && suffix="-debug"
+            cp "$src" "dist/GSAuxiliary_${VC}-${VN}${suffix}.apk"
+          done
+          # R8 的混淆映射：release 崩溃栈要靠它还原成可读的类名 / 行号
+          if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
+            cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
+          fi
+          ls -l dist || true
+
+          {
+            echo "## 构建产物"
+            echo ""
+            echo "| 文件 | 大小 |"
+            echo "|---|---|"
+            for f in dist/*.apk dist/mapping.txt; do
+              [ -f "$f" ] || continue
+              echo "| \`$(basename "$f")\` | $(( $(wc -c < "$f") / 1024 )) KB |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: 上传产物
+        if: always()
         uses: actions/upload-artifact@v5
         with:
           name: GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}
-          path: dist/*.apk
-          if-no-files-found: error
+          path: dist/*
+          # 构建阶段就失败时 dist 是空的 —— 那是上游已经报过的错，不用在这儿再报一次
+          if-no-files-found: ignore
           retention-days: 14

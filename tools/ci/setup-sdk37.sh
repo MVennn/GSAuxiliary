@@ -12,9 +12,9 @@
 #       Failed to find target with hash string 'android-37'
 #
 #   本脚本做两件事：
-#     1) 用 sdkmanager 装 `platforms;android-37.2`
+#     1) 用 sdkmanager 装一个次要版本平台（默认 37.2，装不上依次退到 37.1 / 37.0）
 #     2) 把它归一成 AGP 认得的样子 —— 目录改名 android-37，
-#        包元数据里的 37.2 全部改成 37
+#        包元数据里的 37.x 全部改成 37
 #
 #   **幂等**：platforms/android-37 已存在就直接退出，重复跑无副作用。
 #
@@ -22,13 +22,26 @@
 #   ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
 #   bash tools/ci/setup-sdk37.sh          # 未设变量时按常见路径自动探测
 #
+# 环境变量：
+#   ANDROID_SDK_ROOT / ANDROID_HOME    SDK 根目录
+#   GS_SDK_PLATFORM_PKG                指定要装的包（默认按候选表挑，见下）
+#   GS_SDK_INSTALL_TRIES               每个包的下载重试次数，默认 3
+#
 # 在 GitHub Actions 里跑时，会顺手把 SDK 路径写进 $GITHUB_ENV，
 # 并补一个 local.properties（已被 .gitignore 忽略），后面步骤不用再管。
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-PKG="platforms;android-37.2"   # 官方仓库里的真实包名
 DST_NAME="android-37"          # AGP 8.10.1 认得的目录名
+TARGET_API="37"                # 归一化后的整数 api-level
+
+# 候选包：37.2 在稳定通道，是首选；37.1 / 37.0 是更早的次要版本，
+# 官方仓库里仍可下载 —— 万一 37.2 被撤下或下载通道抽风，不至于整条流水线红掉。
+CANDIDATES=("platforms;android-37.2" "platforms;android-37.1" "platforms;android-37.0")
+if [ -n "${GS_SDK_PLATFORM_PKG:-}" ]; then
+    CANDIDATES=("$GS_SDK_PLATFORM_PKG")
+fi
+TRIES="${GS_SDK_INSTALL_TRIES:-3}"
 
 log() { printf '  %s\n' "$*"; }
 die() { printf '[X] %s\n' "$*" >&2; exit 1; }
@@ -58,10 +71,11 @@ PLATFORMS="$SDK/platforms"
 mkdir -p "$PLATFORMS"
 
 echo "=================================================="
-echo " 准备 compileSdk 37 平台"
+echo " 准备 compileSdk $TARGET_API 平台"
 echo "=================================================="
 echo " SDK        : $SDK"
 echo " 目标目录   : $PLATFORMS/$DST_NAME"
+echo " 候选包     : ${CANDIDATES[*]}"
 
 # ---------------------------------------------------------------------------
 # 2. 已经装好就直接过（幂等）
@@ -90,7 +104,7 @@ fi
 
 if [ -z "$SDKMGR" ]; then
     cat >&2 <<EOF
-[X] 找不到 sdkmanager，无法自动安装 $PKG
+[X] 找不到 sdkmanager，无法自动安装 platforms;android-37.x
 
     请先装 Android SDK Command-line Tools，然后重跑本脚本；
     或者照 docs/BUILD.md §4.1 手工把 platform-37.2 放进去。
@@ -100,47 +114,113 @@ fi
 echo " sdkmanager : $SDKMGR"
 
 # ---------------------------------------------------------------------------
-# 4. 装 platforms;android-37.2
+# 4. 装平台包
 #
 #    sdkmanager 会为首次使用弹许可协议，所以喂一串 y 进去。
-#    `yes` 被提前关掉管道时会吃 SIGPIPE（exit 141），所以临时关掉 pipefail。
+#    `yes` 被提前关掉管道时会吃 SIGPIPE（exit 141），所以：
+#      · 临时关掉 pipefail（否则整个 pipeline 会被判失败）
+#      · 把 `yes` 的 stderr 丢掉（否则日志里留一行 `yes: standard output: Broken pipe`
+#        的噪声，看着像出错，其实不是）
+#
+#    下载失败重试 $TRIES 次 —— runner 到 dl.google.com 偶发抽风，
+#    一次超时就让整条流水线红掉太亏。
 # ---------------------------------------------------------------------------
-echo ""
-echo "[1/2] 安装 $PKG （约 68 MB）"
-set +o pipefail
-yes | "$SDKMGR" --sdk_root="$SDK" --install "$PKG" 2>&1 | sed 's/^/    /'
-rc="${PIPESTATUS[1]}"
-set -o pipefail
-[ "$rc" -eq 0 ] || die "sdkmanager 安装 $PKG 失败（exit $rc）"
+install_pkg() {
+    local pkg="$1" attempt=1 rc=0
+    while [ "$attempt" -le "$TRIES" ]; do
+        printf '    第 %d/%d 次尝试\n' "$attempt" "$TRIES"
+        set +o pipefail
+        yes 2>/dev/null | "$SDKMGR" --sdk_root="$SDK" --install "$pkg" 2>&1 | sed 's/^/    /'
+        rc="${PIPESTATUS[1]}"
+        set -o pipefail
+        if [ "$rc" -eq 0 ]; then
+            return 0
+        fi
+        printf '    [X] 第 %d 次失败（exit %s）\n' "$attempt" "$rc"
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le "$TRIES" ]; then
+            sleep $((attempt * 5))
+        fi
+    done
+    return "$rc"
+}
 
-SRC="$PLATFORMS/android-37.2"
-[ -f "$SRC/source.properties" ] || die "装完了但找不到 $SRC/source.properties，sdkmanager 行为异常"
+PKG=""
+SRC=""
+for cand in "${CANDIDATES[@]}"; do
+    cand_src="$PLATFORMS/${cand#platforms;}"
+    if [ -f "$cand_src/source.properties" ]; then
+        echo ""
+        echo "[1/2] $cand 已在本地，跳过下载"
+        PKG="$cand"
+        SRC="$cand_src"
+        break
+    fi
+
+    echo ""
+    echo "[1/2] 安装 $cand （约 68 MB）"
+    if install_pkg "$cand" && [ -f "$cand_src/source.properties" ]; then
+        PKG="$cand"
+        SRC="$cand_src"
+        break
+    fi
+    echo "    [!] $cand 不可用，换下一个候选"
+done
+
+if [ -z "$PKG" ]; then
+    cat >&2 <<EOF
+[X] 所有候选都装不上：${CANDIDATES[*]}
+
+    常见原因：
+      · 网络到 dl.google.com 不通（重跑一次通常就好）
+      · 官方仓库改了包名 —— 用 \`sdkmanager --list | grep 'platforms;android-37'\`
+        看现在叫什么，再用 GS_SDK_PLATFORM_PKG=platforms;android-37.x 指定
+EOF
+    exit 1
+fi
+echo ""
+echo " 使用 $PKG"
 
 # ---------------------------------------------------------------------------
 # 5. 归一化成 AGP 8.10.1 认得的样子
 #
 #    只改「包身份」相关的字段，不动 android.jar / 资源：
-#      · 目录名        android-37.2        -> android-37
-#      · package.xml   <api-level>37.2     -> 37
+#      · 目录名        android-37.x        -> android-37
+#      · package.xml   <api-level>37.x     -> 37
 #                      localPackage path   -> platforms;android-37
 #                      <display-name>      -> Android SDK Platform 37
 #      · source.properties
-#                      AndroidVersion.ApiLevel=37.2 -> 37
+#                      AndroidVersion.ApiLevel=37.x -> 37
 #                      Platform.Version / Pkg.Desc   -> 37
 #
 #    归一化后的状态与本机已验证可用的 platforms/android-37 完全一致。
+#
+#    注意：**不按目录名去猜版本号**，而是把所有 `37.<次要版本>` 一律压成 `37`。
+#    目录名和元数据里的版本并不保证一致（本机验证时遇到过目录叫 android-37.2、
+#    元数据里却写 37.0 的包），按目录名做替换会静默漏改 —— 自查那一步会抓到，
+#    但没必要让它走到那一步。
 # ---------------------------------------------------------------------------
-echo ""
-echo "[2/2] 归一化 $SRC -> $PLATFORMS/$DST_NAME"
-rm -rf "$PLATFORMS/$DST_NAME"
-mv "$SRC" "$PLATFORMS/$DST_NAME"
-DST="$PLATFORMS/$DST_NAME"
+VER="$(grep -E '^AndroidVersion\.ApiLevel=' "$SRC/source.properties" 2>/dev/null \
+       | cut -d= -f2 || true)"
+VER="${VER:-未知}"
+MINOR_RE='37\.[0-9]+'           # 任何 37.x
+
+if [ "$SRC" = "$PLATFORMS/$DST_NAME" ]; then
+    DST="$SRC"
+    log "包名本来就是 $DST_NAME，跳过归一化"
+else
+    echo ""
+    echo "[2/2] 归一化 $SRC -> $PLATFORMS/$DST_NAME（元数据里写的是 ${VER}）"
+    rm -rf "$PLATFORMS/$DST_NAME"
+    mv "$SRC" "$PLATFORMS/$DST_NAME"
+    DST="$PLATFORMS/$DST_NAME"
+fi
 
 if [ -f "$DST/package.xml" ]; then
     sed -i -E \
-        -e 's|<api-level>37\.2</api-level>|<api-level>37</api-level>|' \
-        -e 's|(localPackage[^>]*path=")platforms;android-37\.2(")|\1platforms;android-37\2|' \
-        -e 's|<display-name>Android SDK Platform 37\.2</display-name>|<display-name>Android SDK Platform 37</display-name>|' \
+        -e "s|<api-level>${MINOR_RE}</api-level>|<api-level>${TARGET_API}</api-level>|g" \
+        -e "s|platforms;android-${MINOR_RE}|platforms;android-${TARGET_API}|g" \
+        -e "s|Android SDK Platform ${MINOR_RE}|Android SDK Platform ${TARGET_API}|g" \
         "$DST/package.xml"
 else
     log "[!] 没有 package.xml —— sdkmanager 通常会给，缺了也不一定报错，继续"
@@ -148,9 +228,9 @@ fi
 
 if [ -f "$DST/source.properties" ]; then
     sed -i -E \
-        -e 's|^AndroidVersion\.ApiLevel=37\.2$|AndroidVersion.ApiLevel=37|' \
-        -e 's|^Platform\.Version=.*$|Platform.Version=37|' \
-        -e 's|^Pkg\.Desc=.*$|Pkg.Desc=Android SDK Platform 37|' \
+        -e "s|^AndroidVersion\.ApiLevel=.*$|AndroidVersion.ApiLevel=${TARGET_API}|" \
+        -e "s|^Platform\.Version=.*$|Platform.Version=${TARGET_API}|" \
+        -e "s|^Pkg\.Desc=.*$|Pkg.Desc=Android SDK Platform ${TARGET_API}|" \
         "$DST/source.properties"
 fi
 
@@ -169,28 +249,47 @@ for f in android.jar source.properties; do
     fi
 done
 
-if [ -f "$DST/source.properties" ]; then
-    api="$(grep -E '^AndroidVersion\.ApiLevel=' "$DST/source.properties" | cut -d= -f2)"
-    ext="$(grep -E '^AndroidVersion\.ExtensionLevel=' "$DST/source.properties" | cut -d= -f2)"
-    log "AndroidVersion.ApiLevel      = $api   （必须是 37）"
-    log "AndroidVersion.ExtensionLevel= $ext"
-    [ "$api" = "37" ] || { log "[X] ApiLevel 不是 37，AGP 会找不到 android-37"; fail=1; }
-fi
-
-if [ -f "$DST/package.xml" ]; then
-    if grep -q '<api-level>37</api-level>' "$DST/package.xml"; then
-        log "[OK] package.xml 的 api-level = 37"
+# 下载被截断时 android.jar 会存在但很小 —— 那种情况下构建会报一堆
+# 莫名其妙的「找不到符号」，不如在这里就拦住。
+if [ -f "$DST/android.jar" ]; then
+    jar_mb=$(( $(wc -c < "$DST/android.jar") / 1048576 ))
+    if [ "$jar_mb" -ge 10 ]; then
+        log "[OK] android.jar ${jar_mb} MB"
     else
-        log "[X] package.xml 的 api-level 没改成 37"
+        log "[X] android.jar 只有 ${jar_mb} MB，下载像是被截断了"
         fail=1
     fi
 fi
 
-if grep -rq '37\.2' "$DST/package.xml" "$DST/source.properties" 2>/dev/null; then
-    log "[X] 还有 37.2 残留，没改干净"
+if [ -f "$DST/source.properties" ]; then
+    api="$(grep -E '^AndroidVersion\.ApiLevel=' "$DST/source.properties" | cut -d= -f2)"
+    ext="$(grep -E '^AndroidVersion\.ExtensionLevel=' "$DST/source.properties" | cut -d= -f2)"
+    log "AndroidVersion.ApiLevel      = $api   （必须是 ${TARGET_API}）"
+    log "AndroidVersion.ExtensionLevel= $ext"
+    [ "$api" = "$TARGET_API" ] || { log "[X] ApiLevel 不是 ${TARGET_API}，AGP 会找不到 android-${TARGET_API}"; fail=1; }
+fi
+
+if [ -f "$DST/package.xml" ]; then
+    if grep -q ">${TARGET_API}</api-level>" "$DST/package.xml"; then
+        log "[OK] package.xml 的 api-level = ${TARGET_API}"
+    else
+        log "[X] package.xml 的 api-level 没改成 ${TARGET_API}"
+        fail=1
+    fi
+fi
+
+# 残留检查：只扫存在的文件（package.xml 可能没有，grep 一个不存在的路径会报错，
+# 那样这一条会「假通过」）。包名本来就是 android-37 时无所谓残留。
+residual=""
+for f in "$DST/package.xml" "$DST/source.properties"; do
+    [ -f "$f" ] || continue
+    if grep -qE "$MINOR_RE" "$f"; then residual="$residual $f"; fi
+done
+if [ -n "$residual" ]; then
+    log "[X] 还有 37.x 残留：$residual"
     fail=1
 else
-    log "[OK] 无 37.2 残留"
+    log "[OK] 无 37.x 残留"
 fi
 
 [ "$fail" -eq 0 ] || die "归一化结果不合格，见上面的 [X]"

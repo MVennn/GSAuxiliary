@@ -429,11 +429,23 @@ cp keystore.properties.example keystore.properties
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
-| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传两个 APK | **不需要** |
-| `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个，见 §8.2 |
+| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传 APK 与 R8 mapping | **不需要** |
+| `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
 
 `ci.yml` 是**零密钥**的：仓库什么 Secret 都没配也能跑，release 会退回 debug 签名，
 产物只当测试包用。所以「这个仓库能不能在 GitHub 上编译」的答案是 —— 推上去就跑。
+
+两件容易忽略但很有用的事：
+
+- **产物无论成败都上传**（`if: always()`）。红线校验红了的时候，那个 APK 正是你要
+  下载下来查的东西；以前它只存在于 runner 上，几分钟后随机器一起消失。
+- **R8 的 `mapping.txt` 一起传**。release 崩溃栈要靠它还原成可读的类名 / 行号 ——
+  发版时把 `dist/mapping.txt` 留一份，比事后重新构建同一个 commit 靠谱。
+
+> `release.yml` 手动触发（`workflow_dispatch`）时多一个 `dry_run` 开关：
+> 打开后照常构建、照常跑红线，但**不往任何仓库写东西**。第一次用 CI 发版、
+> 或者只是想确认密钥配对了没有，先拿它演一遍。
+
 
 ### 8.1 两个必须处理的坑
 
@@ -449,17 +461,25 @@ AGP 8.10.1 只认 `platforms/android-<api>` 老式目录 + 整数 api-level，�
 Failed to find target with hash string 'android-37'
 ```
 
-解法固化在 `tools/ci/setup-sdk37.sh`：用 sdkmanager 装 `platforms;android-37.2`，
+解法固化在 `tools/ci/setup-sdk37.sh`：用 sdkmanager 装一个次要版本平台
+（默认 `platforms;android-37.2`，装不上依次退到 `37.1` / `37.0`），
 再把它归一化成 AGP 认得的样子（目录改名 `android-37`，
 `package.xml` 的 `api-level` / `localPackage path`、`source.properties` 的
-`AndroidVersion.ApiLevel` 里的 `37.2` 全改 `37`）。脚本幂等，已装好就直接过。
+`AndroidVersion.ApiLevel` 里的 `37.x` 全压成 `37`）。脚本幂等，已装好就直接过；
+下载失败会自动重试（默认 3 次，`GS_SDK_INSTALL_TRIES` 可调）。
 
 ```bash
 ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
 ```
 
+> 归一化**不按目录名猜版本号**，而是把所有 `37.<次要版本>` 一律压成 `37`。
+> 目录名和元数据里的版本并不保证一致 —— 本机验证时就遇到过目录叫 `android-37.2`、
+> 元数据里却写 `37.0` 的包；按目录名做替换会静默漏改，然后构建报一句
+> `Failed to find target with hash string 'android-37'`，够查半天。
+>
 > 这和 §4.1 手工做的是同一件事，只是自动化了。
 > 官方仓库里 `platforms;android-37.2` 在**稳定通道**，不需要开 preview 通道。
+
 
 **坑 2：`gradlew` 的可执行位**
 
@@ -482,39 +502,92 @@ git ls-files -s gradlew      # 必须是 100755
 | `GS_KEYSTORE_ALIAS` | key 别名 |
 | `GS_KEYSTORE_KEY_PASSWORD` | key 密码 |
 | `LSPOSED_REPO_TOKEN` | PAT，需要 `repo` scope，且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
+| `GS_CERT_SHA256` | **可选**。签名证书的 SHA-256（小写十六进制）。配了就把 release 包的证书**钉死**，签错直接红 |
 
-`release.yml` **缺任何一个都直接失败**，不会给你一个「看着成功、实际用户收不到更新」的假象。
+`release.yml` **缺任何一个（前 5 个）都直接失败**，不会给你一个「看着成功、实际用户收不到更新」的假象。
 `publish.py` 故意不读 Actions 自带的 `GITHUB_TOKEN` —— 那个只对当前仓库有效，
 拿去写模块仓库会 403；它只认 `GS_GITHUB_TOKEN` / `GH_TOKEN`。
 
+`release.yml` 里还有一步 **`python tools/publish.py --check`**，在装 JDK / SDK **之前**跑：
+它只调 GitHub API，几秒钟确认这个 token 对两个仓库都有写权限。
+值得单独一步 —— `publish.py` 是先发源码仓库、再发模块仓库，token 写不了模块仓库的话，
+源码仓库那份已经建好了、用户却什么都收不到，而日志只报「失败」，
+很容易被当成偶发问题重跑。本地发版前也可以先跑一遍：
+
+```bash
+python tools/publish.py --check
+#   [OK] token 有效，身份：SansKritO4
+#   [OK] SansKritO4/GSAuxiliary 可写（默认分支 main）
+#   [OK] Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary 可写（默认分支 main）
+```
+
+
 ### 8.3 红线校验已经自动化
 
-`docs/BUILD.md` / `docs/RELEASE.md` 里那堆手工自查（libxposed api 类定义必须为 0、
-不能有 legacy `assets/xposed_init`、manifest 不能有 `xposedminversion`、
-入口类必须被 R8 保留……）现在固化成一条命令，CI 和本地共用：
+`docs/BUILD.md` / `docs/RELEASE.md` 里那堆手工自查现在固化成一条命令，CI 和本地共用：
 
 ```bash
 python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
 ```
 
-它**不依赖 `dexdump` / `aapt2`** —— dex 的 `class_defs` 表自己解析，纯标准库，
-所以在最小环境里也能跑。
+它**不依赖 `dexdump` / `aapt2` / `apksigner`** —— dex 的 `class_defs` 表、
+APK 签名块都自己解析，纯标准库，所以在最小环境里也能跑。
 
 > 为什么非得解析 `class_defs` 而不能字节扫 `io/github/libxposed/api`：
 > 模块自己的类里有这个包的**字符串常量引用**，字节扫必然误报（见 §3.1）。
 > 只有 `class_defs` 里出现的才是真·类定义。
+
+**检查清单**（`[红线]` = 不通过就退出码 1）：
+
+| # | 检查 | 级别 |
+|---|---|---|
+| 1 | `META-INF/xposed/{module.prop,java_init.list,scope.list}` 都在，且非空 | 红线 |
+| 2 | `module.prop` 有 `minApiVersion` / `targetApiVersion` / `staticScope` / `exceptionMode` / `autoHotReload`，且 `minApiVersion=102` | 红线 |
+| 3 | 没有 legacy `assets/xposed_init`（有它 = LSPosed 当老模块，静默不加载） | 红线 |
+| 4 | dex 里没有 `io/github/libxposed/api` 与 `io/github/libxposed/annotation` 的**类定义**（两者都必须是 compileOnly） | 红线 |
+| 5 | `io/github/libxposed/service` 的类**在**包里（App 侧服务通道，必须打包） | 红线 |
+| 6 | 入口类 `GszxModule` 的类定义在（R8 keep 规则生效） | 红线 |
+| 7 | `AndroidManifest.xml` 无 legacy `xposedminversion` 等 key，且 applicationId 仍是预期值 | 红线 |
+| 8 | 打包的三个元文件与 `app/src/main/resources/META-INF/xposed/` 母本**逐字一致** | 红线 |
+| 9 | APK **已签名**（未签名的包根本装不上） | 红线 |
+| 10 | 签名证书**不是 Android 调试证书** | 只在 `--reject-debug-cert` 时是红线，否则只是提醒 |
+| 11 | 签名证书 SHA-256 与期望值一致 | 只在给了 `--expect-cert-sha256` / `GS_EXPECT_CERT_SHA256` 时是红线 |
+
+第 8 条值得解释：`app/src/main/resources/META-INF/xposed/` 是母本，一旦被依赖
+（libxposed service 也带同名资源）覆盖、或改完忘了重建，APK 里就是旧值 ——
+而「装上去不生效」这类问题极难从构建日志看出来。母本不存在时这条自动跳过
+（例如拿一个下载来的 APK 单独校验）。
+
+**release 包必须再加两条硬校验**（`release.yml` 已经这么跑了）：
+
+```bash
+python tools/ci/verify_apk.py --reject-debug-cert \
+    --expect-cert-sha256 a7fc6034… app/build/outputs/apk/release/app-release.apk
+```
+
+`--reject-debug-cert` 是**防止「静默退回 debug 签名」的守卫**：
+`app/build.gradle.kts` 在四个 `GS_KEYSTORE_*` 不齐全时会安静地退回 debug 签名，
+签出来的包**签名和以前不一样** —— 已装用户必须卸载重装才能更新。
+以前这件事只写在文档里靠人记，现在它是一条会变红的检查。
+
+**输出分三级**：`[OK]` 通过、`[!]` 提醒（不影响退出码）、`[X]` 踩红线。
+`--quiet` 可以只看提醒与红线。签名证书的指纹是用纯标准库解析 APK Signing Block
+（v3 → v2 → v1）算出来的，实测与 `apksigner verify --print-certs` 逐字节一致。
 
 输出长这样：
 
 ```
   [OK] 元数据 META-INF/xposed/module.prop
   [OK] 无 legacy assets/xposed_init
-  [OK] 【红线】dex 无 libxposed api 类定义（发现 0 个）
+  [OK] 【红线】dex 无 io/github/libxposed/api 类定义（发现 0 个）
   [OK] libxposed service 已打进包（35 个类）
   [OK] 入口类已保留 Lio/github/SansKritO4/GSAuxiliary/GszxModule;
-  [OK] dex 类定义总数 3078
+  [OK] dex 类定义总数 3087
   [OK] manifest 无 legacy xposed key
+  [OK] 打包的 module.prop 与源码母本一致
+  [OK] 已签名（scheme v2）证书 SHA-256: a7fc6034bc5937df…
 ```
+
 
 ### 8.4 版本号的唯一来源没变
 
@@ -525,4 +598,29 @@ CI 里的版本号也是读 `app/build.gradle.kts`（`tools/ci/version.py`），
 python tools/ci/version.py          # vc=34  vn=2.14.0
 python tools/ci/version.py --tag    # 34-2.14.0
 ```
+
+`--check-tag` 是 `release.yml` 与本地发版前共用的同一份判断 ——
+免得「CI 校验一套、人眼校验另一套」：
+
+```bash
+python tools/ci/version.py --check-tag 34-2.14.0
+#   [OK] tag 34-2.14.0 与 app/build.gradle.kts 的 versionCode-versionName 一致
+```
+
+### 8.5 CI 日志里这几条 WARNING 是**预期的**，不用查
+
+CI 跑起来会刷出一批看着吓人的 WARNING。下面这些都已经确认无害，
+**别为了消掉它们去改构建配置** —— 那才是引入风险：
+
+| 日志 | 为什么无害 |
+|---|---|
+| `WARNING: R8: An error occurred when parsing kotlin metadata.`（会刷二十几行） | AGP 8.10.1 自带的 R8 不认识 Kotlin 2.4 的 metadata 版本。R8 只是退回「不看 metadata」的保守裁剪 —— keep 规则仍由 `proguard-rules.pro` 显式给出，而入口类 / service 类是否被保留，§8.3 的检查 5、6 每次都会验 |
+| `Unable to strip the following libraries … libandroidx.graphics.path.so` | 这个 `.so` 没有符号表可剥，原样打包。无害 |
+| `yes: standard output: Broken pipe`（老版本脚本才有） | sdkmanager 提前关掉了管道，`yes` 吃了个 SIGPIPE。已在新版 `setup-sdk37.sh` 里静音 |
+| `w: … 'fun get(p0: String!): Any?' is deprecated.` | Java 侧 API 的弃用提示，出现在业务代码里，与构建链路无关 |
+| `[!] 签名证书是 Android 调试证书` | **零密钥 CI 的正常状态** —— 仓库没配 keystore Secrets，release 只能退回 debug 签名。配了 Secrets 之后这条会消失（并且 `ci.yml` 会自动改跑 `--reject-debug-cert`，再出现就是真的错了） |
+
+判断「这次 CI 到底行不行」只看两处：**job 有没有绿**，以及
+**`校验产物红线` 那一步的最后一行**（`=> 全部通过` / `=> 有 N 条红线被踩`）。
+
 
