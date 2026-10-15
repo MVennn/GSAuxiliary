@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        深色主题覆盖。
+
+        注意：`values-night` 只看**系统**的深色开关。App 自己的「深色模式」设置
+        （跟随系统 / 亮色 / 暗色）是在 Compose 层生效的，所以这里只负责
+        「系统是深色」这一最常见的情况，避免冷启动第一帧闪一下亮色。
+        用户强制成暗色而系统是亮色时，`ui/SystemBars.kt` 会在 Compose 首帧
+        立刻把窗口底色和系统栏图标改成正确的。
+
+        属性含义与浅色版完全对称，理由见 `values/themes.xml` 的注释。
+    -->
+    <style name="Theme.GSZX" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+    </style>
+</resources>

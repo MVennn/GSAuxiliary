@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GoldSun Probe</string>
+    <string name="xposed_desc">运行时探针：定位加固 App 的类名 / 字段 / 页面链路，用于维护 GSAuxiliary</string>
+</resources>

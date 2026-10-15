@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标的前景层 —— 简约苹果风格：一条金色上升折线 + 右上箭头。
+
+    设计说明
+    苹果风格的图标 = 圆角方形底 + 单一符号 + 大量留白。这里选「上升行情线」
+    作为唯一符号：它是「行情 / 收益」最普适的图形语言，也和模块的用途直接对应。
+
+    几何（2.9.0 收紧版）
+    108×108 画布，可见安全区是居中的 72×72（约 18..90）。
+    图形外接框（含描边半径 3.25）约 x 27.75..80.25、y 34.25..73.75，居中于 (54,54)。
+    相对安全区的留白：左右各约 9.75、上下各约 16.25 —— 比 2.6.0 版（左右仅 4.5）
+    明显宽松，箭头也一并缩小（臂长 13 → 9.5），四周有了呼吸空间。
+
+      折线：M31,70.5 L44,55.5 L55.5,62 L77,37.5   （先扬、小幅回踩、再冲高）
+      箭头：M67.5,37.5 L77,37.5 L77,47            （尖端在折线终点，向左 + 向下的直角箭头，臂长 9.5）
+
+    折线与箭头合并成同一条 path，这样描边渐变是连续的：
+    从起点（左下，浅金 #FFC24A）到终点（右上，深橙 #FF7A00）。
+
+    与 tools/gen_launcher_icons.py 的一致性
+    位图回退（mipmap-*dpi）由该脚本用距离场描边生成，
+    POLYLINE / ARROW / STROKE / LINE_TOP / LINE_BOTTOM 必须与这里逐项对齐。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillColor="#00000000"
+        android:strokeWidth="6.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M31,70.5 L44,55.5 L55.5,62 L77,37.5 M67.5,37.5 L77,37.5 L77,47">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="31"
+                android:startY="70.5"
+                android:endX="77"
+                android:endY="37.5"
+                android:startColor="#FFFFC24A"
+                android:endColor="#FFFF7A00" />
+        </aapt:attr>
+    </path>
+</vector>

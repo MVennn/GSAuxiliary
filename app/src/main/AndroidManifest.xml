@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name=".app.GszxApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:description="@string/xposed_description"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.GSZX">
+
+        <!--
+            设置页本体。**始终 enabled**，并且同时声明两个 intent-filter：
+
+              1. MAIN + MODULE_SETTINGS —— LSPosed 模块列表里「打开设置」用的入口。
+                 LSPosed 的查找顺序是先找带 `de.robv.android.xposed.category.MODULE_SETTINGS`
+                 的 Activity（见 LSPosed ModuleUtil），找不到才回落到 LAUNCHER 图标。
+                 把这条声明挂在**本体**而不是 alias 上，是为了让「桌面图标」开关
+                 只影响桌面图标，**不影响 LSPosed 里的设置入口**。
+              2. 注意这里**不**加 LAUNCHER category —— 桌面图标由下面的 alias 负责。
+
+            另外它必须保持 exported=true：LSPosed 是从自己的进程发起跳转的。
+        -->
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.GSZX">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            桌面图标挂在 alias 上，而不是 Activity 本体。
+            「桌面图标」开关切换的就是这个 alias 的 enabled 状态；
+            Activity 本体始终 enabled，所以关掉图标后仍可由 LSPosed / adb 拉起设置页。
+        -->
+        <activity-alias
+            android:name=".ui.LauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".ui.SettingsActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!--
+            adb 调试通道（开发期用，不参与运行期配置读取）。
+
+            运行期配置走 libxposed 的 remote preferences，不再依赖这个 Provider。
+            保留它只是为了让 tools/ 下的自动化脚本仍能读写配置，用法见
+            docs/TROUBLESHOOTING.md（content query / content update）。
+            只接受 root(0) / shell(2000) 写入，其它调用方一律拒绝。
+        -->
+        <provider
+            android:name=".app.DebugConfigProvider"
+            android:authorities="gsauxiliary.m.venn.config"
+            android:exported="true"
+            android:enabled="true"
+            android:grantUriPermissions="true"
+            tools:ignore="ExportedContentProvider" />
+
+        <!--
+            注意：现代 API 模块不再使用 legacy meta-data。
+            LSPosed 的判定逻辑是「manifest 里出现 xposedminversion 就当 legacy 模块」，
+            保留它们反而会让模块被识别成旧式模块、去走 assets/xposed_init 那条路。
+
+            现代模块的元数据改为：
+              META-INF/xposed/module.prop     模块属性（minApiVersion / targetApiVersion 等）
+              META-INF/xposed/java_init.list  入口类
+              META-INF/xposed/scope.list      作用域
+            模块名 / 描述取自 android:label / android:description。
+        -->
+    </application>
+
+</manifest>

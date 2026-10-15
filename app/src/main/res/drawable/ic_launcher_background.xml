@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自适应图标的背景层 —— 简约苹果风格的深炭灰竖向渐变。
+
+    为什么用 drawable 而不是 `@color/...`：
+    苹果风格图标的关键之一就是**背景本身有渐变**（不是一块平色），
+    而 `<background>` 只接受 drawable，纯色资源做不出渐变，
+    所以这里用一个铺满 108×108 的矢量矩形 + `<gradient>` 代替原来的颜色资源。
+
+    渐变端点色见 `tools/gen_launcher_icons.py` 的 `BG_TOP` / `BG_BOTTOM`，
+    两者必须保持一致（位图回退与矢量自适应图标是同一套设计）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0 h108 v108 h-108 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="0"
+                android:endX="54"
+                android:endY="108"
+                android:startColor="#FF2B3242"
+                android:endColor="#FF161A22" />
+        </aapt:attr>
+    </path>
+</vector>

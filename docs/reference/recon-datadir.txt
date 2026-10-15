@@ -1,0 +1,90 @@
+### /data/data/com.guosen.android/ 顶层
+total 87
+drwx------  15 u0_a20 u0_a20        3452 2026-10-14 15:19 .
+drwxrwx--x 413 system system       53248 2026-10-14 15:24 ..
+drwx------   3 u0_a20 u0_a20        3452 2026-10-14 15:26 .cache
+-rw-------   1 u0_a20 u0_a20          69 2026-10-14 15:19 .edata
+drwx------   3 u0_a20 u0_a20        3452 2026-10-14 15:19 Android
+drwxrwx--x   2 u0_a20 u0_a20        3452 2026-10-14 15:19 app_
+drwxrwx--x   2 u0_a20 u0_a20        3452 2026-10-14 15:19 app_textures
+drwx------   3 u0_a20 u0_a20        3452 2026-10-14 15:37 app_webview
+drwxrws--x   6 u0_a20 u0_a20_cache  3452 2026-10-14 15:37 cache
+drwxrws--x   2 u0_a20 u0_a20_cache  3452 2026-10-14 15:18 code_cache
+drwx------   3 u0_a20 u0_a20        3452 2026-10-14 15:19 com.guosen.android
+drwxrwx--x   2 u0_a20 u0_a20        3452 2026-10-14 15:19 databases
+drwxrwx--x   5 u0_a20 u0_a20        3452 2026-10-14 15:19 files
+drwxrwx--x   3 u0_a20 u0_a20        3452 2026-10-14 15:19 no_backup
+drwxrwx--x   2 u0_a20 u0_a20        4096 2026-10-14 15:38 shared_prefs
+drwx------   5 u0_a20 u0_a20        3452 2026-10-14 15:19 user
+
+### shared_prefs
+total 571
+drwxrwx--x  2 u0_a20 u0_a20   4096 2026-10-14 15:38 .
+drwx------ 15 u0_a20 u0_a20   3452 2026-10-14 15:19 ..
+-rw-rw----  1 u0_a20 u0_a20    134 2026-10-14 15:27 FUNCTION_BADGE_CLICKED.xml
+-rw-rw----  1 u0_a20 u0_a20    251 2026-10-14 15:19 GS_DOWNLOAD.xml
+-rw-rw----  1 u0_a20 u0_a20   4421 2026-10-14 15:19 HYBRID_CAHCHE.xml
+-rw-rw----  1 u0_a20 u0_a20    157 2026-10-14 15:37 NBS_Init_State_com.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:37 NBS_batch_data_store_com.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20    122 2026-10-14 15:19 PUSH_SP.xml
+-rw-rw----  1 u0_a20 u0_a20    150 2026-10-14 15:19 RECEIVER.xml
+-rw-rw----  1 u0_a20 u0_a20    107 2026-10-14 15:19 SHARED_YHTINFO.xml
+-rw-rw----  1 u0_a20 u0_a20   2188 2026-10-14 15:37 SHARE_CONFIGS.xml
+-rw-rw----  1 u0_a20 u0_a20    353 2026-10-14 15:37 SYSTEM_CONFIGS.xml
+-rw-rw----  1 u0_a20 u0_a20    120 2026-10-14 15:19 UPushManager.xml
+-rw-rw----  1 u0_a20 u0_a20    516 2026-10-14 15:19 USER_ACCOUNT_CONFIGS.xml
+-rw-rw----  1 u0_a20 u0_a20    285 2026-10-14 15:19 USER_ACCOUNT_LIST.xml
+-rw-rw----  1 u0_a20 u0_a20    150 2026-10-14 15:19 VhallDeviceId.xml
+-rw-rw----  1 u0_a20 u0_a20    418 2026-10-14 15:37 WebViewChromiumPrefs.xml
+-rw-rw----  1 u0_a20 u0_a20    116 2026-10-14 15:19 _SystemUtil_.xml
+-rw-rw----  1 u0_a20 u0_a20   3269 2026-10-14 15:28 aistk_config.xml
+-rw-rw----  1 u0_a20 u0_a20   5561 2026-10-14 15:37 com.networkbench.agent.impl.v2_com.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20    160 2026-10-14 15:37 com.networkbench.agent.impl.v2_com.guosen.android_main.xml
+-rw-rw----  1 u0_a20 u0_a20    669 2026-10-14 15:26 com.sensorsdata.analytics.android.sdk.SensorsDataAPI.xml
+-rw-rw----  1 u0_a20 u0_a20   6270 2026-10-14 15:19 guosenConfig.xml
+-rw-rw----  1 u0_a20 u0_a20    253 2026-10-14 15:19 guosenH5Config.xml
+-rw-rw----  1 u0_a20 u0_a20   1830 2026-10-14 15:26 guosenHQConfig.xml
+-rw-rw----  1 u0_a20 u0_a20    117 2026-10-14 15:19 guosenIPStrategyConfig.xml
+-rw-rw----  1 u0_a20 u0_a20 355571 2026-10-14 15:19 guosenMenuConfig.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:19 guosenTradeLoginConfig.xml
+-rw-rw----  1 u0_a20 u0_a20    632 2026-10-14 15:26 guosenUserConfig.xml
+-rw-rw----  1 u0_a20 u0_a20  24774 2026-10-14 15:19 msgCenterConfig.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:32 nbs_custom_data_store_com.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:32 nbs_custom_data_store_copycom.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20    152 2026-10-14 15:19 nbsagent_preference_com.guosen.android.xml
+-rw-rw----  1 u0_a20 u0_a20    193 2026-10-14 15:19 searchGuosenFinancial2.xml
+-rw-rw----  1 u0_a20 u0_a20    193 2026-10-14 15:19 searchfunds2.xml
+-rw-rw----  1 u0_a20 u0_a20    190 2026-10-14 15:19 searchstock2.xml
+-rw-rw----  1 u0_a20 u0_a20    457 2026-10-14 15:38 sensorsdata.exit.xml
+-rw-rw----  1 u0_a20 u0_a20    115 2026-10-14 15:19 sensorsdata.xml
+-rw-rw----  1 u0_a20 u0_a20    219 2026-10-14 15:19 sp_customized_icons.xml
+-rw-rw----  1 u0_a20 u0_a20   9432 2026-10-14 15:27 sp_personas_name.xml
+-rw-rw----  1 u0_a20 u0_a20    145 2026-10-14 15:19 sso_config_xf.xml
+-rw-rw----  1 u0_a20 u0_a20    379 2026-10-14 15:19 ssoconfigs.xml
+-rw-rw----  1 u0_a20 u0_a20    245 2026-10-14 15:19 tdxSharedData.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:19 user.xml
+-rw-rw----  1 u0_a20 u0_a20    164 2026-10-14 15:19 user_avatar_config.xml
+-rw-rw----  1 u0_a20 u0_a20     65 2026-10-14 15:19 vhsdk_standard.xml
+
+### databases
+total 166
+drwxrwx--x  2 u0_a20 u0_a20  3452 2026-10-14 15:19 .
+drwx------ 15 u0_a20 u0_a20  3452 2026-10-14 15:19 ..
+-rw-rw----  1 u0_a20 u0_a20 32768 2026-10-14 15:19 gs_db_trade
+-rw-------  1 u0_a20 u0_a20     0 2026-10-14 15:19 gs_db_trade-journal
+-rw-rw----  1 u0_a20 u0_a20 24576 2026-10-14 15:19 gs_msg_db
+-rw-------  1 u0_a20 u0_a20     0 2026-10-14 15:19 gs_msg_db-journal
+-rw-rw----  1 u0_a20 u0_a20 20480 2026-10-14 15:19 gs_sms_vctimes
+-rw-------  1 u0_a20 u0_a20     0 2026-10-14 15:19 gs_sms_vctimes-journal
+-rw-rw----  1 u0_a20 u0_a20 53248 2026-10-14 15:19 gs_zxstock_db
+-rw-------  1 u0_a20 u0_a20     0 2026-10-14 15:19 gs_zxstock_db-journal
+-rw-rw----  1 u0_a20 u0_a20 32768 2026-10-14 15:38 sensorsdata
+-rw-------  1 u0_a20 u0_a20     0 2026-10-14 15:19 sensorsdata-journal
+
+### files
+total 15
+drwxrwx--x  5 u0_a20 u0_a20 3452 2026-10-14 15:19 .
+drwx------ 15 u0_a20 u0_a20 3452 2026-10-14 15:19 ..
+drwx------  2 u0_a20 u0_a20 3452 2026-10-14 15:19 cust_db
+drwx------  2 u0_a20 u0_a20 3452 2026-10-14 15:19 tombstones
+drwx------  2 u0_a20 u0_a20 3452 2026-10-14 15:19 unitid

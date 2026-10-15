@@ -1,0 +1,406 @@
+# 架构说明
+
+> 模块实现为 **LSPosed 现代模块（libxposed API 102）**。
+> 怎么加新功能见 [扩展与演进指南](EXTENDING.md)。
+
+---
+
+## 1. 进程模型
+
+同一份 APK 里有**两套代码，跑在两个进程**：
+
+```
+┌─────────────────────────────────────┐    ┌─────────────────────────────────────┐
+│ gsauxiliary.m.venn （模块自己的进程）      │    │ com.guosen.android（目标 App 进程） │
+│                                     │    │                                     │
+│ ui/SettingsActivity.kt  ← 路由      │    │ GszxModule.kt      ← 被注入执行     │
+│   ├─ ui/Dock.kt                     │    │   └─ FeatureManager                 │
+│   ├─ ui/{Module,Feature,Settings,   │    │        └─ WatchlistFeature          │
+│   │      About}Tab.kt               │    │ core/ConfigSource                   │
+│   ├─ ui/{WatchlistDetail,LogViewer} │    │ core/HookBag                        │
+│   │      .kt        ← 二级页        │    │ core/{ConfigKeys,ConfigSnapshot,    │
+│   └─ ui/{PrefState,FeatureCatalog,  │    │       GLog,TargetApp}.kt            │
+│          Widgets}.kt                │    │ util/Reflect.kt                     │
+│ app/GszxApp.kt                      │    │                                     │
+│ app/{FrameworkBridge,ModulePrefs,   │    │                                     │
+│      ConfigBackup,LauncherIcon,     │    │                                     │
+│      LocaleHelper,DebugConfig}.kt   │    │                                     │
+│                                     │    │                                     │
+│         │ 写                        │    │         │ 读                        │
+│         ▼                           │    │         ▼                           │
+│   XposedService.                    │    │   XposedInterface.                  │
+│   getRemotePreferences("config")    │    │   getRemotePreferences("config")    │
+└─────────────────────────────────────┘    └─────────────────────────────────────┘
+                  ▲                                        ▲
+                  │          LSPosed 守护进程托管          │
+                  └───────────remote preferences───────────┘
+                  （框架负责持久化 + 跨进程同步 + 变更推送）
+```
+
+> 模块进程的 `ui/` 只**读**模块设置（`ModulePreferences` 的 LOCAL/REMOTE 双后端）与
+> `feature/` 的功能开关**元数据**（`ui/FeatureCatalog.kt` 里的静态表），
+> 不直接依赖 `FeatureManager` —— 原因见 [2.1 分层规则](#21-分层规则)。
+
+配置通道由框架托管，两边只是各拿一个 `SharedPreferences` 来用：
+
+- **写**（模块进程）：`XposedService.getRemotePreferences("config")`
+- **读**（目标进程）：`XposedInterface.getRemotePreferences("config")`
+- **变更通知**：框架主动把新值推给注册了监听的进程 —— 不需要轮询
+
+---
+
+## 2. 代码分层
+
+| 文件 | 职责 | 运行位置 |
+|---|---|---|
+| `GszxModule.kt` | 判进程、装配配置通道、驱动 `FeatureManager`、热重载 | 目标进程 |
+| `core/ConfigSource.kt` | 打开 remote prefs、注册变更监听、产出 `ConfigSnapshot` | 目标进程 |
+| `core/ConfigSnapshot.kt` | 不可变配置快照 + 稳定指纹 | 两处共用 |
+| `core/ConfigKeys.kt` | 配置键与默认值（**纯常量，不引用任何框架类**） | 两处共用 |
+| `core/GLog.kt` | 统一日志出口（**不引用 api 类型**） | 两处共用 |
+| `core/HookBag.kt` | 钩子句柄集合，支持一次性卸载 | 目标进程 |
+| `core/TargetApp.kt` | 目标包名 | 两处共用 |
+| `util/Reflect.kt` | 反射：候选名、继承链查找、过滤 abstract | 目标进程 |
+| `feature/Feature.kt` | 功能扩展接口 | 目标进程 |
+| `feature/FeatureEnv.kt` | 功能运行环境（xposed / classLoader / config） | 目标进程 |
+| `feature/FeatureManager.kt` | 功能注册表 + 安装/分发/卸载 | 目标进程 |
+| `feature/watchlist/WatchlistFeature.kt` | 染色功能本体 | 目标进程 |
+| `feature/watchlist/WatchlistTargets.kt` | 宿主类名/字段名候选常量 | 目标进程 |
+| `feature/watchlist/ZxWatchlist.kt` | 自选判定 | 目标进程 |
+| `app/GszxApp.kt` | `Application`：初始化配置仓库、服务监听、日志等级、桌面图标状态 | 模块进程 |
+| `app/FrameworkBridge.kt` | 与 LSPosed 服务通信，拿 binder | 模块进程 |
+| `app/ModulePreferences.kt` | 配置仓库（REMOTE / LOCAL 双后端） | 模块进程 |
+| `app/ConfigBackup.kt` | 配置备份 / 恢复（自描述 JSON） | 模块进程 |
+| `app/LauncherIcon.kt` | 桌面图标开关（切 `activity-alias` 的 enabled 状态） | 模块进程 |
+| `app/LocaleHelper.kt` | 界面语言（`attachBaseContext` 包装 Context） | 模块进程 |
+| `app/DebugConfigProvider.kt` | adb 调试通道（仅 root/shell） | 模块进程 |
+| `ui/SettingsActivity.kt` | Activity + 极简路由 + Dock 装配 | 模块进程 |
+| `ui/Dock.kt` | 默认底栏 / 液态玻璃悬浮底栏 | 模块进程 |
+| `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
+| `ui/WatchlistDetail.kt` · `ui/LogViewer.kt` | 二级页（染色设置 / 查看日志） | 模块进程 |
+| `ui/PrefState.kt` · `ui/FeatureCatalog.kt` · `ui/Widgets.kt` | 配置读取、功能展示元数据、共用部件 | 模块进程 |
+
+### 2.1 分层规则
+
+| 规则 | 原因 |
+|---|---|
+| `core/` 与 `app/` **不得** import `io.github.libxposed.api.*` | 模块 App 进程的 APK 里没有这些类（`compileOnly`），会 `NoClassDefFoundError` |
+| `feature/` **只**通过 `FeatureEnv` 拿框架接口 | 统一入口，便于热重载与测试 |
+| `GszxModule` 不写业务逻辑 | 它只做编排，功能变更不应触碰它 |
+| 挂钩子必须把句柄放进 `HookBag` | API 102 靠句柄卸载，否则热重载会残留旧钩子 |
+
+> `core/GLog.kt` 是这条规则的典型示例：框架接口通过纯 Java 函数式接口 `Sink` 注入，
+> 而不是直接持有 `XposedInterface`。
+
+---
+
+## 3. 生命周期与调用链
+
+### 3.1 框架回调顺序
+
+```
+进程启动
+   │
+   ▼
+onModuleLoaded(param)                    ← 一次
+   │   ├─ GLog.install { … }             把日志出口接到框架
+   │   ├─ 进程不在作用域？ → detach()    告诉框架不再需要后续回调
+   │   └─ 打印版本 / 框架 / API / caps
+   │
+   ▼
+onPackageLoaded(param)                   （本模块未使用）
+   │
+   ▼
+onPackageReady(param)                    ← classLoader 已就绪
+   │   └─ install(param.classLoader)
+   │        ├─ ConfigSource(xposed).open()      读首帧配置
+   │        ├─ configSource.onChanged = { … }   注册变更回调
+   │        └─ FeatureManager(env).installAll() 安装所有启用功能
+   │
+   ▼
+（运行期）
+   ├─ 配置变化 → 框架推送 → ConfigSource 监听 → FeatureManager.onConfigChanged（切主线程）
+   └─ 目标 App 列表渲染 → 钩子触发 → WatchlistFeature 补色
+   │
+   ▼
+onHotReloading(param): Boolean           ← 允许/拒绝
+   └─ return true                        本模块无自建线程/全局宿主引用，可安全热重载
+   │
+   ▼
+onHotReloaded(param)
+   ├─ featureManager.uninstallAll()       卸自己记录的句柄
+   ├─ param.oldHookHandles.forEach { it.unhook() }   框架给的列表兜底
+   ├─ configSource.close()
+   ├─ currentAppClassLoader()            从 ActivityThread 取宿主 classLoader
+   └─ install(cl)                        用新代码重装钩子
+```
+
+### 3.2 染色主流程
+
+```
+列表要显示一行
+   │
+   ▼
+BaseQuickAdapter.getView(position, convertView, parent)      ← 被 Hook（拦截链）
+   │
+   ├─ chain.proceed()  ─────────────→  原方法执行，返回行视图
+   │
+   ├─ 目标适配器是 AIStkAdapter 吗？ ── 否 ─→ 原样返回
+   │
+   ├─ findViewById(R.id.tv_item_stk_name) → TextView
+   │
+   ├─ 从 adapter 取 position 对应的数据项（反射 + 多级兜底）
+   │     └─ 取出 "代码.市场"（如 300006.1）
+   │
+   ├─ ZxWatchlist.isInWatchlist(code, market)
+   │     ├─ 主：ZXWorkflow.isBelongByStock(code, market)
+   │     └─ 兜底：查 ZXManager.m_stkGrpMap 的 "code.market" 键
+   │
+   ├─ env.config  ← 内存中的不可变快照（零 IO）
+   │
+   └─ setTextColor(在自选 ? 高亮色 : 原始色)
+```
+
+钩子代码（`feature/watchlist/WatchlistFeature.kt`）：
+
+```kotlin
+env.xposed.hook(m)
+    .setId("watchlist:getView:$tag:${...}")
+    .intercept { chain ->
+        val result = chain.proceed()          // 先让原方法跑完
+        runCatching { onGetView(env, chain.thisObject, chain.args, result) }
+            .onFailure { GLog.w("getView 后处理异常", it) }   // 绝不把异常抛给宿主
+        result
+    }
+```
+
+> **双保险**：除了 `BaseQuickAdapter.getView`，还会尝试挂目标适配器
+> `AIStkAdapter.getView`（若某版本覆写了它）。
+
+### 3.3 配置变更后如何自动刷新
+
+```
+（模块进程）设置界面改动
+   │
+   └─ ModulePreferences.edit { … } → XposedService.getRemotePreferences("config")
+                                        │
+                                        ▼  LSPosed 守护进程
+                                        │
+（目标进程）                            ▼
+   ConfigSource 的 OnSharedPreferenceChangeListener 触发（Binder 线程）
+      │
+      ├─ 重新 read() → ConfigSnapshot
+      ├─ 指纹变了？
+      └─ onChanged(cfg)
+            │
+            └─ FeatureManager.onConfigChanged(cfg)
+                   ├─ env.config = cfg
+                   └─ mainHandler.post { 各 Feature.onConfigChanged() }
+                          │
+                          └─ WatchlistFeature → refreshLists()
+                                 └─ mainHandler.post { 每个 adapter.notifyDataSetChanged() }
+```
+
+两条路径互为补充：
+
+- **配置变化** → 框架推送 → 主线程分发（用户改完设置切回 App 即生效）
+- **切回 App** → `Activity.onResume` 钩子 → 兜底比对指纹并刷新
+
+> `notifyDataSetChanged()` 用 `post()` 延后到下一帧，
+> 避免 `Cannot call this method while RecyclerView is computing a layout` 崩溃。
+
+---
+
+## 4. 关键数据结构
+
+### 4.1 `ConfigSnapshot` — 配置快照
+
+```kotlin
+data class ConfigSnapshot(
+    val enabled: Boolean,        // 总开关
+    val color: Int,              // 高亮色（ARGB）
+    val scopeStrategy: Boolean,  // 是否作用于策略详情页
+    val logLevel: Int,           // 日志等级
+) {
+    val fingerprint: Int get() = …   // 稳定指纹，只在内容变化时改变
+}
+```
+
+为什么用快照而不是直接读 `SharedPreferences`：
+
+- `getView` 是热路径，快照读取是纯内存操作，零 IO
+- 配置变化时**整体替换**，天然线程安全
+- 新增配置项只需改这里 + `ConfigKeys` + 设置界面
+
+### 4.2 `WatchlistFeature.originalColors` — 原始色缓存
+
+```kotlin
+Collections.synchronizedMap(WeakHashMap<TextView, Int>())
+```
+
+记录每个名称 `TextView` **第一次见到的非高亮色**，用于还原。
+
+为什么不能直接用"当前颜色"当原始色？因为当前颜色可能就是我们自己染的黄色。
+所以只在颜色**不属于任何预设高亮色**时才写入缓存。
+
+用 `WeakHashMap` 避免长时间持有已回收的 View。
+
+### 4.3 `WatchlistFeature.seenAdapters` — 见过的适配器
+
+```kotlin
+Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<Any, Boolean>()))
+```
+
+配置变化时需要让它们重绘，同样用弱引用避免泄漏。
+
+### 4.4 `HookBag` — 钩子句柄集合
+
+```kotlin
+Collections.synchronizedList(mutableListOf<XposedInterface.HookHandle>())
+```
+
+API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能卸载**。
+把句柄集中管理，热重载 / 关闭功能 / 进程退出时一次性 `unhookAll()`。
+
+### 4.5 配置的两类归属
+
+`ConfigKeys` 里的键刻意分成两类，这是「设置页只管模块自身」这条产品规则的代码落点：
+
+| 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ |
+|---|---|---|---|
+| **功能开关** | `ENABLED` / `COLOR` / `SCOPE_STRATEGY` | 目标进程（染色要用） | ✅ |
+| **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` | 只有模块 App 进程 | ❌ |
+| 跨两类 | `LOG_LEVEL` | 两边都读（目标进程控制日志等级） | ✅ |
+
+判定标准很简单：**目标进程需不需要它**。
+
+- 需要 → 必须进快照，否则染色逻辑拿不到
+- 不需要 → 留在模块进程，避免把「底栏长什么样」这类纯 UI 偏好塞进目标进程的内存
+
+`DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` 都**不在** `ConfigSnapshot` 里，
+目标进程对它们一无所知 —— 这正是「设置页只负责本模块范围内的设置项」在架构上的体现。
+
+> `ui/FeatureCatalog.kt` 是 `feature/` 的**镜像表**：`ui/` 不能引用 `FeatureManager`
+> （红线推论），所以它用一份静态的 `FeatureSpec` 列表描述「有哪些功能、叫什么、说明是什么」。
+> 加功能时要同时更新这里，见 [EXTENDING.md · 第 4 步](EXTENDING.md)。
+
+---
+
+## 5. 反射兜底策略
+
+因为目标 App 被加固，**类名 / 字段名都不能硬编码假设**，所有关键名字都做成候选数组 + 多级兜底
+（集中在 `feature/watchlist/WatchlistTargets.kt`）：
+
+```kotlin
+// 目标适配器候选
+TARGET_ADAPTERS = arrayOf("com.guosen.quotation.adapter.aistk.AIStkAdapter")
+
+// 名称控件 id 候选
+NAME_ID_CANDIDATES = arrayOf("tv_item_stk_name")
+
+// 数据项里「代码.市场」的字段候选
+CAM_FIELDS    = arrayOf("codeAndMarket", "m_codeAndMarket")
+CODE_FIELDS   = arrayOf("m_stkCode", "code", "mCode")
+MARKET_FIELDS = arrayOf("m_stkMarket", "market", "mMarket")
+```
+
+取 adapter 数据项也做了多级兜底：
+
+1. `getItem(int)`
+2. `getData()` / `getItems()` / `getList()`
+3. 字段 `mData` / `mDataList` / `mItems` / `data` / `mList`
+
+`Reflect.findField()` 会**沿继承链向上查找**，兼容字段声明在父类的情况。
+
+> 这样设计的目的：App 升级后字段改名，只需要往数组里加一个候选名即可，
+> 不用重新做一遍逆向。
+
+---
+
+## 6. 线程模型
+
+| 操作 | 线程 |
+|---|---|
+| `getView` / `onResume` 钩子回调 | 主线程（UI） |
+| `chain.proceed()` | 主线程（在原调用点） |
+| 读取 `env.config` | 任意（不可变快照，volatile 引用） |
+| `ConfigSource` 变更监听 | **Binder 线程**（框架推送） |
+| `FeatureManager.onConfigChanged` 分发 | 主线程（`Handler(Looper.getMainLooper())`） |
+| `notifyDataSetChanged()` | 主线程（经 `View.post()` 调度） |
+| `XposedServiceHelper` 服务回调 | Binder 线程 → `FrameworkBridge` 切主线程分发 |
+| 热重载请求（`hotReloadModule`） | 独立短生命周期线程（Binder 调用不能放主线程） |
+
+**约定**：`Feature.onConfigChanged` 保证在**主线程**被调用，
+功能实现不需要自己 `post`。这是 `FeatureManager` 的职责。
+
+---
+
+## 7. 模块清单
+
+模块元数据全部在 APK 内的 `META-INF/xposed/`：
+
+**`module.prop`**
+
+```properties
+minApiVersion=102
+targetApiVersion=102
+staticScope=true
+exceptionMode=protective
+autoHotReload=true
+```
+
+**`java_init.list`**
+
+```
+gsauxiliary.m.venn.GszxModule
+```
+
+**`scope.list`**
+
+```
+com.guosen.android
+```
+
+`AndroidManifest.xml` 里只有常规声明：
+
+```xml
+<application
+    android:name=".app.GszxApp"
+    android:label="@string/app_name"
+    android:description="@string/xposed_description"   <!-- 模块描述 -->
+    … >
+
+    <!-- 真正的设置界面，不带 LAUNCHER -->
+    <activity
+        android:name=".ui.SettingsActivity"
+        android:exported="true" />
+
+    <!-- 桌面入口别名：开关只切它的 enabled 状态 -->
+    <activity-alias
+        android:name=".ui.LauncherAlias"
+        android:targetActivity=".ui.SettingsActivity"
+        android:enabled="true"
+        android:exported="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+    </activity-alias>
+
+    <!-- 仅 adb 调试用，不参与运行期配置读取 -->
+    <provider
+        android:name=".app.DebugConfigProvider"
+        android:authorities="gsauxiliary.m.venn.config"
+        android:exported="true" />
+</application>
+```
+
+> **桌面图标开关**为什么用 `activity-alias`：Activity 自身无法"隐藏自己"，
+> 但别名可以。`LauncherIcon.apply()` 对 `.ui.LauncherAlias` 调
+> `setComponentEnabledSetting(COMPONENT_ENABLED_STATE_DISABLED / DEFAULT)`，
+> 关闭后桌面图标消失、模块仍然正常工作（LSPosed 通过 `java_init.list` 加载，不依赖桌面入口）。
+
+> ⚠️ **不要**加 `xposedminversion` 之类的 legacy meta-data —— 会让模块被判定为
+> legacy 模块从而静默不加载。原因见 [EXTENDING.md · 架构红线](EXTENDING.md#21-manifest-里绝对不能出现-xposedminversion)。

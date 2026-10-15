@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GSAuxiliary</string>
+    <string name="xposed_description">Make GoldenSun Great Again！</string>
+
+    <!-- ============================ Common ============================ -->
+    <string name="common_back">Back</string>
+    <string name="common_unknown">Unknown</string>
+
+    <!-- ============================ Dock ============================ -->
+    <string name="tab_module">Overview</string>
+    <string name="tab_feature">Features</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_about">About</string>
+
+    <string name="subtitle_module">Environment</string>
+    <string name="subtitle_feature">Feature menu</string>
+    <string name="subtitle_settings">Module settings</string>
+    <string name="subtitle_about">About</string>
+
+    <!-- ============================ Overview tab ============================ -->
+    <!-- Hero status card -->
+    <string name="overview_status_active">Activated</string>
+    <string name="overview_status_inactive">Not activated</string>
+    <string name="overview_status_no_framework">Not connected to the LSPosed framework</string>
+
+    <!-- Group 1: the module itself -->
+    <string name="section_overview_module">Module</string>
+    <string name="info_module_version">Module version</string>
+    <string name="info_build_time">Build time</string>
+    <string name="framework_info_unreadable">Connected (info unreadable)</string>
+
+    <!-- Group 2: phone and dependencies -->
+    <string name="section_overview_runtime">Environment</string>
+    <string name="info_android_version">Android version</string>
+    <string name="info_device_model">Device model</string>
+    <string name="info_miuix_version">Miuix version</string>
+
+    <string name="action_hot_reload">Hot-reload target</string>
+    <string name="action_hot_reload_summary">Use the current module code without restarting</string>
+    <string name="action_hot_reload_need_framework">Requires a framework connection</string>
+    <string name="msg_no_running_target">No running target program</string>
+    <!-- Hot reload result feedback (2.12.1): one per HotReloadResult.Status, plus timeout -->
+    <string name="msg_hot_reload_ok">Hot reloaded</string>
+    <string name="msg_hot_reload_failed">Hot reload failed, see module log</string>
+    <string name="msg_hot_reload_unsupported">The framework does not support hot reload</string>
+    <string name="msg_hot_reload_in_progress">Target is already hot reloading, please wait</string>
+    <string name="msg_hot_reload_died">Target process has exited</string>
+    <string name="msg_hot_reload_timeout">Hot reload timed out, the target may be unresponsive</string>
+
+    <!-- ============================ Feature tab ============================ -->
+    <!-- No placeholder text on purpose; the magnifier icon carries the meaning -->
+    <string name="search_hint"></string>
+    <!-- Feature sections: see the rule at the top of ui/FeatureCatalog.kt -->
+    <string name="category_strategy">Strategy page enhancements</string>
+    <string name="category_display">Display enhancements</string>
+    <string name="feature_empty">No matching features</string>
+    <string name="feature_watchlist_title">Watchlist highlight</string>
+    <string name="feature_watchlist_summary">Highlight watchlist stock names on the strategy detail page</string>
+    <string name="feature_watchlist_switch">Enable watchlist highlight</string>
+    <string name="feature_watchlist_switch_summary">Render watchlist stock names in the highlight color</string>
+    <string name="feature_detail_entry">Highlight settings</string>
+    <string name="feature_detail_entry_summary">Scope, color, preview</string>
+
+    <string name="feature_stg_direct_title">Direct standard quote</string>
+    <string name="feature_stg_direct_summary">Tap a stock in My Strategies to open the stock detail page directly, skipping the extra tap</string>
+    <string name="feature_stg_direct_switch">Enable direct standard quote</string>
+    <string name="feature_stg_direct_switch_summary">Open the stock detail page straight from the strategy detail list</string>
+    <string name="feature_stg_direct_detail_entry">Swipe settings</string>
+    <string name="feature_stg_direct_detail_entry_summary">Whether swiping between stocks is supported</string>
+
+    <string name="feature_select_all_title">Multi-select: select all</string>
+    <string name="feature_select_all_summary">Adds a "Select all" button left of "Cancel" in the strategy detail multi-select bar</string>
+    <string name="feature_select_all_switch">Enable "Select all" button</string>
+    <string name="feature_select_all_switch_summary">Show a "Select all" button in the strategy detail multi-select bar</string>
+
+    <!-- ============================ Direct standard quote (detail) ============================ -->
+    <!-- The master switch lives on the feature tab; this menu holds parameters only -->
+    <string name="detail_stg_direct_title">Swipe settings</string>
+    <string name="section_stg_swipe">Swipe switching</string>
+    <string name="item_stg_quote_swipe">Swipe to switch stocks</string>
+    <string name="item_stg_quote_swipe_summary_on">Swipe left or right to move between the strategy stocks</string>
+    <string name="item_stg_quote_swipe_summary_off">Only the current stock is shown, no swiping</string>
+    <string name="note_stg_swipe">Same behaviour as tapping a stock in the quote / watchlist list</string>
+
+    <!-- ============================ Highlight settings (detail) ============================ -->
+    <string name="detail_color_title">Highlight settings</string>
+    <string name="section_color_settings">Highlight settings</string>
+    <string name="item_scope_strategy">Apply to strategy detail page</string>
+    <string name="item_scope_strategy_summary">AIStkStgDetailAct · tv_item_stk_name</string>
+    <string name="section_highlight_color">Highlight color</string>
+    <string name="section_preview">Preview</string>
+    <string name="preview_in_watchlist">In watchlist</string>
+    <string name="preview_not_in_watchlist">Not in watchlist</string>
+    <string name="preview_note">Name color only; change colors stay as-is</string>
+    <string name="preview_sample_in">Leimei Pharma</string>
+    <string name="preview_sample_out">712</string>
+
+    <!-- ============================ Settings tab ============================ -->
+    <string name="section_interface">Interface</string>
+    <string name="item_desktop_icon">Desktop icon</string>
+    <string name="item_desktop_icon_summary_off">Hidden — reopen this page from LSPosed</string>
+
+    <!-- Material settings: liquid glass drives both the top bar and the floating dock -->
+    <string name="section_dock">Material</string>
+    <string name="item_liquid_glass">Liquid glass</string>
+    <string name="liquid_glass_off">Off — solid top bar and dock</string>
+    <string name="item_glass_effect">Glass lighting</string>
+    <string name="item_glass_effect_summary_on">Full glass lighting</string>
+    <string name="item_glass_effect_summary_off">Minimal variant</string>
+
+    <string name="section_general">General</string>
+    <string name="item_theme">Theme</string>
+    <string name="item_language">Language</string>
+    <string name="item_predictive_back">Predictive back</string>
+    <string name="item_predictive_back_summary_on">Live back preview (Android 13+)</string>
+    <string name="item_predictive_back_summary_off">Plain back animation</string>
+
+    <string name="section_data">Data</string>
+    <string name="item_backup">Back up config</string>
+    <string name="item_backup_summary">Export to a JSON file</string>
+    <string name="item_restore">Restore config</string>
+    <string name="item_restore_summary">Restore settings from a backup file</string>
+    <string name="item_reset">Reset module</string>
+    <string name="item_reset_summary">Turn off all features and restore defaults</string>
+    <string name="dialog_reset_title">Reset module</string>
+    <string name="dialog_reset_message">All data will be deleted after the module configuration is reset!</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="reset_done">All features disabled and defaults restored</string>
+    <string name="backup_working">Exporting…</string>
+    <string name="restore_working">Restoring…</string>
+    <string name="backup_success">Config exported to %1$s</string>
+    <string name="backup_failed">Export failed: %1$s</string>
+    <string name="restore_success">Restored %1$d settings</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
+
+    <string name="section_framework_ops">Framework actions</string>
+
+    <string name="section_log">Logs</string>
+    <string name="item_log_level">Log level</string>
+    <string name="item_view_log">View logs</string>
+    <string name="item_view_log_summary">Show module runtime logs</string>
+
+    <!-- ============================ Log page ============================ -->
+    <string name="log_title">Runtime logs</string>
+    <string name="log_empty">No logs yet</string>
+    <string name="log_filter_all">All</string>
+    <string name="log_filter_error">Error</string>
+    <string name="log_filter_warn">Warn</string>
+    <string name="log_filter_info">Info</string>
+    <string name="log_filter_debug">Debug</string>
+    <string name="log_action_copy">Copy</string>
+    <string name="log_action_clear">Clear</string>
+    <string name="log_action_refresh">Refresh</string>
+    <string name="log_action_save">Save</string>
+    <string name="log_copied">Copied to clipboard</string>
+    <string name="log_saved">Saved to %1$s</string>
+    <string name="log_save_failed">Save failed: %1$s</string>
+    <string name="log_count">%1$d lines</string>
+    <string name="log_hint">Only in-memory logs from the module app process (up to 500 lines). Target-process logs live in /data/adb/lspd/log/</string>
+
+    <!-- ============================ About tab ============================ -->
+    <string name="section_module_info">Module info</string>
+    <string name="about_module_name">Module name</string>
+    <string name="about_scope">Scope</string>
+    <string name="about_framework">Framework</string>
+    <string name="about_value_scope">com.guosen.android (Guosen GoldSun)</string>
+    <string name="about_value_framework">LSPosed · Modern Xposed API 102</string>
+
+    <string name="section_tech">Technical details</string>
+    <string name="tech_hook_entry">Hook entry</string>
+    <string name="tech_hook_point">Hook point</string>
+    <string name="tech_judge">Watchlist check</string>
+    <string name="tech_name_id">Name view ID</string>
+    <string name="tech_channel">Config channel</string>
+    <string name="tech_value_hook_entry">XposedModule.onPackageReady</string>
+    <string name="tech_value_hook_point">BaseQuickAdapter.getView (intercept chain)</string>
+    <string name="tech_value_judge">ZXWorkflow.isBelongByStock(code, market)</string>
+    <string name="tech_value_name_id">tv_item_stk_name</string>
+    <string name="tech_value_channel">libxposed remote preferences</string>
+
+    <string name="section_author">Author</string>
+    <string name="about_developer">Developer</string>
+    <string name="about_github">GitHub</string>
+    <string name="about_license">License</string>
+    <string name="about_repo">Repository</string>
+    <string name="about_value_developer">M.Venn</string>
+    <string name="about_value_github">https://github.com/SansKritO4</string>
+    <string name="about_value_license">Apache-2.0</string>
+    <string name="about_value_repo_url">https://github.com/SansKritO4/GSAuxiliary</string>
+
+    <string name="section_open_source">Open source credits</string>
+    <string name="oss_miuix">Miuix</string>
+    <string name="oss_miuix_desc">Xiaomi HyperOS style Compose UI component library</string>
+    <string name="oss_lsposed">LSPosed / libxposed</string>
+    <string name="oss_lsposed_desc">Module framework and modern Xposed API</string>
+    <string name="oss_liquid_glass">AndroidLiquidGlass (backdrop)</string>
+    <string name="oss_liquid_glass_desc">Liquid glass refraction and blur effects</string>
+    <string name="oss_material_icons">Material Icons</string>
+    <string name="oss_material_icons_desc">Vector path data for UI icons (hand-built ImageVector, no icon library)</string>
+    <string name="oss_link_failed">Cannot open the link</string>
+
+    <!-- ==================== First launch · disclaimer agreement ==================== -->
+    <string name="agreement_title">Before you start</string>
+    <string name="agreement_message_prefix">This module is non-commercial open-source software for studying Android reverse engineering and hooking. Before you start, please read the\u0020</string>
+    <string name="agreement_link">Disclaimer</string>
+    <string name="agreement_message_suffix">\u0020in full. Tick the box below and tap “Agree” to continue.</string>
+    <string name="agreement_check">I have carefully read and agree to the entire Disclaimer</string>
+    <string name="agreement_confirm">Agree</string>
+
+    <string name="section_disclaimer">Disclaimer</string>
+    <string name="disclaimer_title">Using it means you agree — delete within 24 hours</string>
+    <string name="disclaimer_body">Continued use means you accept all terms; the author bears no liability</string>
+    <string name="disclaimer_detail_title">Disclaimer</string>
+    <string name="disclaimer_full"># Disclaimer\n\nThis module (hereinafter \"the Module\") is open-source software independently developed by an individual for the purpose of studying Android reverse engineering and hooking techniques. It is not a commercial product, and has no affiliation, cooperation, authorization, endorsement or support relationship with any enterprise, application, service or their affiliates.\n\n*This statement is made to clarify the rights and obligations of all parties and to guard against legal risk.*\n\n---\n\n## I. Determination of use\n\nAny entity or individual that downloads, installs, enables or otherwise uses the Module in any manner **shall be deemed to have fully read, thoroughly understood and voluntarily accepted all terms of this statement**.\n\nAnyone who does not agree with any part of this statement **shall immediately cease use and completely delete the Module and all of its copies**.\n\n- The Module is provided solely for technical research and academic exchange.\n- It shall not be used for any commercial purpose.\n- It shall be deleted by the user within twenty-four hours of download.\n\n## II. Complete exclusion of liability\n\nTo the maximum extent permitted by applicable law, the developer, contributors and distributors of the Module (collectively, \"the Developer\") **shall bear no liability of any kind towards the user or any third party**.\n\nAll risks, losses and consequences arising from the use of, or inability to use, the Module shall be borne solely by the user, including but not limited to device damage, system malfunction, data loss, account suspension or restriction, application malfunction, trading or investment losses, loss of profit and service interruption, as well as any direct, indirect, incidental, special, punitive or consequential damages.\n\n*The Developer shall bear no liability even if previously advised of the possibility of such damages.*\n\n## III. Warranty and maintenance\n\nThe Module is provided on an \"as is\" basis, without any express or implied warranty, including but not limited to warranties of merchantability, fitness for a particular purpose, freedom from viruses, non-infringement and continued availability.\n\n- The Developer undertakes no obligation to fix any defect.\n- No maintenance, updates or technical support are promised.\n- Distribution may be terminated at any time without prior notice.\n\n## IV. Compliance obligations\n\nThe user shall independently ascertain and comply with the laws and regulations of the user\'s jurisdiction and the terms of service of any related application.\n\nAll consequences and liabilities arising from the user\'s violation of the foregoing or misuse of the Module (including but not limited to contractual, tortious, administrative and criminal liability) shall be borne solely by the user and shall have no connection with the Developer.\n\n*The Developer does not encourage, support or participate in any unlawful act or breach of terms of service, and has not authorized any entity or individual to make commitments or assume liability in the name of the Developer.*\n\n## V. Affiliation and trademarks\n\nThe Module is not directed at any particular application, enterprise or service and represents no third party\'s position.\n\nThe rights in all application names, trademarks and logos appearing in this statement or in the Module belong to their respective owners and are used for descriptive purposes only, constituting no affiliation, sponsorship or endorsement of any kind.\n\n## VI. Personal information\n\nThe Module **does not collect, upload or store any personal information** and contains no networking, statistical analysis or advertising components. All configuration data is stored solely on the user\'s device.\n\n## VII. Validity of terms\n\nIf any provision of this statement is held invalid or unenforceable by a competent authority, the validity of the remaining provisions shall not be affected, and such provision shall be construed as narrowly as possible in favour of the Developer to the maximum extent permitted by law.\n\nThe Developer may revise this statement at any time, and a revised version shall take effect on the date it is published.\n\n> Continued use of the Module by the user shall be deemed acceptance of the revised statement.</string>
+
+    <!-- ============================ Option arrays ============================ -->
+    <string-array name="preset_color_names">
+        <item>Amber</item>
+        <item>Gold</item>
+        <item>Red</item>
+        <item>Accent blue</item>
+    </string-array>
+
+    <string-array name="preset_color_descriptions">
+        <item>Identical to the original Market tab highlight</item>
+        <item>Brighter; more visible on dark themes</item>
+        <item>Careful: may be confused with gain colors</item>
+        <item>Matches the system accent color</item>
+    </string-array>
+
+    <string-array name="log_level_labels">
+        <item>Off</item>
+        <item>Error</item>
+        <item>Info</item>
+        <item>Debug</item>
+    </string-array>
+
+    <string-array name="language_labels">
+        <item>Follow system</item>
+        <item>简体中文</item>
+        <item>English</item>
+    </string-array>
+
+    <string-array name="theme_labels">
+        <item>Follow system</item>
+        <item>Light</item>
+        <item>Dark</item>
+    </string-array>
+</resources>

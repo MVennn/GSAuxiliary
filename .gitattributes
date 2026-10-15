@@ -1,0 +1,26 @@
+# 统一换行符，避免 Windows / macOS 协作时整文件 diff
+* text=auto eol=lf
+
+# Shell 脚本必须 LF，否则在 Linux / macOS 上无法执行
+*.sh text eol=lf
+
+# Windows 批处理必须 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.jar binary
+*.keystore binary
+*.apk binary
+
+# 避免 GitHub 把 Java 项目识别成其它语言
+*.java text
+*.kt text
+*.kts text
+*.xml text
+*.md text

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        设置页主题。
+
+        ## 系统栏为什么要显式写这么多
+
+        目标：**状态栏 + 手势导航条一律全透明，内容一直铺到屏幕物理边缘**（沉浸）。
+
+        坑在 `enableEdgeToEdge()` 的默认值上。androidx.activity 的
+        `EdgeToEdgeApi29.setUp` 会做这几件事（反编译可见）：
+
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.statusBarColor      = statusBarStyle.getScrimWithEnforcedContrast(isDark)
+            window.navigationBarColor  = navigationBarStyle.getScrimWithEnforcedContrast(isDark)
+            window.statusBarContrastEnforced = false
+            window.navigationBarContrastEnforced = (navigationBarStyle.nightMode == MODE_NIGHT_AUTO)
+
+        而 `SystemBarStyle.auto(...)`（也就是默认值）的 `nightMode` **就是**
+        `MODE_NIGHT_AUTO`，于是最后一行会打开「导航栏强制对比度」。系统随后会在
+        透明的导航栏上叠一层半透明遮罩 —— 观感上就是手势条那一条被**纯色填充**了。
+
+        所以这里在主题层先关掉 `enforceNavigationBarContrast`；`SettingsActivity`
+        在代码里还会再显式关一次（双保险，见该文件 `onCreate`）。
+
+        ## 关于两个 light 标志
+
+        `android:windowLightNavigationBar` / `windowLightStatusBar` 从 **API 35 起被忽略**，
+        只在 API 27–34 有效。API 35+ 只能靠 `WindowInsetsControllerCompat`，
+        那部分在 `ui/SystemBars.kt` 里按「**实际生效**的深浅色」动态设置
+        （用户可以把 App 强制成暗色而系统是亮色，`enableEdgeToEdge` 按系统判断出来的
+        图标明暗就反了）。
+    -->
+    <style name="Theme.GSZX" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <!-- API 29+ 的属性；低版本会忽略 -->
+        <item name="android:enforceStatusBarContrast" tools:targetApi="q">false</item>
+        <item name="android:enforceNavigationBarContrast" tools:targetApi="q">false</item>
+    </style>
+</resources>

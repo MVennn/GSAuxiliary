@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GSAuxiliary</string>
+    <!-- 现代 API 模块的描述取自 android:description（不再是 xposeddescription meta-data） -->
+    <string name="xposed_description">Make GoldenSun Great Again！</string>
+
+    <!-- ============================ 通用 ============================ -->
+    <string name="common_back">返回</string>
+    <string name="common_unknown">未知</string>
+
+    <!-- ============================ 底栏 ============================ -->
+    <string name="tab_module">概览</string>
+    <string name="tab_feature">功能</string>
+    <string name="tab_settings">设置</string>
+    <string name="tab_about">关于</string>
+
+    <string name="subtitle_module">环境概览</string>
+    <string name="subtitle_feature">功能菜单</string>
+    <string name="subtitle_settings">模块设置</string>
+    <string name="subtitle_about">关于</string>
+
+    <!-- ============================ 概览页 ============================ -->
+    <!-- 顶部状态卡 -->
+    <string name="overview_status_active">已激活</string>
+    <string name="overview_status_inactive">未激活</string>
+    <string name="overview_status_no_framework">未连接到 LSPosed 框架</string>
+
+    <!-- 分组一：模块自身 -->
+    <string name="section_overview_module">模块</string>
+    <string name="info_module_version">模块版本</string>
+    <string name="info_build_time">构建时间</string>
+    <string name="framework_info_unreadable">已连接（信息不可读）</string>
+
+    <!-- 分组二：手机与依赖库 -->
+    <string name="section_overview_runtime">运行环境</string>
+    <string name="info_android_version">安卓版本</string>
+    <string name="info_device_model">设备型号</string>
+    <string name="info_miuix_version">Miuix 版本</string>
+
+    <string name="action_hot_reload">热重载目标进程</string>
+    <string name="action_hot_reload_summary">无需重启即可换用当前代码</string>
+    <string name="action_hot_reload_need_framework">需要框架连接</string>
+    <string name="msg_no_running_target">没有正在运行的目标程序</string>
+    <!-- 热重载结果提示（2.12.1）：五种终态 + 超时，一一对应 HotReloadResult.Status -->
+    <string name="msg_hot_reload_ok">已热重载</string>
+    <string name="msg_hot_reload_failed">热重载失败，详见模块日志</string>
+    <string name="msg_hot_reload_unsupported">当前框架不支持热重载</string>
+    <string name="msg_hot_reload_in_progress">目标进程正在热重载中，请稍候</string>
+    <string name="msg_hot_reload_died">目标进程已退出</string>
+    <string name="msg_hot_reload_timeout">热重载超时，目标进程可能无响应</string>
+
+    <!-- ============================ 功能页 ============================ -->
+    <!-- 搜索框不写占位文字（提示词留空），靠左侧放大镜图标说明用途 -->
+    <string name="search_hint"></string>
+    <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」 -->
+    <string name="category_strategy">策略页增强</string>
+    <string name="category_display">显示增强</string>
+    <string name="feature_empty">没有匹配的功能</string>
+    <string name="feature_watchlist_title">自选股高亮</string>
+    <string name="feature_watchlist_summary">策略详情页里，把已加入自选的股票名称显示为高亮色</string>
+    <string name="feature_watchlist_switch">启用自选股高亮</string>
+    <string name="feature_watchlist_switch_summary">把已加入自选的股票名称显示为高亮色</string>
+    <string name="feature_detail_entry">染色设置</string>
+    <string name="feature_detail_entry_summary">作用域、颜色、预览</string>
+
+    <string name="feature_stg_direct_title">策略直达标准行情</string>
+    <string name="feature_stg_direct_summary">「我的策略」里点股票直接进个股详情，不用再点一次「标准行情」</string>
+    <string name="feature_stg_direct_switch">启用直达标准行情</string>
+    <string name="feature_stg_direct_switch_summary">在策略详情页点股票，直接进入个股详情页</string>
+    <string name="feature_stg_direct_detail_entry">滑动设置</string>
+    <string name="feature_stg_direct_detail_entry_summary">是否支持左右滑动换股</string>
+
+    <string name="feature_select_all_title">策略多选全选</string>
+    <string name="feature_select_all_summary">策略详情页多选时，在「取消」左侧多一个「全选」按钮，一键勾选全部股票</string>
+    <string name="feature_select_all_switch">启用「全选」按钮</string>
+    <string name="feature_select_all_switch_summary">在策略详情的多选栏里显示「全选」按钮</string>
+
+    <!-- ============================ 直达标准行情（二级菜单） ============================ -->
+    <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
+    <string name="detail_stg_direct_title">滑动设置</string>
+    <string name="section_stg_swipe">左右滑动</string>
+    <string name="item_stg_quote_swipe">左右滑动切换股票</string>
+    <string name="item_stg_quote_swipe_summary_on">在个股详情页左右滑动，切换策略内的其它股票</string>
+    <string name="item_stg_quote_swipe_summary_off">只显示当前这一只，不能左右滑动</string>
+    <string name="note_stg_swipe">与「行情 / 自选」列表点进去的效果一致</string>
+
+    <!-- ============================ 染色设置（二级菜单） ============================ -->
+    <string name="detail_color_title">染色设置</string>
+    <string name="section_color_settings">染色设置</string>
+    <string name="item_scope_strategy">作用于策略详情页</string>
+    <string name="item_scope_strategy_summary">AIStkStgDetailAct · tv_item_stk_name</string>
+    <string name="section_highlight_color">高亮颜色</string>
+    <string name="section_preview">效果预览</string>
+    <string name="preview_in_watchlist">已在自选</string>
+    <string name="preview_not_in_watchlist">未加自选</string>
+    <string name="preview_note">只改名字颜色，涨跌幅不变</string>
+    <string name="preview_sample_in">莱美药业</string>
+    <string name="preview_sample_out">七一二</string>
+
+    <!-- ============================ 设置页 ============================ -->
+    <string name="section_interface">界面</string>
+    <string name="item_desktop_icon">桌面图标</string>
+    <string name="item_desktop_icon_summary_off">已隐藏，可从 LSPosed 重新打开本页</string>
+
+    <!-- 材质设置：液态玻璃是顶栏 + 悬浮底栏的总开关 -->
+    <string name="section_dock">材质设置</string>
+    <string name="item_liquid_glass">液态玻璃</string>
+    <string name="liquid_glass_off">已关闭，顶栏与底栏为纯色</string>
+    <string name="item_glass_effect">玻璃光效</string>
+    <string name="item_glass_effect_summary_on">完整的玻璃光效</string>
+    <string name="item_glass_effect_summary_off">简约版本</string>
+
+    <string name="section_general">通用</string>
+    <string name="item_theme">主题设置</string>
+    <string name="item_language">语言</string>
+    <string name="item_predictive_back">可预测返回</string>
+    <string name="item_predictive_back_summary_on">返回跟手预览（安卓 13+）</string>
+    <string name="item_predictive_back_summary_off">普通返回动画</string>
+
+    <string name="section_data">数据管理</string>
+    <string name="item_backup">备份模块配置</string>
+    <string name="item_backup_summary">导出为 JSON 文件</string>
+    <string name="item_restore">恢复模块</string>
+    <string name="item_restore_summary">从备份文件恢复配置</string>
+    <string name="item_reset">重置模块</string>
+    <string name="item_reset_summary">关闭全部功能并恢复默认参数</string>
+    <string name="dialog_reset_title">重置模块</string>
+    <string name="dialog_reset_message">重置模块配置后所有数据将会删除！</string>
+    <string name="action_confirm">确定</string>
+    <string name="action_cancel">取消</string>
+    <string name="reset_done">已关闭全部功能并恢复默认参数</string>
+    <string name="backup_working">正在导出…</string>
+    <string name="restore_working">正在恢复…</string>
+    <string name="backup_success">已导出配置到 %1$s</string>
+    <string name="backup_failed">导出失败：%1$s</string>
+    <string name="restore_success">已恢复 %1$d 项配置</string>
+    <string name="restore_failed">恢复失败：%1$s</string>
+
+    <string name="section_framework_ops">框架操作</string>
+
+    <string name="section_log">日志</string>
+    <string name="item_log_level">日志输出等级</string>
+    <string name="item_view_log">查看日志</string>
+    <string name="item_view_log_summary">查看模块运行日志</string>
+
+    <!-- ============================ 日志页 ============================ -->
+    <string name="log_title">运行日志</string>
+    <string name="log_empty">暂无日志</string>
+    <string name="log_filter_all">全部</string>
+    <string name="log_filter_error">错误</string>
+    <string name="log_filter_warn">警告</string>
+    <string name="log_filter_info">信息</string>
+    <string name="log_filter_debug">调试</string>
+    <string name="log_action_copy">复制</string>
+    <string name="log_action_clear">清空</string>
+    <string name="log_action_refresh">刷新</string>
+    <string name="log_action_save">保存</string>
+    <string name="log_copied">已复制到剪贴板</string>
+    <string name="log_saved">已保存到 %1$s</string>
+    <string name="log_save_failed">保存失败：%1$s</string>
+    <string name="log_count">共 %1$d 行</string>
+    <string name="log_hint">只显示模块 App 进程的内存日志（最多 500 行）。目标进程的日志在 /data/adb/lspd/log/</string>
+
+    <!-- ============================ 关于页 ============================ -->
+    <string name="section_module_info">模块信息</string>
+    <string name="about_module_name">模块名称</string>
+    <string name="about_scope">作用范围</string>
+    <string name="about_framework">目标框架</string>
+    <string name="about_value_scope">com.guosen.android（国信金太阳）</string>
+    <string name="about_value_framework">LSPosed · 现代 Xposed API 102</string>
+
+    <string name="section_tech">技术细节</string>
+    <string name="tech_hook_entry">Hook 入口</string>
+    <string name="tech_hook_point">挂钩点</string>
+    <string name="tech_judge">判定依据</string>
+    <string name="tech_name_id">名称控件 ID</string>
+    <string name="tech_channel">配置通道</string>
+    <string name="tech_value_hook_entry">XposedModule.onPackageReady</string>
+    <string name="tech_value_hook_point">BaseQuickAdapter.getView（拦截链）</string>
+    <string name="tech_value_judge">ZXWorkflow.isBelongByStock(code, market)</string>
+    <string name="tech_value_name_id">tv_item_stk_name</string>
+    <string name="tech_value_channel">libxposed remote preferences</string>
+
+    <string name="section_author">关于作者</string>
+    <string name="about_developer">开发者</string>
+    <string name="about_github">GitHub</string>
+    <string name="about_license">开源协议</string>
+    <string name="about_repo">项目仓库</string>
+    <string name="about_value_developer">M.Venn</string>
+    <string name="about_value_github">https://github.com/SansKritO4</string>
+    <string name="about_value_license">Apache-2.0</string>
+    <string name="about_value_repo_url">https://github.com/SansKritO4/GSAuxiliary</string>
+
+    <string name="section_open_source">开源鸣谢</string>
+    <string name="oss_miuix">Miuix</string>
+    <string name="oss_miuix_desc">小米 HyperOS 风格 Compose UI 组件库</string>
+    <string name="oss_lsposed">LSPosed / libxposed</string>
+    <string name="oss_lsposed_desc">模块框架与现代 Xposed API</string>
+    <string name="oss_liquid_glass">AndroidLiquidGlass (backdrop)</string>
+    <string name="oss_liquid_glass_desc">液态玻璃折射与模糊效果</string>
+    <string name="oss_material_icons">Material Icons</string>
+    <string name="oss_material_icons_desc">界面图标的矢量路径数据（自绘 ImageVector，不引入图标库）</string>
+    <string name="oss_link_failed">无法打开链接</string>
+
+    <!-- ============================ 首次启动 · 免责声明同意弹窗 ============================ -->
+    <string name="agreement_title">使用前须知</string>
+    <string name="agreement_message_prefix">本模块是用于研究 Android 逆向与 Hook 技术的非商业开源软件。开始使用前，请先完整阅读</string>
+    <string name="agreement_link">《免责声明》</string>
+    <string name="agreement_message_suffix">。勾选下方选项并点击「同意」后即可使用。</string>
+    <string name="agreement_check">我已仔细阅读并同意免责声明的全部内容</string>
+    <string name="agreement_confirm">同意</string>
+
+    <string name="section_disclaimer">免责声明</string>
+    <string name="disclaimer_title">使用即代表同意，请 24 小时内删除</string>
+    <string name="disclaimer_body">继续使用即视为同意，作者不承担任何责任</string>
+    <string name="disclaimer_detail_title">免责声明</string>
+    <string name="disclaimer_full"># 免责声明\n\n本软件（下称\"本模块\"）系开发者基于 Android 逆向工程与 Hook 技术学习目的自行编写的开源软件，非商业产品，与任何企业、应用、服务及其关联方不存在任何隶属、合作、授权、认可或支持关系。\n\n*本声明旨在明确各方权利义务、防范法律风险。*\n\n---\n\n## 一、关于使用行为的认定\n\n任何单位或个人下载、安装、启用或以其他任何方式使用本模块，**即视为其已完整阅读、充分理解并自愿接受本声明的全部条款**。\n\n如不同意本声明任何内容的，**应立即停止使用并彻底删除本模块及其全部副本**。\n\n- 本模块仅供技术研究与学习交流之用，不得用于任何商业用途。\n- 使用者应于下载后二十四小时内自行删除。\n\n## 二、关于责任的完全免除\n\n在适用法律允许的最大范围内，本模块的开发者、贡献者及分发者（以下统称\"开发者\"）**不对使用者或任何第三方承担任何形式的责任**。\n\n因使用或无法使用本模块所产生的一切风险、损失及后果，均由使用者自行承担，包括但不限于设备损坏、系统异常、数据灭失、账号封禁或受限、应用功能异常、交易或投资损失、利润损失及服务中断，以及任何直接、间接、附带、特殊、惩罚性或后果性损害。\n\n*纵使开发者事先已被告知上述损害发生的可能性，亦不承担任何责任。*\n\n## 三、关于担保与维护\n\n本模块按\"现状\"提供，不附任何明示或默示的担保，包括但不限于对适销性、特定用途适用性、无病毒、不侵权及持续可用性的担保。\n\n- 开发者不承诺修复任何缺陷。\n- 不承诺提供维护、更新或技术支持。\n- 有权随时终止分发而无须事先通知。\n\n## 四、关于合规义务\n\n使用者应自行确认并遵守其所在国家或地区的法律法规以及相关应用的服务条款。\n\n因使用者违反上述规定或不当使用本模块而产生的一切后果与责任（包括但不限于违约、侵权、行政及刑事责任），均由使用者本人承担，与开发者无涉。\n\n*开发者不鼓励、不支持、不参与任何违法或违反服务条款的行为，亦未授权任何单位或个人以开发者名义作出承诺或承担责任。*\n\n## 五、关于关联关系与商标\n\n本模块不针对任何特定应用、企业或服务，不代表任何第三方立场。\n\n本声明及本模块中出现的应用名称、商标与标识，其权利均归各自权利人所有，仅作客观描述之用，不构成任何形式的关联、赞助或背书。\n\n## 六、关于个人信息\n\n本模块**不收集、不上传、不存储任何个人信息**，不含联网、统计分析及广告组件。全部配置数据仅保存于使用者设备本地。\n\n## 七、关于条款效力\n\n本声明任何条款如被有权机关认定为无效或不可执行，不影响其余条款的效力；该条款应在法律允许的最大范围内作最有利于开发者的限缩解释。\n\n开发者有权随时修订本声明，修订后的版本自发布之日起施行。\n\n> 使用者继续使用本模块的，即视为已接受修订后的声明。</string>
+
+    <!-- ============================ 选项数组 ============================ -->
+    <string-array name="preset_color_names">
+        <item>琥珀黄</item>
+        <item>金橙</item>
+        <item>正红</item>
+        <item>主色蓝</item>
+    </string-array>
+
+    <string-array name="preset_color_descriptions">
+        <item>与原版行情页黄名完全一致</item>
+        <item>更亮，深色主题下更醒目</item>
+        <item>注意：可能与涨幅红字混淆</item>
+        <item>与系统主色统一</item>
+    </string-array>
+
+    <string-array name="log_level_labels">
+        <item>关闭</item>
+        <item>错误</item>
+        <item>信息</item>
+        <item>调试</item>
+    </string-array>
+
+    <string-array name="language_labels">
+        <item>跟随系统</item>
+        <item>简体中文</item>
+        <item>English</item>
+    </string-array>
+
+    <string-array name="theme_labels">
+        <item>跟随系统</item>
+        <item>亮色</item>
+        <item>暗色</item>
+    </string-array>
+</resources>

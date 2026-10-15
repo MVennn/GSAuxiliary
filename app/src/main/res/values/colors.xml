@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        注意：launcher 图标的背景**不是**纯色资源。
+        简约苹果风格要求背景自带渐变，而 `<background>` 只吃 drawable，
+        所以背景色搬到了 `drawable/ic_launcher_background.xml`（矢量 + gradient）。
+        位图回退的同一套颜色在 `tools/gen_launcher_icons.py` 的 BG_TOP / BG_BOTTOM。
+    -->
+
+    <!--
+        窗口底色（windowBackground）。
+
+        取值必须和 Miuix 主题的 **`colorScheme.surface`** 对齐（不是 `background`），
+        否则系统栏那一条缝隙里会露出不一致的颜色。它只负责两段时间：
+          1. Compose 首帧之前（冷启动 / 系统栏过渡动画）
+          2. 用户把深色模式强制成「亮色 / 暗色」而系统恰好相反时的那一帧
+        Compose 起来之后 `ui/SystemBars.kt` 会用 MiuixTheme 的实际底色再覆盖一次。
+
+        ⚠️ 为什么是 `surface` 而不是 `background`：Miuix 0.9.3 里
+        `background` 与 `Card` 的默认色 `surfaceContainer` **完全同色**
+        （深色 #242424 / 浅色 #FFFFFF），页面用它会让所有卡片与页面糊成一片。
+        页面底色正确的取值是 `surface`：
+          浅色 = Miuix lightColorScheme().surface = #F7F7F7
+          深色 = Miuix darkColorScheme().surface  = #000000
+    -->
+    <color name="window_background">#FFF7F7F7</color>
+    <color name="window_background_dark">#FF000000</color>
+</resources>

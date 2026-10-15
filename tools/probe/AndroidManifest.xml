@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.wb.probe">
+
+    <uses-sdk
+        android:minSdkVersion="27"
+        android:targetSdkVersion="36" />
+
+    <application
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:description="@string/xposed_desc">
+
+        <!--
+            现代 API（libxposed API 102）模块**不使用**任何 legacy meta-data。
+
+            模块元数据全部在 APK 里：
+              META-INF/xposed/module.prop     模块属性（minApiVersion / targetApiVersion …）
+              META-INF/xposed/java_init.list  入口类 com.wb.probe.ProbeModule
+              META-INF/xposed/scope.list      作用域 com.guosen.android
+
+            模块名 / 描述取自 android:label / android:description。
+
+            注意：不要加 xposedminversion —— LSPosed 只要看到它就把模块当 legacy，
+            会去走 assets/xposed_init 那条老路，而本模块已经没有那个文件了。
+        -->
+
+    </application>
+
+</manifest>

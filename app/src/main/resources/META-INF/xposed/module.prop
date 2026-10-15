@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# 现代 Xposed API（libxposed）模块属性
+#
+# 这个文件必须位于 META-INF/xposed/module.prop。
+# LSPosed 靠它判定「这是一个现代 API 模块」，并读取最低/目标 API 版本。
+# 只要 APK 里存在 META-INF/xposed/java_init.list，模块就会被当作现代模块。
+# ---------------------------------------------------------------------------
+
+# 最低要求的框架 API 版本。本模块使用 API 102 才有的能力
+# （HookHandle.replaceHook / setId / detach / 热重载），所以下限就是 102。
+minApiVersion=102
+
+# 目标 API 版本。框架按此版本决定行为差异。
+targetApiVersion=102
+
+# 作用域在 META-INF/xposed/scope.list 里固定声明，
+# 用户不应把模块应用到清单之外的应用上。
+staticScope=true
+
+# 勾错开关时不要让目标 App 崩溃：hooker 抛异常时按「保护模式」处理。
+exceptionMode=protective
+
+# 模块 App 升级后自动热重载，无需重启目标 App。
+# 对应实现见 GszxModule.onHotReloading / onHotReloaded。
+autoHotReload=true

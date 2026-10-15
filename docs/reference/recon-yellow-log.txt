@@ -1,0 +1,23 @@
+--------- beginning of main
+10-14 15:45:42.373  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.373  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech2_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.373  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech3_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.397  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTechValue2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.398  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTech2Value2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.398  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTech3Value2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.449  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.449  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech2_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.450  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech3_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.474  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTechValue2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.474  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTech2Value2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.474  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tvViceTech3Value2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.653  1872  1872 E GSRecon : YELLOW > color=#fff5a623 (245,166,35) id=tv_tech_val2 text= act=com.guosen.quotation.ui.StockFragAct
+10-14 15:45:42.686  1872  1872 E GSRecon : H5 > http://localhost:10000/asset/webF10/dist/pages/index_v2.html?color_type=white&stock_code=300006&market=SZ&categoryType=1
+10-14 15:45:50.538  1872  1872 E GSRecon : SP > key=key_menu_recent24614842872980480 value=sy_nav_zngj_znxg
+10-14 15:45:50.629  1872  1872 E GSRecon : ACTIVITY > com.guosen.quotation.ui.aistk.AIStkIndexAct
+10-14 15:45:50.676  1872  1872 E GSRecon : SP > key=24614842872980480key_edited_menu value=sy_nav_hqjy_zx,sy_nav_hqjy_wdcc,sy_nav_zh_ywbl,sy_nav_zx_qylive,sy_nav_hqjy_sgb,sy_nav_zx_rdzt,sy_nav_zngj_znxg,sy_nav_zngj_zndp,sy_nav_zngj_znkx
+10-14 15:45:50.678  1872  1872 E GSRecon : SP > key=24614842872980480key_edited_menu value=sy_nav_hqjy_zx,sy_nav_hqjy_wdcc,sy_nav_zh_ywbl,sy_nav_zx_qylive,sy_nav_hqjy_sgb,sy_nav_zx_rdzt,sy_nav_zngj_znxg,sy_nav_zngj_zndp,sy_nav_zngj_znkx
+10-14 15:45:50.678  1872  1872 E GSRecon : SP > key=24614842872980480key_edited_menu value=sy_nav_hqjy_zx,sy_nav_hqjy_wdcc,sy_nav_zh_ywbl,sy_nav_zx_qylive,sy_nav_hqjy_sgb,sy_nav_zx_rdzt,sy_nav_zngj_znxg,sy_nav_zngj_zndp,sy_nav_zngj_znkx
+10-14 15:45:50.679  1872  1872 E GSRecon : SP > key=24614842872980480key_edited_menu value=sy_nav_hqjy_zx,sy_nav_hqjy_wdcc,sy_nav_zh_ywbl,sy_nav_zx_qylive,sy_nav_hqjy_sgb,sy_nav_zx_rdzt,sy_nav_zngj_znxg,sy_nav_zngj_zndp,sy_nav_zngj_znkx
+10-14 15:45:52.050  1872  1872 E GSRecon : ACTIVITY > com.guosen.quotation.ui.aistk.AIStkStgListAct
+10-14 15:45:53.699  1872  1872 E GSRecon : ACTIVITY > com.guosen.quotation.ui.aistk.AIStkStgDetailAct
