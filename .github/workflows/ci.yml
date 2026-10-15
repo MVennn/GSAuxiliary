@@ -40,6 +40,14 @@ jobs:
       # CI runner 在海外，直连 google() / mavenCentral() 比走阿里云镜像更稳更快。
       # 镜像开关见 settings.gradle.kts。
       GS_NO_MIRROR: '1'
+      # 签名：这四个由 app/build.gradle.kts 直接读（见该文件「签名配置」段）。
+      # 没配密钥时它们全是空串 —— `takeIf { it.isNotBlank() }` 会把空串当「没给」，
+      # 于是退回 AGP 自带的 debug 签名，下面的红线校验也会相应放宽。
+      # （fork 提的 PR 拿不到 secrets，走的正是这条零密钥路径。）
+      GS_KEYSTORE_BASE64: ${{ secrets.GS_KEYSTORE_BASE64 }}
+      GS_KEYSTORE_PASSWORD: ${{ secrets.GS_KEYSTORE_PASSWORD }}
+      GS_KEYSTORE_ALIAS: ${{ secrets.GS_KEYSTORE_ALIAS }}
+      GS_KEYSTORE_KEY_PASSWORD: ${{ secrets.GS_KEYSTORE_KEY_PASSWORD }}
 
     steps:
       - name: 检出源码
@@ -85,6 +93,24 @@ jobs:
         id: ver
         run: python3 tools/ci/version.py >> "$GITHUB_OUTPUT"
 
+      # ⚠️ 这一步不能省：`GS_KEYSTORE_BASE64` 是**密钥库本体**，而 Gradle 要的是
+      # **文件路径**（`GS_KEYSTORE_PATH`）。少这一步，构建就悄悄退回 debug 签名 ——
+      # 而下面的红线校验又会因为「配了密钥」要求 release 包不是 debug 签名，
+      # 于是必然红（这个坑真踩过：2.15.0 的 CI 就是这么红的）。
+      - name: 解码签名密钥（配了才做）
+        if: env.GS_KEYSTORE_BASE64 != ''
+        run: |
+          printf '%s' "$GS_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.keystore"
+          ls -l "$RUNNER_TEMP/release.keystore"
+          # 顺手验一下密码 / 别名对不对，别等到构建完才发现签名失败
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
+                 -storepass "$GS_KEYSTORE_PASSWORD" -alias "$GS_KEYSTORE_ALIAS" >/dev/null 2>&1; then
+            echo "::error::keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS"
+            exit 1
+          fi
+          echo "[OK] keystore 与密码 / 别名匹配"
+          echo "GS_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
       - name: 构建
         run: ./gradlew --no-daemon --console=plain assembleDebug assembleRelease
 
@@ -96,7 +122,10 @@ jobs:
         run: |
           EXTRA=()
           if [ -n "${HAVE_KEYSTORE:-}" ]; then
-            # 配了签名密钥 —— release 包就不该再是 debug 签名，踩到直接红
+            # 配了签名密钥 —— release 包就不该再是 debug 签名，踩到直接红。
+            # 前提是上面「解码签名密钥」那步真的把 GS_KEYSTORE_PATH 交给了 Gradle；
+            # 少了它这里必然红（这是设计如此：宁可红，不要签出一个「签名和以前不一样」
+            # 的包让所有已装用户卸载重装）。
             echo "已配置签名密钥：release 包不允许退回 debug 签名"
             EXTRA+=(--reject-debug-cert)
           else

@@ -429,11 +429,18 @@ cp keystore.properties.example keystore.properties
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
-| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传 APK 与 R8 mapping | **不需要** |
+| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
 | `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
 
-`ci.yml` 是**零密钥**的：仓库什么 Secret 都没配也能跑，release 会退回 debug 签名，
+`ci.yml` 是**零密钥可跑**的：仓库什么 Secret 都没配也能跑，release 会退回 debug 签名，
 产物只当测试包用。所以「这个仓库能不能在 GitHub 上编译」的答案是 —— 推上去就跑。
+
+> **配了 keystore Secrets 之后，`ci.yml` 会自动改用真密钥签**（四个 `GS_KEYSTORE_*`
+> 挂在 job 级 env，`GS_KEYSTORE_BASE64` 由「解码签名密钥」那步落成文件并把
+> `GS_KEYSTORE_PATH` 写进 `$GITHUB_ENV`），红线校验同时自动加上 `--reject-debug-cert`。
+> 这两半**必须成对**：只加了校验没加解码，CI 必然红 —— 而它红得对
+> （配了密钥却签出 debug 包，正是「用户必须卸载重装」那种事故）。
+> fork 提的 PR 拿不到 Secrets，走的仍是零密钥路径。
 
 两件容易忽略但很有用的事：
 
