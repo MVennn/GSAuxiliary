@@ -28,6 +28,9 @@ import time
 import xml.etree.ElementTree as ET
 from collections import Counter
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _color import decode_rgb, find_ffmpeg
+
 
 # --------------------------------------------------------------------------- 环境
 
@@ -47,12 +50,6 @@ def find_adb():
         if r and os.path.isfile(os.path.join(r, "platform-tools", exe)):
             return os.path.join(r, "platform-tools", exe)
     return shutil.which("adb")
-
-
-def find_ffmpeg():
-    if os.environ.get("FFMPEG"):
-        return os.environ["FFMPEG"]
-    return shutil.which("ffmpeg")
 
 
 ADB = find_adb()
@@ -102,11 +99,7 @@ def parse_bounds(s):
 
 
 def decode(png, w, h):
-    p = subprocess.run(
-        [FFMPEG, "-v", "error", "-i", "pipe:0",
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-        input=png, capture_output=True)
-    return p.stdout
+    return decode_rgb(FFMPEG, png, from_stdin=True)
 
 
 def text_color(data, box, w, h):

@@ -75,8 +75,8 @@ for cmd in "$@"; do
         logclear) "${A[@]}" logcat -c; echo "  > logclear" ;;
         uifind)
                 dump_ui
-                COORD="$("$PYTHON" "$(winpath "$HERE/uifind.py")" \
-                            "$(winpath "$WORK/ui_tmp.xml")" "$1" 2>/dev/null)"
+                COORD="$("$PYTHON" "$(winpath "$HERE/uidump.py")" \
+                            "$(winpath "$WORK/ui_tmp.xml")" --find "$1" 2>/dev/null)"
                 if [ -n "$COORD" ]; then
                     "${A[@]}" shell "input tap $COORD"
                     echo "  > uifind '$1' -> tap $COORD"
@@ -85,7 +85,7 @@ for cmd in "$@"; do
                 fi ;;
         uiscan)
                 dump_ui
-                "$PYTHON" "$(winpath "$HERE/uifind.py")" \
+                "$PYTHON" "$(winpath "$HERE/uidump.py")" \
                           "$(winpath "$WORK/ui_tmp.xml")" --list 2>/dev/null | sed 's/^/    /'
                 echo "  > uiscan" ;;
         *)      echo "  ? 未知指令: $op" ;;

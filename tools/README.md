@@ -121,19 +121,6 @@ python tools/sample_colors.py shot.png --size 1080x2400 0,0,1080,2400
 
 ---
 
-## uifind.py
-
-从 `uiautomator dump` 出来的 XML 里按文字找控件坐标。
-
-```bash
-python tools/uifind.py ui.xml "我的策略"    # 打印可点击控件中心 "x y"
-python tools/uifind.py ui.xml --list        # 列出所有有文字的控件及坐标
-```
-
-`drive.sh` 的 `uifind` / `uiscan` 指令内部就是调它。
-
----
-
 ## enable_lsposed.py
 
 **直接改写 LSPosed 的配置库**，把模块登记为启用并加入作用域 ——
@@ -208,7 +195,7 @@ python tools/gen_launcher_icons.py
 
 校验自绘图标（`ui/AppIcons.kt`）的 path 数据。
 
-界面图标是手写的 SVG path（背景见 `docs/UI.md` §10）。path 写错一个数字照样能编译通过，
+界面图标是手写的 SVG path（背景见 `docs/UI.md` §3.3）。path 写错一个数字照样能编译通过，
 只有装到机器上才看得出来。这个脚本从 **Kotlin 源码**里直接读 path（不用维护两份数据），
 解析后做结构检查，并描边渲染成 PNG 供肉眼比对。
 
@@ -291,6 +278,9 @@ python tools/uidump.py ui.xml --list
 python tools/uidump.py ui.xml --find "标准行情"
 python tools/uidump.py ui.xml --find-class EditText
 ```
+
+`drive.sh` 的 `uifind` / `uiscan` 指令也走它（`--find "文本"` / `--list`），
+不再另有一份解析器。
 
 **两个必须记住的点**：
 

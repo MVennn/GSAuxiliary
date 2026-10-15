@@ -11,24 +11,11 @@ sample_colors.py —— 从截图里采样若干矩形区域的主色（排查�
 """
 import argparse
 import os
-import shutil
-import subprocess
 import sys
 from collections import Counter
 
-
-def find_ffmpeg():
-    if os.environ.get("FFMPEG"):
-        return os.environ["FFMPEG"]
-    return shutil.which("ffmpeg")
-
-
-def load_rgb(path, ffmpeg):
-    out = subprocess.run(
-        [ffmpeg, "-v", "error", "-i", path,
-         "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-        capture_output=True)
-    return out.stdout
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _color import WHITE, decode_rgb, find_ffmpeg
 
 
 def probe(data, w, h, boxes, topn=4):
@@ -39,7 +26,7 @@ def probe(data, w, h, boxes, topn=4):
             for x in range(max(0, x1), min(w, x2)):
                 i = row + x * 3
                 r, g, b = data[i], data[i + 1], data[i + 2]
-                if r > 235 and g > 235 and b > 235:      # 跳过白底
+                if r > WHITE and g > WHITE and b > WHITE:    # 跳过白底
                     continue
                 cnt[(r // 8 * 8, g // 8 * 8, b // 8 * 8)] += 1
         top = cnt.most_common(topn)
@@ -59,7 +46,7 @@ def main():
         raise SystemExit("找不到 ffmpeg，请设置 FFMPEG 环境变量")
 
     w, h = (int(v) for v in args.size.lower().split("x"))
-    data = load_rgb(args.png, ffmpeg)
+    data = decode_rgb(ffmpeg, args.png)
     if len(data) < w * h * 3:
         raise SystemExit("ffmpeg 输出不足: %d 字节（尺寸参数是否正确？）" % len(data))
 

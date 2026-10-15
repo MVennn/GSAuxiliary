@@ -217,7 +217,9 @@ tools/probe/
 ├── src/com/wb/probe/
 │   └── ProbeModule.java     # ★ 全部逻辑（extends XposedModule）
 ├── probe.keystore           # 探针签名密钥（密码 android / 别名 probe）
-├── build/                   # 中间产物（gitignore）
+│                            #   ↑ 被 .gitignore 的 *.keystore 排除，**不入库**；
+│                            #     缺失时 build.sh 会自动 keytool 生成
+├── build/                   # 中间产物（gitignore，可随时删，build.sh 重建）
 └── out/GoldSunProbe.apk     # 最终产物（gitignore）
 ```
 
