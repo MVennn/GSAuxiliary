@@ -116,6 +116,12 @@
     <string name="feature_market_overview_switch">Shorter market overview</string>
     <string name="feature_market_overview_switch_summary">Market overview and bar chart heights are compressed together</string>
 
+    <!-- Display -->
+    <string name="feature_nav_bar_title">Match gesture bar color</string>
+    <string name="feature_nav_bar_summary">The gesture navigation bar at the bottom is filled with the color of the interface right above it, instead of a hard-edged pure black or pure white strip in dark and light mode alike</string>
+    <string name="feature_nav_bar_switch">Match gesture bar color</string>
+    <string name="feature_nav_bar_switch_summary">The bottom gesture bar takes the color of the interface right above it instead of a solid black or white strip</string>
+
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only -->
     <string name="detail_stg_direct_title">Swipe settings</string>

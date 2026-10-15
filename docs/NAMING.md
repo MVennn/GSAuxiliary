@@ -121,6 +121,7 @@
 | `market_banner_hide` | 行情市场 | 隐藏滚动横幅与快捷入口 | 增强 |
 | `market_sector_compact` | 行情市场 | 板块只留三项 | 增强 |
 | `market_overview_compact` | 行情市场 | 市场概览压矮 | 增强 |
+| `nav_bar_blend` | 显示 | 手势导航条同色 | 增强 |
 | `watchlist_highlight` | 显示 | 自选股高亮 | 增强 |
 
 ---

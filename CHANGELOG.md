@@ -5,6 +5,110 @@
 
 ---
 
+## [2.16.0] — 2026-10-16
+
+新增「**手势导航条同色**」：屏幕底部那条小白条不再是一条纯黑 / 纯白，
+而是填充与紧邻界面一致的颜色，深色与浅色模式下都融进整体视觉。
+
+### 新增
+
+`feature/navbar/`：`NavBarBlendFeature.kt`（调度）/ `NavBarTint.kt`（取色与上色）/
+`NavBarTargets.kt`（调参常量）。方案与验证清单见 `docs/FEATURE-NAV-BAR.md`。
+
+#### 根因：那一块是**宿主的窗口自己画的**
+
+宿主 targetSdk 30、全程非沉浸（Android 15 的「targetSdk 35+ 强制沉浸」也轮不到它），
+所以屏幕被切成「状态栏 / 宿主内容 / 导航条」三块，底部那条不属于内容区，
+由 `DecorView` 按 `window.navigationBarColor` 自己填。宿主没设这个值，
+于是落回主题 `android:windowBackground` —— **深色模式纯黑、浅色模式纯白**。
+不是「API 受限」，是宿主压根没做适配，模块侧可以从外部补上。
+
+#### 三件事缺一不可（只改颜色不够）
+
+1. **`window.navigationBarColor` = 取到的颜色** —— 那一块是 `DecorView` 按它填的；
+2. **关掉 `navigationBarContrastEnforced`**（API 29+）—— 系统为保证横杠看得见会在
+   透明导航条上叠一层半透明遮罩，「观感生硬」的一半来自这里
+   （模块自己的设置界面在 2.5.0 踩过同一个坑，见 `docs/UI.md` §11.1）；
+3. **按填进去的颜色设 `appearanceLightNavigationBars`** —— 关掉遮罩后横杠画深色还是
+   浅色全由它决定，不设就会出现「白横杠压在白底上」。判据是**填进去的颜色**的亮度，
+   不是系统深色开关（App 内强制深色的组合下这两者会不一致）。
+
+**三键导航例外**：那一条上有真按键，关掉强制对比度可能让按键看不清，
+所以检测到非手势导航时**只改颜色、保留强制对比度**
+（模式取系统资源 `android:integer/config_navBarInteractionMode`，2 = 手势）。
+
+#### 取色带画在哪（命门）
+
+```
+├──────────────┤ ← decor.height − navBarHeight ← 取色带下沿
+│  ██ 3dp 高 ██ │ ← 取的就是这一行的真实颜色
+├──────────────┤
+│  小白条        │ ← 换成上面取到的颜色
+```
+
+`decorView` 是**整窗高度**（导航条那一块也是它的孩子），取色必须先减掉
+`navBarHeight`，否则取到的是**自己上一次填进去的颜色**，自我循环、永远不变。
+
+#### 取色三档
+
+| 档 | 手段 | 特点 |
+|---|---|---|
+| ① 结构合成 | 沿「取色带覆盖链」从 `decor` 逐层下钻，每层背景色按 alpha 合成 | **同步**、零分配、首帧就能给结果 |
+| ② 像素校准 | `PixelCopy` 拷内容最后一行真实像素取平均 | **异步**、是屏幕真值，能救渐变 / 图片 / 圆角 |
+| ③ 兜底 | 主题 `windowBackground` 当合成底色 | 前两档都拿不到时至少不是黑 / 白硬块 |
+
+- ① 的下钻规则：每层只挑「覆盖取色带、且宽度 ≥ 父容器 55%」的子视图 ——
+  底栏一行六格并列，往深钻会取到某一格自己的选中态底色，代表「周边界面」的是**整行**；
+- 单个 `Drawable` 取色：`ColorDrawable` 直接取，其余**渲染成 1×1 位图**读那一像素，
+  这样 `GradientDrawable` / `ShapeDrawable` / `LayerDrawable` / `StateListDrawable` /
+  九宫格都能拿到值，**不用反射各版本里名字还不一样的私有字段**；
+- ② 两道闸：节流 2000ms + 每窗口最多 3 次（`PixelCopy` 在部分机型 / 无 backing
+  surface 的窗口上恒失败，绝不无限重试）；与当前颜色通道差 ≤ 24 就不落地。
+
+#### 时机
+
+`Activity.onResume`（挂回调 + 预热，此刻 decor 还没 attach，量不出尺寸）→
+`OnGlobalLayoutListener`（**真正的落地点**，发生在这一帧画出来之前，所以首帧就是最终颜色；
+限速时**只延后不丢弃**）→ `Activity.onConfigurationChanged`（深浅色切换 / 转屏时宿主
+不一定重建页面，主动作废缓存重算）。每个 `Activity` 有自己的窗口，所以每个页面各来一遍。
+
+#### 开关归类
+
+进「**显示**」分区（关掉它操作路径不变、钩子是渲染、换个页面照样成立），
+出厂默认**关**，无二级菜单。
+
+### 资源 / 版本
+
+- 新增字符串（中英各一份）：`feature_nav_bar_title` / `feature_nav_bar_summary` /
+  `feature_nav_bar_switch` / `feature_nav_bar_switch_summary`
+- `ConfigKeys.NAV_BAR_BLEND`（`nav_bar_blend`，默认 `false`），已进
+  `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS`；`ConfigSnapshot` 新增 `navBarBlend`
+  字段与指纹乘数 `2671`；`ConfigSource.read()` 补一行
+- 版本 2.15.1/vc36 → **2.16.0/vc37**
+
+### 验证结果
+
+- `:app:assembleDebug` + `:app:assembleRelease` → **BUILD SUCCESSFUL**
+- release APK **1 567 896 B**；debug APK 11 121 369 B
+- `aapt2 dump badging`：`versionCode='37' versionName='2.16.0'`，label `GSAuxiliary`
+- `aapt2 dump strings`：`手势导航条同色` 与 `Match gesture bar color` 两种语言都在
+- release dex 里 `feature/navbar/NavBarBlendFeature` 在（`-keep * implements Feature`
+  命中），`NavBarTint` / `NavBarTargets` 被 R8 改名内联 —— 关键代码确认还在：
+  `PixelCopy` 相关引用 7 处、`OnPixelCopyFinishedListener` 2 处、
+  `setNavigationBarContrastEnforced` 3 处、`config_navBarInteractionMode` 1 处
+- `dexdump` 红线：`Lio/github/libxposed/api` 定义类 **0** 个（`api` 仍为 `compileOnly`）
+
+### 仍未做
+
+- **真机验证**（当前环境没有 `adb`）：深浅两色 × App 内强制组合四种情况、
+  切 Tab / 切页面、冷启动首帧、三键导航、关开关立刻还原 —— 均只过了编译。
+  完整清单见 `docs/FEATURE-NAV-BAR.md` §4。
+- 不做「真沉浸」（`setDecorFitsSystemWindows(false)`）：会把底栏推到横杠下面、
+  与宿主自己的 inset 处理打架、影响键盘与弹层，收益与风险不成比例。
+  代价是那条区域仍是**一块纯色**，上方是渐变 / 图片 / 圆角时交界处可能有色差。
+
+---
+
 ## [2.15.1] — 2026-10-16
 
 两处修复，都由真机（魅族 20 / Android 16 / 金太阳 8.6.0 vc271）实测定位：

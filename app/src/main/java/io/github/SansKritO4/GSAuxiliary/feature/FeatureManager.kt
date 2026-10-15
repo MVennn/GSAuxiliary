@@ -10,6 +10,7 @@ import io.github.SansKritO4.GSAuxiliary.feature.home.HomeBannerFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketBannerFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketOverviewCompactFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketSectorCompactFeature
+import io.github.SansKritO4.GSAuxiliary.feature.navbar.NavBarBlendFeature
 import io.github.SansKritO4.GSAuxiliary.feature.stgfilter.StgStockFilterFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
@@ -46,6 +47,7 @@ class FeatureManager(private val env: FeatureEnv) {
         MarketBannerFeature(),
         MarketSectorCompactFeature(),
         MarketOverviewCompactFeature(),
+        NavBarBlendFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

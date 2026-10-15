@@ -136,6 +136,18 @@ object ConfigKeys {
      */
     const val MARKET_OVERVIEW_COMPACT = "market_overview_compact"
 
+    /**
+     * 手势导航条（小白条）区域填充与紧邻界面一致的颜色。
+     *
+     * 宿主 targetSdk 30、全程非沉浸，导航条那一块由 `DecorView` 按
+     * `window.navigationBarColor` 自己填（解析不出就落回主题 `windowBackground`，
+     * 于是深色模式下是一条纯黑、浅色模式下是一条纯白）。本功能把那一块换成
+     * **从紧邻界面取下来的颜色**，让它融进去。
+     *
+     * 见 [io.github.SansKritO4.GSAuxiliary.feature.navbar.NavBarBlendFeature]。
+     */
+    const val NAV_BAR_BLEND = "nav_bar_blend"
+
     // ---------------------------------------------------------------- 模块设置
 
     /** 日志等级，见 [LogLevel] */
@@ -266,6 +278,13 @@ object ConfigKeys {
     const val DEFAULT_MARKET_SECTOR_COMPACT = false
     const val DEFAULT_MARKET_OVERVIEW_COMPACT = false
 
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
+     * 它是「手势导航条同色」的总开关，出厂默认关，由用户自己按需打开。
+     */
+    const val DEFAULT_NAV_BAR_BLEND = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -290,7 +309,7 @@ object ConfigKeys {
         ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
         STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
-        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT,
+        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -306,7 +325,7 @@ object ConfigKeys {
         arrayOf(
             ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
-            MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT,
+            MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
         )
 
     /**
@@ -332,6 +351,7 @@ object ConfigKeys {
         MARKET_BANNER_HIDE to DEFAULT_MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT to DEFAULT_MARKET_SECTOR_COMPACT,
         MARKET_OVERVIEW_COMPACT to DEFAULT_MARKET_OVERVIEW_COMPACT,
+        NAV_BAR_BLEND to DEFAULT_NAV_BAR_BLEND,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,

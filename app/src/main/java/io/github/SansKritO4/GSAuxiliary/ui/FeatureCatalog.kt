@@ -220,6 +220,18 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
 
     // ---- 显示：只改看到的样子 ----
     FeatureSpec(
+        id = "nav_bar_blend",
+        categoryRes = R.string.category_display,
+        titleRes = R.string.feature_nav_bar_title,
+        summaryRes = R.string.feature_nav_bar_summary,
+        switchTitleRes = R.string.feature_nav_bar_switch,
+        switchSummaryRes = R.string.feature_nav_bar_switch_summary,
+        enableKey = ConfigKeys.NAV_BAR_BLEND,
+        defaultEnabled = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    FeatureSpec(
         id = "watchlist_highlight",
         categoryRes = R.string.category_display,
         titleRes = R.string.feature_watchlist_title,

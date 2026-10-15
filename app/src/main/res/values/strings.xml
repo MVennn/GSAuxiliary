@@ -117,6 +117,12 @@
     <string name="feature_market_overview_switch">市场概览压矮</string>
     <string name="feature_market_overview_switch_summary">市场概览与柱状图高度一并压缩</string>
 
+    <!-- 显示 -->
+    <string name="feature_nav_bar_title">手势导航条同色</string>
+    <string name="feature_nav_bar_summary">屏幕底部的手势导航条区域填充与紧邻界面一致的颜色，深色与浅色模式下都不再是一条生硬的纯黑或纯白</string>
+    <string name="feature_nav_bar_switch">手势导航条同色</string>
+    <string name="feature_nav_bar_switch_summary">底部导航条填充与紧邻界面相同的颜色，不再是一条纯黑或纯白</string>
+
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
     <string name="detail_stg_direct_title">滑动设置</string>

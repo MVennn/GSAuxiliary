@@ -33,6 +33,8 @@ data class ConfigSnapshot(
     val marketSectorCompact: Boolean,
     /** 行情市场「市场概览」整体压矮，柱状图一并压缩 */
     val marketOverviewCompact: Boolean,
+    /** 手势导航条（小白条）区域填充与紧邻界面一致的颜色 */
+    val navBarBlend: Boolean,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -52,7 +54,8 @@ data class ConfigSnapshot(
                 + (if (homeBannerHide) 1 else 0) * 2137
                 + (if (marketBannerHide) 1 else 0) * 2221
                 + (if (marketSectorCompact) 1 else 0) * 2347
-                + (if (marketOverviewCompact) 1 else 0) * 2467)
+                + (if (marketOverviewCompact) 1 else 0) * 2467
+                + (if (navBarBlend) 1 else 0) * 2671)
 
     companion object {
         val DEFAULT = ConfigSnapshot(
@@ -70,6 +73,7 @@ data class ConfigSnapshot(
             marketBannerHide = ConfigKeys.DEFAULT_MARKET_BANNER_HIDE,
             marketSectorCompact = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,
             marketOverviewCompact = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
+            navBarBlend = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
         )
     }
 }

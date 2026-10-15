@@ -392,6 +392,7 @@ Scaffold { padding ->
 | 配置变更通知 | `Feature.onConfigChanged` | 主线程，异常隔离 |
 | 运行时视图注入 | `feature/strategyselect/StgSelectAllFeature.kt` | 往宿主布局里插控件、克隆同款样式、分帧驱动宿主自己的点击回调 —— 想做「加按钮 / 改布局」类功能先看它 |
 | **在宿主页面上动视图（隐藏 / 压缩 / 插入）** | `feature/PageSyncFeature.kt`（调度骨架） | 改视图的**时机**（布局回调 + `OnPreDraw` 首帧屏障）、幂等自愈、限速、失配时打视图树快照、资源 id 预热。界面精简五个功能（`feature/uiclean/`，改动走 `ViewPatcher` 记账）与底栏「智能盯盘」入口（`feature/stockbar/`，插入视图 + 现成判据）都在用它。想做「去掉某一格 / 藏一条横幅 / 压矮某一块 / 往底栏插一个入口」先看它，见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)、[FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) |
+| **窗口属性 / 系统栏** | `feature/navbar/NavBarTint.kt` | 取色（结构合成 + `PixelCopy` 像素校准 + 主题兜底）、上色（`navigationBarColor` + 关强制对比度 + 横杠明暗）与「取色带画在哪」的量法。想改状态栏 / 导航条 / 窗口底色先看它，见 [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) |
 
 ---
 
