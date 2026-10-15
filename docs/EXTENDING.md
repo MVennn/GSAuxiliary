@@ -253,7 +253,7 @@ val features: List<Feature> = listOf(
 ```kotlin
 FeatureSpec(
     id = "watchlist_bold",
-    categoryRes = R.string.category_display,     // 「显示增强」；策略页增强用 category_strategy
+    categoryRes = R.string.category_display,     // 「显示增强」；详见下面的「分区怎么选」
     titleRes = R.string.feature_bold_title,
     summaryRes = R.string.feature_bold_summary,
     switchTitleRes = R.string.feature_bold_switch,
@@ -266,7 +266,8 @@ FeatureSpec(
 )
 ```
 
-> 当前只存在两个分类资源：`category_strategy`（策略页增强）与 `category_display`（显示增强）。
+> 当前只存在三个分类资源：`category_strategy`（策略页增强）、
+> `category_stock_detail`（股票详情页增强）与 `category_display`（显示增强）。
 > 引一个不存在的 `category_*` 会直接编译失败。
 
 开关与「开启后展开二级入口」是 `FeatureTab` 统一渲染的，不用自己写。
@@ -283,21 +284,26 @@ FeatureSpec(
 >
 > 这样「重置模块」才能各归各位：开关一律关掉，参数恢复默认。
 
-**分区怎么选（必读）** —— 功能列表按分区展示，目前两个分区，
+**分区怎么选（必读）** —— 功能列表按分区展示，目前三个分区，
 写 `categoryRes` 前先按下表对号入座（完整判据见 `ui/FeatureCatalog.kt` 顶部注释）：
 
 | 分区 | 一句话判据 | 归属范围 |
 |---|---|---|
-| `R.string.category_strategy` **策略页增强** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、批量加入自选、快捷下单、长按菜单 … |
+| `R.string.category_strategy` **策略页增强** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、长按菜单 … |
+| `R.string.category_stock_detail` **股票详情页增强** | **改变「个股 / 指数详情页」的交互行为** —— 判据同上，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
 | `R.string.category_display` **显示增强** | **只改变看到的样子** —— 颜色、字号、图标、布局、动效，不动交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
 
-判不准时按顺序问：**① 关掉它，用户的操作路径会变吗？**（会 → 策略页增强）
+判不准时按顺序问：**① 关掉它，用户的操作路径会变吗？**（会 → 该页面的「增强」分区）
 **② 挂钩子的是「点击/跳转/数据流」还是「渲染」？**（渲染 → 显示增强）
 **③ 换个不叫「策略页」的页面它还成立吗？**（成立 → 显示增强）
 
+两个交互类分区之间按**功能生效的那个页面**选，一个功能只进一个分区；
+两个页面都成立时归「主战场」那一侧，并在说明里点明另一侧也生效。
+
 > **组内顺序 = `FEATURE_CATALOG` 的出现顺序**（`FeatureTab` 用 `groupBy` 分组，
 > 首次出现的分组排最前）。所以想让某分区排在前面，就把它的一条 `FeatureSpec`
-> 写在前面。**新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
+> 写在前面。分区顺序按「具体页面 → 通用外观」排：策略页 → 股票详情页 → 显示增强。
+> **新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
 > 本表，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`。
 
 ## 二级页 / 全屏页的导航条（小白条）沉浸
@@ -361,7 +367,7 @@ Scaffold { padding ->
 | 能力 | 位置 | 说明 |
 |---|---|---|
 | 反射找类 / 找方法 / 读字段 | `util/Reflect.kt` | 沿继承链查找；`methodsNamed` 自动过滤 abstract 方法 |
-| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。现有三份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets` |
+| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。每加一个功能就多一份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets`、`stgfilter/StgStockFilterTargets`、`stockbar/StockDetailBarTargets` |
 | 自选判定 | `feature/watchlist/ZxWatchlist.kt` | 与行情页同源，20/20 校准过 |
 | 配置读取 | `env.config`（`ConfigSnapshot`） | 内存快照，热路径零 IO |
 | 日志 | `core/GLog.kt` | 两个进程共用，自动选落点 |

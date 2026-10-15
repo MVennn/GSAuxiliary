@@ -395,7 +395,7 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
 
 ## 10. 失效预案（App 升级后怎么办）
 
-如果国信升级后模块不生效，按顺序检查。**三个功能各自带一份候选常量文件，
+如果国信升级后模块不生效，按顺序检查。**每个功能各自带一份候选常量文件，
 互不影响** —— 先看日志判断是哪个功能挂了，再去改对应的那一份：
 
 1. **看 LSPosed 日志**确认模块有没有载入、钩子有没有装上、哪个功能被跳过
@@ -412,6 +412,13 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
 4. **多选栏全选 / 反选** → 改 `feature/strategyselect/StgSelectAllTargets.kt`：
    `CANCEL_BUTTON_ID_CANDIDATES` / `LIST_ID_CANDIDATES` / `CHECKBOX_ID_CANDIDATES` /
    `COUNT_ID_CANDIDATES` / `WATCH_ACTIVITIES`
+5. **策略详情页筛选股票** → 改 `feature/stgfilter/StgStockFilterTargets.kt`
+6. **个股详情页底栏「智能盯盘」入口** → 改 `feature/stockbar/StockDetailBarTargets.kt`：
+   `BOTTOM_BAR_ID_CANDIDATES` / `MORE_TEXT_ID_CANDIDATES` / `MENU_GRID_ID_CANDIDATES` /
+   `MENU_ITEM_TEXT_ID_CANDIDATES` / `MENU_ITEM_TEXT`。
+   「更多」还有**按文字 + 限定在底栏内**的兜底，id 改名一般不用改代码；
+   若面板不再是 `PopupWindow`，日志会明确报出来（见
+   [底栏入口实现说明](FEATURE-STOCK-BAR.md)）
 
 设计上所有关键名字都是**常量数组 + 多级兜底**（每个功能一个 `XxxTargets.kt`），
 就是为了这种时候改一行就能修好。

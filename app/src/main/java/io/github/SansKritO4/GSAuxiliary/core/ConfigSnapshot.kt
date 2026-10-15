@@ -21,6 +21,8 @@ data class ConfigSnapshot(
     val stgSelectAll: Boolean,
     /** 策略详情页三点菜单里注入「筛选股票」（涨幅 / 跌幅 / 自选 三个开关） */
     val stgStockFilter: Boolean,
+    /** 个股详情页底栏在「自选」与「更多」之间注入「智能盯盘」快捷入口 */
+    val stockBarEntry: Boolean,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -34,7 +36,8 @@ data class ConfigSnapshot(
                 + (if (stgDirectQuote) 1 else 0) * 977
                 + (if (stgQuoteSwipe) 1 else 0) * 1231
                 + (if (stgSelectAll) 1 else 0) * 1543
-                + (if (stgStockFilter) 1 else 0) * 1789)
+                + (if (stgStockFilter) 1 else 0) * 1789
+                + (if (stockBarEntry) 1 else 0) * 1877)
 
     companion object {
         val DEFAULT = ConfigSnapshot(
@@ -46,6 +49,7 @@ data class ConfigSnapshot(
             stgQuoteSwipe = ConfigKeys.DEFAULT_STG_QUOTE_SWIPE,
             stgSelectAll = ConfigKeys.DEFAULT_STG_SELECT_ALL,
             stgStockFilter = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
+            stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
         )
     }
 }

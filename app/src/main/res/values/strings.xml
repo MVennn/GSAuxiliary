@@ -54,6 +54,7 @@
     <string name="search_hint"></string>
     <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」 -->
     <string name="category_strategy">策略页增强</string>
+    <string name="category_stock_detail">股票详情页增强</string>
     <string name="category_display">显示增强</string>
     <string name="feature_empty">没有匹配的功能</string>
     <string name="feature_watchlist_title">自选股高亮</string>
@@ -79,6 +80,11 @@
     <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个「筛选股票」，可按涨幅 / 跌幅 / 自选筛掉不看的股票</string>
     <string name="feature_stg_filter_switch">启用「筛选股票」</string>
     <string name="feature_stg_filter_switch_summary">在策略详情页的三点菜单里显示「筛选股票」</string>
+
+    <string name="feature_stock_bar_title">底栏「智能盯盘」入口</string>
+    <string name="feature_stock_bar_summary">个股详情页底栏，「自选」与「更多」之间多一个「智能盯盘」，一点直达，不用再进「更多」里找</string>
+    <string name="feature_stock_bar_switch">启用底栏「智能盯盘」入口</string>
+    <string name="feature_stock_bar_switch_summary">底栏多出一个「智能盯盘」按钮，买卖按钮自动让位</string>
 
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->

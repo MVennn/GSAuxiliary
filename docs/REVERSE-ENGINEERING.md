@@ -257,5 +257,7 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 | 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
 | 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 策略详情页筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
+| 底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 
 完整排查流程见 [排错手册 · App 升级后失效](TROUBLESHOOTING.md#6-app-升级后失效)。

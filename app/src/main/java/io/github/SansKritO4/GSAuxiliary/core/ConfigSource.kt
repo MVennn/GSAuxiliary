@@ -87,6 +87,7 @@ class ConfigSource(private val xposed: XposedInterface) {
                 stgQuoteSwipe = p.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE),
                 stgSelectAll = p.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL),
                 stgStockFilter = p.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER),
+                stockBarEntry = p.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY),
             )
         } catch (t: Throwable) {
             GLog.w("读取配置失败，使用默认值", t)

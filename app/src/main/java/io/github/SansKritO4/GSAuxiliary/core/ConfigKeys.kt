@@ -91,6 +91,15 @@ object ConfigKeys {
      */
     const val STG_STOCK_FILTER = "stg_stock_filter"
 
+    /**
+     * 个股详情页底栏「智能盯盘」快捷入口：在「自选」与「更多」之间注入一个
+     * 「智能盯盘」按钮，把原本埋在「更多」弹层里的那一项提到一级位置。
+     *
+     * 运行时视图注入实现，不改目标 App 源码；见
+     * [io.github.SansKritO4.GSAuxiliary.feature.stockbar.StockDetailBarFeature]。
+     */
+    const val STOCK_BAR_ENTRY = "stock_bar_entry"
+
     // ---------------------------------------------------------------- 模块设置
 
     /** 日志等级，见 [LogLevel] */
@@ -201,6 +210,13 @@ object ConfigKeys {
      */
     const val DEFAULT_STG_STOCK_FILTER = false
 
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
+     * 它是「底栏智能盯盘入口」的总开关，出厂默认关，由用户自己按需打开。
+     */
+    const val DEFAULT_STOCK_BAR_ENTRY = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -223,7 +239,7 @@ object ConfigKeys {
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
-        STG_STOCK_FILTER,
+        STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -235,7 +251,8 @@ object ConfigKeys {
      * 「重置模块」只关闭这些开关（外加把功能参数恢复默认），
      * 不动桌面图标 / 底栏 / 语言 / 深色模式 / 日志等级这类模块级设置。
      */
-    val FEATURE_KEYS = arrayOf(ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER)
+    val FEATURE_KEYS =
+        arrayOf(ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY)
 
     /**
      * 功能自己的参数（不属于开关，但「重置模块」一并恢复默认）。
@@ -254,6 +271,7 @@ object ConfigKeys {
         STG_QUOTE_SWIPE to DEFAULT_STG_QUOTE_SWIPE,
         STG_SELECT_ALL to DEFAULT_STG_SELECT_ALL,
         STG_STOCK_FILTER to DEFAULT_STG_STOCK_FILTER,
+        STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,

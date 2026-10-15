@@ -8,6 +8,7 @@ import io.github.SansKritO4.GSAuxiliary.core.HookBag
 import io.github.SansKritO4.GSAuxiliary.feature.stgfilter.StgStockFilterFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.SansKritO4.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
+import io.github.SansKritO4.GSAuxiliary.feature.stockbar.StockDetailBarFeature
 import io.github.SansKritO4.GSAuxiliary.feature.watchlist.WatchlistFeature
 
 /**
@@ -34,6 +35,7 @@ class FeatureManager(private val env: FeatureEnv) {
         StgDirectQuoteFeature(),
         StgSelectAllFeature(),
         StgStockFilterFeature(),
+        StockDetailBarFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

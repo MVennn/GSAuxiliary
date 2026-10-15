@@ -42,6 +42,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_STG_SWIPE = "stg_quote_swipe"
         const val COL_STG_SELECT_ALL = "stg_select_all"
         const val COL_STG_STOCK_FILTER = "stg_stock_filter"
+        const val COL_STOCK_BAR_ENTRY = "stock_bar_entry"
     }
 
     override fun onCreate(): Boolean {
@@ -72,6 +73,7 @@ class DebugConfigProvider : ContentProvider() {
                 COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
                 COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
                 COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
+                COL_STOCK_BAR_ENTRY,
             )
         ).apply {
             addRow(
@@ -86,6 +88,7 @@ class DebugConfigProvider : ContentProvider() {
                     if (ModulePreferences.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE)) 1 else 0,
                     if (ModulePreferences.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL)) 1 else 0,
                     if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
+                    if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
                 )
             )
         }
@@ -138,6 +141,10 @@ class DebugConfigProvider : ContentProvider() {
             }
             if (values.containsKey(COL_STG_STOCK_FILTER)) {
                 putBoolean(ConfigKeys.STG_STOCK_FILTER, values.getAsInteger(COL_STG_STOCK_FILTER) != 0)
+                n++
+            }
+            if (values.containsKey(COL_STOCK_BAR_ENTRY)) {
+                putBoolean(ConfigKeys.STOCK_BAR_ENTRY, values.getAsInteger(COL_STOCK_BAR_ENTRY) != 0)
                 n++
             }
         }

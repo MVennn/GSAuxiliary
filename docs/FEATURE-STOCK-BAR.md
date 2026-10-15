@@ -1,0 +1,390 @@
+# 个股详情页底栏「智能盯盘」快捷入口 实现方案
+
+> 目标：**个股详情页**底栏原本是 `买 / 卖 / 撤单 / +自选 / 更多`，把「更多」弹层里的
+> **智能盯盘**提到一级位置 —— 在「+自选」与「更多」之间多一颗按钮，一点直达。
+> 买 / 卖的宽度自动让位。
+>
+> 底栏是**自适应**的（个股一套、指数 / 板块另一套），本功能两套都覆盖。
+>
+> 本文的链路与契约**已在真机（魅族 20 / Android 16 / 金太阳 8.6.0 vc271）实测确认**，
+> 依据是 `uiautomator dump` 的控件树 + LSPosed 运行时探针日志，不是推断。
+> **第 8 节记录了实现过程中踩过的坑，改代码前先看那节。**
+
+---
+
+## 0. 结论先行
+
+| 问题 | 答案 |
+|---|---|
+| 底栏在哪个页面 | `com.guosen.quotation.ui.StockFragAct`（个股与指数**同一个 Activity**，底栏内部换形态） |
+| 底栏按钮行是什么 | **`ConstraintLayout`**，id 却叫 `ll_bottom_stk_normal`（名字骗人） |
+| 底栏是自适应吗 | 是。两套按钮**在同一个 `ConstraintLayout` 里靠 visibility 互斥**（另一套是 `GONE`） |
+| 买 / 卖 怎么让位 | 它们是**带权重的链成员**；把「更多」盒子加宽 → 链上剩余空间变少 → 买卖按权重自动各让一半 |
+| 「更多」弹层是什么 | **`PopupWindow`**（`dumpsys window` 里是 `PopupWindow:xxxx`），不是 `Dialog` |
+| 「智能盯盘」在哪 | `GridView #gv_stk_bottom` 的某一项；**位置随页面变**（个股第 2 项、指数第 1 项）→ 必须按文字找 |
+| 点下去去哪 | H5：`action=router_aistare_webview`，`url=earlywarning/?userCode=<账号>&stockCode=<代码>.<市场>&categoryType=2` |
+| 为什么不直接拼 Intent | `url` 带 **`userCode`（账号维度）**，自己拼既不可靠也不合适 → **复用宿主自己的点击路径** |
+| 什么时候注入 | **不能在 `onResume` 一次搞定**：`EngineAct` 的引擎片段异步挂载，底栏要 1～3 秒才出现 |
+
+---
+
+## 1. 实测契约（真机证据）
+
+### 1.1 底栏两套形态
+
+```
+LinearLayout #stk_detial_bottom_bar [0,2205][1080,2335]
+  ├─ ImageView （1px 分隔线）
+  ├─ FrameLayout #ll_bottom_stk                       ← 个股形态；指数形态下 GONE
+  │    └─ ConstraintLayout #ll_bottom_stk_normal      ★ 名字叫 ll_，其实是 ConstraintLayout
+  │         ├─ FrameLayout #fl_buy           clk  链成员·带权重  └ TextView #tv_bottom_buy   "买"
+  │         ├─ FrameLayout #fl_sell          clk  链成员·带权重  └ TextView #tv_bottom_sell  "卖"
+  │         ├─ TextView    #tv_bottom_chedan     clk  链成员·固定宽  "撤单"
+  │         ├─ TextView    #tv_bottom_zx         clk  链成员·固定宽  "+自选"
+  │         ├─ FrameLayout #fl_more          链成员·固定宽 96px
+  │         │    └ TextView #iv_bottom_more      clk            "更多"
+  │         ├─ FrameLayout #fl_bottom_buy_index …  ← 指数形态的一套（个股形态下 GONE）
+  │         └─ FrameLayout #fl_bottom_index_more …
+  └─ LinearLayout #ll_bottom_index                    ← 指数 / 板块形态；个股形态下 GONE
+       ├─ FrameLayout #fl_bottom_buy_index clk 链成员·带权重 └ TextView #tv_bottom_buy_index "买指数基金"
+       ├─ TextView    #tv_bottom_index_change_zx  clk 固定宽 "+自选"
+       └─ FrameLayout #fl_bottom_index_more 固定宽
+            └ TextView #iv_bottom_index_more    clk            "更多"
+```
+
+> ⚠️ 两套形态的「更多」**id 不一样**（`iv_bottom_more` / `iv_bottom_index_more`），
+> 「自选」也不一样。锚点、样式克隆都要走**候选 id 数组**，并**取当前 `isShown` 的那个**。
+>
+> ⚠️ `uiautomator` 会把 `ConstraintLayout` 报成 `ViewGroup` —— **别信它的类名**，
+> 以运行期日志打出来的类名为准。
+
+### 1.2 买 / 卖 是带权重的链成员 —— 改屏宽实测
+
+把屏宽从 1080 改成 900（`wm size 900x2400`）后重新 dump：
+
+| 控件 | 1080 宽 | 900 宽 | 结论 |
+|---|---:|---:|---|
+| `#fl_buy` | 321 px | 231 px | **带权重**（跟着链上剩余空间走） |
+| `#fl_sell` | 320 px | 230 px | **带权重** |
+| `#tv_bottom_chedan` | 96 px | 96 px | 固定宽（≈37dp） |
+| `#tv_bottom_zx` | 96 px | 96 px | 固定宽 |
+| `#fl_more` | 96 px | 96 px | 固定宽 |
+
+两两验证：1080 → 900 少了 180 px，买 / 卖恰好各少 90 px（= 180 / 2）。
+
+### 1.3 「更多」弹层 = PopupWindow
+
+```
+Window #13 Window{1ab10db u0 PopupWindow:99f9dea}:
+  mParentWindow=Window{2df417 u0 com.guosen.android/com.guosen.quotation.ui.StockFragAct}
+  frame=[Rect(0, 1724 - 1080, 2335)]
+```
+
+内容（个股页）：
+
+```
+FrameLayout (popup content)
+  LinearLayout
+    LinearLayout （笔记行：iv_memo_edit_by_voice / tv_memo_edit_by_text / tv_go_stock_memo）
+    GridView #gv_stk_bottom [0,1674][1080,2077]
+      条件单 / 智能盯盘 / 智能K线 / 产业链      ← 第 1 行
+      区间统计 / 交易明细 / 股票PK              ← 第 2 行
+    LinearLayout （设置 / 切换信用交易 / 分享）
+    FrameLayout  （取消 #iv_close）
+```
+
+每一项的结构固定：
+
+```
+FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
+```
+
+**指数页只有 2 项**（智能盯盘 / 区间统计），且**智能盯盘排第 1**；
+个股页它排第 2。→ 定位必须**按文字**，不能按下标。
+
+### 1.4 「智能盯盘」的落点（探针原样输出）
+
+```
+========== LAUNCH ==========
+来自页面: com.guosen.quotation.ui.StockFragAct
+  [LAUNCH] to = com.guosen.android  action = router_aistare_webview  flags = 0x0
+       extras(2):
+         url : java.lang.String = earlywarning/?userCode=24614842872980480&stockCode=000001.2&categoryType=2
+         node_level : java.lang.Integer = 4
+       stack: EngineFrag#startEngineActForResult:399
+              <- EngineFrag#startEngineAct:379
+              <- StockDetailFrag$34#onItemClick:6289
+```
+
+落到 `com.guosen.quotation.aistare.ui.AIStareWebView`（H5 容器）。
+
+`url` 里的 `userCode` 是**账号维度**的，模块去拼这个串既不可靠也不合适
+（而且它随登录态变化）。**所以本功能不拼 Intent，只复用宿主自己的点击路径。**
+
+---
+
+## 2. 实现方案
+
+### 2.1 布局怎么让位：**不碰约束，只加宽「更多」的盒子**
+
+底栏是 `ConstraintLayout`，直觉上「插一个固定宽子 View，买卖就自动让位」是**错的**
+（见 §8.1）。改成改约束也能跑，但**极脆**（见 §8.2）。
+
+最终方案：**把「更多」那个盒子 `#fl_more` 加宽**。它本身就是链上的固定宽成员，
+加宽它 → 链上剩余空间变少 → 买卖按权重自动各让一半。然后把新按钮和原来的「更多」
+并排塞进这个盒子里：
+
+```
+#fl_more  (96px → wrap_content，变宽 = 买卖让位)
+  └ LinearLayout(横向, gravity=center_vertical)
+       ├ 我们的「智能盯盘」按钮        （克隆「更多」的样式，独立 id / tag）
+       └ 原来的「更多」TextView        （原样搬过来，点击行为完全不变）
+```
+
+关开关时**逆向还原**：把「更多」搬回盒子、盒子宽度改回原值、删掉容器。
+现场记录在 `Injected(box, holder, moreText, button, originalBoxWidth, iconW, iconH)`，
+`onConfigChanged` 拿到 `false` 就逐个 `detach`。
+
+**实测数字**（1080 宽屏）：
+
+| 控件 | 注入前 | 注入后 |
+|---|---:|---:|
+| `#fl_buy` | 321 px | **246 px** |
+| `#fl_sell` | 320 px | **245 px** |
+| `#fl_more` | 96 px | **246 px** |
+| 我们的按钮 | — | 124 px（`[808,2216][932,2326]`） |
+| `#iv_bottom_more` | 96 px | 96 px（`[958,2216][1054,2326]`） |
+
+### 2.2 自适应个股 / 指数：只锚「当前可见的那个『更多』」
+
+两套形态在同一个 `ConstraintLayout` 里靠 visibility 互斥。锚点取
+**`isShown` 的那个「更多」**，它的父容器就是「更多」的盒子 ——
+个股形态（`fl_more`）与指数形态（`fl_bottom_index_more`）走同一段代码，
+**不需要判断页面类型**。
+
+### 2.3 点击：复用宿主路径（三步接力）
+
+```
+用户点我们注入的按钮
+  │
+  ├─ pendingClick / inFlight = 本次代次（inFlight 活到面板关掉为止）
+  ├─ 抓宿主窗口快照（alpha / dimAmount）
+  ├─ moreText.performClick()                    → 宿主弹出「更多」面板
+  │
+  ├─ WindowManagerGlobal.updateViewLayout 钩子（全程）
+  │    └─ inFlight 非 0 且改的是本页 decorView
+  │         → 把 alpha / dimAmount 夹回快照值      ← ★ 宿主调暗在这里被拦下，一帧都不画
+  │
+  └─ PopupWindow 显示钩子被触发
+       ├─ 认领（代次非 0）且**确认这是更多面板**（能同步找到 #gv_stk_bottom）
+       ├─ 整个弹层 rootView.alpha = 0f           → 用户一帧都看不到
+       ├─ 重试直到 GridView 子项出现（下一帧 measure/layout 才有）
+       ├─ 按**文字**「智能盯盘」找到 TextView → 上溯到 GridView 的直接子项
+       ├─ grid.performItemClick(...)            → 与用户手点那一项完全同一条路径
+       └─ rootView.alpha = 1f; popup.dismiss(); inFlight = 0
+```
+
+**为什么要 `rootView.alpha = 0f` 而不是只设 `contentView`**：`PopupWindow` 在
+`mBackground != null` 时会套一层 `PopupBackgroundView`，那层背景**独立于内容**，
+只设 `contentView` 的 alpha 它照样画出来。
+
+**为什么不能直接同步点**：`PopupWindow.show()` 只把窗口挂上去，
+`GridView` 的子项要等下一帧 measure/layout 之后才存在 ——
+`show()` 返回时 `grid.childCount == 0`。所以必须重试（16ms × 12 次）。
+面板全程 `alpha = 0`，重试期间用户什么都看不到。
+
+**为什么必须先确认是更多面板**：`PopupWindow` 在 App 里到处都是，
+只凭「我们刚点过更多」就认领会误伤别的弹层。`#gv_stk_bottom` 是更多面板的指纹，
+而且 `findViewById` 在布局前就能命中，**可以同步判断**。
+
+**为什么必须用 `performItemClick`**：宿主的点击是挂在 `GridView` 上的
+`OnItemClickListener`（探针栈 `StockDetailFrag$34#onItemClick` 就是它），
+面板项容器本身**不保证 `clickable`** —— 往上找可点击祖先会直接落空（见 §8.3）。
+
+**幂等与超时**：标记存的是**代次**而不是布尔，点击与超时兜底各拿各的代次
+`compareAndSet`，避免「上一次的超时任务清掉下一次的标记」。
+1.5s 等不到面板就清标记，绝不劫持用户下一次手点「更多」。
+
+### 2.4 注入时机：以「注入成功」为准的有限重试
+
+`StockFragAct` 继承 `EngineAct`，引擎片段是**异步挂载**的。实测：
+
+```
+底栏入口[diag]：onResume com.guosen.quotation.ui.StockFragAct barId=2132481425
+底栏入口[diag]：findViewById -> null
+```
+
+`onResume` 那一刻底栏**还不存在**（而且底栏容器出现之后，里面的按钮还要再晚一点才齐）。
+所以：
+
+```
+Activity.onResume
+  ├─ 开关关着 → removeAllInjected()（还原），结束
+  ├─ 页面类名不在 WATCH_ACTIVITIES 里 → 直接 return   ← ★ 门禁，见下
+  └─ scheduleInject(root = decorView, attempt = 0)
+       ├─ 找底栏（找不到 → postDelayed 100ms 重试，最多 60 次 ≈ 6s）
+       ├─ 找「更多」（找不到 → 同样重试）
+       └─ 注入成功 → 结束
+```
+
+**门禁（2.14.0 起）**：`onResume` 挂在 `android.app.Activity` 上，进程里**每个**页面
+都会走到这里。不加门禁时，H5、资讯、首页这类页面每次都要白跑 60 次 × 100ms 的重试，
+最后再打一条「重试 60 次仍没等到可注入的底栏」的警告 —— 纯噪音，而且会把
+**真正**「详情页注入失败」的信号淹没。所以先按页面类名短路
+（`StockDetailBarTargets.isWatchActivity`，与 `StgSelectAllFeature` /
+`StgStockFilterFeature` 同一套写法）。代价是 App 若改了 `StockFragAct` 的类名，
+注入会**静默失效** —— 但那种情况下底栏的资源 id 基本也一起变了，本来就得重新侦察（§7）。
+
+用 `activity.window.decorView` 而不是 `activity.findViewById`：
+`EngineAct` 对 `findViewById` 有自己的一套（实测拿不到底栏）。
+
+### 2.5 图标：隐形采一次，按「更多」的尺寸缩放
+
+底栏按钮是「图标在上、文字在下」的样式，图标来自面板那一项自带的 `drawableTop`。
+注入后**异步隐形开一次面板**把图标取回来，取到就套到所有已注入的按钮上。
+两个坑见 §8.4：`setCompoundDrawables` 不设 bounds 画不出来；面板里的图标比底栏的大，
+不按「更多」图标的尺寸缩放会把文字顶掉。
+
+采集只在**每个进程一次**，失败会复位、允许下次重试。
+
+---
+
+## 3. 降级链
+
+`注入按钮 + 接力点击`（完整）
+→ `图标采集失败` → 纯文字按钮（功能不受影响）
+→ 面板拦不到 → 点按钮无反应（原版「更多」仍可用），日志明确报
+→ 关开关 → 底栏完全恢复原版。
+
+---
+
+## 4. 模块侧改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `feature/stockbar/StockDetailBarTargets.kt`（新增） | 全部候选 id / 文案 / 契约常量 + 实测说明 |
+| `feature/stockbar/StockDetailBarFeature.kt`（新增） | 功能本体：注入 + 接力点击 + 图标采集 |
+| `feature/FeatureManager.kt` | `features` 列表加一行 |
+| `core/ConfigKeys.kt` | 加 `STOCK_BAR_ENTRY` / `DEFAULT_STOCK_BAR_ENTRY`，进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
+| `core/ConfigSnapshot.kt` | 加 `stockBarEntry` 字段 + 进 `fingerprint`（乘数 1877） |
+| `core/ConfigSource.kt` | `read()` 补一行 |
+| `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`，分区 `category_stock_detail`（**股票详情页增强**，无二级菜单） |
+| `app/DebugConfigProvider.kt` | 加 `stock_bar_entry` 列（开发期脚本化开关） |
+| `res/values/strings.xml`、`values-en/strings.xml` | 新增 `category_stock_detail`（股票详情页增强 / Stock detail page enhancements） |
+| `res/values/strings.xml` + `values-en/strings.xml` | 中英文案 |
+
+**不动**：`GszxModule.kt`、其它四个功能、`ConfigKeys.GROUP`、`scope.list`、
+`SettingsActivity`（无二级页，不需要新路由）。
+
+---
+
+## 5. 风险与降级
+
+| 风险 | 概率 | 对策 |
+|---|---|---|
+| App 升级后 id 改名 | 中 | 全部进候选数组；「更多」还有**按文字 + 限定在底栏内**的兜底 |
+| App 升级后承载页改名（`StockFragAct`） | 中 | 注入门禁按类名短路 → **静默失效**（不再打日志）。改类名时资源 id 基本也一起变，按 §7 重新侦察即可 |
+| 「更多」盒子不再是 FrameLayout | 低 | 直接 `addView` 到盒子里；盒子类型不影响「加宽让位」这个机制 |
+| 面板不是 `PopupWindow` 了 | 低 | 注入仍生效，只是点击退化成「点更多 → 用户自己点」；日志会明确报 |
+| 底栏挂载超过 6s | 低 | 日志报「重试 N 次仍没等到」；重进页面会重新触发 |
+| 影响原版稳定性 | — | 所有视图操作包 `runCatching`；非「更多面板」的 `PopupWindow` 一个字节都不碰 |
+
+---
+
+## 6. 验收标准（均已真机通过）
+
+| # | 验证项 | 结果 |
+|---|---|---|
+| 1 | 个股页底栏出现「智能盯盘」，位置在「+自选」与「更多」之间 | ✅ `[808,2216][932,2326]`，夹在 `tv_bottom_zx` 与 `iv_bottom_more` 中间 |
+| 2 | 买 / 卖 变窄，底栏不换行不溢出 | ✅ 321/320 → 246/245 |
+| 3 | 点它直接进 `AIStareWebView`，过程看不到面板闪出 | ✅ 日志「已触发『智能盯盘』(position=1)」，弹层全程 alpha=0 |
+| 3b | **全程不闪黑**（50fps 录屏逐帧测整屏亮度） | ✅ 底栏页恒定 46.8，点下去直接进转场淡出；旧版会先掉到 **34.7**（−26%）持续 **7 帧 ≈56ms** |
+| 4 | 指数 / 板块页（买指数基金）同样出现，位置一致 | ✅ 买指数基金变窄，按钮在 +自选 与 更多 之间 |
+| 5 | 原版「更多」行为零变化 | ✅ 手点仍弹出全部 7 项（条件单 / 智能盯盘 / 智能K线 / 产业链 / 区间统计 / 交易明细 / 股票PK） |
+| 6 | 关开关 → 立即恢复原版，无需重启 | ✅ 买指数基金恢复全宽，按钮消失 |
+| 7 | 无新增崩溃 | ✅ `logcat -b crash` 中 `com.guosen.android` 计数 0 |
+
+---
+
+## 7. 复现侦察的步骤（App 升级后照做）
+
+```bash
+# 1. 进个股详情页（行情页右上角搜索 → 输 600000 → 点第一行）
+bash tools/ui.sh tapxy 1007 173
+bash tools/ui.sh tap "浦发银行"
+
+# 2. dump 底栏（换屏宽对比带权重 / 固定宽）
+bash tools/adbw.sh shell "wm size 900x2400"; bash tools/ui.sh list; bash tools/adbw.sh shell "wm size reset"
+
+# 3. 点「更多」，dump 面板结构 + 确认窗口类型
+bash tools/adbw.sh shell "input tap 1006 2271"
+bash tools/adbw.sh shell "dumpsys window windows | grep -i popup"
+bash tools/ui.sh list
+
+# 4. 点面板里的「智能盯盘」，从探针日志拿 Intent 契约
+bash tools/adbw.sh logcat -c
+bash tools/adbw.sh shell "input tap 135 1947"
+bash tools/adbw.sh logcat -d -v brief | grep -A14 "LAUNCH"
+```
+
+拿到之后按功能改对应的候选常量文件：
+
+| 功能 | 改哪里 |
+|---|---|
+| 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
+| 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
+| 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 策略详情页筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
+| **底栏智能盯盘入口** | `feature/stockbar/StockDetailBarTargets.kt` |
+
+---
+
+## 8. 实测踩过的坑（改代码前先读）
+
+1. **`ConstraintLayout` 里不带约束的子视图不参与链的测量。**
+   直接 `addView` 一个固定宽按钮，它会被丢在容器左上角（`[0,2216][124,2326]`），
+   买 / 卖 一个像素都不让。所以「插一个按钮买卖就自动让位」这个直觉是错的。
+
+2. **改约束的路子极脆。** 试过「克隆『更多』的 LP + 把前后两个邻居的约束改接过来」，
+   实测只要有一处没接上，整条链就散架：买 / 卖被压成 0 宽、新按钮和「更多」叠在一起。
+   **最后改用「只加宽『更多』盒子」**，不碰任何约束字段。
+
+3. **面板项没有可点击祖先。** 宿主的点击挂在 `GridView` 的 `OnItemClickListener` 上，
+   项容器本身不保证 `clickable`。往上找可点击祖先会直接落空，
+   日志表现为 `「智能盯盘」项不可点击`。必须走 `performItemClick`。
+
+4. **图标两个坑**：
+   - `setCompoundDrawables` **不会**给 drawable 设 bounds → 图标拿到了但画不出来；
+     要么用 `setCompoundDrawablesWithIntrinsicBounds`，要么显式 `setBounds`。
+   - 面板里的图标**比底栏的大**，直接套会把底栏文字顶掉（文字被裁一半）。
+     要按「更多」图标的尺寸缩放。
+
+5. **`uiautomator dump` 一次只给「当前可见」的节点。** 第一次 dump 个股页的「更多」面板时
+   只看到第 2 行（区间统计 / 交易明细 / 股票PK），差点得出「个股页没有智能盯盘」的错误结论
+   —— 截图一看，第 1 行明明白白有「智能盯盘」。**dump 与截图要对着看。**
+
+6. **别全树按文字找「更多」**：K 线周期栏里也有一个「更多」（分时 / 五日 / 日K / 周K / 月K / 更多）。
+   按文字兜底时**必须先限定在底栏容器内**。
+
+7. **`wm size` 是判断「带权重」还是固定宽的最快手段**，比猜布局快得多，记得 `wm size reset`。
+
+8. **`Activity.findViewById` 在 `EngineAct` 上拿不到底栏**，要用
+   `activity.window.decorView.findViewById`。
+
+9. **「闪一下黑」= 宿主把 Activity 窗口调暗了，且调暗发生在 `show()` 返回之后。**
+   实测宿主走 `WindowManager.LayoutParams.alpha = 0.6f`（`dimAmount` 恒为 1.0，
+   flags 里没有 `DIM_BEHIND`，所以只有 `alpha` 是有效杠杆）。
+   坑在于**时序**：`onPopupShown` 里读到的还是 1.0（还原空转），
+   等我们下一帧 `dismiss()` 时宿主自己又还原成 1.0（第二次还原也读到 1.0）——
+   **两条还原日志都不会打**，看着像「什么都没发生」，但那 2~3 帧已经被画出来了。
+   判据：录屏逐帧测整屏亮度，会看到「掉下去 → 立刻弹回来」的方波（46.8 → 34.7 → 46.7）。
+   **事后还原治不了，只能不让它落地**：挂 `WindowManagerGlobal.updateViewLayout`
+   （`Window.setAttributes` 与 `WindowManager.updateViewLayout` 的唯一漏斗），
+   在我们自己那轮的代次里把 `alpha` / `dimAmount` 夹回快照值。
+   直接改 `LayoutParams` 对象本身即可（它与窗口共用），**别动 `flags`**。
+
+10. **判断「到底谁把屏幕弄暗的」用分区测亮度**：`ffmpeg` 的 `crop + signalstats`。
+    实测状态栏区（y 0–80）与图表区一起变暗、最底下手势条区（y 2340–2400）**不变** ——
+    说明是**应用窗口**被调暗，不是弹层盖了一层黑纱，也不是屏幕整体变暗。
+
+11. `adb` 的无线调试会掉线（`adb server` 被回收），所有设备操作走 `tools/adbw.sh`（自动重连）。

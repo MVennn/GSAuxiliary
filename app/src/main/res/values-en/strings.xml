@@ -53,6 +53,7 @@
     <string name="search_hint"></string>
     <!-- Feature sections: see the rule at the top of ui/FeatureCatalog.kt -->
     <string name="category_strategy">Strategy page enhancements</string>
+    <string name="category_stock_detail">Stock detail page enhancements</string>
     <string name="category_display">Display enhancements</string>
     <string name="feature_empty">No matching features</string>
     <string name="feature_watchlist_title">Watchlist highlight</string>
@@ -78,6 +79,11 @@
     <string name="feature_stg_filter_summary">Adds a "Filter stocks" item to the strategy detail top-right menu, filtering by gain / loss / watchlist</string>
     <string name="feature_stg_filter_switch">Enable "Filter stocks"</string>
     <string name="feature_stg_filter_switch_summary">Show "Filter stocks" in the strategy detail three-dot menu</string>
+
+    <string name="feature_stock_bar_title">Bottom bar "Smart Watch" entry</string>
+    <string name="feature_stock_bar_summary">Adds a "Smart Watch" entry between "+Watchlist" and "More" on the stock detail bottom bar, one tap instead of digging into "More"</string>
+    <string name="feature_stock_bar_switch">Enable bottom bar "Smart Watch" entry</string>
+    <string name="feature_stock_bar_switch_summary">Show a "Smart Watch" button on the bottom bar; the buy/sell buttons give up the space</string>
 
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only -->
