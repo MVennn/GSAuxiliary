@@ -65,7 +65,7 @@
         -->
         <provider
             android:name=".app.DebugConfigProvider"
-            android:authorities="gsauxiliary.m.venn.config"
+            android:authorities="io.github.SansKritO4.GSAuxiliary.config"
             android:exported="true"
             android:enabled="true"
             android:grantUriPermissions="true"

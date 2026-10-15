@@ -11,7 +11,7 @@
 
 ```
 ┌─────────────────────────────────────┐    ┌─────────────────────────────────────┐
-│ gsauxiliary.m.venn（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
+│ io.github.SansKritO4.GSAuxiliary（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
 │                                     │    │                                     │
 │ ui/SettingsActivity.kt  ← 路由       │    │ GszxModule.kt      ← 被注入执行      │
 │   ├─ ui/{Dock,Glass,AppDialog,      │    │   └─ FeatureManager                  │
@@ -394,7 +394,7 @@ autoHotReload=true
 **`java_init.list`**
 
 ```
-gsauxiliary.m.venn.GszxModule
+io.github.SansKritO4.GSAuxiliary.GszxModule
 ```
 
 **`scope.list`**
@@ -434,7 +434,7 @@ com.guosen.android
     <!-- 仅 adb 调试用，不参与运行期配置读取 -->
     <provider
         android:name=".app.DebugConfigProvider"
-        android:authorities="gsauxiliary.m.venn.config"
+        android:authorities="io.github.SansKritO4.GSAuxiliary.config"
         android:exported="true" />
 </application>
 ```

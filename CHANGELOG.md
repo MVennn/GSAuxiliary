@@ -11,6 +11,25 @@
 自带筛选组件 UI** 的面板，用「涨幅 / 跌幅 / 自选」三个开关把不想看的股票行筛掉，
 筛选状态存在本地、重启仍在。
 
+### 包名变更（重要）
+
+- **`gsauxiliary.m.venn` → `io.github.SansKritO4.GSAuxiliary`**。
+  原因：LSPosed 模块仓库已升级为自动审批模式 —— 新模块的包名须能证明域名控制权，
+  否则必须使用 `io.github.{GitHub 用户名}.{模块名}` 前缀（其校验为
+  `pkg.toLowerCase().startsWith("io.github." + username.toLowerCase() + ".")`）。
+  反向域名的旧包名会被直接判为 invalid。
+- **影响面**：改名后是一个**全新的应用**。LSPosed 会把它当作新模块，需重新勾选作用域；
+  模块本地配置（免责声明同意状态、桌面图标开关等）会重置。
+  2.13.0 之前**未发布过任何 Release**，因此除作者本机外没有存量用户。
+- 同步改动：`namespace` / `applicationId`、全部 Kotlin 的 `package` 与 `import`、
+  源码目录结构（`java/io/github/SansKritO4/GSAuxiliary/`）、
+  `META-INF/xposed/java_init.list` 的入口类、`proguard-rules.pro` 的 keep 规则、
+  `DebugConfigProvider` 的 authority（`<包名>.config`）、
+  `tools/` 脚本的 `MODULE_PKG`，以及 README / docs 里的全部引用。
+- `tools/glog.sh --module` 的过滤串随之由 `gsauxiliary` 改为 **`GSAuxiliary`** ——
+  该过滤是**大小写敏感的裸子串匹配**，旧串在新包名里匹配不到。
+- CHANGELOG 中 2.12.1 及更早的历史条目**保留旧包名不改**（它们描述的是当时的事实）。
+
 ### 变更
 
 - **新增功能 `stg_stock_filter`「策略筛选股票」**（`feature/stgfilter/` 四个新文件 +

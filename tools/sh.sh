@@ -5,7 +5,7 @@
 # 用法:
 #   bash tools/sh.sh "ls -la /sdcard"
 #   bash tools/sh.sh --root "ls -la /data/adb/lspd/log"
-#   bash tools/sh.sh --pkg  "dumpsys package gsauxiliary.m.venn"
+#   bash tools/sh.sh --pkg  "dumpsys package io.github.SansKritO4.GSAuxiliary"
 #
 # 注意:
 #   --root 的实现是 su -c '<cmd>'，所以 <cmd> 里**不能出现单引号**，

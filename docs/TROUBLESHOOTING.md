@@ -70,7 +70,7 @@ GSZXEnhance: 功能安装完成：3/3，共 N 个钩子
 adb shell su -c "grep -i gszx /data/adb/lspd/log/modules_*.log | head -5"
 
 # 2) 确认配置写进去了（adb 调试通道，仅 root/shell 可用）
-adb shell su -c "content query --uri content://gsauxiliary.m.venn.config/config"
+adb shell su -c "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
 ```
 
 也可以直接看设置界面「**概览**」页：顶部状态卡会显示**框架连接状态**，一眼能看出问题。
@@ -100,7 +100,7 @@ adb shell su -c "content query --uri content://gsauxiliary.m.venn.config/config"
    ```
 2. 确认开关是开的：
    ```bash
-   bash tools/sh.sh "content query --uri content://gsauxiliary.m.venn.config/config"
+   bash tools/sh.sh "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
    # enabled=1 才对
    ```
 3. 用自动校验脚本看实际颜色：
@@ -159,7 +159,7 @@ adb shell su -c "content query --uri content://gsauxiliary.m.venn.config/config"
 
 ```bash
 # 1) 看配置写没写进去
-bash tools/sh.sh "content query --uri content://gsauxiliary.m.venn.config/config"
+bash tools/sh.sh "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
 
 # 2) 看目标进程的配置通道状态
 bash tools/sh.sh --root "grep '配置通道' /data/adb/lspd/log/modules_*.log | tail -3"

@@ -12,7 +12,7 @@
 | `PYTHON` | python 可执行文件全路径 |
 | `FFMPEG` | ffmpeg 可执行文件全路径（取色用） |
 | `TARGET_PKG` | 目标 App 包名，默认 `com.guosen.android` |
-| `MODULE_PKG` | 模块包名，默认 `gsauxiliary.m.venn` |
+| `MODULE_PKG` | 模块包名，默认 `io.github.SansKritO4.GSAuxiliary` |
 | `ADB_WIFI_TARGET` | 无线调试地址，如 `192.168.1.10:5555` |
 
 ---
@@ -148,7 +148,7 @@ python tools/enable_lsposed.py <modules_config.db> <module_pkg> <apk_path> <targ
 ```bash
 adb shell su -c "cp /data/adb/lspd/config/modules_config.db /sdcard/mc.db"
 adb pull /sdcard/mc.db
-python tools/enable_lsposed.py mc.db gsauxiliary.m.venn /data/app/.../base.apk com.guosen.android 0
+python tools/enable_lsposed.py mc.db io.github.SansKritO4.GSAuxiliary /data/app/.../base.apk com.guosen.android 0
 adb push mc.db /sdcard/mc.db
 adb shell su -c "cp /sdcard/mc.db /data/adb/lspd/config/modules_config.db"
 ```
@@ -162,14 +162,24 @@ adb shell su -c "cp /sdcard/mc.db /data/adb/lspd/config/modules_config.db"
 
 ## gen_launcher_icons.py ★
 
-生成 launcher 图标的**位图回退资源**（`app/src/main/res/mipmap-{mdpi..xxxhdpi}/`）。
-
-自适应图标（`mipmap-anydpi-v26`）只在 API 26+ 生效，低版本和部分第三方桌面
-仍会读 `mipmap-*dpi` 的 PNG，所以这些位图必须存在。
+生成 launcher 图标的**位图回退资源**（`app/src/main/res/mipmap-{mdpi..xxxhdpi}/`），
+以及仓库用的**大尺寸图标**。
 
 ```bash
 python tools/gen_launcher_icons.py
 ```
+
+产出四类文件：
+
+| 产物 | 尺寸 | 用途 |
+|---|---|---|
+| `res/mipmap-{mdpi..xxxhdpi}/ic_launcher.png` | 48 / 72 / 96 / 144 / 192 | launcher 位图回退 |
+| `res/mipmap-{mdpi..xxxhdpi}/ic_launcher_round.png` | 同上 | 圆形变体（多套一层圆形遮罩） |
+| `docs/logo.png` | **512** | README 顶部的仓库 logo |
+| `docs/icon.svg` | 矢量 | 与位图同源；提交到 LSPosed 模块仓库当模块图标用 |
+
+自适应图标（`mipmap-anydpi-v26`）只在 API 26+ 生效，低版本和部分第三方桌面
+仍会读 `mipmap-*dpi` 的 PNG，所以这些位图必须存在。
 
 图案是「圆角方形 + 竖向渐变底 + 金色上升折线 + 右上箭头」（简约苹果风格），
 **必须与下面两个矢量文件逐项一致**：
@@ -179,7 +189,8 @@ python tools/gen_launcher_icons.py
 
 脚本顶部的 `BG_TOP` / `BG_BOTTOM` / `LINE_TOP` / `LINE_BOTTOM` /
 `POLYLINE` / `ARROW` / `STROKE` / `CORNER` 就是这份对照表，
-**改了一边就要改另一边**。
+**改了一边就要改另一边**。`docs/icon.svg` 由 `svg_text()` 用同一批常量生成，
+所以四种产物不会各走各的。
 
 实现要点：
 
@@ -299,7 +310,7 @@ python tools/uidump.py ui.xml --find-class EditText
 bash tools/glog.sh mark                        # 记录当前行数
 # …在设备上操作…
 bash tools/glog.sh tail                        # 打印新增行（默认只留探针的行）
-bash tools/glog.sh tail --module gsauxiliary   # 只看主模块
+bash tools/glog.sh tail --module GSAuxiliary   # 只看主模块
 bash tools/glog.sh tail --module all           # 不过滤
 bash tools/glog.sh rlog                        # 只看日志文件路径
 ```

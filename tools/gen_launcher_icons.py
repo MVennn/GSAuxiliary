@@ -58,6 +58,9 @@ LINE_GRAD_TO = (77.0, 37.5)
 
 SS = 4              # 超采样倍率，用于抗锯齿
 
+# 仓库用图标边长（README 顶部 / LSPosed 模块仓库）。2 的幂，缩放无半像素抖动。
+REPO_LOGO_PX = 512
+
 
 def write_png(path, w, h, rgba):
     raw = bytearray()
@@ -205,9 +208,50 @@ def render(size, round_mask):
     return out
 
 
+def svg_text():
+    """与位图**同源**的矢量版图标，供仓库 README 与 LSPosed 模块仓库使用。
+
+    数值全部来自本文件顶部那几个常量，以及
+    `res/drawable/ic_launcher_{background,foreground}.xml` —— 改一边就要改另一边。
+
+    与 drawable 的差别只有一处：drawable 的背景是**直角**铺满 108×108，
+    圆角由自适应图标的 mask 提供；这里作为独立图标使用，所以按 [CORNER] 自己圆角。
+    """
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" '
+        'width="512" height="512" role="img" aria-label="GSAuxiliary">\n'
+        '  <defs>\n'
+        '    <linearGradient id="bg" gradientUnits="userSpaceOnUse" '
+        'x1="54" y1="0" x2="54" y2="108">\n'
+        '      <stop offset="0" stop-color="#%02X%02X%02X"/>\n'
+        '      <stop offset="1" stop-color="#%02X%02X%02X"/>\n'
+        '    </linearGradient>\n'
+        '    <linearGradient id="line" gradientUnits="userSpaceOnUse" '
+        'x1="%g" y1="%g" x2="%g" y2="%g">\n'
+        '      <stop offset="0" stop-color="#%02X%02X%02X"/>\n'
+        '      <stop offset="1" stop-color="#%02X%02X%02X"/>\n'
+        '    </linearGradient>\n'
+        '  </defs>\n'
+        '  <rect x="0" y="0" width="108" height="108" rx="%g" ry="%g" fill="url(#bg)"/>\n'
+        '  <path d="%s M%s" fill="none" stroke="url(#line)" stroke-width="%g"\n'
+        '        stroke-linecap="round" stroke-linejoin="round"/>\n'
+        '</svg>\n'
+    ) % (
+        BG_TOP[0], BG_TOP[1], BG_TOP[2],
+        BG_BOTTOM[0], BG_BOTTOM[1], BG_BOTTOM[2],
+        LINE_GRAD_FROM[0], LINE_GRAD_FROM[1], LINE_GRAD_TO[0], LINE_GRAD_TO[1],
+        LINE_TOP[0], LINE_TOP[1], LINE_TOP[2],
+        LINE_BOTTOM[0], LINE_BOTTOM[1], LINE_BOTTOM[2],
+        CORNER, CORNER,
+        "M" + " L".join("%g,%g" % p for p in POLYLINE),
+        " L".join("%g,%g" % p for p in ARROW),
+        STROKE,
+    )
+
+
 def main():
-    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "app", "src", "main", "res")
-    root = os.path.normpath(root)
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.normpath(os.path.join(here, "..", "app", "src", "main", "res"))
 
     # 密度 -> 边长（launcher icon 标准尺寸）
     densities = {
@@ -224,6 +268,18 @@ def main():
         write_png(os.path.join(d, "ic_launcher.png"), size, size, render(size, False))
         write_png(os.path.join(d, "ic_launcher_round.png"), size, size, render(size, True))
         print("wrote mipmap-%s (%dpx)" % (name, size))
+
+    # 仓库用的大尺寸图标 —— README 顶部与 LSPosed 模块仓库共用同一份设计。
+    # 512 是 2 的幂，缩放到任意尺寸都不会有半像素抖动。
+    docs = os.path.normpath(os.path.join(here, "..", "docs"))
+    os.makedirs(docs, exist_ok=True)
+    write_png(os.path.join(docs, "logo.png"), REPO_LOGO_PX, REPO_LOGO_PX,
+              render(REPO_LOGO_PX, False))
+    print("wrote docs/logo.png (%dpx)" % REPO_LOGO_PX)
+
+    with open(os.path.join(docs, "icon.svg"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(svg_text())
+    print("wrote docs/icon.svg")
 
 
 if __name__ == "__main__":

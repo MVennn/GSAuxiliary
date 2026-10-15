@@ -38,11 +38,11 @@ val keystoreProps = Properties().apply {
 val hasCustomKeystore = keystorePropsFile.exists()
 
 android {
-    namespace = "gsauxiliary.m.venn"
+    namespace = "io.github.SansKritO4.GSAuxiliary"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "gsauxiliary.m.venn"
+        applicationId = "io.github.SansKritO4.GSAuxiliary"
         minSdk = 27
         targetSdk = 36
         versionCode = 33

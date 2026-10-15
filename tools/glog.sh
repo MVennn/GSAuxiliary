@@ -11,7 +11,7 @@
 #   bash tools/glog.sh mark                 记录当前行数到 .work/log.mark
 #   bash tools/glog.sh tail                 打印自 mark 之后的新增行（默认只留探针的行）
 #   bash tools/glog.sh all                  打印整个日志
-#   bash tools/glog.sh tail --module gsauxiliary   过滤主模块的行
+#   bash tools/glog.sh tail --module GSAuxiliary   过滤主模块的行
 #   bash tools/glog.sh tail --module all           不过滤
 #   bash tools/glog.sh rlog                 打印日志文件路径
 # ---------------------------------------------------------------------------

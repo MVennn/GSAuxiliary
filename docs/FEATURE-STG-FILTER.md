@@ -2,7 +2,7 @@
 
 > 版本：**2.13.0**（`versionCode 33`） · 功能 id：`stg_stock_filter`
 > 目标 App：国信金太阳 **8.6.0**（vc271） · 实测设备：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1
-> 相关代码：[`feature/stgfilter/`](../app/src/main/java/gsauxiliary/m/venn/feature/stgfilter/)
+> 相关代码：[`feature/stgfilter/`](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/stgfilter/)
 
 ---
 

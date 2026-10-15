@@ -130,10 +130,10 @@ buildTypes {
 
 | 入口 | 为什么必须 keep |
 | --- | --- |
-| `gsauxiliary.m.venn.GszxModule` | 框架按 `META-INF/xposed/java_init.list` 里的类名反射实例化 |
-| `gsauxiliary.m.venn.app.GszxApp` | manifest 的 `android:name` |
-| `gsauxiliary.m.venn.ui.SettingsActivity` | manifest 声明，LSPosed 从自己进程跳转过来 |
-| `gsauxiliary.m.venn.app.DebugConfigProvider` | manifest 声明，adb 通道 |
+| `io.github.SansKritO4.GSAuxiliary.GszxModule` | 框架按 `META-INF/xposed/java_init.list` 里的类名反射实例化 |
+| `io.github.SansKritO4.GSAuxiliary.app.GszxApp` | manifest 的 `android:name` |
+| `io.github.SansKritO4.GSAuxiliary.ui.SettingsActivity` | manifest 声明，LSPosed 从自己进程跳转过来 |
+| `io.github.SansKritO4.GSAuxiliary.app.DebugConfigProvider` | manifest 声明，adb 通道 |
 | `io.github.libxposed.service.**` | `XposedProvider` 由系统实例化；binder 描述符跨进程查找 |
 | `core.ConfigKeys` / `core.ConfigSnapshot` | 模块进程与目标进程共用，键名参与序列化 |
 | `* implements feature.Feature` | 由 `FeatureManager` 直接构造 |
@@ -152,7 +152,7 @@ aapt2 dump badging "$APK" | head -2
 # 类总数与入口类
 unzip -o -q "$APK" 'classes*.dex' -d /tmp/apkx
 dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor"
-dexdump -f /tmp/apkx/classes*.dex | grep "Lgsauxiliary/m/venn/GszxModule;"
+dexdump -f /tmp/apkx/classes*.dex | grep "Lio/github/SansKritO4/GSAuxiliary/GszxModule;"
 
 # 红线：libxposed api 必须为 0 个
 dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor.*Lio/github/libxposed/api"
