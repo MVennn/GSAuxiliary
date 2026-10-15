@@ -156,32 +156,13 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
-- Release 说明控制在 **几百字符**：`本版内容` 两三条 + `注意`（会踩的坑）。
+- Release 说明只讲**这版做了什么**，几句话就够。写长了说明你在解释，而解释属于 CHANGELOG。
+- **形状、以及「别写什么」「『注意』区块怎么写」见 `docs/release-notes/README.md`**
+  —— 那边是唯一权威，本节不再放第二份模板，免得两处规则打架。
 - **推荐写法：把短说明放进 `docs/release-notes/<versionName>.md`**（跟着 tag 一起进仓库，
   可回溯、可 review）。`release.yml` 会自动找这个文件；
   本机 `publish.py` 也可以直接 `--notes docs/release-notes/2.14.0.md`。
 - 不传 `--notes` 时脚本会退回 CHANGELOG 的对应段落，**并主动警告**。
-
-参考形状：
-
-```markdown
-**首次公开发布** —— 功能开关默认全部关闭，打开模块 App 到「功能」页自选。
-
-## 本版内容
-
-- **新增「XX」**：一句话说清用户能做什么。
-- 修复：一句话说清什么问题不再出现。
-
-## 注意
-
-- 功能从「关」改成「开」后，需要**重启一次金太阳**才生效。
-- （有破坏性变更时写在这里，例如包名变动要重装）
-
----
-
-需要 root + LSPosed（支持 API 102），适配国信金太阳 8.6.0 / Android 8.1+。
-安装步骤见 [README](https://github.com/SansKritO4/GSAuxiliary#安装)。
-```
 
 ---
 
