@@ -1,0 +1,94 @@
+name: CI
+
+# ---------------------------------------------------------------------------
+# 每次推 main / 开 PR 都完整编译一遍，并把 docs/BUILD.md 里那几条「红线」
+# 固化成自动校验（tools/ci/verify_apk.py）。
+#
+# 这一套是**零密钥**的：仓库没配任何 Secret 也能跑，release 会退回 debug 签名，
+# 产物只当测试包用（见 docs/BUILD.md §8）。
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    # 纯文档改动不浪费 CI 时间；pull_request 不加这条，保证 PR 永远有检查结果
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.gitattributes'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 构建 debug + release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # CI runner 在海外，直连 google() / mavenCentral() 比走阿里云镜像更稳更快。
+      # 镜像开关见 settings.gradle.kts。
+      GS_NO_MIRROR: '1'
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v5
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 装 Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          # build-tools 35.0.0 是 AGP 8.10.1 的默认版本，显式装掉省得构建时再下载
+          packages: 'platform-tools build-tools;35.0.0'
+
+      # compileSdk 37 在官方仓库里叫 platforms;android-37.2，AGP 8.10.1 认不出这个
+      # 新命名，必须归一化一次。来龙去脉见 docs/BUILD.md §4.1。
+      - name: 装 compileSdk 37 平台
+        run: bash tools/ci/setup-sdk37.sh
+
+      - name: 配置 Gradle（含依赖缓存）
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: 读版本号
+        id: ver
+        run: python3 tools/ci/version.py >> "$GITHUB_OUTPUT"
+
+      - name: 构建
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
+
+      - name: 校验产物红线
+        run: |
+          python3 tools/ci/verify_apk.py \
+            app/build/outputs/apk/debug/app-debug.apk \
+            app/build/outputs/apk/release/app-release.apk
+
+      - name: 整理产物
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+             "dist/GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+             "dist/GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}-debug.apk"
+          ls -l dist
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v5
+        with:
+          name: GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 14

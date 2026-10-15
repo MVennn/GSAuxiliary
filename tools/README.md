@@ -371,10 +371,45 @@ python tools/publish.py --dry-run          # 只打印将做什么，不写任�
 > 那段是给开发者的（症状 / 根因 / 改法 / 验证结果），对用户是噪音。
 > 面向用户的 Release 说明建议另写一份短的传进来（见「发布惯例」）。
 
-凭据从 `git credential fill` 取（Windows 凭据管理器里已存的 GitHub PAT，
-需要 `repo` scope）。**token 只在内存里用，不落盘、不打印。**
+凭据按优先级取：环境变量 `GS_GITHUB_TOKEN` → 环境变量 `GH_TOKEN` →
+`git credential fill`（Windows 凭据管理器里已存的 GitHub PAT，需要 `repo` scope）。
+**token 只在内存里用，不落盘、不打印。**
+
+> 走 CI 发版时凭据来自 Secrets（见 `docs/RELEASE.md` §1.2）。
+> 脚本**故意不读 `GITHUB_TOKEN`** —— 那是 Actions 自带、只对当前仓库有效的短命
+> token，拿去写模块仓库会 403；宁可报错也不静默用错。
 
 环境变量可改仓库名：`GITHUB_SOURCE_REPO` / `GITHUB_MODULE_REPO`。
+
+---
+
+## ci/ ★
+
+**给 CI 与「干净环境」用的脚本**，本地也能跑。工作流本身在
+[`.github/workflows/`](../.github/workflows)，说明见
+[`docs/BUILD.md`](../docs/BUILD.md) §8。
+
+| 脚本 | 干什么 |
+|---|---|
+| `ci/setup-sdk37.sh` | 装好 compileSdk 37 平台并归一化成 AGP 认得的 `platforms/android-37`。幂等。 |
+| `ci/export-sdk-env.sh` | 把 SDK 路径交给后续步骤（CI 里写 `$GITHUB_ENV` + 补 `local.properties`）。 |
+| `ci/verify_apk.py` | 产物红线自查：libxposed api 类定义必须 0、无 legacy `assets/xposed_init`、manifest 无 `xposedminversion`、入口类被 R8 保留…… |
+| `ci/version.py` | 读 `app/build.gradle.kts` 的版本号（CI 里唯一来源）。 |
+
+```bash
+# 干净机器 / CI 上补 compileSdk 37
+ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
+
+# 产物红线自查（纯标准库，不需要 dexdump / aapt2）
+python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
+
+# 版本号
+python tools/ci/version.py --tag      # 34-2.14.0
+```
+
+> `setup-sdk37.sh` 为什么必须存在：官方 SDK 仓库里根本没有 `platforms;android-37`，
+> 只有 `platforms;android-37.2`（Android 16 之后新引入的次要版本命名），
+> 而 AGP 8.10.1 认不出这个新命名。详见 `docs/BUILD.md` §4.1 / §8.1。
 
 ---
 

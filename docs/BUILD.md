@@ -23,6 +23,10 @@ cp keystore.properties.example keystore.properties
 
 产物：`app/build/outputs/apk/release/app-release.apk`
 
+> 干净环境（CI / 新机器）还要先补 compileSdk 37 平台：
+> `bash tools/ci/setup-sdk37.sh`。为什么需要它见 §4.1 / §8.1。
+> 想直接让 GitHub 帮你编，见 **§8 在 GitHub Actions 上构建**。
+
 ---
 
 ## 2. 依赖版本组合（重要）
@@ -265,6 +269,10 @@ app/src/main/resources/META-INF/xposed/
 
 ### 4.1 compileSdk 37 没有正式安装包
 
+> **好消息：这一段现在已经自动化了。** 干净环境（CI / 新机器）里不用再手工做，
+> 跑 `bash tools/ci/setup-sdk37.sh` 就行 —— 它做的是同一件事，见 §8.1。
+> 下面留着手工步骤，是为了讲清**为什么**要这么折腾。
+
 AGP 8.10.1 默认只会去下载「已发布」的 platform。compileSdk 37 需要手工装：
 
 1. 下载 `platform-37.2_r01.zip`（解压后目录名是 `android-37.2`）
@@ -365,7 +373,7 @@ bash tools/probe/build.sh
 
 ## 6. 依赖镜像
 
-`settings.gradle.kts` 里优先使用阿里云镜像：
+`settings.gradle.kts` 里默认优先走阿里云镜像（国内网络快）：
 
 ```kotlin
 maven("https://maven.aliyun.com/repository/gradle-plugin")
@@ -373,7 +381,17 @@ maven("https://maven.aliyun.com/repository/google")
 maven("https://maven.aliyun.com/repository/public")
 ```
 
-海外网络下可以注释掉这三行，直接用 `google()` / `mavenCentral()`。
+海外网络 / CI 下**不用改文件**，设一个环境变量就行：
+
+```bash
+GS_NO_MIRROR=1 ./gradlew assembleRelease
+```
+
+设了之后只留 `google()` / `mavenCentral()` / `gradlePluginPortal()`。
+`.github/workflows/` 里的两个工作流都设了它 —— runner 在海外，直连更稳。
+
+> 为什么不「镜像失败自动回落」：Gradle 只在某个仓库返回 **404** 时才换下一个，
+> **超时不会自动兜底**。镜像站对海外 IP 一慢，构建就直接卡在那儿。
 
 ---
 
@@ -381,8 +399,130 @@ maven("https://maven.aliyun.com/repository/public")
 
 仓库**不提交任何 keystore**（`.gitignore` 已排除 `*.keystore` / `keystore.properties`）。
 
-- 有 `keystore.properties` → 用你自己的签名
-- 没有 → 自动退回 AGP 自带的 debug 签名，仍然能安装到自己的测试机
+`app/build.gradle.kts` 按这个优先级找签名：
+
+| 优先级 | 来源 | 用在哪 |
+|---|---|---|
+| 1 | 环境变量 `GS_KEYSTORE_PATH` / `GS_KEYSTORE_PASSWORD` / `GS_KEYSTORE_ALIAS` / `GS_KEYSTORE_KEY_PASSWORD` | CI（GitHub Actions 从 Secrets 注入） |
+| 2 | 项目根目录的 `keystore.properties` | 本地开发 |
+| 3 | AGP 自带的 debug 签名 | 兜底，仍能装到自己的测试机 |
+
+- 环境变量那四个**必须齐全、且 `GS_KEYSTORE_PATH` 指向的文件存在**才认，
+  半套配置不算 —— 免得出现「以为用了自己的签名、其实用了 debug 签名」。
+- 走到第 3 档时构建日志里会有一行 `[签名] ...` 明说。
+- 本地用法：
+
+```bash
+cp keystore.properties.example keystore.properties
+# 编辑填入 storeFile / storePassword / keyAlias / keyPassword
+```
 
 > **注意**：LSPosed 里已启用过的模块，如果换了签名，需要先卸载再重装，
-> 并且要在 LSPosed 里重新勾选。保持同一个 keystore 可以避免这一步。
+> 并且要在 LSPosed 里重新勾选。保持同一个 keystore 可以避免这一步 ——
+> 所以 **release 包绝对不能一会儿用 debug 签名、一会儿用正式签名**。
+
+---
+
+## 8. 在 GitHub Actions 上构建
+
+两个工作流，都在 `.github/workflows/`：
+
+| 文件 | 触发 | 干什么 | 需要 Secret |
+|---|---|---|---|
+| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传两个 APK | **不需要** |
+| `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个，见 §8.2 |
+
+`ci.yml` 是**零密钥**的：仓库什么 Secret 都没配也能跑，release 会退回 debug 签名，
+产物只当测试包用。所以「这个仓库能不能在 GitHub 上编译」的答案是 —— 推上去就跑。
+
+### 8.1 两个必须处理的坑
+
+CI 是**干净环境**，本地那些「已经手工搞定过」的东西都得重来一遍：
+
+**坑 1：compileSdk 37 装不上（这是最主要的一个）**
+
+官方 SDK 仓库里根本没有 `platforms;android-37` 这个包 —— 只有
+`platforms;android-37.0` / `37.1` / `37.2`（Android 16 之后新引入的「次要版本」命名）。
+AGP 8.10.1 只认 `platforms/android-<api>` 老式目录 + 整数 api-level，于是：
+
+```
+Failed to find target with hash string 'android-37'
+```
+
+解法固化在 `tools/ci/setup-sdk37.sh`：用 sdkmanager 装 `platforms;android-37.2`，
+再把它归一化成 AGP 认得的样子（目录改名 `android-37`，
+`package.xml` 的 `api-level` / `localPackage path`、`source.properties` 的
+`AndroidVersion.ApiLevel` 里的 `37.2` 全改 `37`）。脚本幂等，已装好就直接过。
+
+```bash
+ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
+```
+
+> 这和 §4.1 手工做的是同一件事，只是自动化了。
+> 官方仓库里 `platforms;android-37.2` 在**稳定通道**，不需要开 preview 通道。
+
+**坑 2：`gradlew` 的可执行位**
+
+Windows 上 `git config core.fileMode=false`，很容易把 `gradlew` 提交成 `100644`，
+到 Linux runner 上就是 `./gradlew: Permission denied`。仓库里已经用
+`git update-index --chmod=+x gradlew` 修成 `100755` 了 —— **别把它改回去**。
+
+```bash
+git ls-files -s gradlew      # 必须是 100755
+```
+
+### 8.2 发布需要的 5 个 Repository secrets
+
+到 `Settings → Secrets and variables → Actions` 加（详细造法见 `docs/RELEASE.md` §1.2）：
+
+| Secret | 内容 |
+|---|---|
+| `GS_KEYSTORE_BASE64` | 你的 keystore 做 base64（单行） |
+| `GS_KEYSTORE_PASSWORD` | keystore 密码 |
+| `GS_KEYSTORE_ALIAS` | key 别名 |
+| `GS_KEYSTORE_KEY_PASSWORD` | key 密码 |
+| `LSPOSED_REPO_TOKEN` | PAT，需要 `repo` scope，且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
+
+`release.yml` **缺任何一个都直接失败**，不会给你一个「看着成功、实际用户收不到更新」的假象。
+`publish.py` 故意不读 Actions 自带的 `GITHUB_TOKEN` —— 那个只对当前仓库有效，
+拿去写模块仓库会 403；它只认 `GS_GITHUB_TOKEN` / `GH_TOKEN`。
+
+### 8.3 红线校验已经自动化
+
+`docs/BUILD.md` / `docs/RELEASE.md` 里那堆手工自查（libxposed api 类定义必须为 0、
+不能有 legacy `assets/xposed_init`、manifest 不能有 `xposedminversion`、
+入口类必须被 R8 保留……）现在固化成一条命令，CI 和本地共用：
+
+```bash
+python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
+```
+
+它**不依赖 `dexdump` / `aapt2`** —— dex 的 `class_defs` 表自己解析，纯标准库，
+所以在最小环境里也能跑。
+
+> 为什么非得解析 `class_defs` 而不能字节扫 `io/github/libxposed/api`：
+> 模块自己的类里有这个包的**字符串常量引用**，字节扫必然误报（见 §3.1）。
+> 只有 `class_defs` 里出现的才是真·类定义。
+
+输出长这样：
+
+```
+  [OK] 元数据 META-INF/xposed/module.prop
+  [OK] 无 legacy assets/xposed_init
+  [OK] 【红线】dex 无 libxposed api 类定义（发现 0 个）
+  [OK] libxposed service 已打进包（35 个类）
+  [OK] 入口类已保留 Lio/github/SansKritO4/GSAuxiliary/GszxModule;
+  [OK] dex 类定义总数 3078
+  [OK] manifest 无 legacy xposed key
+```
+
+### 8.4 版本号的唯一来源没变
+
+CI 里的版本号也是读 `app/build.gradle.kts`（`tools/ci/version.py`），
+和 `publish.py` 一致 —— 不另开一处能改偏的地方。
+
+```bash
+python tools/ci/version.py          # vc=34  vn=2.14.0
+python tools/ci/version.py --tag    # 34-2.14.0
+```
+

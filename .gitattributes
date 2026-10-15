@@ -4,6 +4,12 @@
 # Shell 脚本必须 LF，否则在 Linux / macOS 上无法执行
 *.sh text eol=lf
 
+# CI 工作流与脚本同理 —— CRLF 会让 Actions 的 shell 步骤报
+# `/usr/bin/env: 'bash\r': No such file or directory`
+*.yml text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
+
 # Windows 批处理必须 CRLF
 *.bat text eol=crlf
 *.cmd text eol=crlf

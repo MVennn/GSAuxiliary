@@ -58,8 +58,65 @@ python tools/publish.py --sync-only           # 只同步那四个元文件，�
 python tools/publish.py --dry-run             # 只打印，不写任何东西
 ```
 
-凭据从 `git credential fill` 取（本机 Windows 凭据管理器里已存的 GitHub PAT，
-需要 `repo` scope）。**token 只在内存里用，不落盘、不打印。**
+凭据的三种给法（按优先级）：环境变量 `GS_GITHUB_TOKEN` → 环境变量 `GH_TOKEN` →
+`git credential fill`（本机 Windows 凭据管理器里已存的 GitHub PAT，需要 `repo` scope）。
+**token 只在内存里用，不落盘、不打印。**
+
+> `publish.py` **故意不读 `GITHUB_TOKEN`** —— 那是 GitHub Actions 自带的、
+> 只对当前仓库有效的短命 token，拿去写模块仓库会 403。宁可报错也不静默用错。
+
+---
+
+## 1.1 从 CI 发版（推个 tag 就行）
+
+`.github/workflows/release.yml` 把上面这一整套搬到了 GitHub 上。你只需要：
+
+```bash
+# 1. 改 app/build.gradle.kts 的 versionCode / versionName
+# 2. 写一份面向用户的说明（可选，但强烈建议）
+vim docs/release-notes/2.14.0.md      # 文件名 = versionName
+# 3. 提交，然后打一个同名的 tag
+git tag 34-2.14.0 && git push origin 34-2.14.0
+```
+
+然后 CI 依次做：
+
+| 步骤 | 动作 | 失败会怎样 |
+|---|---|---|
+| 1 | 校验 5 个 Secrets 齐全 | 直接报错，列出缺哪几个 |
+| 2 | 校验 tag == `versionCode-versionName` | 直接报错（防止给未完工版本建假 Release） |
+| 3 | 解码 keystore 并用 `keytool` 验密码 / 别名 | 直接报错 |
+| 4 | `./gradlew assembleRelease` | 直接报错 |
+| 5 | `python tools/ci/verify_apk.py` 跑红线 | 直接报错，产物不发 |
+| 6 | `python tools/publish.py --skip-build --notes docs/release-notes/<vn>.md` | 直接报错 |
+
+第 6 步就是本机那条命令的同一份代码 —— **双仓库发布 + 元文件同步的逻辑只有一处**，
+不会出现「CI 发了一套、本机发了一套，两边不一样」。
+
+也支持 `workflow_dispatch` 手动触发（填一个已存在的 tag）。
+
+> **为什么 `LSPOSED_REPO_TOKEN` 缺了要直接失败**：如果 CI 只发源码仓库就报成功，
+> 你会以为发完了，而 modules.lsposed.org 和 LSPosed App 一个字都收不到（见 §0）。
+> 宁可红，不要假绿。
+
+## 1.2 CI 发版需要的 5 个 Repository secrets
+
+`Settings → Secrets and variables → Actions → New repository secret`：
+
+| Secret | 怎么造 |
+|---|---|
+| `GS_KEYSTORE_BASE64` | `base64 -w0 gszx.keystore > ks.txt`（Windows: `certutil -encode gszx.keystore ks.txt` 后去掉首尾行），把 `ks.txt` 内容整个贴进去 |
+| `GS_KEYSTORE_PASSWORD` | 你的 keystore 密码 |
+| `GS_KEYSTORE_ALIAS` | 你的 key 别名 |
+| `GS_KEYSTORE_KEY_PASSWORD` | 你的 key 密码 |
+| `LSPOSED_REPO_TOKEN` | PAT（classic，勾 `repo`），且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
+
+这四个 `GS_KEYSTORE_*` 由 `app/build.gradle.kts` 直接读（见该文件「签名配置」段）。
+**四个必须齐全**才生效，半套配置会静默退回 debug 签名 —— 而
+**用 debug 签名发版会让已装用户必须卸载重装**，所以宁可它不生效时看得见。
+
+> ⚠️ **不要**用 `secrets.GITHUB_TOKEN` 替代 `LSPOSED_REPO_TOKEN`：
+> Actions 自带的 token 作用域只在本仓库内，写不了模块仓库。
 
 ---
 
@@ -68,7 +125,9 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
 - Release 说明控制在 **几百字符**：`本版内容` 两三条 + `注意`（会踩的坑）。
-- 用法：把短说明写成 Markdown 文件，传 `--notes`。
+- **推荐写法：把短说明放进 `docs/release-notes/<versionName>.md`**（跟着 tag 一起进仓库，
+  可回溯、可 review）。`release.yml` 会自动找这个文件；
+  本机 `publish.py` 也可以直接 `--notes docs/release-notes/2.14.0.md`。
 - 不传 `--notes` 时脚本会退回 CHANGELOG 的对应段落，**并主动警告**。
 
 参考形状：
@@ -96,10 +155,15 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 
 ## 3. 发版前检查
 
+> **走 CI 发版（§1.1）的话，下面第 3~6 条由 `release.yml` 自动做了**，
+> 你只需要保证第 1、2、7 条 —— 也就是「版本号递增了、CHANGELOG 写了、
+> 没有在途开发」。手工在本机发版才需要全部自己过一遍。
+
 - [ ] `app/build.gradle.kts` 的 `versionCode` / `versionName` 已递增
 - [ ] `CHANGELOG.md` 顶部已加该版本的段落
+- [ ] `docs/release-notes/<versionName>.md` 已写（CI 找它当 Release 说明）
 - [ ] `./gradlew assembleDebug assembleRelease` 通过
-- [ ] `aapt2 dump badging <apk>` 的 `versionName` / `versionCode` 正确
+- [ ] `python tools/ci/verify_apk.py <apk>` 全部 `[OK]`（红线自动化，见 `docs/BUILD.md` §8.3）
 - [ ] release dex 里 `Lio/github/libxposed/api` 定义类为 **0**（红线）
 - [ ] manifest 无 legacy `xposed*` meta-data（**别用 `grep -i xposed`**，见下）
 - [ ] **没有正在进行的在途开发** —— 否则版本号可能是下一个未完工的版本

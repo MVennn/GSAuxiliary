@@ -31,14 +31,25 @@ tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
 
 ## 凭据
 
-从 `git credential fill` 读 Windows 凭据管理器里已存的 GitHub 凭据
-（需要 `repo` scope 的 PAT）。**token 只在内存里用，不落盘、不打印、
-不进 git 配置。**
+三种给法，按优先级：
+
+1. 环境变量 `GS_GITHUB_TOKEN` —— **CI 用这个**（GitHub Actions 里从 Secrets 注入）
+2. 环境变量 `GH_TOKEN`
+3. `git credential fill` —— 本机从 Windows 凭据管理器里已存的 GitHub 凭据取
+
+**故意不读 `GITHUB_TOKEN`**：那是 Actions 自带的、只对当前仓库有效的短命 token，
+拿去写 LSPosed 模块仓库会 403。宁可报错，也不要静默用错。
+
+**token 只在内存里用**：只有 CI（token 来自环境变量）才会把它拼进 git URL；
+本机走凭据管理器，避免被 git 写进 `.work/lsposed-repo/.git/config` 落盘。
+所有可能打印出来的 git 报错都过一遍 `scrub()`。
 
 ## 环境变量
 
     GITHUB_SOURCE_REPO   源码仓库，默认 SansKritO4/GSAuxiliary
     GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
+    GS_GITHUB_TOKEN      优先使用的 PAT（需要 repo scope，且对模块仓库有写权限）
+    GH_TOKEN             次选
 """
 
 import argparse
@@ -88,15 +99,58 @@ def run(cmd, cwd=None, **kw):
     return subprocess.run(cmd, cwd=cwd or ROOT, text=True, capture_output=True, **kw)
 
 
+# 见过的 token。任何要打印的文本都过一遍 scrub()，git 报错里会带完整 URL。
+_SECRETS = []
+TOKEN_FROM_ENV = False
+
+
+def scrub(text):
+    """把 token 从待打印文本里抹掉。"""
+    if not text:
+        return text
+    for t in _SECRETS:
+        text = text.replace(t, "***")
+    return text
+
+
 def token():
-    """从 git 凭据管理器取 PAT。取不到就明确报错，不静默降级。"""
+    """取 PAT。优先级：GS_GITHUB_TOKEN > GH_TOKEN > git 凭据管理器。
+
+    **故意不读 GITHUB_TOKEN** —— 那是 Actions 自带的、只对当前仓库有效的短命
+    token，拿去写 LSPosed 模块仓库会 403。宁可报错，也不要静默用错。
+    """
+    global TOKEN_FROM_ENV
+    for env in ("GS_GITHUB_TOKEN", "GH_TOKEN"):
+        v = os.environ.get(env, "").strip()
+        if v:
+            _SECRETS.append(v)
+            TOKEN_FROM_ENV = True
+            print("      凭据来源：环境变量 %s" % env)
+            return v
+
     r = run(["git", "credential", "fill"],
             input="protocol=https\nhost=github.com\n\n")
     m = re.search(r"^password=(.*)$", r.stdout or "", re.M)
     if not m or not m.group(1).strip():
-        sys.exit("[X] 取不到 GitHub 凭据。先确认 git 能 push："
-                 "`git push --dry-run`，或 `git config credential.helper` 已配置。")
-    return m.group(1).strip()
+        sys.exit("[X] 取不到 GitHub 凭据。三种给法：\n"
+                 "    · 设环境变量 GS_GITHUB_TOKEN（CI 用这个）\n"
+                 "    · 设环境变量 GH_TOKEN\n"
+                 "    · 本机确认 git 能 push：`git push --dry-run`\n"
+                 "    token 需要 repo scope，且对模块仓库有写权限。")
+    tok = m.group(1).strip()
+    _SECRETS.append(tok)
+    return tok
+
+
+def repo_url(tok):
+    """模块仓库的 https 地址。
+
+    只有 token 来自环境变量（CI）时才把 token 拼进去 —— 本机走凭据管理器，
+    把 PAT 拼进 URL 会被 git 写进 .git/config，违背「token 不落盘」。
+    """
+    if tok and TOKEN_FROM_ENV:
+        return "https://x-access-token:%s@github.com/%s.git" % (tok, MODULE_REPO)
+    return "https://github.com/%s.git" % MODULE_REPO
 
 
 def read_version():
@@ -204,10 +258,9 @@ def sync_repo_files(tok, dry=False):
         return
     if not os.path.isdir(os.path.join(clone, ".git")):
         shutil.rmtree(clone, ignore_errors=True)
-        r = run(["git", "clone", "-q",
-                 "https://github.com/%s.git" % MODULE_REPO, clone])
+        r = run(["git", "clone", "-q", repo_url(tok), clone])
         if r.returncode != 0:
-            sys.exit("[X] 克隆 %s 失败：%s" % (MODULE_REPO, r.stderr[-400:]))
+            sys.exit("[X] 克隆 %s 失败：%s" % (MODULE_REPO, scrub(r.stderr[-400:])))
     else:
         run(["git", "pull", "-q", "--ff-only"], cwd=clone)
     run(["git", "config", "user.name", "M.Venn"], cwd=clone)
@@ -228,9 +281,10 @@ def sync_repo_files(tok, dry=False):
     run(["git", "add", "--"] + changed, cwd=clone)
     run(["git", "commit", "-q", "-m",
          "Sync %s from source repo" % ", ".join(changed)], cwd=clone)
-    r = run(["git", "push", "-q", "origin", "HEAD"], cwd=clone)
+    # 显式给 URL：CI 里 origin 可能就是带 token 的那个，本机则回落到 origin
+    r = run(["git", "push", "-q", repo_url(tok) if TOKEN_FROM_ENV else "origin", "HEAD"], cwd=clone)
     if r.returncode != 0:
-        sys.exit("[X] 推送失败：%s" % r.stderr[-400:])
+        sys.exit("[X] 推送失败：%s" % scrub(r.stderr[-400:]))
     print("      已同步：%s" % ", ".join(changed))
 
 

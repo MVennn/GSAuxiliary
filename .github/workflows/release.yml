@@ -1,0 +1,173 @@
+name: Release
+
+# ---------------------------------------------------------------------------
+# 推一个 tag（形如 34-2.14.0）就发一版：
+#
+#   1. 校验 tag 与 app/build.gradle.kts 的 versionCode-versionName 完全一致
+#      （不一致直接失败 —— 防止给一个还没完工的版本建出假 Release）
+#   2. 用 Secrets 里的 keystore 签名构建 release
+#   3. 跑红线校验
+#   4. 调 tools/publish.py 一次发到「源码仓库」+「LSPosed 模块仓库」，并同步元文件
+#
+# ⚠️ 为什么第 4 步必须两个仓库一起发：见 docs/RELEASE.md §0 ——
+#    只发源码仓库，modules.lsposed.org 与 LSPosed App 收不到任何东西，
+#    用户拿不到更新。所以本工作流**要求** LSPOSED_REPO_TOKEN，缺了就报错退出，
+#    不会给你一个「看着成功、实际用户收不到」的假象。
+#
+# 需要的 Repository secrets（5 个）见 docs/RELEASE.md §1.2。
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    tags:
+      - '[0-9]*-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 tag（形如 34-2.14.0，必须已经存在）'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并双仓库发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    env:
+      GS_NO_MIRROR: '1'
+      # 签名：这四个变量由 app/build.gradle.kts 直接读（见该文件「签名配置」段），
+      # 所以必须在 job 级 env —— Gradle 进程要能看见。
+      GS_KEYSTORE_BASE64: ${{ secrets.GS_KEYSTORE_BASE64 }}
+      GS_KEYSTORE_PASSWORD: ${{ secrets.GS_KEYSTORE_PASSWORD }}
+      GS_KEYSTORE_ALIAS: ${{ secrets.GS_KEYSTORE_ALIAS }}
+      GS_KEYSTORE_KEY_PASSWORD: ${{ secrets.GS_KEYSTORE_KEY_PASSWORD }}
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      # 先查密钥，别等构建了 5 分钟才发现发不出去
+      - name: 检查发布所需的 Secrets
+        env:
+          LSPOSED_REPO_TOKEN: ${{ secrets.LSPOSED_REPO_TOKEN }}
+        run: |
+          missing=()
+          [ -n "${GS_KEYSTORE_BASE64:-}" ]       || missing+=("GS_KEYSTORE_BASE64")
+          [ -n "${GS_KEYSTORE_PASSWORD:-}" ]     || missing+=("GS_KEYSTORE_PASSWORD")
+          [ -n "${GS_KEYSTORE_ALIAS:-}" ]        || missing+=("GS_KEYSTORE_ALIAS")
+          [ -n "${GS_KEYSTORE_KEY_PASSWORD:-}" ] || missing+=("GS_KEYSTORE_KEY_PASSWORD")
+          [ -n "${LSPOSED_REPO_TOKEN:-}" ]       || missing+=("LSPOSED_REPO_TOKEN")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            {
+              echo "## ❌ 缺少 Repository secrets"
+              echo ""
+              echo '```'
+              printf '%s\n' "${missing[@]}"
+              echo '```'
+              echo ""
+              echo "到 **Settings → Secrets and variables → Actions** 补齐后重跑。"
+              echo "每个 secret 怎么造，见 \`docs/RELEASE.md\` §1.2。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '[X] 缺少 secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          echo "[OK] 5 个 secrets 都在"
+
+      - name: 装 JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 装 Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools build-tools;35.0.0'
+
+      - name: 装 compileSdk 37 平台
+        run: bash tools/ci/setup-sdk37.sh
+
+      - name: 配置 Gradle（含依赖缓存）
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: 校验 tag 与版本号一致
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          EXPECT="$(python3 tools/ci/version.py --tag)"
+          echo "tag=$TAG  期望=$EXPECT"
+          if [ "$TAG" != "$EXPECT" ]; then
+            {
+              echo "## ❌ tag 与版本号对不上"
+              echo ""
+              echo "| | 值 |"
+              echo "|---|---|"
+              echo "| 推的 tag | \`$TAG\` |"
+              echo "| app/build.gradle.kts | \`$EXPECT\` |"
+              echo ""
+              echo "先改 \`app/build.gradle.kts\` 的 versionCode / versionName，再打 tag。"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "[X] tag=$TAG 但 app/build.gradle.kts 是 $EXPECT" >&2
+            exit 1
+          fi
+
+      - name: 解码签名密钥
+        run: |
+          printf '%s' "$GS_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$RUNNER_TEMP/release.keystore"
+          ls -l "$RUNNER_TEMP/release.keystore"
+          # 顺手验一下密码 / 别名对不对，别等到构建完才发现签名失败
+          if ! keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
+                 -storepass "$GS_KEYSTORE_PASSWORD" -alias "$GS_KEYSTORE_ALIAS" >/dev/null 2>&1; then
+            echo "[X] keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS" >&2
+            exit 1
+          fi
+          echo "[OK] keystore 与密码 / 别名匹配"
+          echo "GS_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: 构建 release
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: 校验产物红线
+        run: python3 tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk
+
+      - name: 整理产物
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+             "dist/GSAuxiliary_$(python3 tools/ci/version.py --tag).apk"
+          ls -l dist
+
+      - name: 发布到两个仓库
+        env:
+          # publish.py 优先读 GS_GITHUB_TOKEN（需要 repo scope，且对模块仓库有写权限）
+          GS_GITHUB_TOKEN: ${{ secrets.LSPOSED_REPO_TOKEN }}
+        run: |
+          VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
+          NOTES="docs/release-notes/$VN.md"
+          if [ -f "$NOTES" ]; then
+            echo "用 $NOTES 作为 Release 说明"
+            python3 tools/publish.py --skip-build --notes "$NOTES"
+          else
+            echo "::warning::$NOTES 不存在，退回用 CHANGELOG 的 [$VN] 段当说明（面向开发者，偏噪音）。见 docs/RELEASE.md §2"
+            python3 tools/publish.py --skip-build
+          fi
+
+      - name: 留一份产物
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-apk
+          path: dist/*.apk
+          if-no-files-found: ignore
+          retention-days: 30
