@@ -5,6 +5,222 @@
 
 ---
 
+## [2.13.0] — 2026-10-15
+
+新功能：**策略详情页「筛选股票」** —— 右上角三点菜单里多一项，点开一个**完全复用目标 App
+自带筛选组件 UI** 的面板，用「涨幅 / 跌幅 / 自选」三个开关把不想看的股票行筛掉，
+筛选状态存在本地、重启仍在。
+
+### 变更
+
+- **新增功能 `stg_stock_filter`「策略筛选股票」**（`feature/stgfilter/` 四个新文件 +
+  `core/ConfigKeys.kt` / `core/ConfigSnapshot.kt` / `core/ConfigSource.kt` /
+  `ui/FeatureCatalog.kt` / `feature/FeatureManager.kt` / `app/DebugConfigProvider.kt` + 中英 strings）。
+  总开关登记进 `ConfigKeys.FEATURE_KEYS`，出厂默认 **false**（遵守 2.11.2 的硬约定）。
+
+- **① 三点菜单注入 —— 挂 `PopupWindow` 展示方法，且必须在 `proceed()` 之前改内容**
+  （`feature/stgfilter/StgStockFilterFeature.kt`）。
+  - 实测：右上角「⋮」弹的是 App 自己 `new` 的 `PopupWindow`，内容就是
+    `res/layout/pop_ai_stg.xml` —— 一个垂直 `LinearLayout`，里面**只有两项**：
+    `#tv_edit_name`(修改名称) / `#tv_del_stg`(删除策略)，两项都是 `height=0dp + weight=1`。
+  - 判定「是不是这个菜单」不看类名（`PopupWindow` 是系统类、App 里到处都在弹），
+    只看**内容视图里找不找得到 `#tv_del_stg`**。
+  - 新项「筛选股票」与它的分隔线都从**原菜单里的兄弟 View 克隆**（背景、字色、字号、
+    字体、内边距、gravity、LayoutParams 逐项复制），插在「修改名称」**下方**。
+  - 三个坑（都已修，且都是真机踩出来的）：
+    1. **时机**：必须在 `show*` 执行**之前**改内容 —— 一旦 `show` 过了，`PopupWindow`
+       已按两项量过尺寸，后加的第三项会被裁掉；
+    2. **容器高度**：`inflate(layout, null)` 出来的根 View **没有 `LayoutParams`**
+       （`parent` 传 null），改不到高度，得改**每个 TextView 子项**（去 weight、给固定高度
+       = `98dp / 2`），再把容器高度设成 `WRAP_CONTENT`；
+    3. **窗口高度**：`PopupWindow` 本身是**用固定尺寸 new 出来的**（实测窗口高度恒为 98dp），
+       容器改好了也没用 —— 必须同时把 `pop.height` 设成 `WRAP_CONTENT`，
+       让窗口按新内容重新量一次（撤销时还原原始 `height`）。
+
+- **② 筛选面板：不是照着截图重画，而是真的 inflate App 自己的布局**
+  （`feature/stgfilter/StgFilterPanel.kt`）。
+  - 外壳 = `res/layout/dialog_marketfliter.xml`（行情页「沪深京A」左侧漏斗点出来的那个，
+    原包把 filter 拼成了 **fliter**，照抄不改）；每一行 = `res/layout/item_market_filter.xml`。
+    于是圆角背景、标题字号、副标题灰底块、分隔线、45dp 行高、圆形勾选框、底部两颗按钮
+    全部与行情页那颗漏斗**同源**，App 换肤 / 深色模式也跟着走。
+  - 改动只有三处：文案（标题「筛选股票」/ 副标题「勾选后对应的条件才会生效」/ 分组头
+    「筛选条件」）、`#tv_cancel` 文案 `取消` → **`重置`**（`#tv_ok` 的 `确定` 一字不动）、
+    行容器。
+  - 行容器原本是 `RecyclerView #rv_markets`，它的 LayoutManager 与 adapter 由 App 代码在
+    运行时设 —— 我们只 inflate 布局拿不到那段代码，所以把它**原地换成一个垂直
+    `LinearLayout`**：**沿用同一个 `LayoutParams` 实例**，`ConstraintLayout` 的约束一条不丢，
+    也省掉了模块编译期对 androidx.recyclerview / constraintlayout 的依赖
+    （这两个库都不在模块的 classpath 里）。
+  - 分组折叠箭头（`tv3` 右侧那颗无 id 的 ImageView）**隐藏**：原版分组可折叠，
+    我们这里只有固定三行，留个点了没反应的箭头是骗人。
+  - 面板背景兜底：`?attr/shape_half_top_round_solid_12` 在个别主题下解析不到时，
+    自己用 `theme.resolveAttribute` 补一次。
+  - 交互：点**整行**即切换该项勾选（与行情页漏斗一致）；「重置」清空全部条件并**立即生效**
+    且**不关面板**（关掉就出现「重置完还想再选却得重开」的别扭）；「确定」落盘 + 生效 + 关闭。
+
+- **③ 行过滤：换掉适配器 `data` 字段的内容（真正移除，不是藏起来）**
+  （`feature/stgfilter/StgStockFilterFeature.kt`）。
+  - ⚠️ **初版走过一条弯路（已废弃，记录在此以免重蹈）**：在 `BaseQuickAdapter.getView`
+    返回后把不匹配的行 `visibility = GONE` + 压成 1px。两个问题都实测过：
+    ① `ListView.layoutChildren` 直接对子 View 调 `setupChild → child.measure()`
+    （不走 `ViewGroup.measureChildren` 那套「跳过 GONE」逻辑），单设 `GONE` 的行
+    **照样占 138px** → 界面一整块空白；② 压到 1px 只是治标，
+    **宿主一刷新列表就露馅** —— 已布局的行不会重新量，空白与漏筛一起冒出来，**滚动时尤其明显**。
+  - 现在改为**直接替换 `BaseQuickAdapter.data` 字段的内容**（实测字段名就叫 `data`，
+    且 `getItem(int)` 就是从它取），再走宿主自己的 `notifyDataSetChanged()`：
+    ListView 眼里列表本来就"只有这些行"，**不存在占位空间**，滚动 / 翻页都是原生行为。
+  - **时序**：挂 `android.widget.BaseAdapter.notifyDataSetChanged` 的**前置**钩子
+    （该方法声明在框架类上，`BaseQuickAdapter` 没覆写）—— 宿主每次说"数据变了"，
+    我们**先把 `data` 换成筛过的**再放行，于是布局的第一帧就是筛过的结果，不会先闪一下全量。
+  - **幂等**：我们自己装进去的那个 `ArrayList` 记在 `AdapterState.filtered`，靠 `===` 区分
+    「宿主给的全量」与「我们装的子集」，避免反复包装；`getView` 后置钩子里还有一次
+    **延后一帧的兜底补筛**，防宿主只 `setAdapter` 不发通知。
+  - ⚠️ **换数据会连带改掉行点击的 `position` 语义**：ListView 的 position 变成**子集下标**，
+    而宿主是拿它去索引**自己那份全量列表**（实测：筛到只剩 6 只时点第一行「思特威-W」，
+    打开的是全量第一只「新华文轩 601811」）。所以给 ListView 的 `OnItemClickListener`
+    包了一层**下标回映射**：按 `AdapterState.keptIndices` 把子集下标还原成全量下标再转发给
+    宿主原监听器（`AdapterView.mOnItemClickListener` 是隐藏 API，反射取；
+    换算时要让掉 `headerViewsCount`）。
+  - 涨跌幅取值：**优先读数据项字段**（实测 `zdf`，`BigDecimal`；`PERCENT_FIELDS` 列候选名），
+    读不到再退回行内 `#tv_item_stk_percent` 的文案（`+9.99%` / `-1.45%` / `--`）。
+    行内文案只是**绑定时的一次快照**（换数据之后被筛掉的行压根不在列表里，挂 `TextWatcher`
+    也放不回来），所以命中兜底的行要等下一次重新 bind 才会修正。
+  - 「自选」判定复用与「自选高亮」完全相同的国信门面方法
+    `ZXWorkflow.isBelongByStock(code, market)`。
+  - **组合规则（互斥类别，按需求 2.0 调整）**：先把每只股票归到**唯一**一个类别，
+    再看该类别的开关有没有勾 —— 未勾选的类别，其股票一律不显示：
+
+    ```
+    类别(股票) = 自选（在自选股里，最高优先） > 涨幅（zdf > 0）
+               > 跌幅（zdf < 0） > 平盘（其余）
+    显示(股票) = 没有任何开关勾选 ? true : 类别(股票) ∈ 已勾选的类别
+    ```
+
+    - 只勾「涨幅」→ 涨的显示、跌的不显示、**自选里即使涨着也不显示**（自选是另一个类别）；
+    - 只勾「自选」→ 只有自选里的；
+    - 勾「涨幅 + 自选」→ 涨的（非自选）+ 自选里的；
+    - 三个都不勾 → 不筛（全显示）。
+    - ⚠️ 平盘股（`zdf == 0` 或读不到）**不属于任何类别**，所以只要开了筛选就看不到它 ——
+      这是"未勾选的类别不显示"的直接推论（面板上没有"平盘"这个开关）。
+
+- **④ 筛选状态持久化 → 存目标 App 自己的 `SharedPreferences`**
+  （`feature/stgfilter/StgFilterStore.kt`，文件名 `gsaux_stg_filter`）。
+  - 为什么**不进模块配置**：筛选面板跑在**目标进程**里，状态必须由目标进程落盘，
+    而 libxposed 的 remote preferences 在目标进程里是**只读**的（见 `docs/HOOK-NOTES.md` §7），
+    根本写不进去。所以只能写目标 App 的数据目录。副作用是「清除目标 App 数据 / 卸载重装」
+    会一并清掉它 —— 属于目标 App 侧状态，因此**不进** `ConfigKeys.ALL_KEYS / DEFAULTS`
+    （与 `DISCLAIMER_ACCEPTED` 的处理口径一致）。
+
+- **⑤ 探针升到 v27**（`tools/probe/`）：在 v26 的 `hookHttp()`
+  （`okhttp3.OkHttpClient.newCall` + `ResponseBody.string()`）之外，新增**裸 Socket** 与
+  **Conscrypt TLS 明文流**两层钩子 —— 动态给 `getInputStream/getOutputStream` 返回的实现类
+  挂 `read/write(byte[],int,int)`（沿继承链只挂最具体那一层，避免重复），
+  抓包用「时间窗 + 只抓 HTTP 方法开头 / gzip·JSON 响应 + 总量上限」控制日志量。
+  **结论（重要）**：金太阳的接口层**不走 OkHttp** —— OkHttp 钩子整段会话 **0 命中**；
+  挂到 `ConscryptEngineSocket$SSLOutputStream` 上才抓到明文 `POST … HTTP/1.1`
+  （裸 `java.net.SocketOutputStream` 上是 TLS 密文 `17 03 03 …`），
+  即**自研 HTTP 客户端 + Conscrypt TLS**。这套钩子与业务无关，换任何 App 都能用。
+
+### 验证结果
+
+真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 国信金太阳 8.6.0 (vc271)。
+
+- **构建**：`:app:assembleDebug` + `:app:assembleRelease` → **BUILD SUCCESSFUL**；
+  badging 2.13.0 / vc33。
+- **任务 ①（菜单项）**：三点菜单 `uiautomator dump` 由 2 项变 3 项，**等高**：
+  `修改名称 [815,225][1076,352]` / `筛选股票 [815,355][1076,482]` / `删除策略 [815,485][1076,612]`。
+  中途记录：只注入不改高度时每项被压到 77px；只改容器不改窗口时第三项**被整个裁掉**
+  —— 两处都已在上面「三个坑」里修掉。
+- **任务 ②（面板 UI）**：点「筛选股票」→ 弹出面板，dump 到的结构（标题 / 副标题 / 分组头 /
+  三行 + `CheckBox` / 「重置」「确定」两键）与行情页「沪深京A」漏斗**逐项同形**：
+  行 `[39,1854][1080,1971]`（45dp）、按钮 `[0,2205][540,2335]` + `[540,2205][1080,2335]`。
+- **任务 ③（筛选生效 / 真正移除行）**：取两个策略实测 —— 32 只的（涨 6 / 跌 12 / 自选 14 /
+  平盘 0）、9 只的（涨 0 / 跌 0 / 自选 9 / 平盘 0，该策略标的全在自选里）。
+  模块日志逐条记录 `筛选股票：全量 N → 保留 M（涨 … / 跌 … / 自选 … / 平盘 …）`：
+  - 只勾「涨幅」→ 32 只那组**保留 6**（6 只非自选的涨股）；9 只那组**保留 0**
+    —— 正是本次要的效果：**自选股即使涨着，只勾「涨幅」时也不显示**。
+  - 只勾「跌幅」→ 保留 12；只勾「自选」→ 保留 14；9 只那组只勾「自选」→ 保留 9。
+  - 三个都不勾 → **不筛，全显示**。
+  - **滚动到列表末尾不再出现空白**（换数据后 ListView 只认子集，没有占位行 ——
+    这正是初版「隐藏行」方案最刺眼的病灶）。
+  - 点「重置」→ 三个勾选全清并**立即恢复全量**；关掉总开关 → 立即恢复全量（`onConfigChanged`）。
+  - ⚠️ **点击一致性（下标回映射）本轮未复验**：修之前实测「筛到只剩 6 只时点第一行
+    「思特威-W」会打开全量第一只「新华文轩 601811」」，现已加 `keptIndices` 回映射，
+    但改完之后没有再逐一点过 —— 见下方「待复验」。
+- **任务 ④（持久化）**：存储层 `StgFilterStore` 与上一版**完全同源、本次未改动**，
+  沿用已验收的「强杀重启后条件仍在」；本轮未重新做一次强杀复验。
+- **任务 ⑤（100 只上限的来源）**：抓到策略详情接口的**完整请求体**，
+  确认客户端**没有传任何条数 / 分页参数** → **服务端限制**，因此不做「解除 + 模块化」。
+  详见下方「遗留问题」。
+- ⚠️ 验证期间检测到**另一个会话在并发操作同一台设备**（`.work/` 下出现了非本会话产生的
+  `adev.sh` / `adlib.sh` / `u1.xml` / `stk1.xml`，日志里也有连续的 `AIStkStgDetailAct ↔
+  StockFragAct` 往返），UI 状态可能被对方改变；本次所有结论都在确认前台页面后取得。
+
+### 待复验 / 已知脆弱点（本次「换数据」改造带来）
+
+把「隐藏行」换成**接管 `adapter.data`** 之后，侵入性比"只改视图"深，风险面也变了。
+下面几条**本轮没有逐条复验**，下次上真机时优先看（详见
+[`docs/FEATURE-STG-FILTER.md`](docs/FEATURE-STG-FILTER.md) §10）：
+
+| 项 | 说明 |
+|---|---|
+| **点击下标回映射** | 逻辑已加（`keptIndices`：子集下标 → 全量下标），但改完后**没有逐一点过**。若点开的股票与列表不符，先看这条 |
+| **「全选」与筛选叠加** | 「全选」走 `ListView.performItemClick` → 同一个被包裹的监听器 → 记录的是**全量下标**，理论上自洽；但「筛选 + 全选 + 加入自选」这个组合没实机跑过 |
+| **宿主改用 `adapter.getItem(position)` 取股** | 回映射是按「宿主自己持有全量列表」这一**实测事实**做的修补；哪天宿主改成从 adapter 取，回映射会**反向错位**（那时应当拆掉映射） |
+| **宿主原地改 `adapter.data` 那个对象** | `applyFilter` 里靠 `===` 只能覆盖"宿主换成新列表"这一种；若宿主把 `data` 当自己那份做 `clear()+addAll()` 原地增删，语义会打架。目前未观察到 |
+| **涨跌幅兜底** | 数据项 `zdf` 读不到时退回 `getView` 时抓的行内文案**快照**；行情原地刷新后要等下一次重新 bind 才修正 |
+| **平盘股** | `zdf == 0` / 读不到 → 归「平盘」，**不属于任何类别**，所以只要开了筛选就不显示它。若期望"三个全勾时平盘也显示"，需要再加一条规则 |
+
+### 遗留问题：`策略详情页 100 只上限` 是客户端还是服务端
+
+**结论：服务端限制。客户端**根本没有**传条数 / 分页参数 —— 所以它不可能"自己只取 100"。**
+
+判定过程（探针 v27 抓到了 `SSLOutputStream` 上的明文 HTTP，见下）：
+
+1. 策略详情页拉个股列表走的是 **HTTPS POST**
+   （挂在 `com.android.org.conscrypt.ConscryptEngineSocket$SSLOutputStream` 上抓到明文；
+   裸 `java.net.SocketOutputStream` 上抓到的是 TLS 密文 `17 03 03 …`）：
+
+   ```
+   POST /gsnews/strategy/queryStrategyQuoteDetail/1.0 HTTP/1.1
+   Host: goldsundg.guosen.com.cn
+   Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+   Accept-Encoding: gzip
+   Content-Length: 382
+
+   stId=1569199154113024000&pkg=<包渠道>&reqtime=<ts>&packtm=<ts>&sysVer=8.6.0
+   &softName=goldsun_android&netAddr=NA&rNetAddr=&device_model=MEIZU 20&deviceVers=16|36|0
+   &operorg=&userCode=<账号>&hwID=NA&conn_style=2.0.03.0.0&session=<会话>&openapi_sign=<签名>
+   ```
+
+   **唯一的业务参数就是 `stId`（策略 id）**；其余全是客户端元信息与鉴权。
+   **没有** `count` / `limit` / `pageSize` / `pageNo` / `num` 之类的任何条数参数。
+   （上面示例里的 `userCode` / `session` / `openapi_sign` 已脱敏，**不要**把真实值写进仓库。）
+
+2. 同一结论在三次独立抓包中一致（16:56:48 / 16:59:52 两次进页面 + 早前一次），
+   `Content-Length` 都是 **382**，参数集合完全一致。
+
+3. 旁证（前几轮拿到）：策略列表 → 详情的 `Intent` 里只有
+   `adapter_key.stage = Strategy{id, name, tags=[labelId…]}`，**不含股票列表、不含数量**；
+   `AIStkStgDetailAct` 的实例字段里也没有任何 100 / count / pageSize 常量。
+
+**推论**：客户端每次都是「把整张列表要回来、全部渲染」，
+所以「最多 100 只」只可能由**服务端**（或该接口的服务端分页策略）决定。
+客户端侧改代码拿不到第 101 只数据，因此**不做「解除上限」**，也不把它做成功能模块。
+
+> 若哪天服务端放开上限，客户端无需任何改动即可显示更多 —— 这条链路本来就是"给多少显示多少"。
+
+### 附带产出：探针 v27 的两级网络钩子
+
+`tools/probe/` 现在能同时抓 **OkHttp**（`okhttp3.OkHttpClient.newCall` /
+`ResponseBody.string()`，实测对金太阳**全程 0 命中** —— 它不用 OkHttp）与
+**裸 Socket + Conscrypt TLS 明文流**（动态给 `getInputStream/getOutputStream` 返回的
+实现类挂 `read/write(byte[],int,int)`，沿继承链只挂最具体那一层，避免重复）。
+抓包用「时间窗 + 只抓 HTTP 方法开头 / gzip·JSON 响应 + 总量上限」控制日志量。
+这套钩子与业务无关，**换任何 App 都能用**。
+
+---
+
 ## [2.12.1] — 2026-10-15
 
 策略详情页三项增强（直达行情二次点击崩溃修复 / 加入自选黄名返回实时刷新 / 多选栏「全选 · 反选」按钮），

@@ -74,6 +74,11 @@
     <string name="feature_select_all_switch">Enable "Select all" button</string>
     <string name="feature_select_all_switch_summary">Show a "Select all" button in the strategy detail multi-select bar</string>
 
+    <string name="feature_stg_filter_title">Strategy stock filter</string>
+    <string name="feature_stg_filter_summary">Adds a "Filter stocks" item to the strategy detail top-right menu, filtering by gain / loss / watchlist</string>
+    <string name="feature_stg_filter_switch">Enable "Filter stocks"</string>
+    <string name="feature_stg_filter_switch_summary">Show "Filter stocks" in the strategy detail three-dot menu</string>
+
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only -->
     <string name="detail_stg_direct_title">Swipe settings</string>

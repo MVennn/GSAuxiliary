@@ -126,7 +126,8 @@ GSAuxiliary/
 │           │   ├── FeatureManager.kt     #     features = listOf(...) ← 唯一接入点
 │           │   ├── watchlist/            #     自选高亮
 │           │   ├── strategyquote/        #     策略详情直达标准行情 + 左右滑动
-│           │   └── strategyselect/       #     策略多选栏「全选 / 反选」
+│           │   ├── strategyselect/       #     策略多选栏「全选 / 反选」
+│           │   └── stgfilter/            #     策略详情三点菜单「筛选股票」（涨幅 / 跌幅 / 自选）
 │           ├── app/                      #   模块 App 自己的进程
 │           │   ├── GszxApp.kt
 │           │   ├── FrameworkBridge.kt    #     与 LSPosed 服务通信
@@ -174,6 +175,7 @@ GSAuxiliary/
 | [逆向过程](docs/REVERSE-ENGINEERING.md) | 加固识别、页面链路、染色机制、判定 API 校准 |
 | [直达标准行情实现方案](docs/FEATURE-DIRECT-QUOTE.md) | Intent 契约实测、改写逻辑、降级链、验收标准、二次点击闪退修复 |
 | [多选栏全选 / 反选实现说明](docs/FEATURE-SELECT-ALL.md) | 控件契约实测、视图注入、覆盖屏外行、文案切换与间距、验收标准 |
+| [策略详情「筛选股票」实现说明](docs/FEATURE-STG-FILTER.md) | 三点菜单注入、复用 App 筛选面板布局、行过滤与持久化、验收标准 |
 | [构建指南](docs/BUILD.md) | 环境要求、依赖版本选择理由、Gradle/SDK 踩坑 |
 | [排错手册](docs/TROUBLESHOOTING.md) | 模块不生效 / 开关无效 / 热重载 / App 升级后失效 |
 | [设置界面](docs/UI.md) | 界面结构与组件说明 |

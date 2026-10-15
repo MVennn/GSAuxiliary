@@ -75,6 +75,11 @@
     <string name="feature_select_all_switch">启用「全选」按钮</string>
     <string name="feature_select_all_switch_summary">在策略详情的多选栏里显示「全选」按钮</string>
 
+    <string name="feature_stg_filter_title">策略筛选股票</string>
+    <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个「筛选股票」，可按涨幅 / 跌幅 / 自选筛掉不看的股票</string>
+    <string name="feature_stg_filter_switch">启用「筛选股票」</string>
+    <string name="feature_stg_filter_switch_summary">在策略详情页的三点菜单里显示「筛选股票」</string>
+
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
     <string name="detail_stg_direct_title">滑动设置</string>

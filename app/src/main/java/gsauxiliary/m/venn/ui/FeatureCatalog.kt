@@ -98,6 +98,19 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
+    FeatureSpec(
+        id = "stg_stock_filter",
+        categoryRes = R.string.category_strategy,
+        titleRes = R.string.feature_stg_filter_title,
+        summaryRes = R.string.feature_stg_filter_summary,
+        switchTitleRes = R.string.feature_stg_filter_switch,
+        switchSummaryRes = R.string.feature_stg_filter_switch_summary,
+        enableKey = ConfigKeys.STG_STOCK_FILTER,
+        defaultEnabled = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
+        // 三个筛选开关的编辑入口在**目标 App 自己的筛选面板**里（策略详情页三点菜单），
+        // 不在模块设置里 —— 所以这里没有二级菜单。
+    ),
+
     // ---- 显示增强：只改看到的样子 ----
     FeatureSpec(
         id = "watchlist_highlight",

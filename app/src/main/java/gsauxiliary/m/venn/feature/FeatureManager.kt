@@ -5,6 +5,7 @@ import android.os.Looper
 import gsauxiliary.m.venn.core.ConfigSnapshot
 import gsauxiliary.m.venn.core.GLog
 import gsauxiliary.m.venn.core.HookBag
+import gsauxiliary.m.venn.feature.stgfilter.StgStockFilterFeature
 import gsauxiliary.m.venn.feature.strategyquote.StgDirectQuoteFeature
 import gsauxiliary.m.venn.feature.strategyselect.StgSelectAllFeature
 import gsauxiliary.m.venn.feature.watchlist.WatchlistFeature
@@ -32,6 +33,7 @@ class FeatureManager(private val env: FeatureEnv) {
         WatchlistFeature(),
         StgDirectQuoteFeature(),
         StgSelectAllFeature(),
+        StgStockFilterFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

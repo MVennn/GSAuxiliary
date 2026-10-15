@@ -77,6 +77,20 @@ object ConfigKeys {
      */
     const val STG_SELECT_ALL = "stg_select_all"
 
+    /**
+     * 策略详情页「筛选股票」：在右上角三点菜单（「修改名称」/「删除策略」）里
+     * 注入一个「筛选股票」项，点开一个**复用目标 App 自带筛选面板 UI** 的筛选页，
+     * 提供「涨幅 / 跌幅 / 自选」三个开关，筛掉不匹配的股票行。
+     *
+     * 见 [gsauxiliary.m.venn.feature.stgfilter.StgStockFilterFeature]。
+     *
+     * ⚠️ 三个开关的**取值本身不在这里** —— 它们由目标进程写入目标 App 自己的
+     * `SharedPreferences`（`gsaux_stg_filter`）。原因：remote preferences 在目标进程里
+     * 是**只读**的，筛选状态必须在目标进程里落盘，所以只能存在目标 App 侧。
+     * 这里只留「功能总开关」。
+     */
+    const val STG_STOCK_FILTER = "stg_stock_filter"
+
     // ---------------------------------------------------------------- 模块设置
 
     /** 日志等级，见 [LogLevel] */
@@ -179,6 +193,14 @@ object ConfigKeys {
      */
     const val DEFAULT_STG_SELECT_ALL = false
 
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
+     * 三个筛选开关不在这里：它们由目标进程写目标 App 自己的 prefs
+     * （见 [STG_STOCK_FILTER]），`DEFAULTS` 里也就不该有它们的键。
+     */
+    const val DEFAULT_STG_STOCK_FILTER = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -201,6 +223,7 @@ object ConfigKeys {
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
+        STG_STOCK_FILTER,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -212,7 +235,7 @@ object ConfigKeys {
      * 「重置模块」只关闭这些开关（外加把功能参数恢复默认），
      * 不动桌面图标 / 底栏 / 语言 / 深色模式 / 日志等级这类模块级设置。
      */
-    val FEATURE_KEYS = arrayOf(ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL)
+    val FEATURE_KEYS = arrayOf(ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER)
 
     /**
      * 功能自己的参数（不属于开关，但「重置模块」一并恢复默认）。
@@ -230,6 +253,7 @@ object ConfigKeys {
         STG_DIRECT_QUOTE to DEFAULT_STG_DIRECT_QUOTE,
         STG_QUOTE_SWIPE to DEFAULT_STG_QUOTE_SWIPE,
         STG_SELECT_ALL to DEFAULT_STG_SELECT_ALL,
+        STG_STOCK_FILTER to DEFAULT_STG_STOCK_FILTER,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,
