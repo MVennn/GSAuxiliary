@@ -30,17 +30,11 @@ Make GoldenSun Great Again！
 
 ## 安装
 
-前提：手机已 root，装有 [LSPosed](https://github.com/LSPosed/LSPosed)（需支持 API 102），
-系统 Android 8.1 及以上，装有国信金太阳（`com.guosen.android`）。
-
 1. 到 [Releases](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk` 并安装
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
 3. 作用域中勾上「国信金太阳」（模块已固定声明作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次
 5. 打开桌面上的 GSAuxiliary，进「功能」页挑选要开的开关
-
-开关从「关」改成「开」之后，要重启一次金太阳才会生效 —— LSPosed 是在 App 启动时
-挂钩子的。反过来，从「开」改成「关」是立刻生效的。
 
 ## 反馈
 
