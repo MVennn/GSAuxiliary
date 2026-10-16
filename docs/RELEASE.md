@@ -24,14 +24,13 @@
 两个仓库必须满足：
 
 - **同 tag**：`{versionCode}-{versionName}`（例：`38-2.16.1`）
-- **同产物**：`GSAuxiliary_{versionCode}-{versionName}.apk`（release）
-  与 `GSAuxiliary_{versionCode}-{versionName}-debug.apk`（debug），两个包都发
+- **同产物**：`GSAuxiliary_{versionCode}-{versionName}.apk`（release 包，唯一发布物）
 - **同 Release 说明**
 - 模块仓库的 `README.md` 与源码仓库**逐字一致**
 
-> 为什么 debug 包也要发：它保留完整日志，让用户装上复现问题比只发 release 好排查得多。
-> 两个包**用同一个 keystore 签名**（`app/build.gradle.kts` 的 debug 块显式引用了
-> release 的签名配置），所以能直接覆盖安装，不用先卸载。
+> 为什么不再发 debug 包：早期发 debug 是为了让用户装上来复现问题，但实测有用户
+> **直接拿 debug 版当日常版本用** —— debug 包保留完整日志、签名也不该外流。
+> 需要 debug 包排查时，本地 `./gradlew assembleDebug` 自打自装即可，不进 Release。
 
 ---
 
@@ -53,9 +52,9 @@ python tools/publish.py --notes .work/release-notes.md
 | 步骤 | 动作 |
 |---|---|
 | 1 | 读 `app/build.gradle.kts` 的 `versionCode` / `versionName`，拼出 tag |
-| 2 | `./gradlew assembleRelease assembleDebug`，把两个 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` 与 `GSAuxiliary_{vc}-{vn}-debug.apk` |
-| 3 | **源码仓库**建/更新 Release + 传两个 APK |
-| 4 | **模块仓库**建/更新 Release + 传两个 APK |
+| 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
+| 3 | **源码仓库**建/更新 Release + 传 release 包 |
+| 4 | **模块仓库**建/更新 Release + 传 release 包 |
 | 5 | 把源码仓库的四个母本同步到模块仓库（`README.md` / `SUMMARY` / `SOURCE_URL` / `icon.svg`） |
 
 可选参数：
@@ -181,7 +180,7 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 - [ ] `CHANGELOG.md` 顶部已加该版本的段落
 - [ ] `docs/release-notes/<versionName>.md` 已写（CI 找它当 Release 说明）
 - [ ] `python tools/publish.py --check` 说两个仓库都可写
-- [ ] `./gradlew assembleDebug assembleRelease` 通过
+- [ ] `./gradlew assembleRelease` 通过（本地调试另跑 `assembleDebug`，不发布）
 - [ ] `python tools/ci/verify_apk.py <apk>` 全部 `[OK]`（红线自动化，见 `docs/BUILD.md` §8.3）
 - [ ] release dex 里 `Lio/github/libxposed/api` 与 `.../annotation` 定义类为 **0**（红线）
 - [ ] manifest 无 legacy `xposed*` meta-data（**别用 `grep -i xposed`**，见下）

@@ -6,13 +6,12 @@
 
 LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**，
 源码仓库发 Release **不会**同步过去。而 LSPosed 的网站与 App 只读模块仓库，
-所以每次发版必须在**两个仓库各发一份同 tag、同产物的 Release**，
+所以每次发版必须在**两个仓库各发一份同 tag、同产物（只有 release 包）的 Release**，
 并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
 
-每次 Release 传**两个包**：`GSAuxiliary_<tag>.apk`（release）与
-`GSAuxiliary_<tag>-debug.apk`（debug）。debug 包保留完整日志，
-让用户装上复现问题比只发 release 好排查得多；两个包用同一个 keystore 签名，
-可以直接覆盖安装，不用先卸载。
+每次 Release 只传 **release 包**：`GSAuxiliary_<tag>.apk`。
+不再附带 debug 包 —— 有过用户直接下载 debug 版当日常版本用的先例，debug 包保留
+完整日志、签名也不该外流。本地排查仍可用 `assembleDebug` 自打自装。
 
 同步的四个元文件（母本都在源码仓库里，见 `xposed-repo/README.md`）：
 
@@ -249,9 +248,8 @@ def gradle_launcher():
 
 
 def build():
-    print("[1/5] 构建 release + debug …")
-    r = run([gradle_launcher(), "assembleRelease", "assembleDebug",
-             "--console=plain"])
+    print("[1/5] 构建 release …")
+    r = run([gradle_launcher(), "assembleRelease", "--console=plain"])
     if r.returncode != 0:
         print(r.stdout[-3000:])
         print(r.stderr[-2000:])
@@ -260,22 +258,21 @@ def build():
 
 
 def stage_apk(vc, vn):
-    """备好要上传的两个包：release 给普通用户，debug 给排查问题用。
+    """备好要上传的 release 包。
 
-    两个包**都用同一个 keystore 签名**（`app/build.gradle.kts` 的 debug 块
-    显式用了 release 的签名配置），所以能互相覆盖安装 —— 让用户装个 debug 包
-    复现问题时不用先卸载。debug 包保留完整日志，排查省事很多。
+    只发 release 包。debug 包不再随发版发布 —— 有过用户直接下载 debug 版用的
+    情况，debug 包保留完整日志、且签名不应外流。需要 debug 包排查问题时，
+    本地 `./gradlew assembleDebug` 自打自装即可。
     """
     variants = [
         ("release", "app-release.apk", "GSAuxiliary_%d-%s.apk" % (vc, vn)),
-        ("debug", "app-debug.apk", "GSAuxiliary_%d-%s-debug.apk" % (vc, vn)),
     ]
     os.makedirs(WORK, exist_ok=True)
     out = []
     for variant, fname, name in variants:
         src = os.path.join(ROOT, "app", "build", "outputs", "apk", variant, fname)
         if not os.path.exists(src):
-            sys.exit("[X] 找不到 %s —— 先跑一次 assembleRelease assembleDebug，"
+            sys.exit("[X] 找不到 %s —— 先跑一次 assembleRelease，"
                      "或去掉 --skip-build" % src)
         dst = os.path.join(WORK, name)
         shutil.copyfile(src, dst)
@@ -287,7 +284,7 @@ def stage_apk(vc, vn):
 def upsert_release(tok, repo, tag, vn, notes, assets=None, dry=False):
     """在 repo 上建或更新 tag 对应的 Release，并按需替换 APK 资产。
 
-    [assets] 是 `[(文件名, 本地路径), …]` —— 通常是 release 与 debug 两个包。
+    [assets] 是 `[(文件名, 本地路径), …]` —— 现在只有 release 一个包。
     """
     status, rel = api(tok, "GET", "/repos/%s/releases/tags/%s" % (repo, tag))
     exists = status == 200
@@ -428,7 +425,7 @@ def main():
         print("[1/5] 跳过构建（--skip-build）")
 
     if args.dry_run:
-        names = ["GSAuxiliary_%d-%s%s.apk" % (vc, vn, sfx) for sfx in ("", "-debug")]
+        names = ["GSAuxiliary_%d-%s.apk" % (vc, vn)]
         print("[2/5] [dry-run] 将上传 %s" % "、".join(names))
         assets = []
     else:

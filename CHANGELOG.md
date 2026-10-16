@@ -5,6 +5,29 @@
 
 ---
 
+## [2.17.1] — 2026-10-16
+
+发版不再附带 debug 包。
+
+### 变更
+
+**症状**：有用户直接下载 `*-debug.apk` 当日常版本使用。debug 包保留完整日志、且签名
+与 release 不同源，长期外流不合适。
+
+**根因**：`tools/publish.py` 每次发版都会构建并上传 release 与 debug 两个包，LSPosed
+「更新」页同时列出两者，用户容易点错。
+
+**改法**：
+- `tools/publish.py` 只构建 `assembleRelease`，只打包、上传 release 包；
+- `.github/workflows/release.yml` 去掉 debug 构建与 debug 红线校验，dist 不再收 debug；
+- `docs/RELEASE.md` / `tools/README.md` / 根 `README.md` 同步去掉「发 debug」相关说明。
+
+**验证**：
+- `python tools/publish.py --dry-run` 输出只列 `GSAuxiliary_<vc>-<vn>.apk`；
+- 本地 `assembleDebug` 仍可构建，仅不再进 Release。
+
+---
+
 ## [2.17.0] — 2026-10-16
 
 新增一个功能：**隐藏新股申购提醒** —— 登录进入主界面时，不再弹出「今日新股申购提醒」。

@@ -375,13 +375,13 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 | 步骤 | 做什么 |
 |---|---|
 | 1 | 读 `app/build.gradle.kts` 的 `versionCode` / `versionName`，tag = `{vc}-{vn}` |
-| 2 | `./gradlew assembleRelease assembleDebug`，两个 APK 分别复制成 `GSAuxiliary_{vc}-{vn}.apk` 与 `GSAuxiliary_{vc}-{vn}-debug.apk` |
-| 3 | 在**源码仓库**建/更新 Release 并上传两个 APK（同名资产会先删再传） |
+| 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
+| 3 | 在**源码仓库**建/更新 Release 并上传 release 包（同名资产会先删再传） |
 | 4 | 在**模块仓库**做同样的操作 |
 | 5 | 同步四个元文件到模块仓库：`README.md` / `SUMMARY` / `SOURCE_URL` / `icon.svg` |
 
-> **release 与 debug 两个包都发**。debug 包保留完整日志，让用户装上复现问题
-> 比只发 release 好排查；两个包用同一个 keystore 签名，可直接覆盖安装。
+> **只发 release 包**。有过用户直接下载 debug 版当日常版本用的先例，debug 包保留
+> 完整日志、签名也不该外流；需要 debug 包排查时本地 `assembleDebug` 自打自装即可。
 
 > 第 5 步的母本都在源码仓库里（`SUMMARY` 在 `xposed-repo/`，见
 > [`xposed-repo/README.md`](../xposed-repo/README.md)）。**别在网页上直接改模块仓库
