@@ -29,7 +29,7 @@ adb logcat -s GSZXEnhance
 
 ```
 GSZXEnhance: === GSAuxiliary v2.16.0 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
-GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
+GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
 GSZXEnhance: 已挂 com.guosen.commonui.adapter.BaseQuickAdapter.getView ×1
 GSZXEnhance: 已挂 com.guosen.quotation.adapter.aistk.AIStkAdapter.getView ×1
 GSZXEnhance: 已挂 android.app.Activity.onResume
@@ -78,7 +78,7 @@ adb shell su -c "content query --uri content://io.github.MVennn.GSAuxiliary.conf
 
 也可以直接看设置界面「**概览**」页：顶部状态卡会显示**框架连接状态**，一眼能看出问题。
 （该页 2.6.0 起由「模块」改名「概览」；页面上**不再单独列「配置通道」行**，
-排障信息统一去「查看日志」。）
+排障关心的是日志 —— 3.2.0 起模块内不再有「查看日志」页，看日志按上面两条通道走。）
 
 **常见原因**
 

@@ -82,7 +82,6 @@ class ConfigSource(private val xposed: XposedInterface) {
                 enabled = p.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED),
                 color = p.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
                 scopeStrategy = p.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY),
-                logLevel = p.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
                 stgDirectQuote = p.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE),
                 stgQuoteSwipe = p.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE),
                 stgSelectAll = p.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL),

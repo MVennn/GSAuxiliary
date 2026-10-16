@@ -252,7 +252,7 @@ private fun AppTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** 极简路由：一级首页 + 六个二级页 + 一个三级页 */
+/** 极简路由：一级首页 + 五个二级页 + 一个三级页 */
 private sealed interface Route {
     data object Home : Route
     data object WatchlistDetail : Route
@@ -260,7 +260,6 @@ private sealed interface Route {
     data object QuickConfig : Route
     /** 方案编辑页（三级）：带方案 id（方案被删时页面自己回落空态） */
     data class QuickConfigEdit(val schemeId: String) : Route
-    data object LogViewer : Route
     data object Disclaimer : Route
 }
 
@@ -429,7 +428,6 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                         else -> Route.WatchlistDetail
                     }
                 },
-                onOpenLog = { route = Route.LogViewer },
                 onOpenDisclaimer = { route = Route.Disclaimer },
                 showAgreement = showAgreement,
                 onAgreeDisclaimer = {
@@ -480,13 +478,6 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                             QuickConfigScreen(
                                 onEdit = { schemeId -> route = Route.QuickConfigEdit(schemeId) },
                             )
-                        }
-
-                        Route.LogViewer -> SubScreen(
-                            title = stringResource(R.string.log_title),
-                            onBack = { route = Route.Home },
-                        ) {
-                            LogViewerScreen()
                         }
 
                         Route.Disclaimer -> SubScreen(
@@ -565,7 +556,6 @@ private fun HomeScaffold(
     currentTab: Tab,
     onSelectTab: (Tab) -> Unit,
     onOpenFeatureDetail: (String) -> Unit,
-    onOpenLog: () -> Unit,
     onOpenDisclaimer: () -> Unit,
     /** 首次启动未同意免责声明时为 `true`：弹硬门槛弹窗 */
     showAgreement: Boolean,
@@ -585,7 +575,7 @@ private fun HomeScaffold(
     // 切走再切回时关键词不会丢，过滤结果保持一致。
     val featureSearch = rememberTextFieldState()
 
-    // 三个「选择类」设置项（深色模式 / 语言 / 日志等级）与重置确认
+    // 两个「选择类」设置项（深色模式 / 语言）与重置确认
     // 都走自绘弹窗，宿主统一在这里渲染（见 ui/AppDialog.kt）。
     val dialogs = remember { DialogController() }
 
@@ -738,7 +728,7 @@ private fun HomeScaffold(
                                     searchState = featureSearch,
                                     onOpenDetail = { spec -> onOpenFeatureDetail(spec.id) },
                                 )
-                                Tab.SETTINGS -> SettingsTab(onOpenLog = onOpenLog)
+                                Tab.SETTINGS -> SettingsTab()
                                 Tab.ABOUT -> AboutTab(onOpenDisclaimer = onOpenDisclaimer)
                             }
                         }

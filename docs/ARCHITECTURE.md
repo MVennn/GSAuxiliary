@@ -20,9 +20,11 @@
 │   │      About}Tab.kt               │    │        └─ StgSelectAllFeature        │
 │   ├─ ui/{WatchlistDetail,           │    │ core/ConfigSource                    │
 │   │      StrategyQuoteDetail,       │    │ core/HookBag                         │
-│   │      LogViewer}.kt  ← 二级页    │    │ core/{ConfigKeys,ConfigSnapshot,     │
-│   └─ ui/{PrefState,FeatureCatalog,  │    │       GLog,TargetApp}.kt             │
-│          Widgets,AppIcons,          │    │ util/Reflect.kt                      │
+│   │      QuickConfig,               │    │ core/{ConfigKeys,ConfigSnapshot,     │
+│   │      QuickConfigEdit}.kt        │    │       GLog,TargetApp}.kt             │
+│   │      ← 二级 / 三级页            │    │ util/Reflect.kt                      │
+│   └─ ui/{PrefState,FeatureCatalog,  │    │                                      │
+│          Widgets,AppIcons,          │    │                                      │
 │          MarkdownText}.kt           │    │                                      │
 │ app/GszxApp.kt                      │    │                                      │
 │ app/{FrameworkBridge,ModulePrefs,   │    │                                      │
@@ -110,7 +112,7 @@
 
 | 文件 | 职责 | 运行位置 |
 |---|---|---|
-| `app/GszxApp.kt` | `Application`：初始化配置仓库、服务监听、日志等级、桌面图标状态 | 模块进程 |
+| `app/GszxApp.kt` | `Application`：初始化配置仓库、服务监听、桌面图标状态 | 模块进程 |
 | `app/FrameworkBridge.kt` | 与 LSPosed 服务通信，拿 binder | 模块进程 |
 | `app/ModulePreferences.kt` | 配置仓库（REMOTE / LOCAL 双后端） | 模块进程 |
 | `app/ConfigBackup.kt` | 配置备份 / 恢复（自描述 JSON） | 模块进程 |
@@ -130,7 +132,8 @@
 | `ui/AppIcons.kt` | 自绘 `ImageVector` 图标（零图标库依赖） | 模块进程 |
 | `ui/MarkdownText.kt` | 轻量 Markdown 渲染（免责声明正文） | 模块进程 |
 | `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
-| `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` · `ui/LogViewer.kt` | 二级页（染色设置 / 滑动设置 / 查看日志） | 模块进程 |
+| `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` | 二级页（染色设置 / 滑动设置） | 模块进程 |
+| `ui/QuickConfigScreen.kt` · `ui/QuickConfigEditScreen.kt` | 二级页「一键配置方案列表」+ 三级页「方案编辑」 | 模块进程 |
 | `ui/PrefState.kt` · `ui/FeatureCatalog.kt` · `ui/Widgets.kt` | 配置读取、功能展示元数据、共用部件 | 模块进程 |
 
 ### 2.1 分层规则
@@ -314,7 +317,6 @@ data class ConfigSnapshot(
     val enabled: Boolean,                // 自选高亮总开关
     val color: Int,                      // 高亮色（ARGB）
     val scopeStrategy: Boolean,          // 自选高亮：是否作用于策略详情页
-    val logLevel: Int,                   // 日志等级（两个进程都读）
     val stgDirectQuote: Boolean,         // 策略详情点股票直达个股详情
     val stgQuoteSwipe: Boolean,          // 直达时是否支持左右滑动换股
     val stgSelectAll: Boolean,           // 多选栏「全选 / 反选」按钮
@@ -379,7 +381,6 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | **功能总开关** | `FEATURE_KEYS` 全表（13 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` | 目标进程 | ✅ | **一律 `false`** |
 | **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `AISTARE_QUICK_CONFIG`（方案 JSON） | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
-| 跨两类 | `LOG_LEVEL` | 两边都读（目标进程控制日志等级） | ✅ | `INFO` |
 
 判定标准很简单：**目标进程需不需要它**。
 

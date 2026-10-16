@@ -26,7 +26,6 @@
 | `AboutTab.kt` | Tab 4 关于（含免责声明二级页正文 `DisclaimerContent`） |
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**染色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
-| `LogViewer.kt` | 二级页：查看日志（筛选 / 复制 / **保存到任意位置** / 清空） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
 | `QuickConfigEditScreen.kt` | **三级页**：单个方案的编辑（名称 / 涨到槽 / 跌到槽 / 提醒时效 / 设为默认 / 删除，见 §4.4） |
 | `MarkdownText.kt` | 轻量 Markdown 渲染（`AboutTab` 的免责声明正文用；不引 Markdown 库） |
@@ -180,12 +179,12 @@ SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 > （`OverlayDropdownPreference` / `OverlayDialog`）→ **2.8.0 又改回自绘**，
 > 但这次只自绘「弹窗」这一种，且原因与 2.3.1 完全不同。见 §1.4。
 
-三个选择项（主题设置 / 语言 / 日志输出等级）与「重置」的二次确认，
+两个选择项（主题设置 / 语言）与「重置」的二次确认，
 统一由 `ui/AppDialog.kt` 的 `DialogHost` 渲染。
 
 #### 两种形态（2.9.2 分化）
 
-| | `ChoiceDialogSpec`（主题 / 语言 / 日志等级） | `ConfirmDialogSpec`（重置） |
+| | `ChoiceDialogSpec`（主题 / 语言） | `ConfirmDialogSpec`（重置） |
 |---|---|---|
 | 定位 | **从触发控件右中（箭头处）弹出**：优先顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
 | 入场 | 以**离箭头最近的右角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4）：在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长 | 从屏幕下方**向上滑入** |
@@ -251,7 +250,8 @@ ArrowPreference(
 
 #### 1.3.1 为什么必须自己画（Miuix 弹层的两条崩溃路径）
 
-用户反馈「主题设置 / 语言 / 日志等级这三个控件**还是会闪退**」。定位到两条**独立**根因：
+用户反馈「主题设置 / 语言这两个控件**还是会闪退**」（当时还有第三个「日志输出等级」，
+已随 3.2.0 移除）。定位到两条**独立**根因：
 
 1. **弹层在自己的 `onClick` 里同步开始收起动画** —— 此时任何一次配置写入
    （`commit()` → `OnSharedPreferenceChangeListener` **同步**回调 → 改写 Compose 状态）
@@ -552,7 +552,7 @@ LaunchedEffect(controller.closing) {
 |---|---|
 | 框架分组 · 连接状态 / 框架版本 / API 版本 | 顶部状态卡已经全部给出 |
 | 框架分组 · 作用域 | 由 `scope.list` 静态声明（`com.guosen.android`），不是运行期信息 |
-| 配置通道 | 排障信息（remote preferences ↔ 本地暂存），属「查看日志」 |
+| 配置通道 | 排障信息（remote preferences ↔ 本地暂存），留在日志里就够了 |
 | 模块名称 | 就是 App 名字，顶栏标题已经写着 |
 
 去掉之后整页不再需要滚动，剩下的每一行都是「不看就不知道」的信息。
@@ -863,8 +863,8 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 数据管理 | 备份模块配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gsauxiliary-backup-yyyyMMdd-HHmmss.json`（2.18.0 起前缀由 `gszx-` 更名） |
 | 数据管理 | 恢复模块 | 从 JSON 恢复（SAF `OpenDocument`），IO 在后台线程 |
 | 数据管理 | 重置模块 | **自绘确认弹窗**二次确认后 `resetAllFeaturesDeferred()`：**关闭全部功能开关 + 恢复功能参数**，不退出页面 |
-| 日志 | 日志输出等级 | 右侧显示当前值，点开**自绘单选弹窗**：关闭 / 错误 / 信息 / 调试 |
-| 日志 | 查看日志 | 进入二级页 |
+
+> 「日志」分组（日志输出等级 / 查看日志）已于 3.2.0 整体移除，理由与替代入口见 §5.7。
 
 > 「框架操作 → 热重载目标进程」已于 2.18.0 移除：模块 APK 升级时框架会自动热重载
 > （`module.prop` 的 `autoHotReload=true`），无需手动入口；`XposedService` 的
@@ -1031,7 +1031,7 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 表达的是「重置 = 关掉」这个**语义**，不跟着默认值联动 —— 哪天某个功能又想
 默认开启，重置逻辑不必跟着改。一旦改成写回默认值，而默认值又是「开」，
 重置就等于没关掉，用户会以为重置失效（这是 2.3.1 修过的 bug）。
-只动「功能」范畴，界面设置（图标 / 液态玻璃 / 光效 / 语言 / 主题设置 / 可预测返回 / 日志等级）不受影响，
+只动「功能」范畴，界面设置（图标 / 液态玻璃 / 光效 / 语言 / 主题设置 / 可预测返回）不受影响，
 且**不退出设置页**。
 
 二次确认走**自绘确认弹窗**（`ConfirmDialogSpec` + `DialogHost`，见 §1.3）；
@@ -1065,57 +1065,34 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 **导出 / 恢复的整段 IO 都跑在 `Dispatchers.IO`**（跨进程读 remote preferences + 写文件），
 期间两个入口置灰并显示「正在导出… / 正在恢复…」—— 这是 2.3.0 修掉的卡顿。
 
-### 5.7 查看日志
+### 5.7 日志：模块内不再提供查看入口（3.2.0）
 
-`core/GLog.kt` 维护一个 500 行的内存环形缓冲。二级页可查看 / 复制 / **保存** / 清空。
+设置页原来的「日志」分组 —— 「日志输出等级」下拉 + 「查看日志」二级页 —— 已**整体删除**，
+`ui/LogViewer.kt` 一并删除。理由是这页属于开发期排障工具，占用设置页的位置却与普通用户无关；
+而它依赖的那套内存环形缓冲也要一直挂在 `GLog` 里占内存。
 
-页面结构（2.3.0 按 Miuix 风格重做，2.6.0 加保存，**3.1.1 重排**）：
+删掉的东西：
 
-```
-Column
-├── TabRow           级别筛选（全部 / 错误 / 警告 / 信息 / 调试）
-├── Card(weight 1f)  日志卡：表头「共 N 行」→ HorizontalDivider → 列表 / 空态
-│                    └─ LogLine：级别胶囊 +「时间戳 正文」+ 异常堆栈（再缩一层）
-└── Card             操作卡：刷新 / 复制 / 保存 / 清空（四等分）
-                               → HorizontalDivider → 页脚说明
-```
-
-3.1.1 顺手修掉的四个可见问题：
-
-| 原样 | 修法 |
+| 删掉的 | 说明 |
 |---|---|
-| 「共 N 行」是一行吊在卡片外面的小字，跟卡片内容对不齐 | 收进日志卡当**表头**，一条 `HorizontalDivider` 之下才是列表（表头不随列表滚动） |
-| 操作卡与页脚说明碎成两张卡 | 合并成一张卡，中间用 `HorizontalDivider` 分层 |
-| 行数一变就无条件 `animateScrollToItem(last)`，往上翻历史会被一路拽回底部 | 改成**只有已经贴底才跟随**；切筛选是换了一批数据，统一落到最新一条 |
-| 空列表上「复制 / 保存」照样可点，按下去只弹一个没有意义的 Toast | 复制 / 保存按当前筛选结果置灰，清空按整个缓冲是否为空置灰 |
+| `ui/LogViewer.kt` | 二级页（级别筛选 / 复制 / 保存到任意位置 / 清空）与其 `Route.LogViewer` |
+| 设置页「日志」分组 | `SmallTitle(日志)` + 两个 `ArrowPreference`（日志输出等级 / 查看日志） |
+| `ConfigKeys.LOG_LEVEL` | 连同 `DEFAULT_LOG_LEVEL`、`ConfigSnapshot.logLevel`、`DebugConfigProvider` 的 `log_level` 列一起摘掉，不再进备份白名单 |
+| `GLog` 的内存缓冲 | `buffer` / `record()` / `snapshot()` / `clearBuffer()` / `LogLevel.VALUES` |
+| 字符串 | `section_log` / `item_log_level` / `item_view_log` / `log_*` / `log_level_labels`（中英各一份） |
 
-还有三处细节：
+**日志输出本身没变**，只是入口换成系统侧的两个通道：
 
-- **跟着缓冲更新**：以前这一页是「进来那一刻的快照」，只能手动按刷新才看得到新日志，
-  看着像卡住了。3.1.1 起页面可见期间每秒取一次快照，内容没变（`List` 相等）就不写状态，
-  免得每秒无谓重组一遍列表。
-- **时间戳与正文走同一个 `Text`**（`buildAnnotatedString` 里两段 `SpanStyle`：
-  时间戳 10sp 弱化、正文 11sp `onSurface`），不是两个挨着的 `Text` —— 单个 `Text`
-  不存在「两个控件基线对不齐」，换行也自然接在正文首行下面。时间戳用正则切，
-  旧实现按固定 19 字符偏移，而 `MM-dd HH:mm:ss.SSS` 实际只有 18 个。
-- **级别胶囊尺寸写死** 20×14dp：以前盒子跟着文字撑高，遇到「原样输出」的行就比别人
-  高一点，一列胶囊参差不齐。
-**操作条四等分占满整行**（2.6.0 改）：四个 `TextButton` 各挂
-`Modifier.weight(1f)`，`Row` 用 `fillMaxWidth()` + `Arrangement.spacedBy(4.dp)`。
-之前是固定宽度的按钮靠左排，右边空一大截。`TextButton` 接 `modifier`，
-所以 `weight` 生效。
+| 进程 | 日志去哪 |
+|---|---|
+| 目标进程（金太阳） | LSPosed 的 `/data/adb/lspd/log/`（`GLog.install` 注入的 sink 转发） |
+| 模块 App 进程 | logcat（`android.util.Log`，tag `GSZXEnhance`），`adb logcat -s GSZXEnhance` 直接看 |
 
-**保存走 SAF**（`ActivityResultContracts.CreateDocument("text/plain")`）：
+日志等级不再由用户配置：`GLog.level` 是代码里的一个值，默认 `INFO`（`GLog.d` 不输出），
+要调试就在 `core/GLog.kt` 里改成 `DEBUG`。
 
-- 用户自己在系统文件选择器里挑位置，**不需要任何存储权限**（也不用 `WRITE_EXTERNAL_STORAGE`）
-- 默认文件名 `gsauxiliary-log-yyyyMMdd-HHmmss.txt`，前缀用应用名 `gsauxiliary-`
-  （2.18.0 起由项目代号 `gszx-` 更名），与备份文件 `gsauxiliary-backup-…json` 一致
-- 文件写入放 `Dispatchers.IO`，Toast 回主线程再弹（后台线程没有 `Looper`，
-  直接 `Toast.show()` 会崩 —— 这也是 2.5.0 修过的坑）
-- `uri == null` 表示用户取消，直接返回，不提示
-
-注意：这里只显示**模块 App 进程**的日志。目标进程的日志由 LSPosed 写到
-`/data/adb/lspd/log/`，普通应用读不到，页脚有注明。
+> 历史：这一页 2.3.0 按 Miuix 风格重做、2.6.0 加「保存到任意位置」、3.1.1 重排过一版
+> （表头进卡 / 操作与说明合并 / 「已贴底才跟随」）。3.2.0 直接砍掉，上述细节连同页面一起不再维护。
 
 ---
 
@@ -1539,11 +1516,12 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `Card` / `SmallTitle` | Miuix | 分组容器与分组标题（`Card` 需要 `Modifier.cardPadding()`） |
 | `BasicComponent` | Miuix | 标题 + 副标题的信息行 |
 | `SwitchPreference` | Miuix | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回） |
-| `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言 / 日志等级、备份、恢复、重置、开源链接、免责声明） |
+| `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言、备份、恢复、重置、开源链接、免责声明） |
 | `TextField` + `rememberTextFieldState` | Miuix / Compose | 功能搜索框（2.9.3 起是**功能列表的第一个元素**，随列表滚动；`GlassTopBar` 的 `extra()` 插槽保留但已不被搜索框使用，见 §4.1） |
-| `TabRow` | Miuix | 日志页的级别筛选（参数名是 `tabs` / `selectedTabIndex` / `onTabSelected`） |
 | `Surface` | Miuix | 长按气泡的底板 |
-| `TextButton` / `IconButton` / `Icon` | Miuix | 日志页按钮、返回按钮、图标 |
+| `IconButton` / `Icon` | Miuix | 返回按钮、行内图标（⋮ 动作菜单、删除取值项） |
+
+> `TabRow` / `TextButton` 曾只服务于「查看日志」页，随该页在 3.2.0 删除后已不再使用。
 | `MiuixTheme` + `lightColorScheme()` / `darkColorScheme()` | Miuix | 主题设置（跟随系统 / 亮色 / 暗色） |
 | `drawBackdrop` / `rememberLayerBackdrop` / `layerBackdrop` / `Highlight` / `InnerShadow` / `Shadow` | backdrop | 液态玻璃（顶栏 + 底栏 + 弹窗）、光效与外投影 |
 | `GlassTopBar` | 自绘（`Glass.kt`） | 液态玻璃顶栏（`drawBackdrop` + 透明 `SmallTopAppBar` + `extra()` 插槽，**无边框**） |

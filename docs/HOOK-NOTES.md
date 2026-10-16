@@ -417,7 +417,7 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
    `feature/market/MarketTargets.kt` 的候选数组与结构阈值。
    **这一类不用跑探针**：认不出目标控件时模块会**自己**把当前页面的视图树
    （含真实资源 id 名与坐标）打进模块日志 —— 打开开关、进一次页面、
-   看模块 App「设置 → 查看日志」即可。完整手册见
+   看模块日志（目标进程 → `/data/adb/lspd/log/`）即可。完整手册见
    [界面精简方案与校准手册](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)
 8. **隐藏新股申购提醒** → 改 `feature/ipoclean/IpoCleanTargets.kt`：
    `IPO_DIALOG_CLASSES` / `IPO_DIALOG_SIMPLE_NAMES` / `SHOW_METHODS`。

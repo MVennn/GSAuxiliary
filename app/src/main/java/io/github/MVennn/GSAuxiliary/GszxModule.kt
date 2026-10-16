@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Process
 import io.github.MVennn.GSAuxiliary.core.ConfigSource
 import io.github.MVennn.GSAuxiliary.core.GLog
-import io.github.MVennn.GSAuxiliary.core.LogLevel
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.FeatureManager
@@ -45,7 +44,6 @@ class GszxModule : XposedModule() {
         GLog.install { priority, tag, msg, tr ->
             if (tr != null) log(priority, tag, msg, tr) else log(priority, tag, msg)
         }
-        GLog.level = LogLevel.INFO
 
         val process = param.processName
         if (process.isEmpty() || !process.startsWith(TargetApp.PACKAGE)) {
@@ -108,13 +106,11 @@ class GszxModule : XposedModule() {
 
         val configSource = ConfigSource(xposed)
         configSource.open()
-        GLog.level = configSource.snapshot.logLevel
         env.config = configSource.snapshot
 
         val manager = FeatureManager(env)
         // 配置变化由框架在 Binder 线程推送，FeatureManager 负责切主线程
         configSource.onChanged = { cfg ->
-            GLog.level = cfg.logLevel
             manager.onConfigChanged(cfg)
         }
 

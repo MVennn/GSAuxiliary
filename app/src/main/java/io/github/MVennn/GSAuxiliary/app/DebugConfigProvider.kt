@@ -32,7 +32,6 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_ENABLED = "enabled"
         const val COL_COLOR = "color"
         const val COL_SCOPE_STRATEGY = "scope_strategy"
-        const val COL_LOG_LEVEL = "log_level"
         const val COL_BACKEND = "backend"
         const val COL_RAW = "raw"
 
@@ -74,7 +73,7 @@ class DebugConfigProvider : ContentProvider() {
         return MatrixCursor(
             arrayOf(
                 COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
-                COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
+                COL_BACKEND, COL_RAW,
                 COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
                 COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
                 COL_AISTARE_QUICK, COL_AISTARE_SCHEMES,
@@ -85,7 +84,6 @@ class DebugConfigProvider : ContentProvider() {
                     if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
                     ModulePreferences.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
                     if (ModulePreferences.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY)) 1 else 0,
-                    ModulePreferences.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
                     ModulePreferences.backend().name,
                     if (raw.isEmpty()) "(empty)" else raw,
                     if (ModulePreferences.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE)) 1 else 0,
@@ -128,10 +126,6 @@ class DebugConfigProvider : ContentProvider() {
             }
             if (values.containsKey(COL_SCOPE_STRATEGY)) {
                 putBoolean(ConfigKeys.SCOPE_STRATEGY, values.getAsInteger(COL_SCOPE_STRATEGY) != 0)
-                n++
-            }
-            if (values.containsKey(COL_LOG_LEVEL)) {
-                putInt(ConfigKeys.LOG_LEVEL, values.getAsInteger(COL_LOG_LEVEL))
                 n++
             }
             if (values.containsKey(COL_STG_DIRECT)) {

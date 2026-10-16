@@ -162,7 +162,6 @@ data class ConfigSnapshot(
     val enabled: Boolean,
     val color: Int,
     val scopeStrategy: Boolean,
-    val logLevel: Int,
     val stgDirectQuote: Boolean,         // 以下四项仅为示意，实际字段以 core/ConfigSnapshot.kt 为准
     val stgQuoteSwipe: Boolean,
     val stgSelectAll: Boolean,
@@ -172,7 +171,6 @@ data class ConfigSnapshot(
         get() = ((if (enabled) 1 else 0) * 31
                 + color * 7
                 + (if (scopeStrategy) 1 else 0) * 131
-                + logLevel * 17
                 + (if (stgDirectQuote) 1 else 0) * 977
                 + (if (stgQuoteSwipe) 1 else 0) * 1231
                 + (if (stgSelectAll) 1 else 0) * 1543

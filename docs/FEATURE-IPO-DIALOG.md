@@ -59,7 +59,7 @@ MainAct#receiveBroadcast:943              收到引擎广播
 
 宿主升级后如果弹窗又出现了，按顺序查：
 
-**第一步：看模块日志**（设置 → 查看日志，或 `/data/adb/lspd/log/`）。
+**第一步：看模块日志**（目标进程的日志在 `/data/adb/lspd/log/modules_*.log`）。
 正常应该看到这两行之一或全部：
 
 ```

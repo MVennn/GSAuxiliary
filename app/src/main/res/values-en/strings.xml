@@ -206,28 +206,6 @@
     <string name="restore_success">Restored %1$d settings</string>
     <string name="restore_failed">Restore failed: %1$s</string>
 
-    <string name="section_log">Logs</string>
-    <string name="item_log_level">Log level</string>
-    <string name="item_view_log">View logs</string>
-
-    <!-- ============================ Log page ============================ -->
-    <string name="log_title">Runtime logs</string>
-    <string name="log_empty">No logs yet</string>
-    <string name="log_filter_all">All</string>
-    <string name="log_filter_error">Error</string>
-    <string name="log_filter_warn">Warn</string>
-    <string name="log_filter_info">Info</string>
-    <string name="log_filter_debug">Debug</string>
-    <string name="log_action_copy">Copy</string>
-    <string name="log_action_clear">Clear</string>
-    <string name="log_action_refresh">Refresh</string>
-    <string name="log_action_save">Save</string>
-    <string name="log_copied">Copied to clipboard</string>
-    <string name="log_saved">Saved to %1$s</string>
-    <string name="log_save_failed">Save failed: %1$s</string>
-    <string name="log_count">%1$d lines</string>
-    <string name="log_hint">Only in-memory logs from the module app process (up to 500 lines). Target-process logs live in /data/adb/lspd/log/</string>
-
     <!-- ============================ About tab ============================ -->
     <!-- Author / credits / disclaimer only. The version lives on the Overview tab (shown once);
          scope, framework and hook details are developer-facing, users don't read them —
@@ -298,13 +276,6 @@
         <item>Gold</item>
         <item>Red</item>
         <item>Accent blue</item>
-    </string-array>
-
-    <string-array name="log_level_labels">
-        <item>Off</item>
-        <item>Error</item>
-        <item>Info</item>
-        <item>Debug</item>
     </string-array>
 
     <string-array name="language_labels">

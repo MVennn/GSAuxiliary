@@ -44,9 +44,9 @@ Make GoldenSun Great Again！
 - 模块版本号、安卓版本、机型
 - 出问题的开关，以及复现步骤
 - 日志（模块在日志里的标记名是 `GSZXEnhance`，与模块名不同，照抄即可）：
-  - 模块 App →「设置 → 查看日志」，直接查看与复制
-  - 或用 adb 抓 LSPosed 日志：     
+  - 用 adb 抓 LSPosed 日志（**目标进程的日志在这里**）：     
     `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
+  - 模块 App 自己进程的日志在 logcat 里：`adb logcat -s GSZXEnhance`
 
 ## 免责声明
 

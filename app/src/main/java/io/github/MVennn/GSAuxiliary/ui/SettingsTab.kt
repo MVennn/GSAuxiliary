@@ -34,8 +34,6 @@ import io.github.MVennn.GSAuxiliary.app.ConfigBackup
 import io.github.MVennn.GSAuxiliary.app.LauncherIcon
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
-import io.github.MVennn.GSAuxiliary.core.GLog
-import io.github.MVennn.GSAuxiliary.core.LogLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -55,11 +53,10 @@ import java.util.Locale
  *  - 材质设置：液态玻璃（总开关，+ 其下的玻璃光效）
  *  - 通用：深色模式、语言、可预测返回
  *  - 数据管理：备份 / 恢复 / 重置
- *  - 日志：输出等级、查看日志
  *
  * ## 选择类设置一律走自绘弹窗（2.8.0 起）
  *
- * 深色模式 / 语言 / 日志输出等级这三项，历史上用 Miuix 的
+ * 深色模式 / 语言这两项，历史上用 Miuix 的
  * `OverlayDropdownPreference`，表现为**一点就闪退**，反复修了三个版本都没根治。
  * 现在全部改成「一行 [ArrowPreference]（右侧显示当前值）→ 点开自绘弹窗选」，
  * 弹窗实现见 [AppDialog]，材质跟随「液态玻璃」总开关。
@@ -85,7 +82,7 @@ import java.util.Locale
  * 与「弹窗关闭动画」重叠的情况。
  */
 @Composable
-internal fun SettingsTab(onOpenLog: () -> Unit) {
+internal fun SettingsTab() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -110,13 +107,12 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
     val confirmText = stringResource(R.string.action_confirm)
     val cancelText = stringResource(R.string.action_cancel)
 
-    // 注意：三个选择类弹窗**不画标题**（2.9.2 起），所以这里不需要预取标题字符串。
+    // 注意：两个选择类弹窗**不画标题**（2.9.2 起），所以这里不需要预取标题字符串。
 
-    // 三个选择项的**触发控件位置**（窗口坐标）。弹窗是下拉菜单形态，要贴着控件弹，
+    // 两个选择项的**触发控件位置**（窗口坐标）。弹窗是下拉菜单形态，要贴着控件弹，
     // 所以用 `onGloballyPositioned` 把每一行的矩形记下来，点击时带进 spec。
     var themeAnchor by remember { mutableStateOf<Rect?>(null) }
     var languageAnchor by remember { mutableStateOf<Rect?>(null) }
-    var logLevelAnchor by remember { mutableStateOf<Rect?>(null) }
 
     val desktopIcon by rememberBoolPref(ConfigKeys.DESKTOP_ICON, ConfigKeys.DEFAULT_DESKTOP_ICON)
     val liquidGlass by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
@@ -124,11 +120,9 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
     val theme by rememberStringPref(ConfigKeys.THEME, ConfigKeys.DEFAULT_THEME)
     val language by rememberStringPref(ConfigKeys.LANGUAGE, ConfigKeys.DEFAULT_LANGUAGE)
     val predictiveBack by rememberBoolPref(ConfigKeys.PREDICTIVE_BACK, ConfigKeys.DEFAULT_PREDICTIVE_BACK)
-    val logLevel by rememberIntPref(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL)
 
     val themeLabels = stringArrayResource(R.array.theme_labels)
     val languageLabels = stringArrayResource(R.array.language_labels)
-    val logLabels = stringArrayResource(R.array.log_level_labels)
 
     // --- 备份：走 SAF，不需要任何存储权限。IO 全部丢到后台线程，避免卡顿 ---
     val backupLauncher = rememberLauncherForActivityResult(
@@ -363,44 +357,11 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
         // 还把 libxposed service 的类型（HotReloadResult / HookedTarget）拖进了
         // 界面层。目标进程的热重载能力本身保留（模块升级时框架自动走
         // onHotReloading / onHotReloaded，见 module.prop 的 autoHotReload）。
-
-        // --- 日志 ---
-        SmallTitle(stringResource(R.string.section_log))
-        Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
-                title = stringResource(R.string.item_log_level),
-                modifier = Modifier.onGloballyPositioned { logLevelAnchor = it.boundsInWindow() },
-                summary = logLabels.getOrElse(
-                    LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
-                ) { "" },
-                onClick = {
-                    dialogs?.showChoice(
-                        ChoiceDialogSpec(
-                            items = logLabels.toList(),
-                            selectedIndex = LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
-                            anchor = logLevelAnchor,
-                            onSelect = { idx ->
-                                val value = LogLevel.VALUES.getOrNull(idx) ?: LogLevel.INFO
-                                if (value != logLevel) {
-                                    ModulePreferences.editDeferred { putInt(ConfigKeys.LOG_LEVEL, value) }
-                                    GLog.level = value
-                                    // 选「关闭」时顺带清空缓冲（2.17.3）：等级只拦新日志，
-                                    // 历史记录会一直留在缓冲里，查看日志页仍是满屏旧日志，
-                                    // 看起来就像开关没生效。「关闭 = 不再记录」的直观语义
-                                    // 就是从现在起是空的；App 进程被杀缓冲本来也会丢，不金贵。
-                                    if (value == LogLevel.OFF) GLog.clearBuffer()
-                                }
-                            },
-                        ),
-                    )
-                },
-            )
-            ArrowPreference(
-                title = stringResource(R.string.item_view_log),
-                // 无副标题：「查看日志」已经说清
-                onClick = onOpenLog,
-            )
-        }
+        //
+        // 「日志」分组（输出等级 / 查看日志）已移除（3.2.0）：本模块的日志是排障用的
+        // 开发信息，不再占设置页的位置。日志本身照旧输出（模块 App 进程进 logcat，
+        // 目标进程进 LSPosed 的 /data/adb/lspd/log/），只是模块内不再提供查看入口；
+        // 等级也不再由用户配置，回到 GLog 里的固定阈值。
 
         // 悬浮底栏的让位空白（见 LocalDockInset）
         Spacer(Modifier.height(24.dp + LocalDockInset.current))

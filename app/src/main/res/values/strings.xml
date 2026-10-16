@@ -209,28 +209,6 @@
     <string name="restore_success">已恢复 %1$d 项配置</string>
     <string name="restore_failed">恢复失败：%1$s</string>
 
-    <string name="section_log">日志</string>
-    <string name="item_log_level">日志输出等级</string>
-    <string name="item_view_log">查看日志</string>
-
-    <!-- ============================ 日志页 ============================ -->
-    <string name="log_title">运行日志</string>
-    <string name="log_empty">暂无日志</string>
-    <string name="log_filter_all">全部</string>
-    <string name="log_filter_error">错误</string>
-    <string name="log_filter_warn">警告</string>
-    <string name="log_filter_info">信息</string>
-    <string name="log_filter_debug">调试</string>
-    <string name="log_action_copy">复制</string>
-    <string name="log_action_clear">清空</string>
-    <string name="log_action_refresh">刷新</string>
-    <string name="log_action_save">保存</string>
-    <string name="log_copied">已复制到剪贴板</string>
-    <string name="log_saved">已保存到 %1$s</string>
-    <string name="log_save_failed">保存失败：%1$s</string>
-    <string name="log_count">共 %1$d 行</string>
-    <string name="log_hint">只显示模块 App 进程的内存日志（最多 500 行）。目标进程的日志在 /data/adb/lspd/log/</string>
-
     <!-- ============================ 关于页 ============================ -->
     <!-- 只留作者 / 鸣谢 / 免责声明。版本在概览页已有（一页一处不重复摆）；
          作用范围、目标框架、Hook 技术细节是开发者向的信息，面向用户的界面不写
@@ -301,13 +279,6 @@
         <item>昨收 +p%</item>
         <item>昨收 −p%</item>
         <item>固定价</item>
-    </string-array>
-
-    <string-array name="log_level_labels">
-        <item>关闭</item>
-        <item>错误</item>
-        <item>信息</item>
-        <item>调试</item>
     </string-array>
 
     <string-array name="language_labels">
