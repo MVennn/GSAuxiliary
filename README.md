@@ -65,7 +65,7 @@ Make GoldenSun Great Again！
 
 | 项目                                                                                                                                    | 用途                                  |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| [**LSPosed**](https://github.com/LSPosed/LSPosed) · [**libxposed**](https://github.com/libxposed)                                     | 模块框架与现代 Xposed API（API 102）         |
+| [**LSPosed**](https://github.com/LSPosed/LSPosed) · [**libxposed**](https://central.sonatype.com/artifact/io.github.libxposed/api)    | 模块框架与现代 Xposed API（API 102）         |
 | [**Miuix**](https://github.com/miuix-kotlin-multiplatform/miuix)                                                                      | 设置界面的 UI 组件库（小米 HyperOS 风格 Compose） |
 | [**AndroidLiquidGlass**](https://github.com/Kyant0/AndroidLiquidGlass)（`io.github.kyant0:backdrop`）                                   | 液态玻璃顶栏 / 悬浮底栏 / 弹窗的折射与模糊效果          |
 | [**Jetpack Compose**](https://developer.android.com/jetpack/compose) · [**AndroidX**](https://developer.android.com/jetpack/androidx) | 全部界面实现的基础设施                         |
