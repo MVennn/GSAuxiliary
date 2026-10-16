@@ -5,6 +5,36 @@
 
 ---
 
+## [2.18.0] — 2026-10-16
+
+两件事：设置页移除「热重载目标进程」；备份 / 日志导出文件的前缀统一更名。
+有功能增删（设置页少了「框架操作」分组），按 `docs/VERSIONING.md` 走次版本
++0.1.0（2.17.3 的补丁位归零），`versionCode` 严格 +1。
+
+### 设置页移除「热重载目标进程」
+
+「框架操作」分组里只有这一个按钮，整个分组随之消失：
+
+- 它只是个**手动触发**入口，日常用不上 —— 模块 APK 升级时框架会**自动**热重载
+  目标进程（`module.prop` 的 `autoHotReload=true` + `GszxModule.onHotReloaded`
+  重装钩子），这条能力链原样保留；
+- 顺带把 libxposed service 的类型（`HotReloadResult` / `HookedTarget` /
+  `XposedService`）从界面层请了出去 —— 此前 SettingsTab 为了这一个按钮拖了
+  一串框架类型进来；
+- 十一条不再使用的文案（按钮标题 / 摘要 / 八种结果反馈 / 分组标题）从
+  `strings.xml`（中 / 英）删除。
+
+### 导出文件前缀更名 `gszx-` → `gsauxiliary-`
+
+备份与日志导出的默认文件名前缀由项目代号 `gszx-` 改为应用名 `gsauxiliary-`，
+一眼能认出文件是谁家的：
+
+- 备份：`gsauxiliary-backup-20261016-215939.json`
+- 日志：`gsauxiliary-log-20261016-224812.txt`（「复制」的剪贴板标签同步更名）
+
+备份 JSON **内部**的格式标识（`ConfigBackup.FORMAT = "gszx-config"`）**不改**
+—— 改了会让旧备份文件的格式校验失败，恢复功能就断了。
+
 ## [2.17.3] — 2026-10-16
 
 修复「日志输出等级」开关不生效的问题。无功能更新（纯缺陷修复），按 `docs/VERSIONING.md`

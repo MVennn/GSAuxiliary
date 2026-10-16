@@ -37,18 +37,6 @@
     <string name="info_device_model">Device model</string>
     <string name="info_miuix_version">Miuix version</string>
 
-    <string name="action_hot_reload">Hot-reload target</string>
-    <string name="action_hot_reload_summary">Use the current module code without restarting</string>
-    <string name="action_hot_reload_need_framework">Requires a framework connection</string>
-    <string name="msg_no_running_target">No running target program</string>
-    <!-- Hot reload result feedback (2.12.1): one per HotReloadResult.Status, plus timeout -->
-    <string name="msg_hot_reload_ok">Hot reloaded</string>
-    <string name="msg_hot_reload_failed">Hot reload failed, see module log</string>
-    <string name="msg_hot_reload_unsupported">The framework does not support hot reload</string>
-    <string name="msg_hot_reload_in_progress">Target is already hot reloading, please wait</string>
-    <string name="msg_hot_reload_died">Target process has exited</string>
-    <string name="msg_hot_reload_timeout">Hot reload timed out, the target may be unresponsive</string>
-
     <!-- ============================ Feature tab ============================ -->
     <!-- No placeholder text on purpose; the magnifier icon carries the meaning -->
     <string name="search_hint"></string>
@@ -176,8 +164,6 @@
     <string name="backup_failed">Export failed: %1$s</string>
     <string name="restore_success">Restored %1$d settings</string>
     <string name="restore_failed">Restore failed: %1$s</string>
-
-    <string name="section_framework_ops">Framework actions</string>
 
     <string name="section_log">Logs</string>
     <string name="item_log_level">Log level</string>

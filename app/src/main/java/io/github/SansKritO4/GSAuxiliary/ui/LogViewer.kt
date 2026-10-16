@@ -97,7 +97,7 @@ internal fun LogViewerScreen() {
         val text = visible.joinToString("\n")
         runCatching {
             val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("gszx-log", text))
+            cm.setPrimaryClip(ClipData.newPlainText("gsauxiliary-log", text))
         }
         Toast.makeText(ctx, copiedMsg, Toast.LENGTH_SHORT).show()
     }
@@ -291,12 +291,12 @@ private fun levelTag(level: Char): Pair<String, Color> = when (level) {
 }
 
 /**
- * 保存日志时的默认文件名：`gszx-log-20261014-224812.txt`。
+ * 保存日志时的默认文件名：`gsauxiliary-log-20261016-224812.txt`。
  *
- * 前缀沿用项目代号 `gszx-`，和备份文件
- * `gszx-backup-…json` 保持一致；用户可以在 SAF 弹窗里随便改名改位置。
+ * 前缀用应用名 `gsauxiliary-`（2.18.0 起由项目代号 `gszx-` 更名），和备份文件
+ * `gsauxiliary-backup-…json` 保持一致；用户可以在 SAF 弹窗里随便改名改位置。
  */
 private fun defaultLogFileName(): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    return "gszx-log-$stamp.txt"
+    return "gsauxiliary-log-$stamp.txt"
 }

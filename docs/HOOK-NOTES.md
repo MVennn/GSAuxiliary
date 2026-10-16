@@ -428,6 +428,5 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
 就是为了这种时候改一行就能修好。
 
 > **改完功能后重装模块 APK**：不用重启金太阳。模块声明了 `autoHotReload=true`，
-> LSPosed 会自动热重载目标进程；也可以在设置界面「设置 → 框架操作 → 热重载目标进程」手动触发。
-> 2.12.1 起点一次必有一条 Toast 反馈（成功也会说「已热重载」），
+> LSPosed 会自动热重载目标进程（2.18.0 起模块 App 内不再提供手动触发入口）。
 > 详见 [排错手册 · 热重载相关](TROUBLESHOOTING.md#8-热重载相关)。

@@ -31,15 +31,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.SansKritO4.GSAuxiliary.R
 import io.github.SansKritO4.GSAuxiliary.app.ConfigBackup
-import io.github.SansKritO4.GSAuxiliary.app.FrameworkBridge
 import io.github.SansKritO4.GSAuxiliary.app.LauncherIcon
 import io.github.SansKritO4.GSAuxiliary.app.ModulePreferences
 import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
 import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.core.LogLevel
-import io.github.libxposed.service.HookedTarget
-import io.github.libxposed.service.HotReloadResult
-import io.github.libxposed.service.XposedService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,9 +46,6 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tab 3 · 设置 —— **只放模块范围内的设置项**。
@@ -62,7 +55,6 @@ import java.util.concurrent.atomic.AtomicReference
  *  - 材质设置：液态玻璃（总开关，+ 其下的玻璃光效）
  *  - 通用：深色模式、语言、可预测返回
  *  - 数据管理：备份 / 恢复 / 重置
- *  - 框架操作：热重载目标进程
  *  - 日志：输出等级、查看日志
  *
  * ## 选择类设置一律走自绘弹窗（2.8.0 起）
@@ -137,9 +129,6 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
     val themeLabels = stringArrayResource(R.array.theme_labels)
     val languageLabels = stringArrayResource(R.array.language_labels)
     val logLabels = stringArrayResource(R.array.log_level_labels)
-
-    val connected = rememberConnected()
-    val hotReloadStrings = hotReloadTexts()
 
     // --- 备份：走 SAF，不需要任何存储权限。IO 全部丢到后台线程，避免卡顿 ---
     val backupLauncher = rememberLauncherForActivityResult(
@@ -368,29 +357,12 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
             }
         }
 
-        // --- 框架操作（热重载从这里进来，原在「模块」页） ---
-        SmallTitle(stringResource(R.string.section_framework_ops))
-        Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
-                title = stringResource(R.string.action_hot_reload),
-                summary = if (connected.value) {
-                    stringResource(R.string.action_hot_reload_summary)
-                } else {
-                    stringResource(R.string.action_hot_reload_need_framework)
-                },
-                enabled = connected.value,
-                onClick = {
-                    // Binder 调用与等待都在 IO 线程，Toast 回到主线程再弹。
-                    // （曾经直接在后台线程调 Toast，没有 Looper 会抛异常闪退。）
-                    scope.launch {
-                        // 每一次点击都必有反馈：成功 / 失败 / 超时 / 没目标进程 各有文案。
-                        // （旧版只在「没有正在运行的目标进程」时提示，目标进程在后台时
-                        //  点完毫无动静，用户以为是没生效 —— 见 CHANGELOG 2.12.1。）
-                        Toast.makeText(ctx, requestHotReload(hotReloadStrings), Toast.LENGTH_LONG).show()
-                    }
-                },
-            )
-        }
+        // --- 框架操作 ---
+        //
+        // 「热重载目标进程」已移除（2.18.0）：它只是个手动触发入口，日常用不上，
+        // 还把 libxposed service 的类型（HotReloadResult / HookedTarget）拖进了
+        // 界面层。目标进程的热重载能力本身保留（模块升级时框架自动走
+        // onHotReloading / onHotReloaded，见 module.prop 的 autoHotReload）。
 
         // --- 日志 ---
         SmallTitle(stringResource(R.string.section_log))
@@ -435,102 +407,8 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
     }
 }
 
-/** 备份文件名：英文 + 日期 + 时分秒，例如 `gszx-backup-20261014-215939.json` */
+/** 备份文件名：英文 + 日期 + 时分秒，例如 `gsauxiliary-backup-20261016-215939.json` */
 private fun defaultBackupFileName(): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    return "gszx-backup-$stamp.json"
-}
-
-/**
- * 热重载的提示文案。
- *
- * **点一次必有一条反馈**（2.12.1 起）。此前只有「没有正在运行的目标进程」会提示，
- * 成功 / 失败一律只写日志 —— 结果就是目标进程**在后台**（或一切正常）时点下去
- * 屏幕上毫无动静，用户根本没法判断到底重载了没有。
- *
- * 文案与 `HotReloadResult.Status` 一一对应（`SUCCEEDED` / `FAILED` / `UNSUPPORTED` /
- * `IN_PROGRESS` / `PROCESS_DIED`，见 libxposed service 的 `IXposedService.aidl`），
- * 另加一档「回调超时」——那是本地等不到回调，不是框架给的终态。
- */
-private data class HotReloadTexts(
-    val noFramework: String,
-    val noTarget: String,
-    val ok: String,
-    val failed: String,
-    val unsupported: String,
-    val inProgress: String,
-    val died: String,
-    val timeout: String,
-)
-
-@Composable
-private fun hotReloadTexts() = HotReloadTexts(
-    noFramework = stringResource(R.string.action_hot_reload_need_framework),
-    noTarget = stringResource(R.string.msg_no_running_target),
-    ok = stringResource(R.string.msg_hot_reload_ok),
-    failed = stringResource(R.string.msg_hot_reload_failed),
-    unsupported = stringResource(R.string.msg_hot_reload_unsupported),
-    inProgress = stringResource(R.string.msg_hot_reload_in_progress),
-    died = stringResource(R.string.msg_hot_reload_died),
-    timeout = stringResource(R.string.msg_hot_reload_timeout),
-)
-
-/**
- * 请求热重载（API 102 的服务侧能力），并返回一条**必不为空**的结果文案。
- *
- * **必须在 IO 线程执行**：binder 调用不能放主线程，回调要等（最多 8 秒）。
- *
- * 时序：`hotReloadModule` 是异步的，框架在目标进程换完代码后经
- * [XposedService.HotReloadCallback] 回一个终态；这里用 `CountDownLatch` 把它接回
- * 同步流程，`await` 到就报真实结果，等不到（8 秒）就报超时。
- *
- * @return 一定非空 —— 调用方无条件弹 Toast。
- */
-private suspend fun requestHotReload(s: HotReloadTexts): String = withContext(Dispatchers.IO) {
-    // 服务在「连接」与「点击」之间掉线是可能的（进程被杀 / 框架重启），
-    // 此时控件虽然 disabled，仍要兜一句文案，别静默返回。
-    val svc: XposedService = FrameworkBridge.service()
-        ?: return@withContext s.noFramework
-
-    try {
-        val targets = svc.runningTargets
-        if (targets.isEmpty()) return@withContext s.noTarget
-
-        val target = targets.first()
-        val latch = CountDownLatch(1)
-        // 回调在 binder 线程，结果读在主线程 —— 用 AtomicReference 而不是裸 var：
-        // 拿到的是明确的发生在 latch 之前的写，语义比依赖 happens-before 更直白。
-        val result = AtomicReference<HotReloadResult?>(null)
-
-        svc.hotReloadModule(
-            target,
-            null,
-            object : XposedService.HotReloadCallback {
-                override fun onHotReloadResult(t: HookedTarget, r: HotReloadResult) {
-                    GLog.i("热重载 ${t.processName}(pid ${t.pid})：${r.status} ${r.message ?: ""}")
-                    result.set(r)
-                    latch.countDown()
-                }
-            },
-        )
-
-        if (!latch.await(8, TimeUnit.SECONDS)) {
-            GLog.w("热重载 ${target.processName}(pid ${target.pid}) 超时：8 秒内没有回调")
-            return@withContext s.timeout
-        }
-
-        when (result.get()?.status) {
-            HotReloadResult.Status.SUCCEEDED -> s.ok
-            HotReloadResult.Status.IN_PROGRESS -> s.inProgress
-            HotReloadResult.Status.UNSUPPORTED -> s.unsupported
-            HotReloadResult.Status.PROCESS_DIED -> s.died
-            HotReloadResult.Status.FAILED -> s.failed
-            // 兜底：`await` 已返回却仍没有结果（理论上不可达），或框架日后新增状态码。
-            // 一律归到「失败」，绝不静默。
-            else -> s.failed
-        }
-    } catch (t: Throwable) {
-        GLog.w("热重载失败", t)
-        s.failed
-    }
+    return "gsauxiliary-backup-$stamp.json"
 }

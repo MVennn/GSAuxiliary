@@ -38,18 +38,6 @@
     <string name="info_device_model">设备型号</string>
     <string name="info_miuix_version">Miuix 版本</string>
 
-    <string name="action_hot_reload">热重载目标进程</string>
-    <string name="action_hot_reload_summary">无需重启即可换用当前代码</string>
-    <string name="action_hot_reload_need_framework">需要框架连接</string>
-    <string name="msg_no_running_target">没有正在运行的目标程序</string>
-    <!-- 热重载结果提示（2.12.1）：五种终态 + 超时，一一对应 HotReloadResult.Status -->
-    <string name="msg_hot_reload_ok">已热重载</string>
-    <string name="msg_hot_reload_failed">热重载失败，详见模块日志</string>
-    <string name="msg_hot_reload_unsupported">当前框架不支持热重载</string>
-    <string name="msg_hot_reload_in_progress">目标进程正在热重载中，请稍候</string>
-    <string name="msg_hot_reload_died">目标进程已退出</string>
-    <string name="msg_hot_reload_timeout">热重载超时，目标进程可能无响应</string>
-
     <!-- ============================ 功能页 ============================ -->
     <!-- 搜索框不写占位文字（提示词留空），靠左侧放大镜图标说明用途 -->
     <string name="search_hint"></string>
@@ -177,8 +165,6 @@
     <string name="backup_failed">导出失败：%1$s</string>
     <string name="restore_success">已恢复 %1$d 项配置</string>
     <string name="restore_failed">恢复失败：%1$s</string>
-
-    <string name="section_framework_ops">框架操作</string>
 
     <string name="section_log">日志</string>
     <string name="item_log_level">日志输出等级</string>

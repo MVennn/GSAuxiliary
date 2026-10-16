@@ -471,7 +471,7 @@ LaunchedEffect(controller.closing) {
 
 | 页面 | 放什么 | 不放什么 |
 |---|---|---|
-| **设置** | **模块范围内**的设置：桌面图标、材质设置（液态玻璃 / 玻璃光效）、通用（主题设置 / 语言 / 可预测返回）、数据管理（备份 / 恢复 / 重置）、框架操作（热重载）、日志（等级 / 查看） | 任何具体功能的开关与参数 |
+| **设置** | **模块范围内**的设置：桌面图标、材质设置（液态玻璃 / 玻璃光效）、通用（主题设置 / 语言 / 可预测返回）、数据管理（备份 / 恢复 / 重置）、日志（等级 / 查看） | 任何具体功能的开关与参数 |
 | **功能** | 每个功能一行**开关**；开关打开后在下方展开该功能的「XX设置」入口 | 具体参数（都在二级菜单里） |
 
 具体功能自己的可调项（染色设置 / 滑动设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
@@ -656,7 +656,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 框架信息（连接状态 / 框架版本 / API 版本）**只喂给顶部状态卡**，
 一次 `remember(connected.value, …) { … }` 取全，不重复读服务。
 
-> 这一页**只做展示**，不放任何操作项（热重载在「设置 → 框架操作」）。
+> 这一页**只做展示**，不放任何操作项（2.18.0 起「框架操作」组也删了 —— 热重载按钮已移除，模块升级时框架自动热重载）。
 > 排查问题的完整流程见 [排错手册](TROUBLESHOOTING.md)。
 
 ### 3.3 两个图标为什么用贝塞尔画圆
@@ -795,12 +795,15 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 通用 | 主题设置 | 右侧显示当前值，点开**自绘单选弹窗**：跟随系统 / 亮色 / 暗色 |
 | 通用 | 语言 | 右侧显示当前值，点开**自绘单选弹窗**：跟随系统 / 简体中文 / English |
 | 通用 | 可预测返回 | 开关；二级页返回跟手预览（Android 13+），**默认开** |
-| 数据管理 | 备份模块配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gszx-backup-yyyyMMdd-HHmmss.json` |
+| 数据管理 | 备份模块配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gsauxiliary-backup-yyyyMMdd-HHmmss.json`（2.18.0 起前缀由 `gszx-` 更名） |
 | 数据管理 | 恢复模块 | 从 JSON 恢复（SAF `OpenDocument`），IO 在后台线程 |
 | 数据管理 | 重置模块 | **自绘确认弹窗**二次确认后 `resetAllFeaturesDeferred()`：**关闭全部功能开关 + 恢复功能参数**，不退出页面 |
-| 框架操作 | 热重载目标进程 | 调 `XposedService.hotReloadModule()`，Binder 调用放 `Dispatchers.IO`；**点一次必有一条 Toast 反馈**（2.12.1 起）：成功「已热重载」/ 失败 / 不支持 / 进行中 / 目标进程已退出 / 8 秒超时 / 没有正在运行的目标进程 / 需要框架连接 |
 | 日志 | 日志输出等级 | 右侧显示当前值，点开**自绘单选弹窗**：关闭 / 错误 / 信息 / 调试 |
 | 日志 | 查看日志 | 进入二级页 |
+
+> 「框架操作 → 热重载目标进程」已于 2.18.0 移除：模块 APK 升级时框架会自动热重载
+> （`module.prop` 的 `autoHotReload=true`），无需手动入口；`XposedService` 的
+> 热重载类型也因此不再进界面层。
 
 > 分组名 2.8.0 由「Dock 设置」改为**「材质设置」**（`R.string.section_dock`）——
 > 这个开关管的是顶栏 / 底栏 / 弹窗三处材质，叫「Dock」已经不准确了。
@@ -1020,8 +1023,8 @@ Column
 **保存走 SAF**（`ActivityResultContracts.CreateDocument("text/plain")`）：
 
 - 用户自己在系统文件选择器里挑位置，**不需要任何存储权限**（也不用 `WRITE_EXTERNAL_STORAGE`）
-- 默认文件名 `gszx-log-yyyyMMdd-HHmmss.txt`，前缀沿用项目代号 `gszx-`，
-  与备份文件 `gszx-backup-…json` 一致
+- 默认文件名 `gsauxiliary-log-yyyyMMdd-HHmmss.txt`，前缀用应用名 `gsauxiliary-`
+  （2.18.0 起由项目代号 `gszx-` 更名），与备份文件 `gsauxiliary-backup-…json` 一致
 - 文件写入放 `Dispatchers.IO`，Toast 回主线程再弹（后台线程没有 `Looper`，
   直接 `Toast.show()` 会崩 —— 这也是 2.5.0 修过的坑）
 - `uri == null` 表示用户取消，直接返回，不提示
@@ -1451,7 +1454,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `Card` / `SmallTitle` | Miuix | 分组容器与分组标题（`Card` 需要 `Modifier.cardPadding()`） |
 | `BasicComponent` | Miuix | 标题 + 副标题的信息行 |
 | `SwitchPreference` | Miuix | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回） |
-| `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言 / 日志等级、备份、恢复、重置、热重载、开源链接、免责声明） |
+| `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言 / 日志等级、备份、恢复、重置、开源链接、免责声明） |
 | `TextField` + `rememberTextFieldState` | Miuix / Compose | 功能搜索框（2.9.3 起是**功能列表的第一个元素**，随列表滚动；`GlassTopBar` 的 `extra()` 插槽保留但已不被搜索框使用，见 §4.1） |
 | `TabRow` | Miuix | 日志页的级别筛选（参数名是 `tabs` / `selectedTabIndex` / `onTabSelected`） |
 | `Surface` | Miuix | 长按气泡的底板 |
