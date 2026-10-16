@@ -247,12 +247,12 @@
     <!-- ==================== First launch · disclaimer agreement ==================== -->
     <!-- The message is plain text (the entry moved to the check row); the check
          label is split into prefix + link + suffix, spaces escaped as \u0020.
-         Subtitle (3.2.0): kept to three lines, ending at "tick the box below" —
-         the button sits right under it, so it needs no "then tap Confirm" line.
+         Subtitle (3.2.0): kept to three lines, closing on a thank-you — the box
+         and the button sit right underneath, so the text no longer repeats them.
          "Not for commercial use" carries the last line; drop it and the third
-         line collapses to a couple of words. -->
+         line collapses to half a sentence. -->
     <string name="agreement_title">Before you start</string>
-    <string name="agreement_message">Non-commercial open-source software for studying Android reverse engineering and hooking. Not for commercial use; delete it within 24 hours, then tick the box below.</string>
+    <string name="agreement_message">Non-commercial open-source software for studying Android reverse engineering and hooking. Not for commercial use; delete it within 24 hours. Thanks for your understanding.</string>
     <string name="agreement_check_prefix">I have carefully read and agree to the\u0020</string>
     <string name="agreement_check_link">Disclaimer</string>
     <string name="agreement_check_suffix">\u0020in its entirety</string>
