@@ -7,9 +7,9 @@
 
 ## [2.17.1] — 2026-10-16
 
-发版不再附带 debug 包。
+三件事：发版不再附带 debug 包；策略筛选页的筛选文案 / 计数 / 空态；功能卡片里多余的副标题清掉。
 
-### 变更
+### 发版不再附带 debug 包
 
 **症状**：有用户直接下载 `*-debug.apk` 当日常版本使用。debug 包保留完整日志、且签名
 与 release 不同源，长期外流不合适。
@@ -21,16 +21,6 @@
 - `tools/publish.py` 只构建 `assembleRelease`，只打包、上传 release 包；
 - `.github/workflows/release.yml` 去掉 debug 构建与 debug 红线校验，dist 不再收 debug；
 - `docs/RELEASE.md` / `tools/README.md` / 根 `README.md` 同步去掉「发 debug」相关说明。
-
-**验证**：
-- `python tools/publish.py --dry-run` 输出只列 `GSAuxiliary_<vc>-<vn>.apk`；
-- 本地 `assembleDebug` 仍可构建，仅不再进 Release。
-
----
-
-## [2.17.1] — 2026-10-16
-
-策略筛选页三处调整（文案 / 计数 / 空态），外加把功能卡片里多余的副标题清掉。
 
 ### 策略详情页筛选股票
 
@@ -86,7 +76,9 @@
 
 | 项 | 结果 |
 |---|---|
-| `assembleDebug` | ✅ 通过 |
+| `assembleRelease` | ✅ 通过 |
+| `assembleDebug` | ✅ 通过（只是不再进 Release） |
+| `python tools/publish.py --dry-run` | ✅ 只列 `GSAuxiliary_<vc>-<vn>.apk` |
 | 筛选面板三行文案 | ✅ 真机 dump：涨家股票 / 跌家股票 / 自选股票 |
 | 左上角计数 | ✅ 真机：`策略个股 20/100`；切回不筛 → `策略个股100只` |
 | 空态 | ✅ 真机：吉祥物 + 「未选出符合条件的股票」，落在 `[0,830][1080,2189]`，头部一行未动 |
