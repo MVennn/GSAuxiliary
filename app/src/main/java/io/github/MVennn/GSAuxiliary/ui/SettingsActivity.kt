@@ -505,7 +505,11 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                             title = stringResource(R.string.detail_quick_edit_title),
                             onBack = { route = Route.QuickConfig },
                         ) {
-                            QuickConfigEditScreen(schemeId = editRoute.schemeId)
+                            QuickConfigEditScreen(
+                                schemeId = editRoute.schemeId,
+                                // 方案被删掉就回列表，不停在空白的三级页
+                                onDeleted = { route = Route.QuickConfig },
+                            )
                         }
                     }
                 }
@@ -816,38 +820,61 @@ private fun SubScreen(
     // 二级页自己的弹窗宿主（3.1.0 起）。
     // 一级页的 DialogController 在 HomeScaffold 里，二级页不在其内容树里拿不到 ——
     // 「一键配置」的方案菜单 / 删除确认需要弹层，所以每个二级页自带一份。
-    // 不用液态玻璃（一级页的 backdrop 在二级页拿不到），走纯色卡片分支。
     val dialogs = remember { DialogController() }
-    val plainBackdrop = rememberLayerBackdrop()
+
+    // 弹窗材质跟一级页同一个开关（3.1.1 修）：3.1.0 这里写死纯色，
+    // 于是同一颗 ⋮ 菜单在一级页是玻璃、在二级页是灰卡片，两处观感对不上。
+    // 玻璃要采样身后的画面，所以二级页也把内容录一个图层（与 HomeScaffold 同一套路）。
+    val liquidGlass by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
+    val glassEffect by rememberBoolPref(ConfigKeys.GLASS_EFFECT, ConfigKeys.DEFAULT_GLASS_EFFECT)
+    val background = MiuixTheme.colorScheme.surface
+    val backdrop = rememberLayerBackdrop {
+        drawRect(background)
+        drawContent()
+    }
+
+    // 点击内容区空白处清掉输入框焦点（3.1.1）。一级页在 HomeScaffold 里有一份同样的兜底，
+    // 二级页当时漏了 —— 表现为「方案名称 / 数值输入框点开后，点别处光标还在闪」。
+    // 卡片 / 开关 / 输入框自己会消费点击，只有真正点在空白处才会走到这里。
+    val focusManager = LocalFocusManager.current
 
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            // 与一级页同源，保证二级页与底衬颜色一致（见 HomeScaffold 的注释）
-            containerColor = MiuixTheme.colorScheme.surface,
-            topBar = {
-                SmallTopAppBar(
-                    title = title,
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                imageVector = AppIcons.ArrowBack,
-                                contentDescription = stringResource(R.string.common_back),
-                            )
-                        }
-                    },
-                )
-            },
-        ) { padding ->
-            CompositionLocalProvider(
-                LocalNavBarInset provides navBarInset,
-                LocalDialogController provides dialogs,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = padding.calculateTopPadding()),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(backdrop),
+        ) {
+            Scaffold(
+                // 与一级页同源，保证二级页与底衬颜色一致（见 HomeScaffold 的注释）
+                containerColor = background,
+                topBar = {
+                    SmallTopAppBar(
+                        title = title,
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(
+                                    imageVector = AppIcons.ArrowBack,
+                                    contentDescription = stringResource(R.string.common_back),
+                                )
+                            }
+                        },
+                    )
+                },
+            ) { padding ->
+                CompositionLocalProvider(
+                    LocalNavBarInset provides navBarInset,
+                    LocalDialogController provides dialogs,
                 ) {
-                    content()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = padding.calculateTopPadding())
+                            .pointerInput(focusManager) {
+                                detectTapGestures(onTap = { focusManager.clearFocus() })
+                            },
+                    ) {
+                        content()
+                    }
                 }
             }
         }
@@ -856,9 +883,9 @@ private fun SubScreen(
         // 锚点是 boundsInWindow() 窗口坐标，放 Scaffold content 里会被顶栏偏移
         DialogHost(
             controller = dialogs,
-            backdrop = plainBackdrop,
-            liquidGlass = false,
-            effect = false,
+            backdrop = backdrop,
+            liquidGlass = liquidGlass,
+            effect = glassEffect,
         )
     }
 }

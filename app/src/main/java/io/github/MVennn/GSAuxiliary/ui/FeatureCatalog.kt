@@ -199,7 +199,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
         detailTitleRes = R.string.detail_quick_config_title,
         detailEntryRes = R.string.feature_quick_config_detail_entry,
-        // 无入口副标题：「方案设置」已经说清进去做什么，不列里面的项目（docs/NAMING.md §3）
+        detailEntrySummaryRes = R.string.feature_quick_config_detail_entry_summary,
     ),
 
     // ---- 底栏：只改主界面底栏的结构 ----

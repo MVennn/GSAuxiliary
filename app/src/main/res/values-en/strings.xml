@@ -88,6 +88,7 @@
     <string name="feature_quick_config_switch">Add \"Config\" button</string>
     <string name="feature_quick_config_switch_summary">Price page, to the right of Save</string>
     <string name="feature_quick_config_detail_entry">Schemes</string>
+    <string name="feature_quick_config_detail_entry_summary">Add custom schemes to the price page config button</string>
 
     <!-- ============================ One-tap config · schemes (sub screen) ============================ -->
     <string name="detail_quick_config_title">One-tap config</string>
@@ -95,13 +96,12 @@
     <string name="quick_section_schemes">Schemes</string>
     <string name="quick_section_actions">Actions</string>
     <string name="quick_new_scheme">New scheme</string>
-    <string name="quick_new_scheme_default_name">Bounce ±5%</string>
+    <string name="quick_new_scheme_name_prefix">New scheme </string>
     <string name="quick_default_badge">Default</string>
     <string name="quick_menu_set_default">Set as default</string>
     <string name="quick_menu_move_up">Move up</string>
     <string name="quick_menu_move_down">Move down</string>
     <string name="quick_menu_delete">Delete scheme</string>
-    <string name="quick_terms_note">Periods count in trading days and prices are rounded to the cent. A term without data aborts the whole fill — half-written values are never saved.</string>
     <string name="quick_field_name">Scheme name</string>
     <string name="quick_field_agg">With several terms</string>
     <string name="quick_agg_max">Take the max</string>
@@ -113,6 +113,7 @@
     <string name="quick_slot_down_short">Fall to</string>
     <string name="quick_add_term">Add a term</string>
     <string name="quick_param_period_fmt">%1$s-day</string>
+    <string name="quick_section_alert">Alert</string>
     <string name="quick_field_validity">Alert validity</string>
     <string name="quick_validity_keep">Keep unchanged</string>
     <string name="quick_validity_once">Once</string>

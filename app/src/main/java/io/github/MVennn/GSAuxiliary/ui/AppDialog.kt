@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -215,6 +217,18 @@ internal class DialogController {
     var closing by mutableStateOf(false)
         private set
 
+    /**
+     * 「关闭之后再执行」的动作（见 [dismiss]）。
+     *
+     * 弹层里的点击**不能**顺手把配置写掉：`commit()` 会同步回调
+     * `OnSharedPreferenceChangeListener` → 订阅方改写 Compose 状态 →
+     * 正跑着收起动画的弹层被换掉入参 → 崩溃（`ModulePreferences.editDeferred`
+     * 的注释里记的就是这条根因，3.1.x 的 ⋮ 菜单「删除方案」踩的正是它：
+     * 删掉一行 → 列表当场重组，而弹窗的收起动画还没播完）。
+     * 现在统一排到这里，等 [finishDismiss] 播完动画再落配置。
+     */
+    private var afterDismiss: (() -> Unit)? = null
+
     fun showChoice(s: ChoiceDialogSpec) {
         closing = false
         spec = s
@@ -243,15 +257,21 @@ internal class DialogController {
      *
      * 退出期间 [spec] 仍然保留，所以不会渲染出空壳卡片。
      */
-    fun dismiss() {
+    fun dismiss(afterClose: (() -> Unit)? = null) {
         if (spec == null) return
+        // 只在传了新动作时覆盖：菜单项已经点过（动作排着队）、随后又点了遮罩 /
+        // 按了返回，不能把排队中的那次选择丢掉。
+        if (afterClose != null) afterDismiss = afterClose
         closing = true
     }
 
-    /** 退出动画播完，真正清空（只由宿主调用） */
+    /** 退出动画播完，真正清空（只由宿主调用），随后执行「关闭之后再做」的动作 */
     fun finishDismiss() {
         spec = null
         closing = false
+        val action = afterDismiss
+        afterDismiss = null
+        action?.invoke()
     }
 }
 
@@ -358,6 +378,15 @@ private val DialogCorner = 28.dp
 
 /** 锚定式弹窗（下拉菜单）的固定宽度 */
 private val MenuWidth = 200.dp
+
+/**
+ * 锚定菜单的**最大高度**（占屏幕高度的比例）。
+ *
+ * 取值项目录有 18 项，不管一下的话菜单会一路长到接近满屏 —— 既看不出「这是个菜单」，
+ * 又把身后的界面全盖住（用户反馈「弹窗高度已接近占满整个屏幕」）。
+ * 超过这个高度就由内容自己滚动（[DialogBody] 的选择列表带了 `verticalScroll`）。
+ */
+private const val MenuMaxHeightFraction = 0.6f
 
 /** 卡片与屏幕边缘的最小距离；同时也是底部弹窗的左右留白（= 主页卡片的 `cardPadding`） */
 private val ScreenMargin = 12.dp
@@ -502,6 +531,13 @@ internal fun DialogHost(
                     // 锚定菜单定宽；贴底弹窗铺满卡片宽度
                     minWidth = if (anchor != null || sheet) cap else 0,
                     maxWidth = cap,
+                    // 高度封顶：锚定菜单取屏幕的 60%（超出部分内容自己滚），
+                    // 贴底 / 居中弹窗只保证不越过上下留白
+                    maxHeight = if (anchor != null) {
+                        (height * MenuMaxHeightFraction).toInt().coerceAtLeast(side)
+                    } else {
+                        (height - side * 2).coerceAtLeast(side)
+                    },
                 ),
             )
             val cardW = placeable.width
@@ -639,17 +675,21 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
     when (spec) {
         // 选择类弹窗**不画标题**（2.9.2 去掉）——选项本身已经说明这是哪个设置项，
         // 多一行标题只会让下拉菜单变高、变啰嗦。
-        is ChoiceDialogSpec -> Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        // `verticalScroll`：选项多到超过卡片高度上限时（见 MenuMaxHeightFraction）
+        // 由列表自己滚动，而不是把卡片撑满整屏。
+        is ChoiceDialogSpec -> Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 8.dp),
+        ) {
             spec.items.forEachIndexed { index, label ->
                 ChoiceRow(
                     label = label,
                     selected = index == spec.selectedIndex,
-                    onClick = {
-                        // 先关弹窗再落配置：写入走 editDeferred，
-                        // 保证状态更新发生在关闭之后（与历史崩溃同一套防御）。
-                        controller.dismiss()
-                        spec.onSelect(index)
-                    },
+                    // 先关弹窗、**播完收起动画**再落配置：`onSelect` 里往往是一次
+                    // 配置写入（删除方案 / 上移下移 / 设为默认），同步执行会让列表在
+                    // 弹窗动画还没结束时重组 —— 见 [DialogController.dismiss]。
+                    onClick = { controller.dismiss { spec.onSelect(index) } },
                 )
             }
         }
@@ -657,7 +697,10 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
         is ConfirmDialogSpec -> Column(
             // 纵向留白 2.9.3 由 22dp 加到 32dp：贴底弹窗铺满整条卡片宽度，
             // 内容却只有两行字 + 一排按钮，太紧就会「扁长」。
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 32.dp),
+            // 带 `verticalScroll` 只为兜住极端情况（大字号 / 矮屏把卡片顶到高度上限）
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -704,10 +747,8 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 DialogButton(
                     text = spec.confirmText,
                     emphasized = true,
-                    onClick = {
-                        controller.dismiss()
-                        spec.onConfirm()
-                    },
+                    // 同上：确认动作（删除方案 / 重置模块）等弹窗关闭后再执行
+                    onClick = { controller.dismiss { spec.onConfirm() } },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -719,7 +760,10 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
             val colors = MiuixTheme.colorScheme
 
             Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 28.dp),
+                // 同上：`verticalScroll` 兜住大字号 / 矮屏（免责声明那段文字不短）
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
@@ -758,10 +802,8 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     text = spec.confirmText,
                     emphasized = true,
                     enabled = checked,
-                    onClick = {
-                        controller.dismiss()
-                        spec.onConfirm()
-                    },
+                    // 同意写入的是本机状态，同样会触发一次重组 —— 一样等关闭之后再做
+                    onClick = { controller.dismiss { spec.onConfirm() } },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

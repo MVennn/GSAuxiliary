@@ -1605,6 +1605,18 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   仍是一次状态翻转；配置写入统一走 `ModulePreferences.editDeferred { }`
   （延迟 360ms + `AtomicReference` 只保留最后一次）作为第二层防御；
   `notifyChanged()` 一律 post 到主线程（2.7.0 / 2.8.0 两轮修）
+- **弹层里的动作要排在「关闭动画播完」之后**（3.1.1）：`DialogController.dismiss { 动作 }`
+  把动作交给 `finishDismiss()` 执行。`dismiss()` 与写配置**挨着**调用时，`commit()`
+  会同步回调订阅方当场重组，而收起动画还在跑 —— 就是上一条那类崩溃。
+  （菜单 / 确认 / 同意三种弹窗的动作都走这条。）
+- **图标染色要走 GraphicsLayer，别用 `Icon(imageVector, tint = ...)`**（3.1.1）：
+  `Icon(imageVector, tint)` 与 `Image(colorFilter = ColorFilter.tint(...))` 这条
+  **画笔记账层**的染色在魅族 20 / Android 16 上整体不生效（debug 与 release 都复现，
+  换成 `Color.Red` 也照旧画成占位黑），图标一律是黑的。统一改用 `Widgets.TintedIcon`
+  （miuix `Icon(painter, tint = ColorProducer, ...)` → `layer.colorFilter`，
+  与 Miuix 底栏图标同一条路）
+- **锚定菜单要有最大高度**（3.1.1）：`MenuMaxHeightFraction = 0.6` 把卡片限在屏高 60%，
+  超出的选项由列表自己 `verticalScroll` —— 取值项目录 18 项，不封顶时菜单几乎铺满整屏
 - **`values-en/strings.xml` 里的撇号必须写成 `\'`，引号写成 `\"`**。
   写 `&#39;` / `&quot;` 会在 AGP 合并资源时被**解码成裸字符**写进
   `merged.dir/values-en.xml`，而 aapt2 要求撇号转义，报

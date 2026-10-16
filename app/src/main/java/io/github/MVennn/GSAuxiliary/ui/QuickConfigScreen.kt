@@ -1,5 +1,9 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,10 +16,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
@@ -35,8 +41,12 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
+import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** 新建方案那一行的展开动画时长（也是「动画期间保留 justAdded 标记」的时长） */
+private const val SchemeAppearMillis = 260
 
 /**
  * 「一键配置」的方案列表页（二级页）。
@@ -48,14 +58,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 交互：
  *  - 点行 → 进编辑页（[QuickConfigEditScreen]），行尾的箭头由组件自带；
  *  - 行尾 ⋮ → 锚定菜单（设为默认 / 上移 / 下移 / 删除方案）；
- *  - 「新建方案」→ 反弹 ±5% 的空方案，改名字与取值项进编辑页。
+ *  - 「新建方案」→ 反弹 ±5% 的新方案，**带一段展开动画**落进列表。
  *
- * ## 取值项清单为什么不摆在这一页
+ * ## 取值项清单与脚注都不摆在这一页
  *
  * 3.1.x 这一页底部有一张「取值项说明」卡，把 §4.2 目录里的 18 个取值项按分组
  * 全列了一遍 —— 六个组名 + 十八行，比上面的方案列表还长，而那些名字在编辑页
- * 「添加取值项」的弹层里本来就能看到，属于同一信息摆两处。现在只留一句口径脚注
- * （[R.string.quick_terms_note]）垫在方案卡底部：这一页只回答「有哪些方案」。
+ * 「添加取值项」的弹层里本来就能看到，属于同一信息摆两处；后来补的那句口径脚注
+ * 同样被要求撤掉。这一页现在只回答「有哪些方案」。
  */
 @Composable
 internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
@@ -72,7 +82,10 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
         stringResource(R.string.quick_menu_move_down),
         stringResource(R.string.quick_menu_delete),
     )
-    val newSchemeName = stringResource(R.string.quick_new_scheme_default_name)
+    val namePrefix = stringResource(R.string.quick_new_scheme_name_prefix)
+
+    // 刚新建的那一行：只为它播一次展开动画（见下方 AnimatedVisibility 的注释）
+    var justAdded by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -84,33 +97,57 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
         SmallTitle(stringResource(R.string.quick_section_schemes))
         Card(modifier = Modifier.cardPadding()) {
             data.schemes.forEachIndexed { index, scheme ->
-                SchemeRow(
-                    name = scheme.name,
-                    preview = scheme.preview,
-                    isDefault = scheme.id == data.defaultId,
-                    menuTexts = menuTexts,
-                    onClick = { onEdit(scheme.id) },
-                    onMenu = { which ->
-                        when (which) {
-                            0 -> {
-                                val updated =
-                                    data.schemes.map { it.copy(isDefault = it.id == scheme.id) }
-                                writeSchemes(data.copy(defaultId = scheme.id, schemes = updated))
+                val row: @Composable () -> Unit = {
+                    SchemeRow(
+                        name = scheme.name,
+                        preview = scheme.preview,
+                        isDefault = scheme.id == data.defaultId,
+                        menuTexts = menuTexts,
+                        onClick = { onEdit(scheme.id) },
+                        onMenu = { which ->
+                            when (which) {
+                                0 -> {
+                                    val updated =
+                                        data.schemes.map { it.copy(isDefault = it.id == scheme.id) }
+                                    writeSchemes(data.copy(defaultId = scheme.id, schemes = updated))
+                                }
+                                // 上移 / 下移：把这一项从列表里**取出来再插到新位置**。
+                                // 3.1.x 写的是 `list[index-1] = data.schemes[index].also { list[index] = it }`
+                                // —— `also` 收到的是同一个对象，于是两个位置都变成「第二个方案」，
+                                // 第一个方案被覆盖掉（用户看到的就是「上移后第一个方案变成了第二个」）。
+                                1 -> if (index > 0) {
+                                    val list = data.schemes.toMutableList()
+                                    list.add(index - 1, list.removeAt(index))
+                                    writeSchemes(data.copy(schemes = list))
+                                }
+                                2 -> if (index < data.schemes.size - 1) {
+                                    val list = data.schemes.toMutableList()
+                                    list.add(index + 1, list.removeAt(index))
+                                    writeSchemes(data.copy(schemes = list))
+                                }
+                                3 -> deleteScheme(scheme.id, data)
                             }
-                            1 -> if (index > 0) {
-                                val list = data.schemes.toMutableList()
-                                list[index - 1] = data.schemes[index].also { list[index] = it }
-                                writeSchemes(data.copy(schemes = list))
-                            }
-                            2 -> if (index < data.schemes.size - 1) {
-                                val list = data.schemes.toMutableList()
-                                list[index + 1] = data.schemes[index].also { list[index] = it }
-                                writeSchemes(data.copy(schemes = list))
-                            }
-                            3 -> deleteScheme(scheme.id, data)
-                        }
-                    },
-                )
+                        },
+                    )
+                }
+                if (scheme.id == justAdded) {
+                    // 新建的那一行从 0 高度展开 + 淡入，落位后把标记清掉
+                    // （清掉之后这一行回到和别的行一样的普通分支，不再重播动画）。
+                    var shown by remember(scheme.id) { mutableStateOf(false) }
+                    LaunchedEffect(scheme.id) {
+                        shown = true
+                        delay(SchemeAppearMillis.toLong())
+                        if (justAdded == scheme.id) justAdded = null
+                    }
+                    AnimatedVisibility(
+                        visible = shown,
+                        enter = expandVertically(tween(SchemeAppearMillis)) + fadeIn(tween(180)),
+                    ) {
+                        row()
+                    }
+                } else {
+                    row()
+                }
             }
             // 新建方案：与方案行同组，主色 + 加号图标说明「这是动作」
             BasicComponent(
@@ -119,21 +156,17 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                     color = MiuixTheme.colorScheme.primary,
                 ),
                 startAction = {
-                    Icon(
-                        imageVector = AppIcons.Add,
-                        contentDescription = null,
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                    TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
                 },
                 onClick = {
                     val id = QuickConfigStore.newId(data.schemes)
+                    val name = newSchemeName(data.schemes.map { it.name }, namePrefix)
                     writeSchemes(
-                        data.copy(schemes = data.schemes + defaultNewScheme(id, newSchemeName)),
+                        data.copy(schemes = data.schemes + defaultNewScheme(id, name)),
                     )
+                    justAdded = id
                 },
             )
-            // 口径脚注：一句话说完「周期怎么算、取不到数会怎样」
-            CardNote(stringResource(R.string.quick_terms_note))
         }
 
         Spacer(Modifier.height(24.dp + LocalNavBarInset.current))
@@ -166,7 +199,9 @@ private fun SchemeRow(
         summary = preview.ifEmpty { null },
         endActions = {
             if (isDefault) {
-                DefaultBadge()
+                // `align(CenterVertically)`：这一行的 Row 默认是 **Top** 对齐，
+                // 徽标比旁边的 IconButton 矮一大截，不显式居中的话会贴在行的上沿。
+                DefaultBadge(Modifier.align(Alignment.CenterVertically))
                 Spacer(Modifier.width(4.dp))
             }
             IconButton(
@@ -182,9 +217,8 @@ private fun SchemeRow(
                 },
                 modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
             ) {
-                Icon(
+                TintedIcon(
                     imageVector = AppIcons.MoreVert,
-                    contentDescription = null,
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
@@ -193,11 +227,11 @@ private fun SchemeRow(
     )
 }
 
-/** 「默认」小徽标 */
+/** 「默认」小徽标（`modifier` 由调用方传，用它做行内垂直居中） */
 @Composable
-private fun DefaultBadge() {
+private fun DefaultBadge(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
             .padding(horizontal = 8.dp, vertical = 2.dp),
     ) {
@@ -226,6 +260,19 @@ private fun deleteScheme(id: String, data: QuickConfigStore.Data) {
 /** 方案写回 remote preferences（目标进程立刻可见） */
 internal fun writeSchemes(data: QuickConfigStore.Data) {
     ModulePreferences.edit { putString(ConfigKeys.AISTARE_QUICK_CONFIG, QuickConfigStore.encode(data)) }
+}
+
+/**
+ * 新建方案的默认名字：`前缀 + 序号`，序号取**第一个没被占用的**正整数。
+ *
+ * 删除中间某几个之后再加，会补进空出来的序号（1、3 存在 → 下一个是 2），
+ * 不会出现两个同名方案；用户改名后也可能腾出序号，同样会被复用。
+ */
+private fun newSchemeName(existingNames: List<String>, prefix: String): String {
+    val taken = existingNames.toHashSet()
+    var n = 1
+    while ("$prefix$n" in taken) n++
+    return "$prefix$n"
 }
 
 /** 新建方案的出厂形态：反弹 ±5%（最快有意义的组合），不设默认 */

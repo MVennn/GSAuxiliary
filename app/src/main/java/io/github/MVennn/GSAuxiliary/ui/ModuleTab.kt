@@ -261,13 +261,15 @@ private fun OverviewStatusCard(
             // 图标**画在文字下层**（先声明）：万一窄屏 / 大字号下文字延长线碰到
             // 图标，也是 0.30 透明度的水印垫底，不会盖住文字。
             Box(Modifier.matchParentSize()) {
-                Icon(
+                // TintedIcon：`Icon(imageVector, tint = ...)` 的染色在本机不生效
+                // （图标一律画成占位黑），见 Widgets.kt 的注释 —— 这个绿对勾
+                // 因此一直是一块黑水印
+                TintedIcon(
                     imageVector = if (state == FrameworkState.Active) {
                         AppIcons.CheckCircle
                     } else {
                         AppIcons.ErrorCircle
                     },
-                    contentDescription = null,
                     tint = accent.copy(alpha = StatusCardIconAlpha),
                     modifier = Modifier
                         .align(Alignment.CenterEnd)

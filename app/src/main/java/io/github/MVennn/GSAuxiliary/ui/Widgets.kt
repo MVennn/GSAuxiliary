@@ -23,10 +23,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorProducer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -150,6 +154,38 @@ internal fun ColorPresetItem(
             modifier = Modifier.padding(top = 6.dp),
         )
     }
+}
+
+/**
+ * 带染色的自绘图标。
+ *
+ * ## 为什么不直接用 `Icon(imageVector, tint = ...)`
+ *
+ * 3.1.1 实测（魅族 20 / Android 16 / miuix 0.9.3 / debug 与 release 都复现）：
+ * `Icon(imageVector, tint = ...)` 与 `Image(imageVector, colorFilter = ColorFilter.tint(...))`
+ * 这条**画笔记账（paint）层**的染色路径在本机不生效 —— 图标一律画成 `AppIcons` 里
+ * 那个占位色 `Color.Black`，深色卡片上等于看不见（概览状态卡那个「绿对勾」多年
+ * 也是一直画成黑的，只是它 30% 透明当水印，没人当 bug 报）。
+ *
+ * 改走 miuix `Icon(painter, tint = ColorProducer, ...)` 这个重载：它把染色挂在
+ * **GraphicsLayer 的 colorFilter** 上（`layer.colorFilter = ColorFilter.tint(tint())`），
+ * 与 Miuix 底栏图标同一条路 —— 实测这条能正常出颜色。
+ *
+ * 新增「需要染色的自绘图标」时统一走这里，别再用 `Icon(imageVector, tint = ...)`。
+ */
+@Composable
+internal fun TintedIcon(
+    imageVector: ImageVector,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
+) {
+    Icon(
+        painter = rememberVectorPainter(imageVector),
+        tint = remember(tint) { ColorProducer { tint } },
+        contentDescription = contentDescription,
+        modifier = modifier,
+    )
 }
 
 /** 卡片内的一行说明文字（用于放补充提示） */

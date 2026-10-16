@@ -72,7 +72,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 贴在「添加取值项」那行上。现在每个可弹菜单的控件自己 `remember` 一份。
  */
 @Composable
-internal fun QuickConfigEditScreen(schemeId: String) {
+internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
     val scrollState = rememberScrollState()
 
     val json by rememberStringPref(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG)
@@ -94,7 +94,9 @@ internal fun QuickConfigEditScreen(schemeId: String) {
     val downLabel = stringResource(R.string.quick_slot_down_short)
 
     if (scheme == null) {
-        // 方案被并发删除（另一处界面 / adb 通道）：安静退出内容区即可，外层返回键照常
+        // 方案没了（刚被本页删掉、或另一处界面 / adb 通道删掉）：直接回方案列表，
+        // 不要停在一张空白的三级页上（用户得自己按返回才发现「这个方案不在了」）。
+        LaunchedEffect(schemeId) { onDeleted() }
         Column(Modifier.fillMaxSize()) { Spacer(Modifier.height(24.dp)) }
         return
     }
@@ -166,7 +168,10 @@ internal fun QuickConfigEditScreen(schemeId: String) {
         )
 
         // ---- 提醒时效 ----
-        // 不放 SmallTitle：行标题就叫「提醒时效」，分组标题再来一遍是同一句话说两次
+        // 自带一个分组标题（3.1.1 用户反馈：光一张裸卡夹在「最新跌到」卡后面，
+        // 看着像跌到槽的一部分）。标题写「提醒」而不是「提醒时效」—— 行标题就是
+        // 「提醒时效」，逐字重复等于同一句话说两遍。
+        SmallTitle(stringResource(R.string.quick_section_alert))
         Card(modifier = Modifier.cardPadding()) {
             ValidityRow(
                 validity = scheme.validity,
@@ -226,6 +231,8 @@ internal fun QuickConfigEditScreen(schemeId: String) {
                                         },
                                     ),
                                 )
+                                // 删完就回方案列表（3.1.1 用户反馈：原来停在空白的三级页）
+                                onDeleted()
                             },
                         ),
                     )
@@ -290,6 +297,10 @@ private fun SlotEditor(
                 key = "$schemeId-$isUp-$index-${term.source}",
                 term = term,
                 name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source },
+                // 一个槽至少留一个取值项：空槽写进 JSON 之后会被
+                // `QuickConfigStore.decodeSlot` 当成坏数据丢弃（连带整条方案），
+                // 于是三级页会「自己变空 / 跳走」—— 用户看到的就是删一下就崩了。
+                deletable = slot.terms.size > 1,
                 onParam = { newParam ->
                     onChanged(
                         slot.copy(
@@ -359,6 +370,7 @@ private fun TermRow(
     key: String,
     term: QuickConfigStore.Term,
     name: String,
+    deletable: Boolean,
     onParam: (Map<String, String>) -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -375,7 +387,7 @@ private fun TermRow(
                 title = name,
                 summary = stringResource(R.string.quick_param_period_fmt, current),
                 modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
-                endActions = { RemoveTermButton(onDelete) },
+                endActions = { RemoveTermButton(deletable, onDelete) },
                 onClick = {
                     dialogs?.showChoice(
                         ChoiceDialogSpec(
@@ -403,7 +415,7 @@ private fun TermRow(
                         initial = term.param[param.key] ?: "",
                         onChanged = { text -> onParam(term.param + (param.key to text)) },
                     )
-                    RemoveTermButton(onDelete)
+                    RemoveTermButton(deletable, onDelete)
                 },
             )
         }
@@ -411,7 +423,7 @@ private fun TermRow(
         // 无参数项（也兜住以后新增的参数类型：至少名字和删除还在）
         else -> BasicComponent(
             title = name,
-            endActions = { RemoveTermButton(onDelete) },
+            endActions = { RemoveTermButton(deletable, onDelete) },
         )
     }
 }
@@ -460,14 +472,21 @@ private fun NumberField(
     )
 }
 
-/** 删掉一个取值项 */
+/**
+ * 删掉一个取值项。`enabled = false` 用在「这个槽只剩这一项」时 ——
+ * 一个槽至少要留一项（空槽会被解析层当成坏数据丢弃，见调用点注释）。
+ */
 @Composable
-private fun RemoveTermButton(onDelete: () -> Unit) {
-    IconButton(onClick = onDelete) {
-        Icon(
+private fun RemoveTermButton(enabled: Boolean, onDelete: () -> Unit) {
+    IconButton(onClick = onDelete, enabled = enabled) {
+        TintedIcon(
             imageVector = AppIcons.Close,
-            contentDescription = null,
-            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            tint = if (enabled) {
+                MiuixTheme.colorScheme.onSurfaceVariantActions
+            } else {
+                // 禁用态：图标压到 38% 不透明度（Miuix 的 disabled 观感）
+                MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.38f)
+            },
         )
     }
 }
@@ -484,11 +503,7 @@ private fun AddTermRow(
         title = stringResource(R.string.quick_add_term),
         titleColor = BasicComponentDefaults.titleColor(color = MiuixTheme.colorScheme.primary),
         startAction = {
-            Icon(
-                imageVector = AppIcons.Add,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.primary,
-            )
+            TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
         },
         modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
         onClick = {

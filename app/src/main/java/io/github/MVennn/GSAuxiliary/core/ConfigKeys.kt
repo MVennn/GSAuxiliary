@@ -328,7 +328,7 @@ object ConfigKeys {
      */
     const val DEFAULT_AISTARE_QUICK_CONFIG: String =
         "{\"v\":1,\"defaultId\":\"s1\",\"schemes\":[" +
-            "{\"id\":\"s1\",\"name\":\"30日高低\",\"validity\":null,\"isDefault\":true," +
+            "{\"id\":\"s1\",\"name\":\"默认方案\",\"validity\":null,\"isDefault\":true," +
             "\"up\":{\"agg\":\"MAX\",\"terms\":[{\"source\":\"highN\",\"param\":{\"period\":\"30\"}}]}," +
             "\"down\":{\"agg\":\"MIN\",\"terms\":[{\"source\":\"lowN\",\"param\":{\"period\":\"30\"}}]}" +
             "}]}"
