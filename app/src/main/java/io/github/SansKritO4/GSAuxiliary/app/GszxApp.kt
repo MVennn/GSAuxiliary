@@ -19,9 +19,14 @@ class GszxApp : Application() {
         super.onCreate()
 
         ModulePreferences.init(this)
+        // 日志等级必须在任何会产生日志的初始化之前应用（2.17.3）：
+        // ModulePreferences.init() 经 FrameworkBridge.addListener 的状态回调会打
+        // 「配置后端 = …」日志，若等级应用晚于它，「关闭」档拦不住启动期这几条，
+        // 用户看到的日志就像不受开关控制（见 2.17.3 CHANGELOG）。
+        applyLogLevel()
+
         FrameworkBridge.init()
 
-        applyLogLevel()
         // 设置界面改等级后立即生效（配置变化统一切主线程分发）
         ModulePreferences.observe { applyLogLevel() }
 

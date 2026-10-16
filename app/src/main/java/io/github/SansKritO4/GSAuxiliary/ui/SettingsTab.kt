@@ -412,6 +412,11 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
                                 if (value != logLevel) {
                                     ModulePreferences.editDeferred { putInt(ConfigKeys.LOG_LEVEL, value) }
                                     GLog.level = value
+                                    // 选「关闭」时顺带清空缓冲（2.17.3）：等级只拦新日志，
+                                    // 历史记录会一直留在缓冲里，查看日志页仍是满屏旧日志，
+                                    // 看起来就像开关没生效。「关闭 = 不再记录」的直观语义
+                                    // 就是从现在起是空的；App 进程被杀缓冲本来也会丢，不金贵。
+                                    if (value == LogLevel.OFF) GLog.clearBuffer()
                                 }
                             },
                         ),

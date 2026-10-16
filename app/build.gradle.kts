@@ -72,8 +72,8 @@ android {
         applicationId = "io.github.SansKritO4.GSAuxiliary"
         minSdk = 27
         targetSdk = 36
-        versionCode = 42
-        versionName = "2.17.2"
+        versionCode = 43
+        versionName = "2.17.3"
 
         // 构建时间（设置界面「模块」页展示用）。配置期求值，随每次构建刷新。
         // 注意：必须用顶部 import 的 SimpleDateFormat —— 脚本里 `java` 会被解析成
