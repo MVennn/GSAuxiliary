@@ -1,8 +1,6 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,14 +18,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.MVennn.GSAuxiliary.R
@@ -35,7 +31,12 @@ import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigCatalog
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -48,10 +49,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 不设「保存」按钮 —— 少一个状态机，也避免改完忘存）。
  *
  * 交互：
- *  - 点行 → 进编辑页（[QuickConfigEditScreen]）；
- *  - 行尾 ⋮ → 锚定菜单（设为默认 / 上移 / 下移 / 删除方案）；
+ *  - 点行 → 进编辑页（[QuickConfigEditScreen]），行尾自带 Miuix 右箭头（2.18 起
+ *    用 [BasicComponent] 替掉手写 Row：按压高亮、字号、内边距都交给组件）；
+ *  - 行尾 ⋮ → 锚定菜单（设为默认 / 上移 / 下移 / 删除方案），是一颗真正的
+ *    [IconButton]，触控目标比原来的裸文字大得多；
  *  - 「＋ 新建方案」→ 反弹 ±5% 的空方案进编辑页（改名改项都顺手）；
- *  - 底部说明卡 = 取值项目录（§4.2 那张表的用户视角）。
+ *  - 底部说明卡 = 取值项目录（§4.2 那张表的用户视角），分组之间用细分隔线。
  */
 @Composable
 internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
@@ -63,7 +66,7 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
     val data = remember(json) { QuickConfigStore.decode(json) }
 
     // ⋮ 菜单的锚点（锚定菜单从控件右中弹出，见 ui/AppDialog.kt）
-    var menuAnchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    var menuAnchor by remember { mutableStateOf<Rect?>(null) }
 
     // 菜单文案在这里解析（composable 里才拿得到资源），动作在回调里按序号分发
     val menuTexts = listOf(
@@ -121,34 +124,46 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                     },
                 )
             }
-            // ＋ 新建方案
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val id = QuickConfigStore.newId(data.schemes)
-                        writeSchemes(
-                            data.copy(schemes = data.schemes + defaultNewScheme(id, newSchemeName)),
-                        )
-                    }
-                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.quick_new_scheme),
+            // ＋ 新建方案：与方案行同组件（BasicComponent），主色 + 加号图标示意「这是动作」
+            BasicComponent(
+                title = stringResource(R.string.quick_new_scheme),
+                titleColor = BasicComponentDefaults.titleColor(
                     color = MiuixTheme.colorScheme.primary,
-                    fontSize = 15.sp,
-                )
-            }
+                    disabledColor = MiuixTheme.colorScheme.primary,
+                ),
+                startAction = {
+                    Icon(
+                        imageVector = AppIcons.Add,
+                        contentDescription = null,
+                        tint = MiuixTheme.colorScheme.primary,
+                    )
+                },
+                onClick = {
+                    val id = QuickConfigStore.newId(data.schemes)
+                    writeSchemes(
+                        data.copy(schemes = data.schemes + defaultNewScheme(id, newSchemeName)),
+                    )
+                },
+            )
         }
 
         // ---- 取值项说明（§4.2 目录的用户视角）----
         SmallTitle(stringResource(R.string.quick_section_terms))
         Card(modifier = Modifier.cardPadding()) {
             val termNames = stringArrayResource(R.array.quick_term_names)
+            var firstGroup = true
             QuickConfigCatalog.GROUP_ORDER.forEach { group ->
                 val items = QuickConfigCatalog.ALL.filter { it.group == group }
                 if (items.isEmpty()) return@forEach
+                if (!firstGroup) {
+                    // 分组之间一条细分隔线，让五个分组在一张卡里仍读得清
+                    HorizontalDivider(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 2.dp),
+                    )
+                }
+                firstGroup = false
                 Text(
                     text = groupNameText(group),
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -160,9 +175,10 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                         text = termNames.getOrElse(QuickConfigCatalog.index(spec.id)) { spec.id },
                         color = MiuixTheme.colorScheme.onSurface,
                         fontSize = 14.sp,
-                        modifier = Modifier.padding(start = 20.dp, top = 6.dp),
+                        modifier = Modifier.padding(start = 20.dp, top = 8.dp),
                     )
                 }
+                Spacer(Modifier.height(10.dp))
             }
             CardNote(stringResource(R.string.quick_terms_note))
         }
@@ -171,64 +187,47 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
     }
 }
 
-/** 一行方案：点击进编辑，⋮ 弹菜单 */
+/** 一行方案：点击进编辑（组件自带右箭头），⋮ 弹锚定菜单 */
 @Composable
 private fun SchemeRow(
     name: String,
     preview: String,
     isDefault: Boolean,
-    onAnchor: (androidx.compose.ui.geometry.Rect) -> Unit,
+    onAnchor: (Rect) -> Unit,
     onClick: () -> Unit,
     onMenu: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(start = 20.dp, top = 12.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = name, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                if (isDefault) {
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.quick_default_badge),
-                            color = MiuixTheme.colorScheme.primary,
-                            fontSize = 10.sp,
-                        )
-                    }
+    BasicComponent(
+        title = name,
+        summary = preview.ifEmpty { null },
+        endActions = {
+            if (isDefault) {
+                Box(
+                    modifier = Modifier
+                        .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.quick_default_badge),
+                        color = MiuixTheme.colorScheme.primary,
+                        fontSize = 10.sp,
+                    )
                 }
+                Spacer(Modifier.width(6.dp))
             }
-            if (preview.isNotEmpty()) {
-                Text(
-                    text = preview,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 3.dp),
+            IconButton(
+                onClick = onMenu,
+                modifier = Modifier.onGloballyPositioned { onAnchor(it.boundsInWindow()) },
+            ) {
+                Icon(
+                    imageVector = AppIcons.MoreVert,
+                    contentDescription = null,
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
-        }
-        // ⋮ 菜单按钮（锚定菜单的触发控件）
-        Box(
-            modifier = Modifier
-                .onGloballyPositioned { onAnchor(it.boundsInWindow()) }
-                .clickable(onClick = onMenu)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = "⋮",
-                fontSize = 20.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-        }
-    }
+        },
+        onClick = onClick,
+    )
 }
 
 /** 删除方案：只剩一个时忽略（§6.3「必须有默认方案可用」） */

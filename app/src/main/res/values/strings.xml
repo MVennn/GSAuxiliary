@@ -126,7 +126,7 @@
     <string name="quick_section_terms">取值项说明</string>
     <string name="quick_section_validity">提醒时效</string>
     <string name="quick_section_actions">操作</string>
-    <string name="quick_new_scheme">＋ 新建方案</string>
+    <string name="quick_new_scheme">新建方案</string>
     <string name="quick_new_scheme_default_name">反弹 ±5%</string>
     <string name="quick_default_badge">默认</string>
     <string name="quick_menu_set_default">设为默认</string>
@@ -149,7 +149,7 @@
     <string name="quick_slot_down">最新跌到</string>
     <string name="quick_slot_up_short">涨到</string>
     <string name="quick_slot_down_short">跌到</string>
-    <string name="quick_add_term">＋ 添加取值项</string>
+    <string name="quick_add_term">添加取值项</string>
     <string name="quick_param_period_fmt">%1$s 日</string>
     <string name="quick_field_validity">提醒时效</string>
     <string name="quick_validity_keep">不修改</string>
