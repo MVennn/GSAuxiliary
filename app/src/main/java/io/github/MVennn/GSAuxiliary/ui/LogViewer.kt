@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.MVennn.GSAuxiliary.R
@@ -45,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -54,12 +57,14 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 「查看日志」页 —— 按 Miuix 风格重做。
+ * 「查看日志」页 —— 按 Miuix 规范排版。
  *
- * 结构：
- *   TabRow 级别筛选（全部 / 错误 / 警告 / 信息 / 调试）
- *   + 一个 Card 包住的等宽日志列表（按级别上色）
- *   + 底部操作条（刷新 / 复制 / 保存 / 清空，四等分占满整行）+ 页脚说明
+ * 结构（三段，卡片数量尽量少）：
+ *   1. TabRow —— 日志级别筛选（全部 / 错误 / 警告 / 信息 / 调试）
+ *   2. 日志卡片 —— 占满剩余高度；空态用图标 + 文案居中展示，
+ *      非空时是等宽日志列表（级别色块 + 暗色时间戳 + 正文 + 异常堆栈缩进）
+ *   3. 底部卡片 —— 操作条（刷新 / 复制 / 保存 / 清空，四等分）+
+ *      细分隔线 + 页脚说明，合并在同一张卡里，避免「按钮一张卡、说明又一张卡」的碎块感
  *
  * 只展示 [GLog] 的内存环形缓冲 —— 也就是**模块 App 进程**自己的日志。
  * 目标进程的日志由 LSPosed 写到 `/data/adb/lspd/log/`，那个目录普通应用读不到，
@@ -128,7 +133,7 @@ internal fun LogViewerScreen() {
             // 水平留白给左右，**底部让开手势导航条高度**。
             //
             // 二级页的内容是铺到屏幕最底边的（否则导航条区域被填成一条纯色，不沉浸），
-            // 但本页底部还有"页脚说明"卡片 + 操作条 —— 它们不能压在导航条下面。
+            // 但本页底部还有操作卡片 —— 它不能压在导航条下面。
             // 所以整列往上抬一个导航条的高度：背景仍铺满（沉浸），内容全在导航条之上。
             .padding(
                 start = CardHMargin,
@@ -148,7 +153,7 @@ internal fun LogViewerScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        // --- 行数 ---
+        // --- 行数（贴在日志卡片上方，随筛选实时变化） ---
         Text(
             text = String.format(countFmt, visible.size),
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -159,14 +164,14 @@ internal fun LogViewerScreen() {
         // --- 日志正文 ---
         Card(modifier = Modifier.weight(1f)) {
             if (visible.isEmpty()) {
-                CardNote(stringResource(R.string.log_empty))
+                LogEmptyState()
             } else {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                     // 底部空白由外层 Column 让开导航条，这里不用再额外加
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                 ) {
@@ -179,57 +184,96 @@ internal fun LogViewerScreen() {
 
         Spacer(Modifier.height(8.dp))
 
-        // --- 操作条：四个按钮等分占满整行（weight 自适应，不写死宽度）---
+        // --- 底部卡片：操作条 + 分隔线 + 页脚说明，合并在一张卡里 ---
         Card {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    text = stringResource(R.string.log_action_refresh),
-                    onClick = { lines = GLog.snapshot() },
-                    modifier = Modifier.weight(1f),
+            Column {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        text = stringResource(R.string.log_action_refresh),
+                        onClick = { lines = GLog.snapshot() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = stringResource(R.string.log_action_copy),
+                        onClick = { copyAll() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = stringResource(R.string.log_action_save),
+                        onClick = { saveLauncher.launch(defaultLogFileName()) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = stringResource(R.string.log_action_clear),
+                        onClick = {
+                            GLog.clearBuffer()
+                            lines = GLog.snapshot()
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+
+                // 细分隔线：把「操作」和「说明」在视觉上分开，但仍是同一张卡
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .height(0.5.dp)
+                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.35f)),
                 )
-                TextButton(
-                    text = stringResource(R.string.log_action_copy),
-                    onClick = { copyAll() },
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.log_action_save),
-                    onClick = { saveLauncher.launch(defaultLogFileName()) },
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    text = stringResource(R.string.log_action_clear),
-                    onClick = {
-                        GLog.clearBuffer()
-                        lines = GLog.snapshot()
-                    },
-                    modifier = Modifier.weight(1f),
-                )
+
+                CardNote(stringResource(R.string.log_hint))
             }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // --- 页脚说明 ---
-        Card {
-            CardNote(stringResource(R.string.log_hint))
         }
 
         Spacer(Modifier.height(8.dp))
     }
 }
 
-/** 单行日志：级别标签用色块，正文用等宽字体 */
+/** 日志为空时的占位：图标 + 文案，垂直水平居中，占满整张卡片 */
+@Composable
+private fun LogEmptyState() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = AppIcons.Info,
+                contentDescription = null,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = stringResource(R.string.log_empty),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+/**
+ * 单行日志，按信息层次拆成三段：
+ *   - 级别色块（E/W/I/D，彩色圆角小标签）
+ *   - 时间戳（`MM-dd HH:mm:ss.SSS`，暗色小号等宽，弱化）
+ *   - 正文 + 异常堆栈（堆栈行单独一行、同样弱化，不再和正文挤在一起）
+ *
+ * `weight(1f)` 在右侧的内容列上，级别色块固定宽度不参与换行。
+ */
 @Composable
 private fun LogLine(line: String) {
     val level = levelOf(line)
     val (tag, tagColor) = levelTag(level)
+    val parsed = parseLine(line)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
@@ -246,17 +290,61 @@ private fun LogLine(line: String) {
                 text = tag,
                 color = tagColor,
                 fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            text = lineBody(line),
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Row {
+                Text(
+                    text = parsed.time,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = parsed.message,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            parsed.traceLines.forEach { traceLine ->
+                Text(
+                    text = traceLine,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(start = 8.dp, top = 1.dp),
+                )
+            }
+        }
     }
+}
+
+/** 单行日志解析结果：级别之后的「时间戳 / 正文 / 堆栈行」 */
+private data class ParsedLine(val time: String, val message: String, val traceLines: List<String>)
+
+/**
+ * 解析 `[I] MM-dd HH:mm:ss.SSS msg\n<堆栈>` 的固定格式。
+ *
+ * 时间戳宽度固定为 18 字符（`MM-dd HH:mm:ss.SSS`），直接按偏移切；
+ * 格式不符时原样放进 [message]，[time] 留空 —— 解析失败不影响展示。
+ */
+private fun parseLine(line: String): ParsedLine {
+    val body = lineBody(line)
+    // 时间戳固定长度："MM-dd HH:mm:ss.SSS".length == 19
+    if (body.length <= 19) return ParsedLine("", body, emptyList())
+    val time = body.take(19)
+    val rest = body.substring(19).trimStart()
+    val parts = rest.split('\n', limit = 2)
+    val message = parts[0]
+    val traceLines = if (parts.size == 2) parts[1].lines() else emptyList()
+    return ParsedLine(time, message, traceLines)
 }
 
 /** 日志级别筛选定义 */
