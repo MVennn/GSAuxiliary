@@ -13,7 +13,7 @@
 |---|---|
 | `SettingsActivity.kt` | Activity、主题 / 本地化、**两层布局**（一级底衬 / 二级滑入）、顶栏、返回与可预测返回、弹窗宿主装配 |
 | `Glass.kt` | 液态玻璃：`GlassTopBar`（顶栏，无边框 + `extra()` 插槽）、`glassSurfaceTint()`（面色）、`LocalTopInset` / `LocalDarkTheme`、`DockScrollState` + `dockScrollConnection`（下滑收起） |
-| `AppDialog.kt` | 自绘弹窗宿主 `DialogHost` + `DialogController` / `ChoiceDialogSpec` / `ConfirmDialogSpec` / `LocalDialogController`（见 §1.3） |
+| `AppDialog.kt` | 弹窗宿主：自绘锚定菜单 `DialogHost` + 贴底弹窗 `BottomSheetDialogHost`（Miuix `OverlayBottomSheet`）+ `DialogController` / 三个 Spec / `LocalDialogController`（见 §1.3） |
 | `PrefState.kt` | 读取配置的 Composable（`rememberBoolPref` / `rememberLocalBoolPref` / `rememberIntPref` / `rememberStringPref` / `rememberConnected` / `rememberDarkTheme` / `rememberPredictiveBack`） |
 | `SystemBars.kt` | 系统栏沉浸：`SyncSystemBars`（图标明暗 + 窗口底色跟随**生效的**深浅色）、`LocalNavBarInset`、`Context.findActivity()` |
 | `FeatureCatalog.kt` | 功能展示元数据（`FeatureSpec` + `FEATURE_CATALOG`） |
@@ -146,24 +146,35 @@ Miuix `Card` 本身是满宽的，必须由调用方补左右边距。统一用
 SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 ```
 
-### 1.3 弹层：自绘 `DialogHost`（2.8.0 起；2.9.0 锚定定位；2.9.2 分化为两种形态）
+### 1.3 弹层：一半自绘、一半用库（2.8.0 起自绘；2.9.0 锚定定位；2.9.2 分化；现行为：锚定菜单自绘 + 贴底弹窗换 `OverlayBottomSheet`）
 
 > 历史：2.3.1 曾自绘覆盖层 → 2.5.0 查明根因后回归 Miuix 官方弹层
 > （`OverlayDropdownPreference` / `OverlayDialog`）→ **2.8.0 又改回自绘**，
 > 但这次只自绘「弹窗」这一种，且原因与 2.3.1 完全不同。见 §1.4。
 
-三个选择项（主题设置 / 语言 / 日志输出等级）与「重置」的二次确认，
-统一由 `ui/AppDialog.kt` 的 `DialogHost` 渲染。
+锚定菜单（主题设置 / 语言 / 日志输出等级）由 `ui/AppDialog.kt` 的自绘
+`DialogHost` 渲染；贴底弹窗（「重置」二次确认 + 首次启动同意）换用
+Miuix 0.9.3 的 `OverlayBottomSheet`，由同文件的 `BottomSheetDialogHost`
+渲染 —— 它必须挂在 `HomeScaffold` 的 Scaffold content 里（登记表在
+Scaffold 提供的 `LocalRootDialogStates`，放外面弹层永远不显示）。
+两个宿主读同一个 `DialogController`，按 spec 类型互斥。
 
-#### 两种形态（2.9.2 分化）
+#### 两种形态
 
-| | `ChoiceDialogSpec`（主题 / 语言 / 日志等级） | `ConfirmDialogSpec`（重置） |
+| | `ChoiceDialogSpec`（主题 / 语言 / 日志等级） | `ConfirmDialogSpec`（重置）/ `AgreementDialogSpec`（首次启动同意） |
 |---|---|---|
-| 定位 | **从触发控件右中（箭头处）弹出**：优先顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
-| 入场 | 以**离箭头最近的右角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4）：在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长 | 从屏幕下方**向上滑入** |
-| 出场 | 向该右角**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
-| 标题 | **没有**（2.9.2 去掉，选项本身已说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp —— 2.9.6 定稿，调参史见 §1.3.6） |
-| 内容 | 若干选项行（选中项主色 + 对勾） | 标题 + 说明 + 「取消 / 确定」两个等宽按钮 |
+| 实现 | 自绘覆盖层（`DialogHost`） | Miuix `OverlayBottomSheet`（`BottomSheetDialogHost`） |
+| 定位 | **从触发控件右中（箭头处）弹出**：优先顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**（Miuix 原生），左右留白 = 主页卡片宽（`cardPadding` = 12dp） |
+| 入场 | 以**离箭头最近的右角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4）：在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长 | folme 弹簧从屏幕下方**向上滑入**（库动画） |
+| 出场 | 向该右角**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | folme 弹簧**下滑出屏**；把手可拖拽关闭、支持预测性返回 |
+| 标题 | **没有**（2.9.2 去掉，选项本身已说明一切） | 有（库的标题行，`title4` 18sp + Medium 居中，与 2.9.6 定稿同规格） |
+| 内容 | 若干选项行（选中项主色 + 对勾） | 说明 + 「取消 / 确定」两个等宽按钮（同意弹窗：说明 + 勾选行 + 一颗「同意」） |
+
+为什么贴底弹窗敢换回库：当年的崩溃路径是「弹层在**自己的 onClick** 里同步开始收起
+动画 × 配置写入换掉弹层入参」。`OverlayBottomSheet` 的收起由**我们的 `show` 状态**
+驱动（`dismiss()` 置 `closing` → `show` 翻 false），回调全部走 `rememberUpdatedState`，
+重置的写入又是延迟落盘（`resetAllFeaturesDeferred`）—— 三个条件拆掉了那条路径。
+锚定菜单（`OverlayDropdownPreference`）没有这些前提，仍然自绘。
 
 `DialogController` 只维护**一个** `spec`，两种弹窗是它的两个子类型：
 
@@ -176,11 +187,7 @@ class DialogController {
     var spec by mutableStateOf<DialogSpec?>(null); private set
     var closing by mutableStateOf(false); private set   // 正在播「收起」动画
 
-    fun dismiss() = when (spec) {
-        null -> Unit
-        is ConfirmDialogSpec -> closing = true   // 贴底弹窗：播完下滑动画再清空
-        else -> spec = null                      // 下拉菜单：立即消失
-    }
+    fun dismiss() { closing = true }                    // 两种形态统一：播完出场动画再清空
     fun finishDismiss() { spec = null; closing = false }   // 只由宿主调用
 }
 ```
@@ -237,14 +244,14 @@ ArrowPreference(
 
 #### 1.3.2 弹窗也吃「液态玻璃」开关
 
-`DialogHost` 收 `liquidGlass` / `effect` 两个参数，与顶栏 / 底栏同一套：
+两个宿主都收 `liquidGlass` / `effect`，与顶栏 / 底栏同一套：
 
 | 开关 | 卡片材质 |
 |---|---|
-| 液态玻璃**开** | `drawBackdrop`（`vibrancy()` + `blur(24.dp)` + `glassSurfaceTint` 面色 + `Shadow(24.dp, 0.30f)` 外投影），圆角 28dp |
+| 液态玻璃**开** | `drawBackdrop`（`vibrancy()` + `blur(24.dp)` + `glassSurfaceTint` 面色 + `Shadow(24.dp, 0.30f)` 外投影），圆角 28dp。贴底弹窗的玻璃从 `OverlayBottomSheet` 的 `modifier` 注入 —— 那个 modifier 插在库容器 `squircleSurface(纯色)` 之前，玻璃铺满整张 sheet（含把手区） |
 | 液态玻璃**关** | `surfaceContainerHigh` 纯色（深色 #242424 / 浅色 #E8E8E8，与页面 `surface` 有明显对比） |
 
-遮罩：**所有弹窗都有**，且随进度「渐变压黑」——
+遮罩：锚定菜单自绘（随 progress「渐变压黑」）——
 
 ```kotlin
 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * progress)))
@@ -253,22 +260,23 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 `progress` 是入场的 `Animatable(0f → 1f)`，所以遮罩是**由透明渐变到 `ScrimAlpha`（0.48）**，
 不是「啪」地一下变暗。2.9.1 之前锚定式弹窗**完全不画遮罩**（怕看不出它挂在哪个控件上），
 2.9.2 按用户要求统一加上；2.9.3 又把 `ScrimAlpha` 从 0.32 **加深到 0.48**
-（用户反馈压黑不够，弹窗与身后内容的对比不足 —— 主题设置与重置模块共用同一遮罩，
-一次加深两处同步生效）。
+（用户反馈压黑不够）。贴底弹窗的遮罩由 `OverlayBottomSheet` 自带
+（`MiuixTheme.colorScheme.windowDimming`，随滑入 / 拖拽进度联动）。
 
-入场 / 出场变换（全部走 `tween` + **苹果风 `CubicBezierEasing`**，**没有任何 `spring`**）：
+锚定菜单的入场 / 出场变换（全部走 `tween` + **苹果风 `CubicBezierEasing`**，**没有任何 `spring`**）：
 
 | 形态 | 入场曲线 | 出场曲线 |
 |---|---|---|
 | 锚定菜单 | `AppleMenuEnterEasing` = easeOutBack 族 `(0.34, 1.56, 0.64, 1)`：约 10% 的峰值过冲折算到 0.2 的缩放区间只有 ~2% 的「轻弹一下」 | `AppleExitEasing` = easeInOut `(0.42, 0, 0.58, 1)`（`UIView.animate` 默认曲线），平滑离场 |
-| 贴底弹窗 | `AppleSheetEnterEasing` = 同族 `(0.34, 1.3, 0.64, 1)`：位移区间是**整卡高度**，同样的过冲会放大成肉眼可见的弹跳，故压到 ~3% | 同上 |
 
 > **出场方向不能回弹**：过冲会冲过 0 —— 卡片缩得比起始还小 / 滑出屏幕后又弹回来一点。
+> 贴底弹窗换 `OverlayBottomSheet` 后不再吃这套 tween 曲线：滑入 / 滑出 / 拖拽全是
+> 库的 folme 弹簧（damping 0.9 / response 0.38）。
 
 | 形态 | 入场 | 出场（2.9.3 起两种都有） |
 |---|---|---|
 | 锚定菜单 | 以 `TransformOrigin`（**离箭头最近的右角**：卡片在下方 = `(1f, 0f)` 右上角、翻到上方 = `(1f, 1f)` 右下角，布局期裁决）为原点，`AppearScale = 0.80f` 缩放展开 + **渐显**（alpha 0 → 1，2.9.4） | 向该右角**缩回** + **渐隐**（alpha 1 → 0，2.9.4，progress 1 → 0） |
-| 贴底弹窗 | `translationY = (1 - progress) * height`，从屏幕下方滑上来（不渐隐） | 向**下滑出**（progress 1 → 0） |
+| 贴底弹窗 | 库的 folme 弹簧，从屏幕下方滑上来 | 库的 folme 弹簧下滑出屏；把手可拖拽（`allowDismiss` 控制） |
 
 > 2.9.2 时锚定菜单关闭是「立即置空、直接消失」—— 只有展开没有缩回，
 > 用户反馈「点掉之后弹窗是凭空消失的」。2.9.3 让 `dismiss()` 统一只置 `closing`，
@@ -279,7 +287,6 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 > 各跑各的（`DialogMillis = 220` / `DialogFadeMillis = 180`），出场是两条 `launch`
 > 并发、`join()` 齐了才 `finishDismiss()`。刻意不复用同一个进度 ——
 > 绑定两条动画就是「动一个必动另一个」，独立驱动才能各自调时长、互不干扰。
-> 贴底确认弹窗不使用渐隐（`fade` 恒为 1），行为与 2.9.3 完全一致。
 
 > **为什么锚定菜单「从箭头（控件右中）弹出」**：入口行的箭头就在控件右缘、竖直居中处
 > —— 弹出的起点应该就是它。卡片右边缘与控件右缘对齐，缩放原点取**离箭头更近的右角**：
@@ -314,7 +321,7 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 `align` 是 `BoxScope` 的 parent data，`AnimatedContent` 内部自己的 Layout
 既不读也不转发它（2.6.0 修过的「底栏消失了」，见 §6.3）。
 
-#### 1.3.4 相对触发控件定位（2.9.0；2.9.2 加入贴底分支）
+#### 1.3.4 相对触发控件定位（2.9.0；现行为「从控件右中（箭头处）弹出」）
 
 2.9.0 时按用户要求做过「优先控件**右下**方、下方放不下翻**右上**方」（锚点是控件底边）；
 现在改为**「从控件右中（箭头处）弹出」**：锚点换成控件的竖直中心（入口行箭头所在处），
@@ -329,24 +336,19 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
     if (spec == null) layout(0, 0) {}
 
-    // 贴底弹窗（无锚点的 Confirm）走 sheet 分支：宽度对齐主页卡片
-    val sheet = spec is ConfirmDialogSpec && anchor == null
+    // DialogHost 现在只渲染锚定菜单（贴底弹窗走 BottomSheetDialogHost）
     val cap = if (anchor != null) MenuWidth.roundToPx().coerceAtMost(width - side * 2)
               else (width - side * 2).coerceAtLeast(0)      // side = ScreenMargin(12dp)
 
     val measurable = subcompose("card") { DialogCard(...) }
     val card = measurable.first().measure(
         Constraints(
-            minWidth = if (anchor != null || sheet) cap else 0,   // 锚定 / 贴底都定宽
+            minWidth = if (anchor != null) cap else 0,   // 锚定菜单定宽
             maxWidth = cap,
         ),
     )
     val cardW = card.width; val cardH = card.height
     val (x, y) = when {
-        sheet -> {
-            val navBottom = WindowInsets.navigationBars.getBottom(density)
-            side to (height - cardH - side - navBottom).coerceAtLeast(side)  // 贴底、抬过导航条
-        }
         anchor != null -> {
             // 右对齐触发控件右边缘；从控件右中（箭头处）弹出：
             // 顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开
@@ -378,8 +380,6 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
   底边贴箭头（`centerY - cardH`）兜底，两头都放不下再收进 `[side, height - cardH - side]`。
 - 缩放原点（`TransformOrigin`）取**离箭头更近的右角**（下方 = 右上角 / 上方 = 右下角），
   与 y 由同一个函数配套算出 —— 见 §1.3.2 的理由。
-- **贴底弹窗用同一个 `cap`**（`width - 2 × 12dp`），所以它和主页卡片左右边缘对齐，
-  细节见 §1.3.6。
 
 #### 1.3.5 消除空白帧（2.9.0 引入，2.9.2 与退出动画兼容）
 
@@ -396,18 +396,17 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
 // 缩放线：0 = 收起（初始态）、1 = 完全展开。
 // remember(spec) 让每换一个弹窗都重新从 0 开始 —— 入场天然成立，不会先画一帧再跳回。
 val progress = remember(spec) { Animatable(0f) }
-// 透明度线（2.9.4）：**另一个** Animatable，与缩放互不读写；贴底弹窗恒为 1
-val isMenu = spec is ChoiceDialogSpec
-val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
+// 透明度线（2.9.4）：**另一个** Animatable，与缩放互不读写
+val fade = remember(spec) { Animatable(0f) }
 
-LaunchedEffect(spec) { progress.animateTo(1f, tween(DialogMillis, ...)) }          // 缩放
-LaunchedEffect(spec) { if (isMenu) fade.animateTo(1f, tween(DialogFadeMillis, ...)) }  // 渐显
+LaunchedEffect(spec) { progress.animateTo(1f, tween(DialogMillis, ...)) }      // 缩放
+LaunchedEffect(spec) { fade.animateTo(1f, tween(DialogFadeMillis, ...)) }      // 渐显
 
 LaunchedEffect(controller.closing) {
     if (!controller.closing) return@LaunchedEffect
     val scaleDone = launch { progress.animateTo(0f, tween(DialogMillis, ...)) }
-    val fadeDone = if (isMenu) launch { fade.animateTo(0f, tween(DialogFadeMillis, ...)) } else null
-    scaleDone.join(); fadeDone?.join()
+    val fadeDone = launch { fade.animateTo(0f, tween(DialogFadeMillis, ...)) }
+    scaleDone.join(); fadeDone.join()
     controller.finishDismiss()      // 两条动画都跑完才真正清空 spec
 }
 ```
@@ -427,17 +426,46 @@ LaunchedEffect(controller.closing) {
 > 还没跑」的那一帧先按旧值（= 1）画一次完整卡片，再 snap 回 0 —— 又是一次闪。
 > 用 `spec` 当 key，新弹窗直接拿到一个全新的 `Animatable(0f)`，第一帧就是收起态。
 
-#### 1.3.6 贴底弹窗（2.9.2；2.9.3 调整比例）
+#### 1.3.6 贴底弹窗：现行为 Miuix `OverlayBottomSheet`（2.9.2 引入自绘形态，后替换）
 
-「重置模块」的二次确认按用户要求改成**从屏幕下方往上弹出**的形态：
+「重置模块」的二次确认 2.9.2 起是**从屏幕下方往上弹出**的形态；后来整块换用
+Miuix 0.9.3 的 `OverlayBottomSheet`（`BottomSheetDialogHost`）—— 它有自绘版
+做不出来的原生手感：**folme 弹簧**上滑 / 下滑（damping 0.9 / response 0.38）、
+**把手拖拽关闭**、**预测性返回**手势（返回时 sheet 跟手下滑，松手按速度结算）。
+
+当前实现要点：
+
+- **宿主位置**：挂在 `HomeScaffold` 的 Scaffold content 里。`OverlayBottomSheet`
+  经 `MiuixPopupUtils.DialogLayout` 把内容登记进 Scaffold 内置的 `MiuixPopupHost`
+  （登记表在 Scaffold 提供的 `LocalRootDialogStates`）—— 放到 Scaffold 外面
+  拿到的是空表，弹层**永远不会显示**；
+- **层级**：`MiuixPopupHost` 在 Scaffold 布局里最后摆放（`place(0, 0)`，用
+  `looseConstraints` 测量），天然压住顶栏 / 底栏 / 内容，覆盖全屏；
+- **`closing` / `finishDismiss` 语义不变**：`show = spec 在且未在收起`，
+  `dismiss()` 置 `closing` → `show` 翻 false → 库播下滑动画 → 播完
+  `onDismissFinished` → `finishDismiss()` 清空。退出期间 spec 保留，不闪空卡；
+- **硬门槛**：免责声明同意弹窗 `allowDismiss = spec.dismissible = false` ——
+  拖拽 / 返回 / 点外部全部无效（库会给阻尼回弹）；
+- **几何**：`outsideMargin = DpSize(12dp, 0dp)` 对齐主页卡片左右边缘；
+  `insideMargin = DpSize(18dp, 0dp)` 承担内容横向留白（与 2.9.x 自绘版一致）；
+  圆角 = 库默认 28dp（= 自绘版的 `DialogCorner`）。sheet 贴屏幕底边且库不吃
+  导航条 inset，内容末尾自己补 `navigationBarsPadding()` + 24dp；
+- **标题**：走库的标题行（`title4` 18sp + Medium 居中），与 2.9.6 定稿同规格，
+  自绘内容里不再重复画；
+- **玻璃材质**：跟随「液态玻璃」开关 —— 开：`backgroundColor = Transparent` +
+  从 `modifier` 注入 `drawBackdrop`（那个 modifier 插在库容器 `squircleSurface`
+  之前，玻璃铺满整张 sheet 含把手区）；关：`surfaceContainerHigh` 纯色。
+
+> 以下是 2.9.x **自绘版**的调参史（内容规格大多沿用至今）——
+
+2.9.2 起自绘形态的规格（现已由 `OverlayBottomSheet` 承接）：
 
 - **宽度 = 主页卡片宽度**：`cap = width - 2 × ScreenMargin(12dp)`，
   和 `cardPadding()` 是同一个值，所以它和页面里的卡片左右边缘**完全对齐**；
 - **位置**：`x = ScreenMargin`、`y = height - cardH - ScreenMargin - 导航栏高度`，
-  即左右各留 12dp、底部再抬过导航条（`WindowInsets.navigationBars.getBottom(density)`）；
+  即左右各留 12dp、底部再抬过导航条；
 - **入场 / 出场**：`translationY = (1 - progress) * height`（`progress` 1 → 0 时向下滑走）；
-- **内容**：居中标题（`title4` 18sp + Medium）+ 居中说明（15sp，与标题同色）
-  + 「取消 / 确定」两个 `weight(1f)` 等宽按钮。
+- **内容**：居中标题 + 居中说明 + 「取消 / 确定」两个 `weight(1f)` 等宽按钮。
   **按钮尺寸**（2.9.7）：纵向内边距 `12dp`（比 2.9.6 的 11dp 高 2dp）、
   两钮间距 `16dp`（比 12dp 各收窄 2dp）—— `weight(1f)` 的按钮宽度由「行宽 − 间距」算出，
   想让**单颗**按钮变窄只能调间距或整行两侧留白，不能直接给它定宽。
@@ -480,7 +508,10 @@ LaunchedEffect(controller.closing) {
 
 区别在于：2.3.1 的根因（`LocaleHelper` 返回 `ContextImpl`）**在调用侧**，
 修掉之后库的弹层就正常了；2.8.0 的根因（弹层 `onClick` 内同步收起动画 + 同步回调改状态）
-**在库内部**，调用侧只能绕，所以自绘是终态方案。
+**在库内部**，调用侧只能绕，所以锚定菜单的自绘是终态方案。
+后来 0.9.3 的 `OverlayBottomSheet` 用「收起由**调用方状态**驱动（`show` 翻转）」的
+设计从根上避开了这条路径，贴底弹窗因此换回了库（见 §1.3.6）；
+锚定下拉（`OverlayDropdownPreference`）没有等价保障，维持自绘。
 
 ---
 
@@ -988,7 +1019,8 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 只动「功能」范畴，界面设置（图标 / 液态玻璃 / 光效 / 语言 / 主题设置 / 可预测返回 / 日志等级）不受影响，
 且**不退出设置页**。
 
-二次确认走**自绘确认弹窗**（`ConfirmDialogSpec` + `DialogHost`，见 §1.3）；
+二次确认走 Miuix `OverlayBottomSheet`（`ConfirmDialogSpec` +
+`BottomSheetDialogHost`，见 §1.3.6）；
 写入走 `editDeferred`（延迟 360ms + `AtomicReference` 只保留最后一次），
 避开弹窗关闭动画与重组的重叠窗口。
 
@@ -1482,7 +1514,8 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `drawBackdrop` / `rememberLayerBackdrop` / `layerBackdrop` / `Highlight` / `InnerShadow` / `Shadow` | backdrop | 液态玻璃（顶栏 + 底栏 + 弹窗）、光效与外投影 |
 | `GlassTopBar` | 自绘（`Glass.kt`） | 液态玻璃顶栏（`drawBackdrop` + 透明 `SmallTopAppBar` + `extra()` 插槽，**无边框**） |
 | `DockScrollState` / `dockScrollConnection` | 自绘（`Glass.kt`） | 悬浮底栏的「下滑收起」判定（累计同向滚动，不消费增量） |
-| `DialogHost` / `DialogController` / `LocalDialogController` / `ChoiceDialogSpec` / `ConfirmDialogSpec` | 自绘（`AppDialog.kt`） | 自绘弹窗宿主（Miuix 风格 + 液态玻璃），**不用** Miuix `MiuixPopupHost` |
+| `DialogHost` / `DialogController` / `LocalDialogController` / `ChoiceDialogSpec` | 自绘（`AppDialog.kt`） | 锚定菜单宿主（Miuix 风格 + 液态玻璃），**不用** Miuix 的 `OverlayDropdownPreference` |
+| `OverlayBottomSheet` | Miuix 0.9.3 | 贴底弹窗（重置确认 / 免责声明同意），经 `BottomSheetDialogHost` 渲染，必须挂在 Scaffold content 里 |
 | `SyncSystemBars` | 自绘（`SystemBars.kt`） | 系统栏图标明暗 + 窗口底色跟随生效的深浅色 |
 | `CardDefaults.defaultColors(color, contentColor)` | Miuix | 概览页状态卡的自定义配色（主色 14% 透明卡面） |
 | `Animatable` + `graphicsLayer` | Compose | 一二级路由的跟手位移（可预测返回） |
@@ -1517,12 +1550,14 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   锚点用 `boundsInWindow()`（窗口坐标），宿主必须与窗口原点对齐，否则弹窗会整体偏掉
 - **弹窗定位用 `SubcomposeLayout` 先量后摆**，不要用 `Popup` / `DropdownMenu`：
   前者能一次成型（先量出卡片尺寸再算坐标），避免「先出现在中间再跳过去」的抖动。
-  **所有弹窗都有渐变压黑遮罩**（2.9.2 起，`ScrimAlpha * progress`）；
-  锚定菜单的缩放原点取贴控件那一角 `TransformOrigin(1f, 0f)`（见 §1.3.2 / §1.3.4）
+  锚定菜单有自绘渐变压黑遮罩（`ScrimAlpha * progress`）；
+  缩放原点取**离箭头更近的右角**（下方右上 / 上方右下，`resolveAnchorPlacement` 配套裁决，
+  见 §1.3.2 / §1.3.4）；贴底弹窗的遮罩由 `OverlayBottomSheet` 自带
 - **弹窗退出动画期间必须保留 `spec`**（2.9.2 起）：`DialogController.closing = true`
   → 播收起动画 → `finishDismiss()` 才置空 `spec`。**不能在 `dismiss()` 里直接置空** ——
-  内容全部来自 `spec`，先置空会渲染出空壳。选择类弹窗（下拉菜单）不需要退出动画，
-  仍走「立即置空」；只有贴底确认弹窗需要下滑退出（见 §1.3.5 / §1.3.6）
+  内容全部来自 `spec`，先置空会渲染出空壳。锚定菜单缩回箭头角退出；
+  贴底弹窗（`OverlayBottomSheet`）由 `onDismissFinished` 回调触发 `finishDismiss()`
+  （见 §1.3.5 / §1.3.6）
 - **入场动画用 `remember(spec) { Animatable(0f) }` 而不是 `remember { }` + `snapTo`**：
   后者会在 spec 换了但 effect 还没跑的那一帧先按旧值（=1）画一次完整卡片再 snap 回 0，
   又是一次闪；用 `spec` 当 key 让它直接拿到全新的 `Animatable(0f)`（见 §1.3.5）

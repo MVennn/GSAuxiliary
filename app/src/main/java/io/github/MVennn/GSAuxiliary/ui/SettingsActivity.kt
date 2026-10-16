@@ -80,9 +80,11 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  *
  * 系统栏（状态栏 / 手势导航条）的沉浸处理在 [SyncSystemBars]，理由见该函数。
  *
- * 弹层走 [AppDialog] 的**自绘** `DialogHost`（2.8.0 起），**不用** Miuix 的
- * `OverlayDropdownPreference` / `OverlayDialog` —— 后者在库内部的 `onClick` 里
- * 同步开始收起动画，与同步回写的配置状态打架会闪退，调用侧无法规避。
+ * 弹层一半自绘、一半用库（[AppDialog]）：锚定菜单走自绘 `DialogHost`（2.8.0 起，
+ * **不用** Miuix 的 `OverlayDropdownPreference` / `OverlayDialog` —— 后者在库内部的
+ * `onClick` 里同步开始收起动画，与同步回写的配置状态打架会闪退，调用侧无法规避）；
+ * 贴底弹窗（重置确认 / 免责声明同意）走 Miuix 0.9.3 的 `OverlayBottomSheet`，
+ * 挂在 [HomeScaffold] 的 Scaffold content 里由 `BottomSheetDialogHost` 渲染。
  * 详见 `ui/AppDialog.kt` 顶部注释与 `docs/UI.md` §1.3。
  */
 class SettingsActivity : ComponentActivity() {
@@ -657,6 +659,18 @@ private fun HomeScaffold(
                         )
                     }
                 }
+
+                // 贴底弹窗（重置确认 / 免责声明同意）：Miuix `OverlayBottomSheet`。
+                // ⚠️ 必须挂在 **Scaffold 的 composition 范围内** —— 它把内容登记进
+                // Scaffold 内置的 `MiuixPopupHost`（登记表在 `LocalRootDialogStates`），
+                // 放到 Scaffold 外面（比如 [DialogHost] 那层）拿到的登记表是空的，
+                // 弹层永远不会显示。「为什么一半自绘、一半用库」见 ui/AppDialog.kt 头注。
+                BottomSheetDialogHost(
+                    controller = dialogs,
+                    backdrop = backdrop,
+                    liquidGlass = liquidGlass,
+                    effect = glassEffect,
+                )
             }
         }
 
@@ -666,7 +680,9 @@ private fun HomeScaffold(
         // ② 坐标系：锚点是 `boundsInWindow()`（窗口坐标），最外层 Box 的原点就是
         //    window 原点；放进 `Scaffold` 的 content 里会被顶栏高度整体偏移。
         //
-        // 不用 Miuix 的弹层（`MiuixPopupHost`）—— 理由见 ui/AppDialog.kt。
+        // 这里只渲染**锚定菜单**（自绘）；贴底弹窗走 Miuix `OverlayBottomSheet`，
+        // 在上面 Scaffold 的 content 里由 [BottomSheetDialogHost] 渲染
+        // —— 「为什么一半自绘、一半用库」见 ui/AppDialog.kt 头注。
         DialogHost(
             controller = dialogs,
             backdrop = backdrop,
