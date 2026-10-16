@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
+![GSAuxiliary](https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png)
 
 # GSAuxiliary
 
@@ -8,7 +8,17 @@
 
 Make GoldenSun Great Again！
 
-![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary) ![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white) ![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github&logoColor=white) ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white) ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0) ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
+![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary)
+
+![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github\&logoColor=white)
+
+![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github\&logoColor=white)
+
+![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android\&logoColor=white)
+
+![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
+
+![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
 </div>
 
@@ -36,8 +46,7 @@ Make GoldenSun Great Again！
 
 ## 反馈
 
-遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，都可以到  
-[Issues](https://github.com/MVennn/GSAuxiliary/issues) 进行反馈。
+遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，可以到[Issues](https://github.com/MVennn/GSAuxiliary/issues) 反馈。
 
 请上传相关信息与日志。相关信息主要包括：
 
@@ -46,7 +55,7 @@ Make GoldenSun Great Again！
 - 出问题的开关，以及复现步骤
 - 日志（模块在日志里的标记名是 `GSZXEnhance`，与模块名不同，照抄即可）：
   - 模块 App →「设置 → 查看日志」，直接查看与复制
-  - 或用 adb 抓 LSPosed 日志：     
+  - 或用 adb 抓 LSPosed 日志：  
     `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
 
 ## 免责声明
