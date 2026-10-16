@@ -159,9 +159,9 @@ SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 
 | | `ChoiceDialogSpec`（主题 / 语言 / 日志等级） | `ConfirmDialogSpec`（重置） |
 |---|---|---|
-| 定位 | **锚定触发控件**右下方，放不下翻右上方 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
-| 入场 | 以**右上角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4） | 从屏幕下方**向上滑入** |
-| 出场 | 向右上角**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
+| 定位 | **锚定触发控件右侧竖直居中**（中右，对齐控件一半高度），上下放不下整体收进屏幕留白 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
+| 入场 | 以**右缘中点**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4） | 从屏幕下方**向上滑入** |
+| 出场 | 向右缘中点**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
 | 标题 | **没有**（2.9.2 去掉，选项本身已说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp —— 2.9.6 定稿，调参史见 §1.3.6） |
 | 内容 | 若干选项行（选中项主色 + 对勾） | 标题 + 说明 + 「取消 / 确定」两个等宽按钮 |
 
@@ -256,11 +256,18 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 （用户反馈压黑不够，弹窗与身后内容的对比不足 —— 主题设置与重置模块共用同一遮罩，
 一次加深两处同步生效）。
 
-入场 / 出场变换（全部走 `tween`，**没有任何 `spring` / 回弹过冲**）：
+入场 / 出场变换（全部走 `tween` + **苹果风 `CubicBezierEasing`**，**没有任何 `spring`**）：
+
+| 形态 | 入场曲线 | 出场曲线 |
+|---|---|---|
+| 锚定菜单 | `AppleMenuEnterEasing` = easeOutBack 族 `(0.34, 1.56, 0.64, 1)`：约 10% 的峰值过冲折算到 0.2 的缩放区间只有 ~2% 的「轻弹一下」 | `AppleExitEasing` = easeInOut `(0.42, 0, 0.58, 1)`（`UIView.animate` 默认曲线），平滑离场 |
+| 贴底弹窗 | `AppleSheetEnterEasing` = 同族 `(0.34, 1.3, 0.64, 1)`：位移区间是**整卡高度**，同样的过冲会放大成肉眼可见的弹跳，故压到 ~3% | 同上 |
+
+> **出场方向不能回弹**：过冲会冲过 0 —— 卡片缩得比起始还小 / 滑出屏幕后又弹回来一点。
 
 | 形态 | 入场 | 出场（2.9.3 起两种都有） |
 |---|---|---|
-| 锚定菜单 | 以 `TransformOrigin(1f, 0f)`（**右上角**）为原点，`AppearScale = 0.80f` 缩放展开 + **渐显**（alpha 0 → 1，2.9.4） | 向右上角**缩回** + **渐隐**（alpha 1 → 0，2.9.4，progress 1 → 0） |
+| 锚定菜单 | 以 `TransformOrigin(1f, 0.5f)`（**右缘中点**）为原点，`AppearScale = 0.80f` 缩放展开 + **渐显**（alpha 0 → 1，2.9.4） | 向右缘中点**缩回** + **渐隐**（alpha 1 → 0，2.9.4，progress 1 → 0） |
 | 贴底弹窗 | `translationY = (1 - progress) * height`，从屏幕下方滑上来（不渐隐） | 向**下滑出**（progress 1 → 0） |
 
 > 2.9.2 时锚定菜单关闭是「立即置空、直接消失」—— 只有展开没有缩回，
@@ -274,9 +281,11 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 > 绑定两条动画就是「动一个必动另一个」，独立驱动才能各自调时长、互不干扰。
 > 贴底确认弹窗不使用渐隐（`fade` 恒为 1），行为与 2.9.3 完全一致。
 
-> **为什么锚定菜单用「右上角原点」**：卡片右边缘本来就与触发控件右边缘对齐，
-> 右上角是离控件最近的一点。以它为原点缩放，右上角固定不动、卡片向**下 + 向左**
-> 长出来 —— 观感上就是「从右上往右下方向展开」，不会像居中缩放那样先出现在屏幕中间。
+> **为什么锚定菜单定位「中右」、缩放用「右缘中点原点」**：卡片竖直居中于触发控件
+> （对齐控件一半高度；上下放不下时**整体收进**屏幕留白，居中优先、越界让位），
+> 右边缘与控件右边缘对齐。以右缘中点为原点缩放，右缘固定不动、卡片向**上下 + 向左**
+> 长出来 —— 观感上就是「从控件右缘向左展开」，与中右定位一致；被收进时原点跟着卡片
+> 走，但展开方向始终是从右缘往左。
 
 卡片内容外面再叠一层 `clickable(indication = null) { }` 的容器**吃掉点击**，
 否则点卡片内部会穿透到遮罩上把弹窗关掉。
@@ -307,7 +316,9 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 
 #### 1.3.4 相对触发控件定位（2.9.0；2.9.2 加入贴底分支）
 
-用户要求「弹窗相对触发控件定位，优先显示在控件**右下**方，下方空间不足时改为**右上**方」。
+2.9.0 时按用户要求做过「优先控件**右下**方、下方放不下翻**右上**方」；
+后来按新的定位要求改为**「中右」**：卡片竖直居中于触发控件（对齐控件一半高度），
+上下空间不够时**整体收进**屏幕留白 —— 居中优先、越界让位。
 
 定位不能用 `Popup` / `DropdownMenu` —— 那些要么自己管坐标系、要么带库内动画。
 这里用 **`SubcomposeLayout`**：先量出卡片实际尺寸，再算坐标，**一次成型**，
@@ -336,11 +347,11 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
             side to (height - cardH - side - navBottom).coerceAtLeast(side)  // 贴底、抬过导航条
         }
         anchor != null -> {
-            // 右对齐触发控件右边缘；下方放不下就翻到上方
+            // 右对齐触发控件右边缘；竖直居中于控件（「中右」），越界整体收进
             val x = (anchor.right - cardW).coerceIn(side, (width - cardW - side).coerceAtLeast(side))
-            val below = anchor.bottom + gapPx
-            val y = if (below + cardH + side <= height) below
-                    else (anchor.top - gapPx - cardH).coerceAtLeast(side)
+            val centerY = (anchor.top + anchor.bottom) / 2f
+            val y = (centerY - cardH / 2f)
+                .coerceIn(side, (height - cardH - side).coerceAtLeast(side))
             x to y
         }
         else -> (width - cardW) / 2 to (height - cardH) / 2     // 居中兜底
@@ -355,10 +366,11 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
   与窗口原点对齐的最外层 `Box`（2.9.0 把它从 `HomeScaffold` 内容层**上移**）。
   挂在带 inset padding 的层级里会让 y 整体偏掉一个状态栏高度。
 - **右对齐控件右边缘**（`anchor.right - cardW`），不是左对齐 —— 视觉上弹窗从控件
-  右下方「长出来」，与 LSPosed 的观感一致。
+  右缘「长出来」。
 - **`coerceIn` 保证不出屏**：左右夹在 `[side, width - cardW - side]`；
-  上方翻转后仍可能顶出屏幕，再 `coerceAtLeast(side)` 兜住。
-- 缩放原点（`TransformOrigin`）取 `(1f, 0f)`（右上角）—— 见 §1.3.2 的理由。
+  「中右」的 y 先取「控件竖直中心 − 卡片半高」，再夹在 `[side, height - cardH - side]`
+  —— 上下放不下时卡片整体往屏幕里收，始终贴边留白。
+- 缩放原点（`TransformOrigin`）取 `(1f, 0.5f)`（右缘中点）—— 见 §1.3.2 的理由。
 - **贴底弹窗用同一个 `cap`**（`width - 2 × 12dp`），所以它和主页卡片左右边缘对齐，
   细节见 §1.3.6。
 

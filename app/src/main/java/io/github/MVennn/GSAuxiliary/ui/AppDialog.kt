@@ -2,7 +2,7 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -80,9 +80,9 @@ import kotlinx.coroutines.launch
  *
  * | | [ChoiceDialogSpec]（主题 / 语言 / 日志等级） | [ConfirmDialogSpec]（重置）<br>[AgreementDialogSpec]（首次启动同意） |
  * |---|---|---|
- * | 定位 | **锚定触发控件**右下方，放不下翻右上方 | **贴屏幕底部**，宽度 = 主页卡片宽 |
- * | 入场 | 以**右上角**为原点缩放展开 + **渐显**（alpha 0 → 1） | 从屏幕下方**向上滑入** |
- * | 出场 | 向**右上角**缩回 + **渐隐**（alpha 1 → 0） | 向**下滑出** |
+ * | 定位 | **锚定触发控件右侧竖直居中**（中右，对齐控件一半高度），上下放不下整体收进屏幕留白 | **贴屏幕底部**，宽度 = 主页卡片宽 |
+ * | 入场 | 以**右缘中点**为原点缩放展开 + **渐显**（alpha 0 → 1），苹果风回弹曲线 | 从屏幕下方**向上滑入**，苹果风回弹曲线 |
+ * | 出场 | 向**右缘中点**缩回 + **渐隐**（alpha 1 → 0），苹果风 easeInOut | 向**下滑出**，苹果风 easeInOut |
  * | 标题 | **没有**（2.9.2 去掉，选项本身已经说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp，2.9.6 定稿） |
  *
  * ## 动画：缩放与透明度**各自独立**（2.9.4）
@@ -109,10 +109,13 @@ import kotlinx.coroutines.launch
  * 用 offset 挪过去」，那会露出「先出现在错误位置再跳一下」的空窗。
  * [SubcomposeLayout] 允许先量卡片、再决定摆放位置，**一次成型**。
  *
- * ## 动画：只用 `tween`，**没有弹簧**
+ * ## 动画：只用 `tween` + 苹果风贝塞尔曲线，**没有弹簧**
  *
- * 入场 / 出场全部走 `tween` + 单段缓动（入场 `LinearOutSlowInEasing` 减速落位，
- * 出场 `FastOutLinearInEasing` 加速离场），没有任何 `spring` 或回弹过冲。
+ * 入场 / 出场仍全部走 `tween` + 单段缓动，但曲线换成「苹果风味」的
+ * `CubicBezierEasing`：入场带一点 easeOutBack 式回弹过冲（缩放区间小，锚定菜单
+ * 折算下来约 2%；贴底弹窗的位移区间是整卡高度，过冲单独压到约 3%），落位稳稳收住；
+ * 出场 easeInOut（`UIView.animate` 的默认曲线）平滑离场。仍然没有任何 `spring`：
+ * 时长可预期，而且出场方向一旦回弹就会冲过 0（缩得比起始还小 / 滑出屏幕又弹回来）。
  *
  * ## 液态玻璃
  *
@@ -264,6 +267,33 @@ private const val DialogMillis = 220
  */
 private const val DialogFadeMillis = 180
 
+/**
+ * 苹果风入场曲线 —— **锚定菜单**（缩放）用。
+ *
+ * easeOutBack 族：前段快、后段带一点回弹过冲再收住。缩放的动画区间只有
+ * `AppearScale(0.80) → 1` 这 0.2，曲线约 10% 的峰值过冲折算下来只是
+ * ~2% 的轻微「弹一下」（峰值 ≈ 1.02），正好是 iOS 弹层那种落位手感。
+ */
+private val AppleMenuEnterEasing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+
+/**
+ * 苹果风入场曲线 —— **贴底弹窗**（位移）用。
+ *
+ * 与 [AppleMenuEnterEasing] 同族，但控制点从 1.56 压到 1.3：位移的动画区间
+ * 是**整个卡片高度**，同样的过冲比例会放大成一大段肉眼可见的弹跳，所以把
+ * 峰值过冲压到 ~3%（几 dp 的落位回坐），保留「滑到位再稳一下」的苹果味。
+ */
+private val AppleSheetEnterEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
+
+/**
+ * 苹果风出场曲线（两种形态共用）。
+ *
+ * `(0.42, 0, 0.58, 1)` 即 `UIView.animate` 的默认 easeInOut ——
+ * 平滑起步、平滑离场。出场方向**不能**用带回弹的曲线：过冲会冲过 0，
+ * 表现为卡片缩得比起始还小 / 滑出屏幕后又弹回来一点。
+ */
+private val AppleExitEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+
 /** 选择类弹窗入场时的起始缩放（只做缩放、不做透明度，避免「空白卡片」观感） */
 private const val AppearScale = 0.80f
 
@@ -284,9 +314,6 @@ private val MenuWidth = 200.dp
 
 /** 卡片与屏幕边缘的最小距离；同时也是底部弹窗的左右留白（= 主页卡片的 `cardPadding`） */
 private val ScreenMargin = 12.dp
-
-/** 锚定卡片与触发控件之间的间距 */
-private val AnchorGap = 6.dp
 
 /**
  * 弹窗宿主 —— 挂在 `MainScreen` **最外层 `Box`** 的最后一个子节点上。
@@ -311,7 +338,6 @@ internal fun DialogHost(
     val dark = LocalDarkTheme.current
     val density = LocalDensity.current
     val marginPx = with(density) { ScreenMargin.toPx() }
-    val gapPx = with(density) { AnchorGap.toPx() }
     val menuWidthPx = with(density) { MenuWidth.roundToPx() }
     // 底部弹窗要抬到导航条之上
     val navBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
@@ -336,21 +362,25 @@ internal fun DialogHost(
     val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
 
     LaunchedEffect(spec) {
-        progress.animateTo(1f, tween(DialogMillis, easing = LinearOutSlowInEasing))
+        // 入场曲线按形态分：锚定菜单走缩放（区间小，过冲可以给足），
+        // 贴底弹窗走位移（区间是整卡高度，过冲必须压小）—— 见两条曲线的 KDoc。
+        val enterEasing = if (isMenu) AppleMenuEnterEasing else AppleSheetEnterEasing
+        progress.animateTo(1f, tween(DialogMillis, easing = enterEasing))
     }
     // 渐显：自己的一条协程，独立于上面的缩放动画
     LaunchedEffect(spec) {
         if (isMenu) fade.animateTo(1f, tween(DialogFadeMillis, easing = LinearOutSlowInEasing))
     }
-    // 出场：缩放 1 → 0（锚定菜单缩回右上角 / 贴底弹窗向下滑走）+ 透明 1 → 0（仅锚定菜单），
+    // 出场：缩放 1 → 0（锚定菜单缩回右缘中点 / 贴底弹窗向下滑走）+ 透明 1 → 0（仅锚定菜单），
     // 两条并发跑，**都跑完**才真正清空 spec。
+    // 出场统一走苹果风 easeInOut（[AppleExitEasing]）—— 出场方向不能回弹，见其 KDoc。
     LaunchedEffect(controller.closing) {
         if (!controller.closing) return@LaunchedEffect
         val scaleDone = launch {
-            progress.animateTo(0f, tween(DialogMillis, easing = FastOutLinearInEasing))
+            progress.animateTo(0f, tween(DialogMillis, easing = AppleExitEasing))
         }
         val fadeDone = if (isMenu) {
-            launch { fade.animateTo(0f, tween(DialogFadeMillis, easing = FastOutLinearInEasing)) }
+            launch { fade.animateTo(0f, tween(DialogFadeMillis, easing = AppleExitEasing)) }
         } else {
             null
         }
@@ -441,14 +471,12 @@ internal fun DialogHost(
                             (width - cardW - marginPx).coerceAtLeast(marginPx),
                         )
                         .toInt()
-                    val below = anchor.bottom + gapPx
-                    y = if (below + cardH + marginPx <= height) {
-                        // 优先「控件右下方」
-                        below.toInt()
-                    } else {
-                        // 下方放不下 → 「控件右上方」
-                        (anchor.top - gapPx - cardH).coerceAtLeast(marginPx).toInt()
-                    }
+                    // 「中右」：卡片竖直居中于触发控件（对齐控件一半高度处）。
+                    // 上下空间不够时**整体收进**屏幕留白 —— 居中优先，越界让位。
+                    val centerY = (anchor.top + anchor.bottom) / 2f
+                    y = (centerY - cardH / 2f)
+                        .coerceIn(marginPx, (height - cardH - marginPx).coerceAtLeast(marginPx))
+                        .toInt()
                 }
 
                 else -> {
@@ -466,7 +494,7 @@ internal fun DialogHost(
  *
  * @param progress 0 = 收起、1 = 完全展开（驱动缩放 / 位移）
  * @param fade     0 = 全透明、1 = 不透明（驱动 alpha，仅锚定菜单用；贴底弹窗恒 1）
- * @param sheet    `true` = 贴底弹窗（纵向滑入滑出），`false` = 锚定菜单（右上角缩放 + 渐隐渐出）
+ * @param sheet    `true` = 贴底弹窗（纵向滑入滑出），`false` = 锚定菜单（右缘中点缩放 + 渐隐渐出）
  */
 @Composable
 private fun DialogCard(
@@ -487,12 +515,13 @@ private fun DialogCard(
                 // 从屏幕下方滑上来；关闭时反向滑回去
                 translationY = (1f - progress) * size.height
             } else {
-                // 以**右上角**为原点缩放：展开时向下 + 向左「长」出来，
-                // 关闭时（progress 1 → 0）再缩回右上角 —— 入场 / 出场同一套变换。
+                // 以**右缘中点**为原点缩放：卡片竖直居中挂在触发控件右侧（「中右」），
+                // 展开时向上下 + 向左「长」出来，关闭时（progress 1 → 0）再缩回右缘中点
+                // —— 入场 / 出场同一套变换。
                 val s = AppearScale + (1f - AppearScale) * progress
                 scaleX = s
                 scaleY = s
-                transformOrigin = TransformOrigin(1f, 0f)
+                transformOrigin = TransformOrigin(1f, 0.5f)
                 // 渐隐渐出：alpha 走**另一条独立动画**（`fade`，见 DialogHost 的注释），
                 // 与上面的缩放各跑各的、互不干扰。
                 alpha = fade
