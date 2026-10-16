@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/SansKritO4/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
+<img src="https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
 
 # GSAuxiliary
 
@@ -9,9 +9,10 @@
 Make GoldenSun Great Again！
 
 [![下载最新版本](https://img.shields.io/badge/下载-最新版本-3DDC84?logo=android&logoColor=white)](../../releases/latest)
-[![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white)](https://github.com/SansKritO4/GSAuxiliary)
-[![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github&logoColor=white)](https://github.com/SansKritO4/GSAuxiliary/issues)
-[![CI](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml/badge.svg)](https://github.com/SansKritO4/GSAuxiliary/actions/workflows/ci.yml)
+[![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary)](../../releases/latest)
+[![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white)](https://github.com/MVennn/GSAuxiliary)
+[![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github&logoColor=white)](https://github.com/MVennn/GSAuxiliary/issues)
+[![CI](https://github.com/MVennn/GSAuxiliary/actions/workflows/ci.yml/badge.svg)](https://github.com/MVennn/GSAuxiliary/actions/workflows/ci.yml)
 ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white)
 ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
@@ -28,27 +29,33 @@ Make GoldenSun Great Again！
 有些地方本来要多点一下，有些信息本来要多翻一层。它不碰金太阳的数据，也不碰服务端，
 所有改动只发生在你自己的手机上。
 
+功能以模块 App「功能」页为准，逐版本的改动记录见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 安装
 
 1. 到 [Releases](../../releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
-3. 作用域中勾上「国信金太阳」（模块已固定声明作用域，一般会自动勾好）
+3. 作用域中勾上「国信金太阳」（模块已声明默认作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次
-5. 打开桌面上的 GSAuxiliary，进「功能」页挑选要开的开关
+5. 打开桌面上的 GSAuxiliary（首次打开会先请同意免责声明），进「功能」页挑选要开的开关（开关默认全部关闭；部分开关打开后需重启金太阳生效）
+
+首次启用才需要第 4 步；之后升级模块 APK，框架会自动热重载，无需重启金太阳。
 
 ## 反馈
 
 遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，都可以到
-[Issues](https://github.com/SansKritO4/GSAuxiliary/issues) 进行反馈。
-请上传相关信息与 LSPosed 日志。
+[Issues](https://github.com/MVennn/GSAuxiliary/issues) 进行反馈。
+更完整的排错步骤见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
-相关信息主要包括：
+请上传相关信息与日志。相关信息主要包括：
 
 - 金太阳的版本号
 - 模块版本号、安卓版本、机型
 - 出问题的开关，以及复现步骤
-- LSPosed 日志：
-  `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
+- 日志（模块在日志里的标记名是 `GSZXEnhance`，与模块名不同，照抄即可）：
+  - 模块 App →「设置 → 查看日志」，直接查看与复制
+  - 或用 adb 抓 LSPosed 日志：
+    `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
 
 ## 免责声明
 

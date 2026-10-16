@@ -2107,7 +2107,7 @@ LinearLayout #ll_main_tab [0,2100][1080,2205]
   滚动本身不受影响；切板块 / 关玻璃时重置。收起动画 = `animateFloatAsState`
   驱动的 `translationY`，与开关玻璃的 `alpha` 相乘。
 - **关于页「项目仓库」可跳转**：由只读 `BasicComponent` 改为可点击 `ArrowPreference`，
-  地址 `https://github.com/SansKritO4/GSAuxiliary`（新增资源 `about_value_repo_url`）。
+  地址 `https://github.com/MVennn/GSAuxiliary`（新增资源 `about_value_repo_url`）。
 
 ### 资源 / 版本
 
@@ -2159,7 +2159,7 @@ LinearLayout #ll_main_tab [0,2100][1080,2205]
   该颜色资源已删除。
 - **「模块」Tab 更名为「概览」**：底栏文案、页面副标题（`模块 · 框架 · 环境`）同步更新。
 - **关于页新增 GitHub 行**：开发者改为 `M.Venn`，项目仓库占位为 `GSAuxiliary`，
-  并新增可点击跳转的 `https://github.com/SansKritO4`。
+  并新增可点击跳转的 `https://github.com/MVennn`。
 
 ### 新增
 

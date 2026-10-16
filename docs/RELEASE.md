@@ -11,7 +11,7 @@
 
 | 仓库 | 谁在用 |
 |---|---|
-| `SansKritO4/GSAuxiliary`（源码） | 源码、Issue、GitHub 访客的下载入口 |
+| `MVennn/GSAuxiliary`（源码） | 源码、Issue、GitHub 访客的下载入口 |
 | `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary`（模块仓库） | **LSPosed 网站与 App 只读这里** |
 
 `Xposed-Modules-Repo/*` 是 LSPosed 官方组织下的**独立仓库**，
@@ -250,7 +250,7 @@ bot 在收录 issue 里的原话：
 |---|---|---|
 | `README.md` | `README.md` | 与源码仓库**逐字一致** |
 | `SUMMARY` | **`xposed-repo/SUMMARY`** | 模块页标题下面那行**一句话简介** |
-| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/SansKritO4/GSAuxiliary` |
+| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/MVennn/GSAuxiliary` |
 | `icon.svg` | `assets/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
 
 > ⚠️ **`SUMMARY` 不是名字**。模块的**显示名**来自仓库 Description（见 4.1），

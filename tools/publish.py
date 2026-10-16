@@ -51,7 +51,7 @@ tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
 
 ## 环境变量
 
-    GITHUB_SOURCE_REPO   源码仓库，默认 SansKritO4/GSAuxiliary
+    GITHUB_SOURCE_REPO   源码仓库，默认 MVennn/GSAuxiliary
     GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
     GS_GITHUB_TOKEN      优先使用的 PAT（需要 repo scope，且对模块仓库有写权限）
     GH_TOKEN             次选
@@ -73,7 +73,7 @@ GRADLE = os.path.join(ROOT, "app", "build.gradle.kts")
 README = os.path.join(ROOT, "README.md")
 WORK = os.path.join(ROOT, ".work")
 
-SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "SansKritO4/GSAuxiliary")
+SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "MVennn/GSAuxiliary")
 MODULE_REPO = os.environ.get(
     "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary")
 
@@ -338,7 +338,7 @@ def sync_repo_files(tok, dry=False):
         run(["git", "pull", "-q", "--ff-only"], cwd=clone)
     run(["git", "config", "user.name", "M.Venn"], cwd=clone)
     run(["git", "config", "user.email",
-         "127460743+SansKritO4@users.noreply.github.com"], cwd=clone)
+         "127460743+MVennn@users.noreply.github.com"], cwd=clone)
 
     changed = []
     for name, content in sorted(files.items()):

@@ -523,8 +523,8 @@ git ls-files -s gradlew      # 必须是 100755
 
 ```bash
 python tools/publish.py --check
-#   [OK] token 有效，身份：SansKritO4
-#   [OK] SansKritO4/GSAuxiliary 可写（默认分支 main）
+#   [OK] token 有效，身份：MVennn
+#   [OK] MVennn/GSAuxiliary 可写（默认分支 main）
 #   [OK] Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary 可写（默认分支 main）
 ```
 
