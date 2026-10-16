@@ -72,7 +72,7 @@ internal fun FeatureTab(
             summary = stringResource(spec.summaryRes),
             category = stringResource(spec.categoryRes),
             switchTitle = stringResource(spec.switchTitleRes),
-            switchSummary = stringResource(spec.switchSummaryRes),
+            switchSummary = spec.switchSummaryRes?.let { stringResource(it) },
         )
     }
 
@@ -83,7 +83,7 @@ internal fun FeatureTab(
             it.title.contains(query, ignoreCase = true) ||
                     it.summary.contains(query, ignoreCase = true) ||
                     it.switchTitle.contains(query, ignoreCase = true) ||
-                    it.switchSummary.contains(query, ignoreCase = true)
+                    it.switchSummary?.contains(query, ignoreCase = true) == true
         }
     }
 
@@ -206,5 +206,6 @@ private data class ResolvedFeature(
     val summary: String,
     val category: String,
     val switchTitle: String,
-    val switchSummary: String,
+    /** 可为 null —— 主标题已经说清功能时，卡片上就没有这一行（见 `docs/NAMING.md`） */
+    val switchSummary: String?,
 )

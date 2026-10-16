@@ -65,70 +65,58 @@
     <string name="feature_ipo_clean_title">Hide the IPO reminder dialog</string>
     <string name="feature_ipo_clean_summary">The daily new-share subscription reminder no longer pops up after signing in; you land straight on the main screen</string>
     <string name="feature_ipo_clean_switch">Hide IPO reminder</string>
-    <string name="feature_ipo_clean_switch_summary">The daily new-share subscription reminder no longer pops up; you land straight on the main screen</string>
 
     <string name="feature_watchlist_title">Watchlist highlight</string>
     <string name="feature_watchlist_summary">Highlight watchlist stock names on the strategy detail page</string>
     <string name="feature_watchlist_switch">Watchlist highlight</string>
-    <string name="feature_watchlist_switch_summary">Render watchlist stock names in the highlight color</string>
     <string name="feature_detail_entry">Highlight settings</string>
-    <string name="feature_detail_entry_summary">Scope, color, preview</string>
 
     <string name="feature_stg_direct_title">Direct standard quote</string>
     <string name="feature_stg_direct_summary">Tap a stock in My Strategies to open the stock detail page directly, skipping the extra tap</string>
     <string name="feature_stg_direct_switch">Direct standard quote</string>
     <string name="feature_stg_direct_switch_summary">Open the stock detail page straight from the strategy detail list</string>
     <string name="feature_stg_direct_detail_entry">Swipe settings</string>
-    <string name="feature_stg_direct_detail_entry_summary">Whether swiping between stocks is supported</string>
+    <string name="feature_stg_direct_detail_entry_summary">Swipe between stocks</string>
 
     <string name="feature_select_all_title">Multi-select: select all</string>
     <string name="feature_select_all_summary">Adds a "Select all" button left of "Cancel" in the strategy detail multi-select bar</string>
     <string name="feature_select_all_switch">Add "Select all" button</string>
-    <string name="feature_select_all_switch_summary">Show a "Select all" button in the strategy detail multi-select bar</string>
 
     <string name="feature_stg_filter_title">Strategy stock filter</string>
     <string name="feature_stg_filter_summary">Adds a "Filter stocks" item to the strategy detail top-right menu, filtering by gain / loss / watchlist</string>
     <string name="feature_stg_filter_switch">Add "Filter stocks" menu item</string>
-    <string name="feature_stg_filter_switch_summary">Show "Filter stocks" in the strategy detail three-dot menu</string>
 
     <string name="feature_stock_bar_title">Bottom bar "Smart Watch" entry</string>
     <string name="feature_stock_bar_summary">Adds a "Smart Watch" entry between "+Watchlist" and "More" on the stock detail bottom bar, one tap instead of digging into "More"</string>
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
-    <string name="feature_stock_bar_switch_summary">Show a "Smart Watch" button on the bottom bar; the buy/sell buttons give up the space</string>
 
     <!-- Dock -->
     <string name="feature_dock_clean_title">Hide "Wealth" in dock</string>
     <string name="feature_dock_clean_summary">The dock no longer shows the "Wealth" tab; the remaining entries spread out to fill the row</string>
     <string name="feature_dock_clean_switch">Hide "Wealth" entry</string>
-    <string name="feature_dock_clean_switch_summary">The dock drops the "Wealth" tab; the remaining entries spread out to fill the row</string>
 
     <!-- Home -->
     <string name="feature_home_banner_title">Hide home banner</string>
     <string name="feature_home_banner_summary">The banner below the home quick entries is hidden; the content underneath moves up</string>
     <string name="feature_home_banner_switch">Hide banner</string>
-    <string name="feature_home_banner_switch_summary">The banner below the quick entries no longer takes up space; the content underneath moves up</string>
 
     <!-- Market -->
     <string name="feature_market_banner_title">Hide ticker and quick entries</string>
     <string name="feature_market_banner_summary">Hides both the scrolling news ticker below the market overview chart and the quick-entry row under it, so the sector block moves up</string>
     <string name="feature_market_banner_switch">Hide ticker and quick entries</string>
-    <string name="feature_market_banner_switch_summary">The ticker and quick entries give up their space; the sector block moves up</string>
 
     <string name="feature_market_sector_title">Sectors: keep the top three</string>
     <string name="feature_market_sector_summary">The sector block normally fills six slots; keep only the top three and collapse the rest</string>
     <string name="feature_market_sector_switch">Keep top three sectors</string>
-    <string name="feature_market_sector_switch_summary">Show only the top three sectors; the sector block gets shorter</string>
 
     <string name="feature_market_overview_title">Shorter market overview</string>
     <string name="feature_market_overview_summary">The market overview block gets shorter and the bar charts inside are compressed to match</string>
     <string name="feature_market_overview_switch">Shorter market overview</string>
-    <string name="feature_market_overview_switch_summary">Market overview and bar chart heights are compressed together</string>
 
     <!-- Display -->
     <string name="feature_nav_bar_title">Match gesture bar color</string>
     <string name="feature_nav_bar_summary">The gesture navigation bar at the bottom is filled with the color of the interface right above it, instead of a hard-edged pure black or pure white strip in dark and light mode alike</string>
     <string name="feature_nav_bar_switch">Match gesture bar color</string>
-    <string name="feature_nav_bar_switch_summary">The bottom gesture bar takes the color of the interface right above it instead of a solid black or white strip</string>
 
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only -->
@@ -174,9 +162,7 @@
 
     <string name="section_data">Data</string>
     <string name="item_backup">Back up config</string>
-    <string name="item_backup_summary">Export to a JSON file</string>
     <string name="item_restore">Restore config</string>
-    <string name="item_restore_summary">Restore settings from a backup file</string>
     <string name="item_reset">Reset module</string>
     <string name="item_reset_summary">Turn off all features and restore defaults</string>
     <string name="dialog_reset_title">Reset module</string>
@@ -196,7 +182,6 @@
     <string name="section_log">Logs</string>
     <string name="item_log_level">Log level</string>
     <string name="item_view_log">View logs</string>
-    <string name="item_view_log_summary">Show module runtime logs</string>
 
     <!-- ============================ Log page ============================ -->
     <string name="log_title">Runtime logs</string>

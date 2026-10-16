@@ -325,13 +325,15 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
         Card(modifier = Modifier.cardPadding()) {
             ArrowPreference(
                 title = stringResource(R.string.item_backup),
-                summary = if (busy) backupWorking else stringResource(R.string.item_backup_summary),
+                // 平时不写副标题（「备份模块配置」已说清），只在导出中显示进度
+                summary = if (busy) backupWorking else null,
                 enabled = !busy,
                 onClick = { backupLauncher.launch(defaultBackupFileName()) },
             )
             ArrowPreference(
                 title = stringResource(R.string.item_restore),
-                summary = if (busy) restoreWorking else stringResource(R.string.item_restore_summary),
+                // 同上：平时不写副标题，只在恢复中显示进度
+                summary = if (busy) restoreWorking else null,
                 enabled = !busy,
                 onClick = { restoreLauncher.launch(arrayOf("*/*")) },
             )
@@ -418,7 +420,7 @@ internal fun SettingsTab(onOpenLog: () -> Unit) {
             )
             ArrowPreference(
                 title = stringResource(R.string.item_view_log),
-                summary = stringResource(R.string.item_view_log_summary),
+                // 无副标题：「查看日志」已经说清
                 onClick = onOpenLog,
             )
         }
