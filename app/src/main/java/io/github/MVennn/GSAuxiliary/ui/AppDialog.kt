@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,16 +38,16 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -160,18 +161,23 @@ internal class ConfirmDialogSpec(
  *
  * 与 [ConfirmDialogSpec] 的区别（也是它必须单独一个类的原因）：
  *  - **没有取消按钮**，只有一颗「同意」，且**未勾选时置灰点不动**；
- *  - 说明文字里嵌一个**可点击的链接**（「免责声明」），点了跳二级页全文；
+ *  - 勾选行的文字里嵌一个**可点击的链接**（「免责声明」），点了跳二级页全文；
  *  - [dismissible] = `false`，点空白 / 按返回都关不掉。
  *
- * 文案拆成「前导 + 链接 + 后接」三段，链接文字由调用方给（便于本地化，
+ * 说明文字 [message] 是**纯文本**（免责声明入口不在副标题里），链接挪到勾选行：
+ * 勾选行拆成「前导 + 链接 + 后接」三段，链接文字由调用方给（便于本地化，
  * 而且链接在句子里的位置各语言不一样，不能写死拼接顺序）。
  */
 internal class AgreementDialogSpec(
     val title: String,
-    val messagePrefix: String,
-    val linkText: String,
-    val messageSuffix: String,
-    val checkLabel: String,
+    /** 说明文字（纯文本，不含任何链接） */
+    val message: String,
+    /** 勾选行：前导文字（自带尾随空格） */
+    val checkPrefix: String,
+    /** 勾选行：可点击的「免责声明」链接文字 */
+    val checkLinkText: String,
+    /** 勾选行：后接文字（自带前导空格） */
+    val checkSuffix: String,
     val confirmText: String,
     val onOpenDisclaimer: () -> Unit,
     val onConfirm: () -> Unit,
@@ -636,28 +642,9 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 )
                 Spacer(Modifier.height(12.dp))
 
-                // 说明文字：中间那段「免责声明」是可点链接，样式与主题主色一致
-                val message = buildAnnotatedString {
-                    append(spec.messagePrefix)
-                    withLink(
-                        LinkAnnotation.Clickable(
-                            tag = "disclaimer",
-                            styles = TextLinkStyles(
-                                style = SpanStyle(
-                                    color = colors.primary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    textDecoration = TextDecoration.Underline,
-                                )
-                            ),
-                            linkInteractionListener = { spec.onOpenDisclaimer() },
-                        )
-                    ) {
-                        append(spec.linkText)
-                    }
-                    append(spec.messageSuffix)
-                }
+                // 说明文字：纯文本 —— 免责声明的入口在下方勾选行里
                 Text(
-                    text = message,
+                    text = spec.message,
                     color = colors.onSurfaceContainer,
                     fontSize = 15.sp,
                     lineHeight = 23.sp,
@@ -669,7 +656,10 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 AgreementCheckRow(
                     checked = checked,
                     onCheckedChange = { checked = it },
-                    label = spec.checkLabel,
+                    prefix = spec.checkPrefix,
+                    linkText = spec.checkLinkText,
+                    suffix = spec.checkSuffix,
+                    onOpenLink = spec.onOpenDisclaimer,
                 )
                 Spacer(Modifier.height(18.dp))
 
@@ -781,22 +771,50 @@ private fun DialogButton(
  * 勾选框**自绘**（Miuix 0.9.x 的 basic 包里没有 Checkbox）：
  * 未选中 = 描边空心方块，选中 = 主色实心 + 对勾。
  * 整行可点 —— 20dp 的方块对拇指太小，把点击区扩到整行（含文字）。
+ *
+ * 「免责声明」链接（2.10 起从说明文字挪到这里）也画在这一行：
+ * 点击落在链接文字上 → 打开免责声明全文；落在行内其余任何位置 → 翻转勾选。
+ *
+ * ## 为什么不用 `LinkAnnotation`
+ *
+ * 那类链接的点击由 `Text` 内部的手势处理，事件消费行为和「整行翻转勾选」的
+ * 行级 clickable 容易打架（点链接会不会连带翻转勾选，取决于 Text 内部
+ * 消费了多少）。所以这里用**一个 detector 统一裁决**：行上挂
+ * [pointerInput]，拿 [TextLayoutResult.getOffsetForPosition] 把点击位置换算
+ * 成字符 offset，落在链接区间就跳全文、否则翻转勾选 —— 不存在两套手势抢事件。
  */
 @Composable
 private fun AgreementCheckRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    label: String,
+    prefix: String,
+    linkText: String,
+    suffix: String,
+    onOpenLink: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
+    // 链接在整段文字里的字符区间（拼接完就确定，只依赖两段文字的长度）
+    val linkRange = remember(prefix, linkText) {
+        prefix.length until prefix.length + linkText.length
+    }
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { onCheckedChange(!checked) }
+            // `checked` 进 key：翻转要拿最新的值，否则会拿旧状态取反出乱子
+            .pointerInput(checked, onCheckedChange, onOpenLink) {
+                detectTapGestures { pos ->
+                    val offset = layout?.getOffsetForPosition(pos)
+                        ?: return@detectTapGestures
+                    if (offset in linkRange) {
+                        onOpenLink()
+                    } else {
+                        onCheckedChange(!checked)
+                    }
+                }
+            }
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -823,7 +841,21 @@ private fun AgreementCheckRow(
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            text = label,
+            text = buildAnnotatedString {
+                append(prefix)
+                // 链接样式与原说明文字里的链接一致：主色 + SemiBold + 下划线
+                withStyle(
+                    SpanStyle(
+                        color = colors.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                ) {
+                    append(linkText)
+                }
+                append(suffix)
+            },
+            onTextLayout = { layout = it },
             color = colors.onSurfaceContainer,
             fontSize = 13.5.sp,
             lineHeight = 19.sp,

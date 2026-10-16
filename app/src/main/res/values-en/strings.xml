@@ -214,11 +214,13 @@
     <string name="oss_link_failed">Cannot open the link</string>
 
     <!-- ==================== First launch · disclaimer agreement ==================== -->
+    <!-- The message is plain text (the entry moved to the check row); the check
+         label is split into prefix + link + suffix, spaces escaped as \u0020. -->
     <string name="agreement_title">Before you start</string>
-    <string name="agreement_message_prefix">This module is non-commercial open-source software for studying Android reverse engineering and hooking. Before you start, please read the\u0020</string>
-    <string name="agreement_link">Disclaimer</string>
-    <string name="agreement_message_suffix">\u0020in full. Tick the box below and tap “Agree” to continue.</string>
-    <string name="agreement_check">I have carefully read and agree to the entire Disclaimer</string>
+    <string name="agreement_message">This module is non-commercial open-source software for studying Android reverse engineering and hooking. Please read the Disclaimer in full and delete the software within 24 hours. Tick the box below and tap “Agree” to use it.</string>
+    <string name="agreement_check_prefix">I have carefully read and agree to the\u0020</string>
+    <string name="agreement_check_link">Disclaimer</string>
+    <string name="agreement_check_suffix">\u0020in its entirety</string>
     <string name="agreement_confirm">Agree</string>
 
     <string name="section_disclaimer">Disclaimer</string>

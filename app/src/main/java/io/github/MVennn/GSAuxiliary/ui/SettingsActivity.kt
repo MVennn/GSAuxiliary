@@ -472,10 +472,10 @@ private fun HomeScaffold(
     //
     // 文案先全部取出来：弹窗的 spec 是普通对象，不能在 lambda 里调 stringResource。
     val agreementTitle = stringResource(R.string.agreement_title)
-    val agreementPrefix = stringResource(R.string.agreement_message_prefix)
-    val agreementLink = stringResource(R.string.agreement_link)
-    val agreementSuffix = stringResource(R.string.agreement_message_suffix)
-    val agreementCheck = stringResource(R.string.agreement_check)
+    val agreementMessage = stringResource(R.string.agreement_message)
+    val agreementCheckPrefix = stringResource(R.string.agreement_check_prefix)
+    val agreementCheckLink = stringResource(R.string.agreement_check_link)
+    val agreementCheckSuffix = stringResource(R.string.agreement_check_suffix)
     val agreementConfirm = stringResource(R.string.agreement_confirm)
 
     LaunchedEffect(showAgreement) {
@@ -483,10 +483,10 @@ private fun HomeScaffold(
             dialogs.showAgreement(
                 AgreementDialogSpec(
                     title = agreementTitle,
-                    messagePrefix = agreementPrefix,
-                    linkText = agreementLink,
-                    messageSuffix = agreementSuffix,
-                    checkLabel = agreementCheck,
+                    message = agreementMessage,
+                    checkPrefix = agreementCheckPrefix,
+                    checkLinkText = agreementCheckLink,
+                    checkSuffix = agreementCheckSuffix,
                     confirmText = agreementConfirm,
                     // 点链接：跳二级页看全文。这里**不动** showAgreement，
                     // route 一变它自己就为 false，弹窗随之收起。
