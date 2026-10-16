@@ -198,7 +198,7 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-ui:$miuixVersion")
     implementation("top.yukonga.miuix.kmp:miuix-preference:$miuixVersion")
 
-    implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.activity:activity-compose:1.12.4")
     implementation("androidx.core:core-ktx:1.13.1")
 
     // 界面图标：**不引第三方图标库**。
