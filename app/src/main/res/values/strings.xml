@@ -131,10 +131,9 @@
     <string name="item_stg_quote_swipe">左右滑动切换股票</string>
 
     <!-- ============================ 染色设置（二级菜单） ============================ -->
+    <!-- 页面标题就是分组名，页内不再放同名 SmallTitle；开关不带钩子目标这类开发者向说明（2.17.2） -->
     <string name="detail_color_title">染色设置</string>
-    <string name="section_color_settings">染色设置</string>
     <string name="item_scope_strategy">作用于策略详情页</string>
-    <string name="item_scope_strategy_summary">AIStkStgDetailAct · tv_item_stk_name</string>
     <string name="section_highlight_color">高亮颜色</string>
     <string name="section_preview">效果预览</string>
     <string name="preview_in_watchlist">已在自选</string>
@@ -205,24 +204,9 @@
     <string name="log_hint">只显示模块 App 进程的内存日志（最多 500 行）。目标进程的日志在 /data/adb/lspd/log/</string>
 
     <!-- ============================ 关于页 ============================ -->
+    <!-- 只留版本 / 作者 / 鸣谢 / 免责声明。作用范围、目标框架、Hook 技术细节是
+         开发者向的信息，面向用户的界面不写（用户看不懂），完整档案在 docs/（2.17.2 起） -->
     <string name="section_module_info">模块信息</string>
-    <string name="about_module_name">模块名称</string>
-    <string name="about_scope">作用范围</string>
-    <string name="about_framework">目标框架</string>
-    <string name="about_value_scope">com.guosen.android（国信金太阳）</string>
-    <string name="about_value_framework">LSPosed · 现代 Xposed API 102</string>
-
-    <string name="section_tech">技术细节</string>
-    <string name="tech_hook_entry">Hook 入口</string>
-    <string name="tech_hook_point">挂钩点</string>
-    <string name="tech_judge">判定依据</string>
-    <string name="tech_name_id">名称控件 ID</string>
-    <string name="tech_channel">配置通道</string>
-    <string name="tech_value_hook_entry">XposedModule.onPackageReady</string>
-    <string name="tech_value_hook_point">BaseQuickAdapter.getView（拦截链）</string>
-    <string name="tech_value_judge">ZXWorkflow.isBelongByStock(code, market)</string>
-    <string name="tech_value_name_id">tv_item_stk_name</string>
-    <string name="tech_value_channel">libxposed remote preferences</string>
 
     <string name="section_author">关于作者</string>
     <string name="about_developer">开发者</string>

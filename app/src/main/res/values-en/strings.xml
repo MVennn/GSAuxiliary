@@ -130,10 +130,9 @@
     <string name="item_stg_quote_swipe">Swipe to switch stocks</string>
 
     <!-- ============================ Highlight settings (detail) ============================ -->
+    <!-- The page title doubles as the section name; no developer-facing summary on the switch (since 2.17.2) -->
     <string name="detail_color_title">Highlight settings</string>
-    <string name="section_color_settings">Highlight settings</string>
     <string name="item_scope_strategy">Apply to strategy detail page</string>
-    <string name="item_scope_strategy_summary">AIStkStgDetailAct · tv_item_stk_name</string>
     <string name="section_highlight_color">Highlight color</string>
     <string name="section_preview">Preview</string>
     <string name="preview_in_watchlist">In watchlist</string>
@@ -204,24 +203,9 @@
     <string name="log_hint">Only in-memory logs from the module app process (up to 500 lines). Target-process logs live in /data/adb/lspd/log/</string>
 
     <!-- ============================ About tab ============================ -->
+    <!-- Version / author / credits / disclaimer only. Scope, framework and hook details
+         are developer-facing; users don't read them — full records live in docs/ (since 2.17.2) -->
     <string name="section_module_info">Module info</string>
-    <string name="about_module_name">Module name</string>
-    <string name="about_scope">Scope</string>
-    <string name="about_framework">Framework</string>
-    <string name="about_value_scope">com.guosen.android (Guosen GoldSun)</string>
-    <string name="about_value_framework">LSPosed · Modern Xposed API 102</string>
-
-    <string name="section_tech">Technical details</string>
-    <string name="tech_hook_entry">Hook entry</string>
-    <string name="tech_hook_point">Hook point</string>
-    <string name="tech_judge">Watchlist check</string>
-    <string name="tech_name_id">Name view ID</string>
-    <string name="tech_channel">Config channel</string>
-    <string name="tech_value_hook_entry">XposedModule.onPackageReady</string>
-    <string name="tech_value_hook_point">BaseQuickAdapter.getView (intercept chain)</string>
-    <string name="tech_value_judge">ZXWorkflow.isBelongByStock(code, market)</string>
-    <string name="tech_value_name_id">tv_item_stk_name</string>
-    <string name="tech_value_channel">libxposed remote preferences</string>
 
     <string name="section_author">Author</string>
     <string name="about_developer">Developer</string>

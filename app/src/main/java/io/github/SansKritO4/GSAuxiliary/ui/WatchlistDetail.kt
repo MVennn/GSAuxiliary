@@ -50,8 +50,12 @@ internal fun WatchlistDetailScreen() {
     ) {
         Spacer(Modifier.height(8.dp))
 
-        // --- 染色设置 ---
-        SmallTitle(stringResource(R.string.section_color_settings))
+        // --- 作用于策略详情页 ---
+        // 不放分组标题：页标题就是「染色设置」，再来一个同名 SmallTitle 是同一句
+        // 话说两遍（2.17.2）。开关也不带副标题 —— 原来那行钩子目标
+        // （AIStkStgDetailAct · tv_item_stk_name）是开发者才看得懂的类名 / 控件 ID，
+        // 面向用户的界面不写这类信息，完整档案在 docs/ARCHITECTURE.md 与
+        // docs/HOOK-NOTES.md。
         Card(modifier = Modifier.cardPadding()) {
             SwitchPreference(
                 checked = scopeStrategy,
@@ -59,7 +63,6 @@ internal fun WatchlistDetailScreen() {
                     ModulePreferences.edit { putBoolean(ConfigKeys.SCOPE_STRATEGY, v) }
                 },
                 title = stringResource(R.string.item_scope_strategy),
-                summary = stringResource(R.string.item_scope_strategy_summary),
                 enabled = enabled,
             )
         }
