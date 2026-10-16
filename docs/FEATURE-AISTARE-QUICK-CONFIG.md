@@ -8,7 +8,8 @@
 > 本文的**页面结构 / DOM 层级 / 入口配色 / H5 桥契约**已在真机
 > （魅族 20 / Android 16 / 金太阳 8.6.0 vc271）实测确认，依据是
 > `uiautomator dump` + LSPosed 探针（`com.wb.probe`）的运行时日志，不是推断。
-> **取数通道一节标注了「待探针确认」的项** —— 那部分只有候选，没有实测。
+> **§10 的 7 项待确认已于 2026-10-16 用探针 v33~v35 跑完**（结论逐项写在 §10，
+> 仅第 5 项持仓成本需登录环境、待补），§7 改动清单可以照单开工。
 
 ---
 
@@ -16,13 +17,13 @@
 
 | 问题 | 答案 |
 |---|---|
-| 价格页在哪个页面 | `com.guosen.quotation.aistare.ui.AIStareWebView`（H5 容器），不是原生页 |
-| 价格页的 H5 路由 | `https://goldsundg.guosen.com.cn:1445/earlywarning/setStrategy/1?cPrecise=2&userCode=<账号>&stockCode=<代码>.<市场>&categoryType=1` |
+| 价格页在哪个页面 | `com.guosen.quotation.aistare.ui.AIStareWebView`（**它自己是个 Activity**，H5 容器在其 `mWbContent` 字段上），不是原生页 |
+| 价格页的 H5 路由 | `https://goldsunsh.guosen.com.cn:1445/earlywarning/setStrategy/1?color_type=black&cPrecise=2&userCode=<账号>&stockCode=<代码>.<市场>&categoryType=1`（生产域名 **goldsunsh**，2026-10-16 实测；文档早先写的 `goldsundg` 是测试环境） |
 | 页面里有什么 | 证券代码 / `最新价:24.32 +9.45%` / `最新涨到：[输入价格]` / `最新跌到：[输入价格]` / `提醒时效：一次·长期` / 底部 `重置` `保存` |
 | 「保存」是什么控件 | **H5 DOM 元素**（`uiautomator` 报成 `View` + `TextView`），底部操作条右半，宽 540px（半屏） |
 | 入口配色 | **`#FF3A3B`** —— 个股详情页「买」按钮底色（真机取样，纯色无渐变；「卖」是 `#2BAF95`） |
 | 怎么插进去 | 页面是 DOM → **注入 JS 在「保存」右边插一个同款按钮**，不碰原生视图树 |
-| 怎么和原生通信 | 复用宿主的 H5 桥：`HybirdWebView#parserCommand` → `GsBridge#parserCommand`；自己再挂一个 `addJavascriptInterface`，不污染宿主的命令空间 |
+| 怎么和原生通信 | 复用宿主的 H5 桥：`HybirdWebView#parserCommand` → `GsBridge#parserCommand`（签名见 §1.3）；自己再挂一个 `addJavascriptInterface`，不污染宿主的命令空间（宿主不禁用，见 §10-3） |
 | 数据从哪来 | 两级：**① 宿主自己的行情数据**（首选，与 App 内一致）**② 公开行情 HTTP**（兜底）。详见 §5 |
 | 方案存哪 | remote preferences 新增一个键，值是 JSON 字符串；进 `ConfigSnapshot`（目标进程要读） |
 | 设置页在哪 | 模块 App（`SettingsActivity`）新增二级页「一键配置」，功能卡片挂**新分区「智能盯盘」** |
@@ -110,13 +111,23 @@ FrameLayout [0,0][1080,2400]
      └ （同上：parserCommand → GsBridge → doParser → 页面自己的 parserMsg）
 ```
 
-有用的三个事实：
+有用的四个事实（探针 v33 实测补全，方法签名以 CLASS dump 为准）：
 
 - 容器类是 **`com.guosen.commonui.webview.HybirdWebView`**（`AIStareWebView` 的 `#ptr_web` 里就是它）；
-  它继承 `NestedHybridWebView`，`getBasicWebView()` 能拿到真正的 `android.webkit.WebView`。
-- `GsBridge` 里有个 **`showCommandError(String)`** —— 未知命令会弹错误 UI。
+  它继承 `NestedHybridWebView`。**`HybirdWebView#getWebView()`（无参）直接返回 `android.webkit.WebView`**
+  （另有 `getBasicWebView(Context)` 与字段 `m_webView`，见 §10-1）。
+  价格页的 Activity 就是 **`com.guosen.quotation.aistare.ui.AIStareWebView`**（它自己是 Activity，
+  顶栏代码/名称是原生控件 `m_tvStkCode` / `m_tvStkName`，H5 容器在字段 `mWbContent` 上）。
+- `GsBridge` 是 Kotlin 单例（`getInstance()`），漏斗签名
+  **`public final int parserCommand(String command, String url, HybirdCallBack, IHybridParser)`**；
+  `HybirdWebView#parserCommand(String, String)`（protected）。
+  `GsBridge` 里的 **`showCommandError(String)`** —— 未知命令会弹错误 UI
+  （dump 过滤器没覆盖到这个方法名，但历史上探针栈实录过，红线不变）。
   **所以我们的桥命令不能丢进宿主的 `GsBridge` 里**，必须在漏斗**之前**截下来。
 - 桥命令在两个地方都能被截：`shouldOverrideUrlLoading`（URL scheme）与 `onJsPrompt`（`prompt()`）。
+  命令格式实录（保存标题动作）：`guosen://WebContainer/titleItem/?params={"title":"价格","bgColor":"212634"}`。
+- 底部条「重置/保存」是 **`<div class="clk">`**（uiautomator 报成 `View clk`），每半宽 540px ——
+  与 §1.1 的 dump 一致。
 
 ### 1.4 股票标识：`<代码>.<市场>`，市场号 1=深圳 / 2=上海
 
@@ -139,8 +150,10 @@ code=601811.2,601811.2,002907.1,600519.2,300300.1,600585.2
 
 ### 1.5 顺带确认的两件事
 
-- H5 资源服务器是 `goldsundg.guosen.com.cn:1445`（页面与 JS 都从这里来，`/asset/...` 是静态资源）。
-- 盯盘自己的后端接口是 **`POST https://goldsundg.guosen.com.cn:1445/earlywarning/api/queryStrategy`**。
+- H5 资源服务器是 `goldsunsh.guosen.com.cn:1445`（生产环境，实测；
+  早先记录的 `goldsundg` 是测试环境，`/asset/...` 是静态资源）。
+- 盯盘自己的后端接口是 **`POST https://goldsunsh.guosen.com.cn:1445/earlywarning/api/queryStrategy`**
+  （保存走同类接口，不经 H5 桥 —— 见 §10-6）。
 
 ---
 
@@ -243,7 +256,7 @@ code=601811.2,601811.2,002907.1,600519.2,300300.1,600585.2
 
 | 问题 | 现象 | 改法 |
 |---|---|---|
-| 输进去不知道离现价多远 | 「最新涨到」填 30 日高，用户得自己心算差多少 | 输入框**右侧**补一行小字 `较最新价 +12.4%`，随输入实时更新（JS 侧纯计算，不取数） |
+| 输进去不知道离现价多远 | 「最新涨到」填 30 日高，用户得自己心算差多少 | ~~输入框右侧补一行小字~~ **宿主 2026-10-16 实测已原生自带**（输入框下方有「较最新价+136.22%」，随输入实时更新），**这项不要重复做** |
 | 方向填反没人管 | 涨到填得比最新价还低、跌到填得比最新价还高，照样能保存 | 方向不对时输入框描边变 `#FF3A3B`，并在下方补一行「涨到应高于最新价」 |
 | 键盘顶起时底部条被遮 | 输入框获得焦点后，底部 `重置/保存` 被软键盘盖住 | 给底部条加 `position:sticky` 的兜底（只在检测到视口高度变化时生效），不改宿主布局 |
 | 空态不知道能填什么 | 两个框都是 `输入价格`，没有参考值 | 用 `placeholder` 提示参考值（如 `30日高 18.47`），仅在方案已配置时填 |
@@ -590,20 +603,51 @@ QuoteRepository
 
 ## 10. 待真机确认清单
 
-> 这几项**只有候选，没有实测**，动手前先按 §11 跑一遍探针。
+> 这几项原本只有候选、没有实测。**2026-10-16 已用探针 v33~v35
+> （`tools/probe/src/com/wb/probe/ProbeModule.java`，WebView 桥侦察组钩子）在真机
+> （魅族 20 / Android 16 / 金太阳 8.6.0 vc271，华力创通 300045）跑完**，
+> 结论回写在下面（除第 5 项需登录环境，待补）。
 
-1. **`HybirdWebView` 拿 `WebView` 实例的方法名** —— 已知 `NestedHybridWebView#getBasicWebView:27`
-   存在，但 `HybirdWebView` 自己那层没确认；候选 `getBasicWebView` / `getWebView` / `mWebView` 字段。
-2. **`onPageFinished` 的挂载点** —— 建议从 `webView` 反射出 `mWebViewClient`，钩**那个具体子类**的
-   `onPageFinished`（钩基类 `WebViewClient` 拦不到子类覆写）。子类名待确认。
-3. **`addJavascriptInterface` 是否被宿主禁用/清理** —— 若被清，退回 `onJsPrompt` 前置拦截。
-4. **宿主行情数据的类与方法**（`HostQuoteSource`）—— 候选起点：
-   `com.guosen.android.quotes.data.StockInfo`（已知）、`com.guosen.quotation.logicview.KXChartGroupView`
-   （日K图组，已知存在，其数据源就是我们要的 K 线）。
-   确认方法：探针的 `CLASS[...]` dump 打这几个类的字段/方法签名。
-5. **`cost`（持仓成本）的来源** —— 持仓在哪个类里，未查。
-6. **价格页保存后跳去哪** —— 影响「套用后要不要自动点保存」这个决策（当前设计：不自动点）。
-7. **页面是否真的整页导航** —— 若其实是 SPA，§8 的 `MutationObserver` 就从兜底升级为主路径。
+1. **`HybirdWebView` 拿 `WebView` 实例的方法名** —— ✅ 已确认：
+   `HybirdWebView` 自己就声明了 **`public WebView getWebView()`（无参）**，
+   另有 `public WebView getBasicWebView(Context)`（带 Context）与私有字段 `WebView m_webView`。
+   父类 `NestedHybridWebView` 只有 `getBasicWebView(Context)`。
+   **实现取 `getWebView()`，反射候选顺序：`getWebView` → `getBasicWebView(Context)` → 字段 `m_webView`。**
+2. **`onPageFinished` 的挂载点** —— ✅ 已确认：宿主调
+   `WebView#setWebViewClient` 挂的是 **`com.guosen.commonui.webview.HybirdWebView$4`**
+   （`HybirdWebView#init:337` 处，extends `com.networkbench.agent.impl.instrumentation.NBSWebViewClient`，
+   听云插桩基类）。`$4` 声明了 8 个覆写：`onPageFinished` / `onPageStarted` /
+   `onReceivedError` / `onReceivedHttpError` / `onReceivedSslError` /
+   `shouldInterceptRequest`×2 / `shouldOverrideUrlLoading`。
+   **钩 `HybirdWebView$4#onPageFinished(WebView, String)`（匿名子类，必须按这个名字钩，钩基类拦不到）。**
+3. **`addJavascriptInterface` 是否被宿主禁用/清理** —— ✅ 已确认：**不禁用**。
+   宿主只 add 了分析 SDK 的两个桥（`SensorsData_APP_JS_Bridge`、`SensorsData_App_Visual_Bridge`）；
+   remove 只删 `searchBoxJavaBridge_`（安全清理，`HybirdWebView#init:310`）。
+   宿主自己的 GsBridge 命令**不走** `addJavascriptInterface`（走 `guosen://` scheme +
+   `onJsPrompt` 双通道，见 §1.3），因此**自挂 `gsaux` 不会与宿主冲突、不会被宿主清理**。
+   另注意 `HybirdWebView#setJSAble(boolean)` 存在（JS 桥总开关，宿主自己管，我们不动它）。
+4. **宿主行情数据的类与方法（`HostQuoteSource`）** —— ✅ 已确认数据结构，入口走反射候选：
+   - **实时快照：`com.guosen.android.quotes.data.StockInfo`**（BigDecimal 字段实测确认）：
+     `stockPrice` 最新 / `zrsp` 昨收 / `jrkp` 今开 / `highPrice` 当日高 / `lowPrice` 当日低 /
+     `stockName` 名称 / `zdf` 涨跌幅 / `codeAndMarket`（`代码.市场`）。
+   - **日 K：`com.guosen.quotation.logicview.KXChartGroupView`** → 字段
+     `m_kxChartInfo: com.guosen.android.quotes.data.kx.KXChartInfo` →
+     **`List m_kxChartItems`**（升序 K 线）。元素 `KXChartItem`（CTOR `(String code, String market)`）字段：
+     `m_date` / `m_openPrice` / `m_closePrice` / `m_highPrice` / `m_lowPrice` /
+     `m_lastClosePrice`（**全 String**）；入口 `setData(KXChartInfo, int, int)`。
+   - 反射失败一律降级 §5.2 的下一级通道，不阻塞主流程。
+5. **`cost`（持仓成本）的来源** —— ⚠️ **未确认（需登录环境）**：
+   候选类 `PositionInfo` / `HoldStockInfo` / `TCRSDataObject` 实测均 `ClassNotFoundException`；
+   `StockInfo` 全字段里无成本价（`holdVal`/`holdVol` 系股东持股统计，非用户持仓）。
+   持仓在交易模块，离线模式拿不到。**首版 `cost` 取值项按「无数据 → 该项失败 → 整体放弃」实现，
+   等有登录环境再补侦察**（届时 dump 交易/持仓页的 Activity 字段）。
+6. **价格页保存后跳去哪** —— ✅ 已确认：**不跳页、不发桥命令**。
+   点「保存」后 H5 自己发 HTTP 落库，成功后弹**原生 Dialog「保存成功!」+「确定」**，
+   点确定留在价格页。§3.2「套用后不自动点保存」的决策维持不变。
+7. **页面是否真的整页导航** —— ✅ 已确认：**是**。盯盘首页 → 价格页的实际链路：
+   H5 发桥命令 `guosen://WebContainer/transitionWeb/?params={"pageUrl":"…setStrategy/1?…"}`
+   → 原生 `WebView.loadUrl(pageUrl)`（探针 WVB-LOADURL 实录），整个价格页重新加载。
+   §8 的 `MutationObserver` 保持兜底定位（宿主 SPA 改版时才升级为主路径）。
 
 ---
 
@@ -621,7 +665,6 @@ bash tools/ui.sh list | tail -6
 bash tools/sh.sh --root "cp /data/adb/lspd/log/modules_*.log /sdcard/mlog.txt"
 bash tools/adbw.sh pull /sdcard/mlog.txt .work/mlog.txt
 grep -a "earlywarning" .work/mlog.txt | tail -5
-
 # 4. 看 H5 桥链路还在不在（类名/行号变了就要更新候选）
 grep -aE "HybirdWebView|GsBridge|parserCommand" .work/mlog.txt | tail -5
 

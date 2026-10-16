@@ -27,7 +27,7 @@ import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
 
 /**
- * GSProbe v27 —— 页面 / 点击链 / Intent 契约 / 明文 HTTP 侦察（现代 libxposed API 102 版）
+ * GSProbe v33 —— 页面 / 点击链 / Intent 契约 / 明文 HTTP / WebView 桥侦察（现代 libxposed API 102 版）
  *
  * 历史:
  *   v18  自选判定 API 交叉验证（ZXManager dump + 20 只真值打分）
@@ -42,6 +42,20 @@ import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
  *        只有挂到 `ConscryptEngineSocket$SSLOutputStream` 那一层才拿得到明文。
  *        用「时间窗 + 只抓 HTTP 方法开头 / gzip·JSON 响应 + 总量上限」控制日志量。
  *        这一组钩子与业务无关，**换任何 App 都能用**。
+ *   v30  登录态侦察（ParseLoginDataProcess 的 checkLogout / showLogoutAlert）。
+ *   v31  本地存储写入侦察（SharedPreferencesImpl$EditorImpl 的 clear / remove）。
+ *   v33  **WebView 桥侦察**（服务「智能盯盘 → 价格页一键配置」方案
+ *        docs/FEATURE-AISTARE-QUICK-CONFIG.md §10 的 7 项待确认）：
+ *        - dump HybirdWebView / NestedHybridWebView / AIStareWebView / GsBridge
+ *          类成员 —— 回答「怎么从容器拿到真正的 android.webkit.WebView」；
+ *        - 钩 WebView#setWebViewClient 抓**实际子类**，dump 其覆写方法并动态挂
+ *          onPageStarted / onPageFinished —— 回答「onPageFinished 挂哪个子类」；
+ *        - 钩 WebView#addJavascriptInterface / removeJavascriptInterface ——
+ *          回答「宿主是否注册/清理 JS 桥」；
+ *        - 钩 GsBridge#parserCommand / HybirdWebView#parserCommand /
+ *          AIStareWebView#parserMsg，打印命令原文 —— 回答「保存动作发什么命令、
+ *          自建命令要在哪一级截断」；
+ *        - 钩 WebView#loadUrl —— 回答「价格页是否整页导航」。
  *
  * v19 新增钩子（全部是**框架类**，不需要预先知道任何业务类名）:
  *   1. Activity.startActivity / startActivityForResult
@@ -67,6 +81,11 @@ import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
  *   CLASS[...]      任意类的构造器 / 字段 / 方法签名（找「自带转换构造器」用）
  *   HTTP-REQ[...]   OkHttp 出站请求（金太阳 0 命中）
  *   NET-W / NET-R   裸 socket 明文写出 / 读入（配 TLS[...] 看握手）
+ *   WVB-CLIENT      setWebViewClient 挂上的实际 WebViewClient 子类（+ 全部声明方法）
+ *   WVB-CB          WebViewClient 子类的页面回调实际触发（url 一起打）
+ *   WVB-LOADURL     WebView.loadUrl 调用（整页导航判定）
+ *   WVB-JSIFACE     addJavascriptInterface / removeJavascriptInterface
+ *   WVB-CMD         H5 命令漏斗原文（GsBridge / HybirdWebView / AIStareWebView）
  *
  * 注意: 本类**不引用任何 legacy `de.robv.android.xposed` 类型**，也不引用 androidx 类型
  *      （探针不走 Gradle，classpath 里没有 androidx，一律按类名反射）。
@@ -145,7 +164,7 @@ public class ProbeModule extends XposedModule {
             detach();
             return;
         }
-        log("=== GSProbe v32 (libxposed API 102) 载入 | process=" + process
+        log("=== GSProbe v33 (libxposed API 102) 载入 | process=" + process
                 + " pid=" + Process.myPid()
                 + " framework=" + getFrameworkName() + " " + getFrameworkVersion()
                 + " api=" + getApiVersion() + " ===");
@@ -189,6 +208,26 @@ public class ProbeModule extends XposedModule {
         // 找登录态到底存在哪个字段上就看它们
         dumpClassMembers("com.guosen.android.login.UserAccountManager");
         dumpClassMembers("com.guosen.app.goldsun.login.LoginWorkFlowManager");
+        // ---- v33: WebView 桥侦察（H5 页面注入方案的挂点与取数确认）----
+        hookWebViewBridge();
+        // 价格页容器链：HybirdWebView → NestedHybridWebView → 真正的 WebView，
+        // 「拿 WebView 实例的方法名」就看这三个类的字段与 getter
+        dumpClassMembers("com.guosen.commonui.webview.HybirdWebView");
+        dumpClassMembers("com.guosen.commonui.webview.NestedHybridWebView");
+        dumpClassMembers("com.guosen.quotation.aistare.ui.AIStareWebView");
+        // H5 命令漏斗的最后一跳（showCommandError 在这里，自建命令要在它之前截）
+        dumpClassMembers("com.guosen.module.hybrid.GsBridge");
+        // 日 K 图组：HostQuoteSource 的日K数据候选源
+        dumpClassMembers("com.guosen.quotation.logicview.KXChartGroupView");
+        // 日 K 数据本体（v34）：KXChartGroupView.m_kxChartInfo 的类型，K 线数组应该挂在这
+        dumpClassMembers("com.guosen.android.quotes.data.kx.KXChartInfo");
+        // 单根 K 线（m_kxChartItems 的元素类型）：开高低收字段名就看它（v35）
+        dumpClassMembers("com.guosen.android.quotes.data.kx.KXChartItem");
+        // StockInfo.parseFund(TCRSDataObject,...) 的参数类型：实时行情推送的数据总线（v34）
+        dumpClassMembers("com.guosen.android.quotes.data.TCRSDataObject");
+        // 持仓成本候选（类名盲试，失败无害）
+        dumpClassMembers("com.guosen.android.quotes.data.PositionInfo");
+        dumpClassMembers("com.guosen.android.quotes.data.HoldStockInfo");
     }
 
     /** dump 某类的构造器 / 实例字段 / setter-getter（加固 App 里字段名不可假设，必须实测） */
@@ -205,7 +244,10 @@ public class ProbeModule extends XposedModule {
             while (t != null && t != Object.class) {
                 for (Field f : t.getDeclaredFields()) {
                     if (Modifier.isStatic(f.getModifiers())) continue;
-                    log("  F " + f.getType().getSimpleName() + " " + f.getName());
+                    // com.guosen 自有类型打完整包名（找 KXChartInfo 这类「字段可见但包名未知」的类）
+                    String tn = f.getType().getName();
+                    log("  F " + (tn.startsWith("com.guosen") ? tn : f.getType().getSimpleName())
+                            + " " + f.getName());
                 }
                 t = t.getSuperclass();
             }
@@ -344,6 +386,177 @@ public class ProbeModule extends XposedModule {
         } catch (Throwable t) {
             return "(读取失败 " + t + ")";
         }
+    }
+
+    // ============================================================ v33: WebView 桥侦察
+
+    /** 已挂过回调的 WebViewClient 子类（防重复挂） */
+    private final Set<String> hookedClients = new HashSet<>();
+    /** 已记录过的 JS 桥接口名（防重复打日志） */
+    private final Set<String> seenJsIfaces = new HashSet<>();
+    /** 已记录过的 loadUrl 地址（同 URL 不重复打） */
+    private final Set<String> seenLoadUrls = new HashSet<>();
+
+    /**
+     * v33 WebView 桥侦察 —— 服务「智能盯盘 → 价格页一键配置」方案
+     * （docs/FEATURE-AISTARE-QUICK-CONFIG.md §10 的 7 项待真机确认）。
+     *
+     * ① setWebViewClient → 抓**实际子类**名 + dump 其声明方法 + 动态挂页面回调
+     *    （回答：onPageFinished 挂哪个子类；钩基类拦不到子类覆写，必须先抓子类）
+     * ② loadUrl → URL + 调用栈（回答：价格页是不是整页导航）
+     * ③ addJavascriptInterface / removeJavascriptInterface → 桥名 + 栈
+     *    （回答：宿主注册了哪些桥、有没有清理掉我们的机会）
+     * ④ parserCommand / parserMsg → 命令原文（回答：保存发什么命令、自建命令在漏斗前怎么截）
+     *
+     * 全部只观察不拦，proceed 照走。
+     */
+    private void hookWebViewBridge() {
+        int n = 0;
+        try {
+            Class<?> wv = Class.forName("android.webkit.WebView", false, sCL);
+
+            // ① setWebViewClient：宿主一挂 client 就抓子类
+            n += hookNamed(wv, "setWebViewClient", "probe:wvclient", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    if (args == null || args.length == 0 || args[0] == null) return;
+                    Class<?> cc = args[0].getClass();
+                    log("");
+                    log("========== WVB-CLIENT setWebViewClient -> " + cc.getName()
+                            + " (extends " + cc.getSuperclass().getName() + ") ==========");
+                    log("  stack: " + stackHint());
+                    log("  -- 子类声明的方法 --");
+                    for (Method m : cc.getDeclaredMethods()) {
+                        log("  M " + Modifier.toString(m.getModifiers()) + " "
+                                + m.getReturnType().getSimpleName() + " " + m.getName()
+                                + "(" + sig(m.getParameterTypes()) + ")");
+                    }
+                    hookClientCallbacks(cc);
+                }
+            });
+
+            // ② loadUrl：整页导航判定
+            n += hookNamed(wv, "loadUrl", "probe:loadurl", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    if (args == null || args.length == 0 || !(args[0] instanceof String)) return;
+                    String url = (String) args[0];
+                    if (url == null || url.length() == 0 || url.startsWith("about:")) return;
+                    synchronized (seenLoadUrls) {
+                        if (!seenLoadUrls.add(url)) return;
+                    }
+                    log("");
+                    log("WVB-LOADURL " + cut(url, 400));
+                    log("  stack: " + stackHint());
+                }
+            });
+
+            // ③ JS 桥注册 / 清理
+            n += hookNamed(wv, "addJavascriptInterface", "probe:jsiface", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    if (args == null || args.length < 2 || args[1] == null) return;
+                    String name = String.valueOf(args[1]);
+                    synchronized (seenJsIfaces) {
+                        if (!seenJsIfaces.add(name)) return;
+                    }
+                    log("");
+                    log("WVB-JSIFACE add \"" + name + "\" obj="
+                            + (args[0] == null ? "null" : args[0].getClass().getName()));
+                    log("  stack: " + stackHint());
+                }
+            });
+            n += hookNamed(wv, "removeJavascriptInterface", "probe:jsiface-rm", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    if (args == null || args.length < 1) return;
+                    log("");
+                    log("WVB-JSIFACE remove \"" + args[0] + "\"");
+                    log("  stack: " + stackHint());
+                }
+            });
+        } catch (Throwable t) {
+            log("hookWebViewBridge: WebView 钩子失败 " + t);
+        }
+
+        // ④ H5 命令漏斗：三个层级各挂一遍，看命令在哪一级、长什么样
+        for (final String cn : new String[]{
+                "com.guosen.module.hybrid.GsBridge",
+                "com.guosen.commonui.webview.HybirdWebView",
+                "com.guosen.quotation.aistare.ui.AIStareWebView"}) {
+            try {
+                Class<?> c = Class.forName(cn, false, sCL);
+                for (final Method m : c.getDeclaredMethods()) {
+                    final String mn = m.getName();
+                    if (!mn.equals("parserCommand") && !mn.equals("parserMsg")) continue;
+                    if (Modifier.isStatic(m.getModifiers())) {
+                        log("  " + cn + "#" + mn + " 是静态方法（挂法无碍，继续）");
+                    }
+                    m.setAccessible(true);
+                    hook(m)
+                            .setId("probe:pcmd:" + cn + "#" + mn)
+                            .intercept(new XposedInterface.Hooker() {
+                                @Override
+                                public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                    Object r = chain.proceed();
+                                    try {
+                                        Object[] a = chain.getArgs().toArray();
+                                        StringBuilder sb = new StringBuilder("WVB-CMD ")
+                                                .append(cn).append('#').append(mn).append('(');
+                                        for (int i = 0; i < a.length; i++) {
+                                            if (i > 0) sb.append(", ");
+                                            sb.append(cut(summarize(a[i]), 300));
+                                        }
+                                        log(sb.append(')').toString());
+                                    } catch (Throwable ignored) {}
+                                    return r;
+                                }
+                            });
+                    n++;
+                }
+            } catch (Throwable t) {
+                log("hookWebViewBridge: " + cn + " 失败 " + t);
+            }
+        }
+
+        log("WebView 桥侦察点已挂 ×" + n);
+    }
+
+    /** 动态挂 WebViewClient 子类的页面回调（每个子类只挂一次） */
+    private void hookClientCallbacks(Class<?> cc) {
+        synchronized (hookedClients) {
+            if (!hookedClients.add(cc.getName())) return;
+        }
+        String[] wanted = {"onPageStarted", "onPageFinished", "shouldOverrideUrlLoading",
+                "doUpdateVisitedHistory", "onReceivedError"};
+        int hooked = 0;
+        for (final Method m : cc.getDeclaredMethods()) {
+            boolean hit = false;
+            for (String nm : wanted) if (m.getName().equals(nm)) { hit = true; break; }
+            if (!hit || Modifier.isAbstract(m.getModifiers())) continue;
+            try {
+                m.setAccessible(true);
+                final String mn = m.getName();
+                hook(m)
+                        .setId("probe:wvcb:" + cc.getName() + "#" + mn)
+                        .intercept(new XposedInterface.Hooker() {
+                            @Override
+                            public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                                Object r = chain.proceed();
+                                try {
+                                    Object[] a = chain.getArgs().toArray();
+                                    String url = "";
+                                    for (Object x : a) {
+                                        if (x instanceof String) { url = (String) x; break; }
+                                    }
+                                    log("WVB-CB " + cc.getSimpleName() + "#" + mn
+                                            + (url.isEmpty() ? "" : " url=" + cut(url, 200)));
+                                } catch (Throwable ignored) {}
+                                return r;
+                            }
+                        });
+                hooked++;
+            } catch (Throwable t) {
+                log("  挂 " + cc.getSimpleName() + "#" + m.getName() + " 失败 " + t);
+            }
+        }
+        log("  (子类回调钩子 ×" + hooked + ")");
     }
 
     /** 只 dump 指定名字的方法签名（大类的某些方法用；整类全 dump 太吵） */

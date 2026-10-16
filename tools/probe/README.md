@@ -20,7 +20,7 @@
 
 ## 它具体做了什么
 
-`src/com/wb/probe/ProbeModule.java`，继承 `io.github.libxposed.api.XposedModule`（**libxposed API 102**），注入 `com.guosen.android` 进程后挂下面几组钩子（**v18** = 自选判定，**v19～v25** = 跳转链与 Intent 契约 / 类结构 dump）：
+`src/com/wb/probe/ProbeModule.java`，继承 `io.github.libxposed.api.XposedModule`（**libxposed API 102**），注入 `com.guosen.android` 进程后挂下面几组钩子（**v18** = 自选判定，**v19～v25** = 跳转链与 Intent 契约 / 类结构 dump，**v30/v31** = 登录态与存储写入侦察，**v33～v35** = WebView 桥侦察）：
 
 ### 1. 页面生命周期 — 知道"现在在哪个页面"
 
@@ -103,6 +103,24 @@ hookAllMethods(android.app.Activity, "onResume")
 决定新功能能不能实现左右滑动。
 
 > 这套钩子全是框架类的通用方法，**换任何 App 都能用**，不绑定国信。
+
+### 5. WebView 桥侦察（v33～v35 新增）
+
+服务「智能盯盘 → 价格页一键配置」方案
+（[`../../docs/FEATURE-AISTARE-QUICK-CONFIG.md`](../../docs/FEATURE-AISTARE-QUICK-CONFIG.md) §10）：
+
+| 挂钩点 | 日志前缀 | 拿到什么 |
+|---|---|---|
+| `WebView#setWebViewClient` | `WVB-CLIENT` | 宿主实际挂的 **WebViewClient 子类**（`HybirdWebView$4`）+ 其全部声明方法 |
+| （动态挂子类回调） | `WVB-CB` | `onPageStarted` / `onPageFinished` 等的实际触发与 URL |
+| `WebView#loadUrl` | `WVB-LOADURL` | 每次整页导航的 URL + 调用栈 |
+| `WebView#addJavascriptInterface` / `removeJavascriptInterface` | `WVB-JSIFACE` | 宿主注册/清理了哪些 JS 桥 |
+| `GsBridge#parserCommand` / `HybirdWebView#parserCommand` / `AIStareWebView#parserMsg` | `WVB-CMD` | H5 命令漏斗的**命令原文**（`guosen://WebContainer/...`） |
+| `dumpClassMembers`（类成员全名 dump，v35 起 com.guosen 字段类型打完整包名） | `CLASS` | `HybirdWebView` / `KXChartInfo` / `KXChartItem` 等，找「拿 WebView 的方法」「K 线数据结构」 |
+
+> v35 的一个关键改动：`CLASS` dump 里 `com.guosen.*` 类型的字段**打完整包名**——
+> KXChartInfo 的真实包名 `com.guosen.android.quotes.data.kx` 就是这么找到的
+> （字段可见但包名未知时，从持有者的字段声明反查）。
 
 ### 输出到哪
 
