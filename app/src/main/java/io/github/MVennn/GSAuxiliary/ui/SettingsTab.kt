@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -43,7 +44,6 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -361,23 +361,26 @@ internal fun SettingsTab() {
         // --- 数据管理 ---
         SmallTitle(stringResource(R.string.section_data))
         Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_backup),
                 // 平时不写副标题（「备份模块配置」已说清），只在导出中显示进度
                 summary = if (busy) backupWorking else null,
                 enabled = !busy,
+                endActions = { ArrowRightIcon(!busy) },
                 onClick = { backupLauncher.launch(defaultBackupFileName()) },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_restore),
                 // 同上：平时不写副标题，只在恢复中显示进度
                 summary = if (busy) restoreWorking else null,
                 enabled = !busy,
+                endActions = { ArrowRightIcon(!busy) },
                 onClick = { restoreLauncher.launch(arrayOf("*/*")) },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_reset),
                 summary = stringResource(R.string.item_reset_summary),
+                endActions = { ArrowRightIcon() },
                 onClick = {
                     dialogs?.showConfirm(
                         ConfirmDialogSpec(
@@ -445,11 +448,12 @@ internal fun SettingsTab() {
                     )
                 },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_export_log),
                 // 范围类的副标题保留：不写这一句，没人知道导出里是两个进程的日志（且会弹 root）
                 summary = if (exportingLog) logExporting else stringResource(R.string.item_export_log_summary),
                 enabled = !exportingLog,
+                endActions = { ArrowRightIcon(!exportingLog) },
                 onClick = { logExportLauncher.launch(defaultLogFileName()) },
             )
         }

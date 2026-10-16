@@ -44,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import kotlinx.coroutines.delay
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -197,6 +196,7 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                 startAction = {
                     TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
                 },
+                endActions = { ArrowRightIcon() },
                 onClick = {
                     val id = QuickConfigStore.newId(data.schemes)
                     val name = newSchemeName(data.schemes.map { it.name }, namePrefix)
@@ -234,7 +234,7 @@ private fun SchemeRow(
     var anchor by remember { mutableStateOf<Rect?>(null) }
     val dialogs = LocalDialogController.current
 
-    ArrowPreference(
+    BasicComponent(
         title = name,
         summary = preview.ifEmpty { null },
         endActions = {
@@ -263,6 +263,8 @@ private fun SchemeRow(
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
             }
+            // 右箭头放在最后：这一行点进去是**三级页**，朝右才是对的语义
+            ArrowRightIcon()
         },
         onClick = onClick,
     )

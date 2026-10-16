@@ -22,12 +22,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -191,9 +191,10 @@ private fun FeatureEntry(
         enter = expandVertically(tween(220)) + fadeIn(tween(180)),
         exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
     ) {
-        ArrowPreference(
+        BasicComponent(
             title = stringResource(spec.detailEntryRes!!),
             summary = spec.detailEntrySummaryRes?.let { stringResource(it) },
+            endActions = { ArrowRightIcon() },
             onClick = { onOpenDetail(spec) },
         )
     }

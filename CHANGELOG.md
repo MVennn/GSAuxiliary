@@ -11,6 +11,23 @@
 > （按 `docs/RELEASE.md` §0.1：不发版不动 `versionCode` / `versionName`）。
 > 发版时把这一段并入当次的版本段即可。
 
+### 全 App 箭头统一 + 主题过渡遮罩残留
+
+- **箭头统一**（用户反馈「深浅不跟亮暗色、比旁边那颗小、还对不齐」）：真因是 Miuix
+  `ArrowPreference` 自带的那颗箭头走 `Image(colorFilter = ColorFilter.tint(...))` ——
+  **画笔记账层**的染色，和早前那批图标一样在本机不生效，于是库里所有箭头**永远是黑的**
+  （不跟亮暗色走），而自绘的箭头是正常主题色 → 两套摆在一起就不像一家。
+  现在 App 内**所有箭头都自绘**（`Widgets.ArrowRightIcon` / `DownArrowIcon`，同一根
+  Miuix `ArrowRight` 路径的两种朝向，都走图层染色）：
+  - 14 处 `ArrowPreference` 全部换成 `BasicComponent + ArrowRightIcon(...)`；
+  - 朝下的那颗从 Material 粗箭头换成 Miuix 细笔画（16×10 视口转 90°），声明尺寸
+    放大到 20×12.5dp ——「V」比「>」显小，尺寸放大才和右箭头一样有份量；
+  - 右缘与库里的箭头对齐（右端落在同一列），禁用态用 `disabledOnSecondaryVariant`。
+- **主题过渡遮罩残留在屏幕上**（真机抓到）：切完主题整个界面被压暗到重启才恢复。
+  根因是那层「旧配色遮罩」靠一条可取消的 `Animatable.animateTo` 淡出，
+  过渡途中效果被重启（连续切主题 / 重组取消）就停在半透明处。现在用
+  `try/finally + NonCancellable` 兜一次收尾，遮罩绝不会留在屏幕上。
+
 ### 一键配置：又一轮 14 项细节（弹窗、箭头、动画、默认值）
 
 - **判断类**：槽里只剩一个取值项时**整颗 ✕ 不画**；「设为默认」在只剩一套方案时置灰

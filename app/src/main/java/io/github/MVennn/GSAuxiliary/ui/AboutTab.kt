@@ -17,7 +17,6 @@ import io.github.MVennn.GSAuxiliary.R
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 
 /** Tab 4 · 关于 —— 作者、开源鸣谢、免责声明。 */
 @Composable
@@ -56,9 +55,10 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
                 summary = stringResource(R.string.about_value_developer),
             )
             // GitHub 主页：可点击跳转，方便反馈与查看源码。
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.about_github),
                 summary = githubUrl,
+                endActions = { ArrowRightIcon() },
                 onClick = { open(githubUrl) },
             )
             BasicComponent(
@@ -66,9 +66,10 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
                 summary = stringResource(R.string.about_value_license),
             )
             // 项目仓库：可点击跳转（与上面 GitHub 主页同一套交互）
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.about_repo),
                 summary = repoUrl,
+                endActions = { ArrowRightIcon() },
                 onClick = { open(repoUrl) },
             )
         }
@@ -76,24 +77,28 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
         // --- 开源鸣谢：逐条可点击跳转 ---
         SmallTitle(stringResource(R.string.section_open_source))
         Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.oss_miuix),
                 summary = stringResource(R.string.oss_miuix_desc),
+                endActions = { ArrowRightIcon() },
                 onClick = { open("https://github.com/miuix-kotlin-multiplatform/miuix") },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.oss_lsposed),
                 summary = stringResource(R.string.oss_lsposed_desc),
+                endActions = { ArrowRightIcon() },
                 onClick = { open("https://github.com/LSPosed/LSPosed") },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.oss_liquid_glass),
                 summary = stringResource(R.string.oss_liquid_glass_desc),
+                endActions = { ArrowRightIcon() },
                 onClick = { open("https://github.com/Kyant0/AndroidLiquidGlass") },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.oss_material_icons),
                 summary = stringResource(R.string.oss_material_icons_desc),
+                endActions = { ArrowRightIcon() },
                 onClick = { open("https://fonts.google.com/icons") },
             )
         }
@@ -101,9 +106,10 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
         // --- 免责声明：一行摘要，点进去看完整文本 ---
         SmallTitle(stringResource(R.string.section_disclaimer))
         Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.disclaimer_title),
                 summary = stringResource(R.string.disclaimer_body),
+                endActions = { ArrowRightIcon() },
                 onClick = onOpenDisclaimer,
             )
         }

@@ -189,20 +189,48 @@ internal fun TintedIcon(
 }
 
 /**
- * 会「呼出弹窗」的行，右端统一放这颗**朝下**的小箭头（3.1.1）。
+ * 会「呼出弹窗」的行，右端统一放这颗**朝下**的箭头（3.1.1）。
  *
  * Miuix `ArrowPreference` 自带的箭头是朝右的，含义是「进入下一级页面」；用在
- * 主题设置 / 语言 / 聚合方式 / 周期 / 提醒时效这些**原地弹窗**的行上会误导用户。
- * 需要这种语义的行改用 `BasicComponent` + 这颗箭头（它不会自动补箭头，箭头位置
- * 由我们自己定，也才能保证「参数控件 → ✕ / 箭头」的右端对齐）。
+ * 主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效这些**原地弹窗**的行上会误导。
+ * 需要这种语义的行改用 `BasicComponent` + 这颗箭头（`BasicComponent` 不会自动补箭头，
+ * 位置由我们自己定，也才能保证「参数控件 → ✕ / 箭头」的右端成列）。
  * 备份 / 恢复 / 重置 / 导出日志这些「动作行」保持朝右箭头不变。
+ *
+ * 尺寸就是 `AppIcons.ArrowDown` 自带的 16×10（与 Miuix 那颗 10×16 的右箭头同一根线
+ * 转过来），**不要**再用 `Modifier.size()` 去改 —— 一改粗细和旁边的箭头就对不上了。
+ *
+ * 右缘**不需要**额外留白：Miuix `ArrowPreference` 的箭头本身就贴齐组件内边距
+ * （它源码里那个 `padding(end = 8.dp)` 是加在 `endActions` 上的，不是加在箭头上 ——
+ * 别照抄到调用点，否则两种箭头会差出 8dp，反而是我这版第一稿踩过的坑）。
  */
 @Composable
-internal fun DownArrowIcon(modifier: Modifier = Modifier.size(18.dp)) {
+internal fun DownArrowIcon(modifier: Modifier = Modifier) {
     TintedIcon(
         imageVector = AppIcons.ArrowDown,
         tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
         modifier = modifier,
+    )
+}
+
+/**
+ * 「进入下一级」行右端的朝右箭头 —— 与 [DownArrowIcon] 同一根线（Miuix 的 ArrowRight
+ * 原路径），只是方向不同；两者都走 [TintedIcon] 的图层染色，所以**跟主题走**且互相一致。
+ *
+ * 用它替掉 Miuix `ArrowPreference` 自带的那颗：库里的箭头走画笔记账层染色，在本机
+ * 恒为占位黑（永远是黑的、不跟亮暗色变化），和自绘图标摆在一起会明显不是一套东西。
+ *
+ * @param enabled `false` 时用 Miuix 的 disabled 色（备份 / 恢复进行中那种）
+ */
+@Composable
+internal fun ArrowRightIcon(enabled: Boolean = true) {
+    TintedIcon(
+        imageVector = AppIcons.ArrowRight,
+        tint = if (enabled) {
+            MiuixTheme.colorScheme.onSurfaceVariantActions
+        } else {
+            MiuixTheme.colorScheme.disabledOnSecondaryVariant
+        },
     )
 }
 

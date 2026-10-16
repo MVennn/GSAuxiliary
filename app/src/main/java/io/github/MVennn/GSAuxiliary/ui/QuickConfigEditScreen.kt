@@ -53,7 +53,6 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -238,10 +237,11 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             val confirmText = stringResource(R.string.action_confirm)
             val cancelText = stringResource(R.string.action_cancel)
             val dialogs = LocalDialogController.current
-            ArrowPreference(
+            BasicComponent(
                 title = deleteTitle,
                 summary = if (deletable) null else stringResource(R.string.quick_delete_last_hint),
                 enabled = deletable,
+                endActions = { ArrowRightIcon(deletable) },
                 onClick = {
                     dialogs?.showConfirm(
                         ConfirmDialogSpec(
@@ -585,6 +585,7 @@ private fun AddTermRow(
             TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
         },
         modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
+        endActions = { ArrowRightIcon() },
         onClick = {
             dialogs?.showChoice(
                 ChoiceDialogSpec(items = names, selectedIndex = -1, onSelect = onPick, anchor = anchor),

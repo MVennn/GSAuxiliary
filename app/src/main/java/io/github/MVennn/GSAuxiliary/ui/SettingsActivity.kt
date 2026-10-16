@@ -58,8 +58,10 @@ import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -216,15 +218,26 @@ private fun AppTheme(content: @Composable () -> Unit) {
     val veilAlpha = remember { Animatable(0f) }
 
     LaunchedEffect(dark) {
-        if (shownDark == dark) return@LaunchedEffect
-        // 1) 先用**旧**配色的底色铺满（此刻新旧同色，肉眼看不出变化）
-        veilColor = if (shownDark) darkColors.surface else lightColors.surface
-        veilAlpha.snapTo(1f)
-        // 2) 等这一帧画完再换配色，保证「换色」与「遮罩」同帧
-        withFrameNanos { }
-        shownDark = dark
-        // 3) 遮罩淡出 —— 视觉上就是从旧配色平滑过渡到新配色
-        veilAlpha.animateTo(0f, tween(ThemeFadeMillis))
+        try {
+            if (shownDark == dark) return@LaunchedEffect
+            // 1) 先用**旧**配色的底色铺满（此刻新旧同色，肉眼看不出变化）
+            veilColor = if (shownDark) darkColors.surface else lightColors.surface
+            veilAlpha.snapTo(1f)
+            // 2) 等这一帧画完再换配色，保证「换色」与「遮罩」同帧
+            withFrameNanos { }
+            shownDark = dark
+            // 3) 遮罩淡出 —— 视觉上就是从旧配色平滑过渡到新配色
+            veilAlpha.animateTo(0f, tween(ThemeFadeMillis))
+        } finally {
+            // 遮罩**绝不能留在屏幕上**：`animateTo` 是一条可被取消的挂起调用，
+            // 过渡途中若本效果被重启（连续切两次主题 / 重组取消），取消点会停在
+            // 半透明处 —— 表现就是「切完主题整个界面被压暗，重启 App 才恢复」
+            // （3.1.1 在真机上抓到）。`NonCancellable` 里补一次收尾，
+            // 正常跑完时 value 已经是 0，这次 snapTo 是空操作。
+            withContext(NonCancellable) {
+                if (veilAlpha.value > 0f) veilAlpha.snapTo(0f)
+            }
+        }
     }
 
     MiuixTheme(colors = if (shownDark) darkColors else lightColors) {

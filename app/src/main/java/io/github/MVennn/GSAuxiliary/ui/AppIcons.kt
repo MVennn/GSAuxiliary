@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -23,6 +24,28 @@ import androidx.compose.ui.unit.dp
  * path 数据取自 Material Design Icons 官方 24x24 网格，坐标原点在左上角。
  */
 internal object AppIcons {
+
+    /**
+     * 与 [icon] 相同，但视口尺寸自定 —— 给「不是 24×24 网格」的图标用
+     * （目前只有从 Miuix 图标转过来的 [ArrowDown]，视口是 16×10）。
+     */
+    private fun iconOf(
+        name: String,
+        width: Dp,
+        height: Dp,
+        pathData: String,
+        viewportWidth: Float = width.value,
+        viewportHeight: Float = height.value,
+    ): ImageVector = ImageVector.Builder(
+        name = name,
+        defaultWidth = width,
+        defaultHeight = height,
+        viewportWidth = viewportWidth,
+        viewportHeight = viewportHeight,
+    ).addPath(
+        pathData = PathParser().parsePathString(pathData).toNodes(),
+        fill = SolidColor(Color.Black),
+    ).build()
 
     /** 解析 Material 官方 24x24 网格的 path 字符串，构建 ImageVector。 */
     private fun icon(
@@ -157,16 +180,68 @@ internal object AppIcons {
     }
 
     /**
-     * 朝下的箭头（弹窗类控件用）。
+     * 朝右的箭头（进入下一级的行用）—— Miuix `ArrowRight` 的原路径（10×16 视口，
+     * 1dp 细笔画）。
      *
-     * 会**呼出弹窗**的行（主题设置 / 语言 / 聚合方式 / 周期 / 提醒时效）用它替掉 Miuix
-     * `ArrowPreference` 那颗朝右的箭头 —— 朝右的意思是「进入下一级页面」，会让这些
-     * 原地弹窗的行看起来像能点进去（3.1.1 用户反馈）。
+     * 为什么不直接用 `ArrowPreference` 里那颗：库里的箭头走
+     * `Image(colorFilter = ColorFilter.tint(...))`，也就是**画笔记账层**的染色 ——
+     * 在这台机器上整体不生效（见 [Widgets.TintedIcon] 的注释），于是那些箭头永远
+     * 画成占位黑、不跟亮暗色走。要全 App 一套观感，只能连右箭头也自己画。
+     */
+    val ArrowRight: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        iconOf(
+            name = "ArrowRight",
+            width = 10.dp,
+            height = 16.dp,
+            pathData = "M1.65,1.469 " +
+                "C1.929,1.19 2.381,1.19 2.66,1.469 " +
+                "L8.721,7.53 " +
+                "C9.0,7.809 9.0,8.261 8.721,8.54 " +
+                "L2.66,14.601 " +
+                "C2.381,14.88 1.929,14.88 1.65,14.601 " +
+                "C1.371,14.322 1.371,13.87 1.65,13.591 " +
+                "L7.205,8.035 " +
+                "L1.65,2.479 " +
+                "C1.371,2.2 1.371,1.748 1.65,1.469 Z",
+        )
+    }
+
+    /**
+     * 朝下的箭头（会呼出弹窗的行用）。
+     *
+     * 会**呼出弹窗**的行（主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效）用它
+     * 替掉 Miuix `ArrowPreference` 那颗朝右的箭头 —— 朝右的意思是「进入下一级页面」。
+     *
+     * ## 为什么用 Miuix 那条路径转 90°
+     *
+     * 第一版是照 Material 的 `expand_more` 画的（填充三角那种粗箭头，18dp 方框），
+     * 上机后被指出「比旁边那颗箭头粗/深、还比它小、左右也没对齐」—— 因为 Miuix 的
+     * `ArrowRight` 是 **10×16 视口里的 1dp 细笔画**，两者根本不是一套粗细。
+     * 现在直接取库里的 `ArrowRight` 路径（`icon/basic/ArrowRight.kt`，
+     * `M 1.65,1.469 … Z`）绕原点旋转 90°，得到 16×10 的同款细笔画朝下箭头：
+     * 粗细、颜色（同样由调用方给 `onSurfaceVariantActions`）、右缘留白都对得上。
      */
     val ArrowDown: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        icon(
+        iconOf(
             name = "ArrowDown",
-            pathData = "M16.59,8.59L12,13.17 7.41,8.59 6,10l6,6 6,-6z",
+            // 画的是 16×10 的路径（右箭头转过来），但**声明尺寸放大 1.25 倍**：
+            // 屏幕上一颗朝下的「V」比朝右的「>」显小（同样面积，视觉高度只有 10:16），
+            // 上机后反馈「有点小」就是它。视口仍是 16×10，笔画按 1.25 倍缩放（1.25dp），
+            // 与旁边那颗 10×16 的右箭头粗细相当。
+            width = 20.dp,
+            height = 12.5.dp,
+            viewportWidth = 16f,
+            viewportHeight = 10f,
+            pathData = "M14.531,1.65 " +
+                "C14.81,1.929 14.81,2.381 14.531,2.66 " +
+                "L8.47,8.721 " +
+                "C8.191,9.0 7.739,9.0 7.46,8.721 " +
+                "L1.399,2.66 " +
+                "C1.12,2.381 1.12,1.929 1.399,1.65 " +
+                "C1.678,1.371 2.13,1.371 2.409,1.65 " +
+                "L7.965,7.205 " +
+                "L13.521,1.65 " +
+                "C13.8,1.371 14.252,1.371 14.531,1.65 Z",
         )
     }
 

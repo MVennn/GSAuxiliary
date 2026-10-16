@@ -1646,9 +1646,18 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   想给列表行的「删除」补收起动画，不能按状态分成「普通 / 进入 / 移除」三条分支 ——
   删除那一刻节点是新建的，`visible` 直接就是 false，动画不会跑。正确写法是
   **每一行常驻一个 `AnimatedVisibility`**，出现与移除都只翻 `visible`
-- **会呼出弹窗的行用朝下箭头**（3.1.1）：Miuix `ArrowPreference` 自带朝右箭头，
-  语义是「进入下一级」；主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效这些
-  **原地弹窗**的行改用 `BasicComponent` + `Widgets.DownArrowIcon()`（动作行保持朝右）
+- **App 里的箭头一律自绘，不用 `ArrowPreference`**（3.1.1）：Miuix 自带那颗箭头走
+  `Image(colorFilter = ColorFilter.tint(...))` —— **画笔记账层**染色，在本机不生效，
+  库里所有箭头**永远是黑的**、不跟亮暗色走（和自绘图标摆一起明显不是一套）。
+  现在 14 处 `ArrowPreference` 全换成 `BasicComponent` + `Widgets.ArrowRightIcon()`：
+  - 会**呼出弹窗**的行（主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效）
+    用 `Widgets.DownArrowIcon()`（朝下 = 就地弹窗，朝右 = 进入下一级）；
+  - 进入下一级 / 动作行保持朝右，禁用态传 `ArrowRightIcon(enabled = false)`。
+  两颗箭头的路径都取自 Miuix `ArrowRight`（10×16、1dp 细笔画），下箭头是它的 90° 版，
+  声明尺寸 20×12.5dp ——「V」比「>」显小，放大一档才和右箭头同份量；两者右缘对齐
+- **主题过渡遮罩要靠 `try/finally` 收尾**（3.1.1）：那层「旧配色遮罩」是
+  `Animatable.animateTo` 淡出的，过渡途中被重启就停在半透明处 —— 表现是「切完主题
+  整个界面被压暗，重启才恢复」。用 `withContext(NonCancellable) { snapTo(0f) }` 兜底
 - **`values-en/strings.xml` 里的撇号必须写成 `\'`，引号写成 `\"`**。
   写 `&#39;` / `&quot;` 会在 AGP 合并资源时被**解码成裸字符**写进
   `merged.dir/values-en.xml`，而 aapt2 要求撇号转义，报
