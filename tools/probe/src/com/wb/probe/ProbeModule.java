@@ -145,7 +145,7 @@ public class ProbeModule extends XposedModule {
             detach();
             return;
         }
-        log("=== GSProbe v27 (libxposed API 102) 载入 | process=" + process
+        log("=== GSProbe v32 (libxposed API 102) 载入 | process=" + process
                 + " pid=" + Process.myPid()
                 + " framework=" + getFrameworkName() + " " + getFrameworkVersion()
                 + " api=" + getApiVersion() + " ===");
@@ -161,6 +161,8 @@ public class ProbeModule extends XposedModule {
         hookPageCreate();
         hookHttp();
         hookSocketIo();
+        hookLoginState();
+        hookPrefsWrites();
         // 构造个股详情 Intent 需要自己 new 出这些数据类，先把可用构造器/字段摸清
         dumpClassMembers("com.guosen.android.quotes.data.IntentStockInfo");
         // 页面跳转全部走引擎路由，签名必须实测（加固 App 猜不得）
@@ -172,6 +174,21 @@ public class ProbeModule extends XposedModule {
         dumpClassMembers("com.guosen.quotation.adapter.aistk.AIStkAdapter");
         // 列表数据项：判断「涨幅 / 跌幅」要读它的涨跌幅字段，字段名不能猜
         dumpClassMembers("com.guosen.android.quotes.data.StockInfo");
+        // 通用弹窗：登出提示 / 各类提醒都走它，签名是写反净化钩子的前提
+        dumpClassMembers("com.guosen.commonui.dialog.CustomAlertDialog");
+        // 登录数据解析：被顶 / 登出提示 / 系统公告都从这一条链出来
+        dumpClassMembers("com.guosen.app.goldsun.login.ParseLoginDataProcess");
+        // 大类的关键入口签名（整类 dump 太吵，只挑要用的）
+        dumpNamedMethods("com.guosen.app.goldsun.ui.MainAct",
+                "showSgbDialog", "showMsgDialog", "startParseLoginData", "onSessionLoginCompleted");
+        dumpNamedMethods("com.guosen.commonui.dialog.PopAlert",
+                "createIpoAlertDialog", "showSingle", "createDialog");
+        // 登录状态载体：判定「要不要登出」十有八九读的是它
+        dumpClassMembers("com.guosen.app.goldsun.login.WeakPwdLoginStatus");
+        // 账号管理 / 登录工作流：被顶后「清凭证」「标未登录」的发起方，
+        // 找登录态到底存在哪个字段上就看它们
+        dumpClassMembers("com.guosen.android.login.UserAccountManager");
+        dumpClassMembers("com.guosen.app.goldsun.login.LoginWorkFlowManager");
     }
 
     /** dump 某类的构造器 / 实例字段 / setter-getter（加固 App 里字段名不可假设，必须实测） */
@@ -193,7 +210,8 @@ public class ProbeModule extends XposedModule {
                 t = t.getSuperclass();
             }
             log("  -- setters / getters --");
-            boolean all = c.getSimpleName().startsWith("Engine");
+            boolean all = c.getSimpleName().startsWith("Engine")
+                    || c.getSimpleName().startsWith("ParseLoginDataProcess");
             for (Method m : c.getDeclaredMethods()) {
                 String n = m.getName();
                 if (all || n.startsWith("set") || n.startsWith("get") || n.startsWith("is")
@@ -208,8 +226,146 @@ public class ProbeModule extends XposedModule {
         }
     }
 
-    private static String sig(Class<?>[] ps) {
-        StringBuilder sb = new StringBuilder();
+    /**
+     * 登录态侦察（v30）。
+     *
+     * 被顶之后重启，宿主走 `ParseLoginDataProcess` 那串检查时会判定「要登出」。
+     * 这个钩子把判定现场拍下来 —— 尤其是 `mStatus`（登录结果状态）——
+     * 用来回答「宿主**凭什么**认为会话失效了」，这是「顶号后保持登录」能不能
+     * 真正做到「数据也能用」的关键。
+     *
+     * 两个点都是**只观察不拦**（proceed 照走），不影响宿主行为。
+     */
+    private void hookLoginState() {
+        Class<?> cls;
+        try {
+            cls = Class.forName("com.guosen.app.goldsun.login.ParseLoginDataProcess", false, sCL);
+        } catch (Throwable t) {
+            log("hookLoginState: 找不到 ParseLoginDataProcess " + t);
+            return;
+        }
+        int n = 0;
+        n += hookNamed(cls, "checkLogout", "probe:loginstate", new After() {
+            @Override public void run(Object self, Object[] args) {
+                log("");
+                log("========== LOGIN-STATE checkLogout 触发 ==========");
+                dumpFields("ParseLoginDataProcess", self);
+                dumpStatusField(self);
+            }
+        });
+        n += hookNamed(cls, "showLogoutAlert", "probe:loginstate", new After() {
+            @Override public void run(Object self, Object[] args) {
+                log("");
+                log("========== LOGIN-STATE showLogoutAlert ==========");
+                if (args != null) {
+                    for (Object a : args) log("  arg: " + summarize(a));
+                }
+                dumpFields("ParseLoginDataProcess", self);
+                dumpStatusField(self);
+            }
+        });
+        log("已挂登录态侦察点 ×" + n);
+    }
+
+    /** `mStatus` 是判定依据的载体，单独深挖一层 */
+    private void dumpStatusField(Object self) {
+        try {
+            Class<?> c = self.getClass();
+            Field f = null;
+            while (c != null && c != Object.class) {
+                try {
+                    f = c.getDeclaredField("mStatus");
+                    break;
+                } catch (Throwable ignored) {}
+                c = c.getSuperclass();
+            }
+            if (f == null) {
+                log("  (没有 mStatus 字段)");
+                return;
+            }
+            f.setAccessible(true);
+            Object st = f.get(self);
+            if (st == null) {
+                log("  mStatus = null");
+                return;
+            }
+            log("  mStatus 类型 = " + st.getClass().getName());
+            dumpFields("mStatus", st);
+        } catch (Throwable t) {
+            log("  dumpStatusField 失败 " + t);
+        }
+    }
+
+    /**
+     * 本地存储写入侦察（v31）。
+     *
+     * 被顶之后重启，宿主会把登录相关信息从 SharedPreferences 里抹掉 ——
+     * 实测 `/data/data/com.guosen.android/shared_prefs/USER_ACCOUNT_CONFIGS.xml`
+     * 被清成空 `<map />`，时间戳正好是重启那一刻。这就是「界面留着、数据全空」
+     * 的直接原因。
+     *
+     * 这里挂 `EditorImpl` 的 `clear` / `remove`，把调用栈打出来，定位是谁清的。
+     * 只观察、不改行为。
+     */
+    private void hookPrefsWrites() {
+        Class<?> editor;
+        try {
+            editor = Class.forName("android.app.SharedPreferencesImpl$EditorImpl", false, sCL);
+        } catch (Throwable t) {
+            log("hookPrefsWrites: 找不到 EditorImpl " + t);
+            return;
+        }
+        int n = 0;
+        for (final String name : new String[]{"clear", "remove"}) {
+            n += hookNamed(editor, name, "probe:prefs", new After() {
+                @Override public void run(Object self, Object[] args) {
+                    log("");
+                    log("========== PREFS." + name + " "
+                            + (args != null && args.length > 0 ? summarize(args[0]) : "") + " ==========");
+                    log("  文件: " + prefsFileOf(self));
+                    log("  stack: " + stackHint());
+                }
+            });
+        }
+        log("已挂本地存储写入侦察点 ×" + n);
+    }
+
+    /** EditorImpl 是非静态内部类，`this$0` 就是它所属的 SharedPreferencesImpl */
+    private String prefsFileOf(Object editor) {
+        try {
+            Field outer = editor.getClass().getDeclaredField("this$0");
+            outer.setAccessible(true);
+            Object impl = outer.get(editor);
+            if (impl == null) return "(拿不到 owner)";
+            Field mFile = impl.getClass().getDeclaredField("mFile");
+            mFile.setAccessible(true);
+            Object f = mFile.get(impl);
+            return String.valueOf(f);
+        } catch (Throwable t) {
+            return "(读取失败 " + t + ")";
+        }
+    }
+
+    /** 只 dump 指定名字的方法签名（大类的某些方法用；整类全 dump 太吵） */
+    private void dumpNamedMethods(String clsName, String... names) {
+        try {
+            Class<?> c = Class.forName(clsName, false, sCL);
+            log("");
+            log("========== METHODS " + clsName + " ==========");
+            for (Method m : c.getDeclaredMethods()) {
+                for (String n : names) {
+                    if (!m.getName().equals(n)) continue;
+                    log("  M " + Modifier.toString(m.getModifiers()) + " "
+                            + m.getReturnType().getSimpleName() + " " + m.getName()
+                            + "(" + sig(m.getParameterTypes()) + ")");
+                }
+            }
+        } catch (Throwable t) {
+            log("dumpNamedMethods(" + clsName + ") 失败: " + t);
+        }
+    }
+
+    private static String sig(Class<?>[] ps) {        StringBuilder sb = new StringBuilder();
         for (Class<?> p : ps) {
             if (sb.length() > 0) sb.append(", ");
             sb.append(p.getSimpleName());
@@ -326,6 +482,7 @@ public class ProbeModule extends XposedModule {
                     Dialog d = (Dialog) self;
                     log("");
                     log("DLG > " + d.getClass().getName() + "  (中间 UI 是 Dialog)");
+                    log("  stack: " + stackHint());
                     try {
                         if (d.getWindow() != null) {
                             dumpClickableViews("DLG-VW", d.getWindow().getDecorView(), d.getContext());
@@ -345,6 +502,7 @@ public class ProbeModule extends XposedModule {
                     PopupWindow p = (PopupWindow) self;
                     log("");
                     log("POP > " + p.getClass().getName() + "  (中间 UI 是 PopupWindow)");
+                    log("  stack: " + stackHint());
                     try {
                         View c = p.getContentView();
                         if (c != null) dumpClickableViews("POP-VW", c, c.getContext());

@@ -8,10 +8,11 @@ import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
  * ## 功能分区归属标准
  *
  * 功能列表按 [FeatureSpec.categoryRes] 分组，**组内顺序 = [FEATURE_CATALOG] 里的出现顺序**
- * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前六个分区：
+ * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前七个分区：
  *
  * | 分区 | 一句话判据 | 归属范围（举例） |
  * |---|---|---|
+ * | **登录** `category_login` | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么，与具体页面无关 | 隐藏新股申购提醒弹窗 … |
  * | **策略页** `category_strategy` | **改变「策略页」的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、策略列表长按菜单 … |
  * | **股票详情页** `category_stock_detail` | **改变「个股 / 指数详情页」的交互行为** —— 判据同「策略页」，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
@@ -48,8 +49,8 @@ import io.github.SansKritO4.GSAuxiliary.core.ConfigKeys
  * - **两个页面都成立** → 归到「主战场」那一侧，并在功能说明里点明另一侧也生效
  *   （不为了一个功能同时挂两个分区）。
  *
- * 分区顺序按「具体页面 → 通用外观」排：
- * 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 显示。
+ * 分区顺序按「上游 → 具体页面 → 通用外观」排：
+ * 登录 → 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 显示。
  *
  * ### 边界与例外
  *
@@ -102,6 +103,19 @@ internal data class FeatureSpec(
 
 /** 全部功能的展示元数据；顺序即界面顺序 */
 internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
+    // ---- 登录：登录 / 会话相关的提醒与状态 ----
+    FeatureSpec(
+        id = "ipo_dialog_clean",
+        categoryRes = R.string.category_login,
+        titleRes = R.string.feature_ipo_clean_title,
+        summaryRes = R.string.feature_ipo_clean_summary,
+        switchTitleRes = R.string.feature_ipo_clean_switch,
+        switchSummaryRes = R.string.feature_ipo_clean_switch_summary,
+        enableKey = ConfigKeys.IPO_DIALOG_CLEAN,
+        defaultEnabled = ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
     // ---- 策略页：改变策略页的交互行为 ----
     FeatureSpec(
         id = "stg_direct_quote",

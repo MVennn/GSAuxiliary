@@ -35,6 +35,8 @@ data class ConfigSnapshot(
     val marketOverviewCompact: Boolean,
     /** 手势导航条（小白条）区域填充与紧邻界面一致的颜色 */
     val navBarBlend: Boolean,
+    /** 登录后不再弹出「今日新股申购提醒」弹窗 */
+    val ipoDialogClean: Boolean,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -55,7 +57,8 @@ data class ConfigSnapshot(
                 + (if (marketBannerHide) 1 else 0) * 2221
                 + (if (marketSectorCompact) 1 else 0) * 2347
                 + (if (marketOverviewCompact) 1 else 0) * 2467
-                + (if (navBarBlend) 1 else 0) * 2671)
+                + (if (navBarBlend) 1 else 0) * 2671
+                + (if (ipoDialogClean) 1 else 0) * 2741)
 
     companion object {
         val DEFAULT = ConfigSnapshot(
@@ -74,6 +77,7 @@ data class ConfigSnapshot(
             marketSectorCompact = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,
             marketOverviewCompact = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
             navBarBlend = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
+            ipoDialogClean = ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN,
         )
     }
 }

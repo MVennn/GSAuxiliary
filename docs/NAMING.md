@@ -96,6 +96,7 @@
 
 | 资源 | 文案 |
 |---|---|
+| `category_login` | 登录 |
 | `category_strategy` | 策略页 |
 | `category_stock_detail` | 股票详情页 |
 | `category_dock` | 底栏 |
@@ -112,6 +113,7 @@
 
 | id | 分区 | 卡片上的功能名（`switchTitleRes`） | 类型 |
 |---|---|---|---|
+| `ipo_dialog_clean` | 登录 | 隐藏新股申购提醒 | 增强 |
 | `stg_direct_quote` | 策略页 | 直达标准行情 | 增强 |
 | `stg_select_all` | 策略页 | 增加 全选 按钮 | 新增 |
 | `stg_stock_filter` | 策略页 | 增加 筛选股票 菜单项 | 新增 |

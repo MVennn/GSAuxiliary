@@ -7,6 +7,7 @@ import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.core.HookBag
 import io.github.SansKritO4.GSAuxiliary.feature.dock.DockCleanFeature
 import io.github.SansKritO4.GSAuxiliary.feature.home.HomeBannerFeature
+import io.github.SansKritO4.GSAuxiliary.feature.ipoclean.IpoDialogCleanFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketBannerFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketOverviewCompactFeature
 import io.github.SansKritO4.GSAuxiliary.feature.market.MarketSectorCompactFeature
@@ -48,6 +49,7 @@ class FeatureManager(private val env: FeatureEnv) {
         MarketSectorCompactFeature(),
         MarketOverviewCompactFeature(),
         NavBarBlendFeature(),
+        IpoDialogCleanFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

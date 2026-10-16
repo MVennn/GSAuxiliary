@@ -52,6 +52,7 @@
     <!-- No placeholder text on purpose; the magnifier icon carries the meaning -->
     <string name="search_hint"></string>
     <!-- Feature sections: see the rule at the top of ui/FeatureCatalog.kt; naming rules in docs/NAMING.md -->
+    <string name="category_login">Sign-in</string>
     <string name="category_strategy">Strategy page</string>
     <string name="category_stock_detail">Stock detail page</string>
     <string name="category_dock">Dock</string>
@@ -59,6 +60,13 @@
     <string name="category_market">Market</string>
     <string name="category_display">Display</string>
     <string name="feature_empty">No matching features</string>
+
+    <!-- Sign-in -->
+    <string name="feature_ipo_clean_title">Hide the IPO reminder dialog</string>
+    <string name="feature_ipo_clean_summary">The daily new-share subscription reminder no longer pops up after signing in; you land straight on the main screen</string>
+    <string name="feature_ipo_clean_switch">Hide IPO reminder</string>
+    <string name="feature_ipo_clean_switch_summary">The daily new-share subscription reminder no longer pops up; you land straight on the main screen</string>
+
     <string name="feature_watchlist_title">Watchlist highlight</string>
     <string name="feature_watchlist_summary">Highlight watchlist stock names on the strategy detail page</string>
     <string name="feature_watchlist_switch">Watchlist highlight</string>

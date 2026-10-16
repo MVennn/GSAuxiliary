@@ -148,6 +148,17 @@ object ConfigKeys {
      */
     const val NAV_BAR_BLEND = "nav_bar_blend"
 
+    /**
+     * 登录后不再弹出「今日新股申购提醒」弹窗。
+     *
+     * 该弹窗是宿主的 `com.guosen.commonui.dialog.IpoAlertDialog`，由
+     * `MainAct.receiveBroadcast → MainBiz.getIPODialog → MainAct.showSgbDialog`
+     * 这条链一路弹出来。本功能在**弹窗显示那一层**拦下它，
+     * 不改宿主任何判断逻辑，见
+     * [io.github.SansKritO4.GSAuxiliary.feature.ipoclean.IpoDialogCleanFeature]。
+     */
+    const val IPO_DIALOG_CLEAN = "ipo_dialog_clean"
+
     // ---------------------------------------------------------------- 模块设置
 
     /** 日志等级，见 [LogLevel] */
@@ -285,6 +296,13 @@ object ConfigKeys {
      */
     const val DEFAULT_NAV_BAR_BLEND = false
 
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
+     * 它是「新股申购提醒弹窗净化」的总开关，出厂默认关，由用户自己按需打开。
+     */
+    const val DEFAULT_IPO_DIALOG_CLEAN = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -310,6 +328,7 @@ object ConfigKeys {
         STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
+        IPO_DIALOG_CLEAN,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -326,6 +345,7 @@ object ConfigKeys {
             ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
+            IPO_DIALOG_CLEAN,
         )
 
     /**
@@ -352,6 +372,7 @@ object ConfigKeys {
         MARKET_SECTOR_COMPACT to DEFAULT_MARKET_SECTOR_COMPACT,
         MARKET_OVERVIEW_COMPACT to DEFAULT_MARKET_OVERVIEW_COMPACT,
         NAV_BAR_BLEND to DEFAULT_NAV_BAR_BLEND,
+        IPO_DIALOG_CLEAN to DEFAULT_IPO_DIALOG_CLEAN,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,

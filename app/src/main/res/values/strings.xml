@@ -53,6 +53,7 @@
     <!-- 搜索框不写占位文字（提示词留空），靠左侧放大镜图标说明用途 -->
     <string name="search_hint"></string>
     <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」；文案与命名规范见 docs/NAMING.md -->
+    <string name="category_login">登录</string>
     <string name="category_strategy">策略页</string>
     <string name="category_stock_detail">股票详情页</string>
     <string name="category_dock">底栏</string>
@@ -60,6 +61,13 @@
     <string name="category_market">行情市场</string>
     <string name="category_display">显示</string>
     <string name="feature_empty">没有匹配的功能</string>
+
+    <!-- 登录 -->
+    <string name="feature_ipo_clean_title">隐藏新股申购提醒弹窗</string>
+    <string name="feature_ipo_clean_summary">登录后不再弹出今日新股申购提醒，直接进主界面</string>
+    <string name="feature_ipo_clean_switch">隐藏新股申购提醒</string>
+    <string name="feature_ipo_clean_switch_summary">今日新股申购提醒不再弹出，直接进主界面</string>
+
     <string name="feature_watchlist_title">自选股高亮</string>
     <string name="feature_watchlist_summary">策略详情页里，把已加入自选的股票名称显示为高亮色</string>
     <string name="feature_watchlist_switch">自选股高亮</string>

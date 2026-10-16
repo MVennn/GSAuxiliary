@@ -3,6 +3,11 @@
 本文记录本模块**所有真正卡住过的问题**及其解法。
 如果你要给同类「加固 + vlayout + 多进程配置」的 App 写模块，这篇能省掉大量重复试错。
 
+> **另见**：顶号与登录态调研（该记录已下线归档） —— 一次以**否定结论**收场的调研。
+> 那套登录态机制（`ParseLoginDataProcess` 的三连检查、`UserAccountManager` 是登录态总出口、
+> 被顶后重启会清空 `USER_ACCOUNT_CONFIGS`）对写别的功能同样有用，
+> 而里面**四条已经验证无效的拦截思路**就别再走一遍了。
+
 目标 App：**国信金太阳 8.6.0**（`com.guosen.android`）
 
 ---
@@ -414,6 +419,10 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
    （含真实资源 id 名与坐标）打进模块日志 —— 打开开关、进一次页面、
    看模块 App「设置 → 查看日志」即可。完整手册见
    [界面精简方案与校准手册](FEATURE-UI-CLEAN.md#4-真机校准手册认不出来时照着做)
+8. **隐藏新股申购提醒** → 改 `feature/ipoclean/IpoCleanTargets.kt`：
+   `IPO_DIALOG_CLASSES` / `IPO_DIALOG_SIMPLE_NAMES` / `SHOW_METHODS`。
+   弹窗类名或宿主展示方法改名时加候选即可；完整手册见
+   [新股弹窗净化说明](FEATURE-IPO-DIALOG.md#3-认不出来时真机校准手册)
 
 设计上所有关键名字都是**常量数组 + 多级兜底**（每个功能一个 `XxxTargets.kt`），
 就是为了这种时候改一行就能修好。
