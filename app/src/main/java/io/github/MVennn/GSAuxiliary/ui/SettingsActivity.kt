@@ -563,7 +563,7 @@ private fun HomeScaffold(
     onOpenDisclaimer: () -> Unit,
     /** 首次启动未同意免责声明时为 `true`：弹硬门槛弹窗 */
     showAgreement: Boolean,
-    /** 用户点了「同意」 */
+    /** 用户点了「确定」（同意免责声明） */
     onAgreeDisclaimer: () -> Unit,
 ) {
     val liquidGlass by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)

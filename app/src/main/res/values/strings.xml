@@ -250,13 +250,15 @@
 
     <!-- ============================ 首次启动 · 免责声明同意弹窗 ============================ -->
     <!-- 说明文字是纯文本（入口挪到勾选行）；勾选行拆「前导 + 链接 + 后接」三段，
-         空格用 \u0020 显式转义，避免被资源工具裁掉（链接前后各留一个）。 -->
+         空格用 \u0020 显式转义，避免被资源工具裁掉（链接前后各留一个）。
+         副标题（3.2.0 收敛）：只留三行，到「勾选下方选项」为止 —— 按钮就在正下方，
+         不必再用一句「点击『确定』后即可使用」复述它是什么。 -->
     <string name="agreement_title">使用前须知</string>
-    <string name="agreement_message">本模块是用于研究 Android 逆向与 Hook 技术的 非商业开源软件。完整阅读 《免责声明》并在24小时内删除软件。勾选下方选项并点击「同意」后 即可使用。</string>
+    <string name="agreement_message">本模块是用于研究 Android 逆向与 Hook 技术的非商业开源软件，请在 24 小时内删除，勾选下方选项。</string>
     <string name="agreement_check_prefix">我已仔细阅读并同意\u0020</string>
     <string name="agreement_check_link">免责声明</string>
     <string name="agreement_check_suffix">\u0020的全部内容</string>
-    <string name="agreement_confirm">同意</string>
+    <string name="agreement_confirm">确定</string>
 
     <string name="section_disclaimer">免责声明</string>
     <string name="disclaimer_title">使用即代表同意，请 24 小时内删除</string>

@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -167,7 +169,7 @@ internal class ConfirmDialogSpec(
  * 「首次启动必须同意免责声明」弹窗。
  *
  * 与 [ConfirmDialogSpec] 的区别（也是它必须单独一个类的原因）：
- *  - **没有取消按钮**，只有一颗「同意」，且**未勾选时置灰点不动**；
+ *  - **没有取消按钮**，只有一颗「确定」，且**未勾选时置灰点不动**；
  *  - 勾选行的文字里嵌一个**可点击的链接**（「免责声明」），点了跳二级页全文；
  *  - [dismissible] = `false`，点空白 / 按返回都关不掉。
  *
@@ -914,6 +916,19 @@ private fun DialogButton(
  * 消费了多少）。所以这里用**一个 detector 统一裁决**：行上挂
  * [pointerInput]，拿 [TextLayoutResult.getOffsetForPosition] 把点击位置换算
  * 成字符 offset，落在链接区间就跳全文、否则翻转勾选 —— 不存在两套手势抢事件。
+ *
+ * ## 落点要先换算到文字自己的坐标系
+ *
+ * 手势挂在**整行**上，而 `getOffsetForPosition` 要的是**文字内部**的坐标。
+ * 两者之间隔着「行内边距 4dp + 复选框 20dp + 间距 10dp」这一段 —— 直接拿行内
+ * 坐标去问，整段文字等于被凭空右移了约两个字宽：点在链接中间 / 右侧时算出的
+ * offset 已经越过链接区间，就被判成「点的是空白」，于是**点免责声明反而把勾选
+ * 上了**（3.2.0 修的问题）。
+ *
+ * 所以行与文字各记一份窗口坐标（[boundsInWindow]，与锚定弹窗同一套坐标口径），
+ * 相减得到文字左上角在行内的偏移，点击时先减掉它再问 offset；两个矩形差值是
+ * 相对的，不关心行内边距算在哪一层。手势 lambda 里是**实时读**这两个状态，
+ * 所以滚动 / 换字号之后不会拿到旧值。
  */
 @Composable
 private fun AgreementCheckRow(
@@ -930,16 +945,23 @@ private fun AgreementCheckRow(
         prefix.length until prefix.length + linkText.length
     }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // 行与文字各自的窗口矩形：相减 = 文字左上角在行内的偏移（见上面的 KDoc）。
+    var rowBounds by remember { mutableStateOf(Rect.Zero) }
+    var textBounds by remember { mutableStateOf(Rect.Zero) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            // 与下面的 `pointerInput` 紧挨着：两个都是「不改布局」的修饰符，
+            // 落在同一个坐标层上，矩形与点击落点才是同一套原点。
+            .onGloballyPositioned { rowBounds = it.boundsInWindow() }
             // `checked` 进 key：翻转要拿最新的值，否则会拿旧状态取反出乱子
             .pointerInput(checked, onCheckedChange, onOpenLink) {
                 detectTapGestures { pos ->
-                    val offset = layout?.getOffsetForPosition(pos)
-                        ?: return@detectTapGestures
+                    val offset = layout?.getOffsetForPosition(
+                        pos - textBounds.topLeft + rowBounds.topLeft,
+                    ) ?: return@detectTapGestures
                     if (offset in linkRange) {
                         onOpenLink()
                     } else {
@@ -991,7 +1013,10 @@ private fun AgreementCheckRow(
             color = colors.onSurfaceContainer,
             fontSize = 13.5.sp,
             lineHeight = 19.sp,
-            modifier = Modifier.weight(1f),
+            // 记下文字自己的窗口矩形：点击落点要靠它换算成「文字内部」坐标
+            modifier = Modifier
+                .weight(1f)
+                .onGloballyPositioned { textBounds = it.boundsInWindow() },
         )
     }
 }
