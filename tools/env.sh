@@ -118,16 +118,33 @@ export TARGET_PKG MODULE_PKG
 # ---------------------------------------------------------------------------
 # 等待设备（无线调试下 adb server 冷启动后设备可能还没被发现）
 # 用法: DEV="$(wait_device 60)" || exit 1
+#
+# adb server 被回收后，无线设备**不会**自动回来，得显式 connect；
+# 而每次靠 mDNS 重新发现又慢又不稳。所以这里把上次成功的 serial 缓存到
+# `.work/wifi_serial`，下次先直接 connect 它 —— 命中就基本是秒回。
+# （无线端口变了的情况由后面的 mDNS 兜底，缓存因此始终会被刷新。）
 # ---------------------------------------------------------------------------
 wait_device() {
-    local timeout="${1:-60}" i dev
+    local timeout="${1:-60}" i dev cache last
     [ -n "${ADB:-}" ] || { echo "[env] 没找到 adb" >&2; return 1; }
 
     "$ADB" start-server >/dev/null 2>&1
 
+    cache="${REPO_DIR:-.}/.work/wifi_serial"
+    if [ -f "$cache" ]; then
+        last="$(tr -d '\r\n' < "$cache" 2>/dev/null)"
+        [ -n "$last" ] && "$ADB" connect "$last" >/dev/null 2>&1
+    fi
+
     for ((i = 0; i < timeout; i++)); do
-        dev="$("$ADB" devices 2>/dev/null | awk '/[[:space:]]device$/{print $1; exit}')"
-        [ -n "$dev" ] && { echo "$dev"; return 0; }
+        # 优先 ip:port 形式的 serial，mDNS 那条虚拟名字只当兜底
+        dev="$("$ADB" devices 2>/dev/null | awk '$2 == "device" && $1 ~ /:[0-9]+$/ { print $1; exit }')"
+        [ -n "$dev" ] || dev="$("$ADB" devices 2>/dev/null | awk '$2 == "device" { print $1; exit }')"
+        if [ -n "$dev" ]; then
+            mkdir -p "$(dirname "$cache")" 2>/dev/null
+            echo "$dev" > "$cache" 2>/dev/null
+            echo "$dev"; return 0
+        fi
 
         # 每 10 秒尝试一次显式 connect（针对已经配对过的无线设备）
         if [ -n "${ADB_WIFI_TARGET:-}" ] && (( i % 10 == 9 )); then

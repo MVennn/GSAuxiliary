@@ -49,10 +49,9 @@ import java.util.WeakHashMap
  *
  * ### ② 筛选页：直接 inflate App 自己的布局（见 [StgFilterPanel]）
  *
- * ### ③ 行过滤：**换掉适配器的数据**（真正移除，不是藏起来）
+ * ### ③ 行过滤：**给 ListView 套一层过滤代理**（真正移除，不是藏起来）
  *
- * 早期版本是在 `getView` 之后把不匹配的行 `visibility = GONE` + 压成 1px。
- * **这条路走不通**，两个原因都实测过：
+ * 「藏行」这条路走不通，两个原因都实测过：
  *
  *  - 只设 `GONE` 不行：`ListView.layoutChildren` 直接对子 View 调
  *    `setupChild → child.measure()`（不走 `ViewGroup.measureChildren` 那套「跳过 GONE」的逻辑），
@@ -62,17 +61,21 @@ import java.util.WeakHashMap
  *    用 1px 能压住，但宿主一刷新列表（重新 `setData` + `notifyDataSetChanged`），
  *    已经布局好的行不会被重新量，空白/漏筛就都冒出来了。
  *
- * 现在改成**直接换 `BaseQuickAdapter.data` 字段的内容**（实测字段名就叫 `data`，
- * 且 `getItem(int)` 就是从它取），再走宿主自己的 `notifyDataSetChanged()`：
- * ListView 眼里列表本来就"只有这些行"，**不存在占位空间**，翻页/滚动都是原生行为。
+ * 「直接换 `data`」也不行 —— 理由见 [FilteredAdapter] 的注释：宿主 `onItemClick`
+ * 拿 adapter 的 `getCount()` 做范围校验、却用它自己那份全量取值，一旦把 `data`
+ * 换成子集，**全量下标 ≥ 筛选后行数的那些行就永远点不动**（筛得越狠，点不动的越多）。
  *
- * 时序与幂等都做了处理（见 [applyFilter]）：
+ * 现在改成给 ListView 套一层 [FilteredAdapter]：自己报子集的行数，
+ * `getView / getItem` 用全量下标转调原适配器。宿主持有的原适配器**一个字节都不动**，
+ * 它的 `getCount()` 仍是全量，校验与取值照旧；行点击再由 wrapper 把
+ * 「子集下标 → 全量下标」映射回去（见 [ensureClickRemap]）。
+ *
+ * 时序与幂等都在 [applyFilter] 里处理：
  *  - 挂 `android.widget.BaseAdapter.notifyDataSetChanged` 的**前置**钩子 ——
- *    宿主每次通知"数据变了"，我们**先把数据换成筛过的**，再让原方法继续，
- *    这样第一帧就是筛过的结果，没有闪烁；
- *  - 自己装进去的那个列表对象记在 [AdapterState.filtered] 里，靠 `===` 区分
- *    「宿主给的全量」与「我们装的子集」，避免反复包装；
- *  - 关掉功能 / 清空条件 → 把全量还回 `data` 字段并通知一次。
+ *    宿主说"数据变了"时先把代理的下标表刷到位，再放行；
+ *  - 结果与上一轮完全一致、代理也还挂在列表上时**什么都不做**
+ *    （宿主行情刷新很勤，别再给它多加一次"数据变了"）；
+ *  - 关掉功能 / 清空条件 → 把 ListView 换回原适配器。
  *
  * ### 状态持久化
  *
@@ -130,6 +133,12 @@ class StgStockFilterFeature : Feature {
     /** 策略详情页 ListView 的资源 id 缓存 */
     @Volatile private var listIdCache = 0
 
+    /** 上面那个 ListView 本体的弱引用缓存 —— `ensureClickRemap` 每帧都可能被调到，别每次都 findViewById */
+    private val trackedList = java.util.concurrent.atomic.AtomicReference<java.lang.ref.WeakReference<ListView>>()
+
+    /** `AdapterView.mOnItemClickListener` 那个 Field，反射取一次就留着 */
+    @Volatile private var clickListenerField: java.lang.reflect.Field? = null
+
     /** 每个适配器的「全量 / 已装填子集」状态 */
     private val states = Collections.synchronizedMap(WeakHashMap<Any, AdapterState>())
 
@@ -144,15 +153,81 @@ class StgStockFilterFeature : Feature {
     /** 上一次打印过的筛选结果，用来抑制重复日志 */
     @Volatile private var lastSummary: String? = null
 
+    /**
+     * 我们写进适配器的那份内容 + 与它**配套**的下标表。
+     *
+     * 两者必须当成一个整体替换 —— 分开赋值的话，点击回映射可能读到
+     * 「新数据 + 旧下标」，算出来的下标就成了别的股票。
+     */
+    private class Snapshot(val kept: ArrayList<Any>, val keptIndices: IntArray)
+
     private class AdapterState {
-        /** 宿主持有的全量列表 */
-        var full: List<Any>? = null
+        /** 当前筛选结果 + 下标表（点击回映射用）；没筛就为 null */
+        @Volatile var snap: Snapshot? = null
 
-        /** 我们装进 `data` 字段的那个子集（用来和"宿主给的全量"区分开） */
-        var filtered: List<Any>? = null
+        /** 装在 ListView 上的过滤代理；null = 当前没有筛选 */
+        @Volatile var proxy: FilteredAdapter? = null
+    }
 
-        /** 子集每一项在 [full] 里的下标 —— 点击回映射要用 */
-        var keptIndices: IntArray? = null
+    /**
+     * 「只显示筛选结果」的适配器代理。
+     *
+     * ## 为什么不直接改 `AIStkAdapter.data`（上一版的做法）
+     *
+     * 宿主 `AIStkStgDetailAct.onItemClick` 是**拿 adapter 的 `getCount()` 做范围校验、
+     * 却用它自己那份全量列表取值**的。真机日志坐实：筛选只剩 1 只时点第一行，
+     * 我们把 `position` 映射成全量下标 2 转发过去，宿主回调**进来了、也没抛异常、
+     * 就是什么都没发生** —— `2-1=1` 恰好卡在 `getCount()=1` 的边界上，被它的范围检查挡掉。
+     *
+     * 一旦把 `data` 换成子集，这两套语义就打架：**凡是全量下标 ≥ 筛选后行数的行，
+     * 永远点不动**。这正是「筛选后下方一大片点不了、且数量随策略股票数变化」的来源 ——
+     * 筛得越狠，点不动的行越多。
+     *
+     * 现在**不碰宿主的数据**（`getCount()` 仍是全量，宿主的校验照过），
+     * 只给 ListView 套一层代理：自己报子集的行数，`getView / getItem` 用全量下标转调原适配器。
+     * 行点击监听那层照旧做下标回映射，宿主拿到的仍是他熟悉的那套语义。
+     */
+    private class FilteredAdapter(
+        private val base: android.widget.ListAdapter,
+        rows: IntArray,
+    ) : android.widget.BaseAdapter() {
+
+        /** 被代理的原适配器 —— 外面认它、`stateOf` 也拿它当 key */
+        val target: android.widget.ListAdapter get() = base
+
+        @Volatile private var indices: IntArray = rows
+
+        /** 筛选结果变了就地更新（不重建代理，省掉一次 setAdapter 的滚动位置重置） */
+        fun update(newRows: IntArray) {
+            indices = newRows
+        }
+
+        override fun getCount(): Int = indices.size
+
+        override fun getItem(position: Int): Any? = base.getItem(indices[position])
+
+        override fun getItemId(position: Int): Long = base.getItemId(indices[position])
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+            base.getView(indices[position], convertView, parent)
+
+        // 观察者注册一律转发给原适配器 —— ListView 的 observer 是注册在我们身上的，
+        // 只有转发过去，宿主 `base.notifyDataSetChanged()` 才能刷到列表。
+        override fun registerDataSetObserver(observer: android.database.DataSetObserver) {
+            base.registerDataSetObserver(observer)
+        }
+
+        override fun unregisterDataSetObserver(observer: android.database.DataSetObserver) {
+            base.unregisterDataSetObserver(observer)
+        }
+
+        override fun hasStableIds(): Boolean = base.hasStableIds()
+
+        override fun areAllItemsEnabled(): Boolean = base.areAllItemsEnabled()
+
+        override fun isEnabled(position: Int): Boolean = base.isEnabled(indices[position])
+
+        override fun isEmpty(): Boolean = indices.isEmpty()
     }
 
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgStockFilter
@@ -439,13 +514,21 @@ class StgStockFilterFeature : Feature {
         val row = result as? View
         if (row != null) recordRowPercent(adapter, args.getOrNull(0) as? Int ?: -1, row)
 
-        // ② 兜底补筛：数据还是「宿主的全量」而条件又生效时，延后一帧换数据
+        // ② 行点击回映射要**常驻**：宿主随时可能在刷新流程里重新
+        //    `setOnItemClickListener(...)`，把我们的 wrapper 顶掉 ——
+        //    之后点击就按「子集下标」解释，点开的是别的股票。
+        //    ensureClickRemap 自己幂等，Field 与 ListView 都有缓存，这里开销很小。
+        runCatching { ensureClickRemap() }
+
+        // ③ 兜底补一次：条件生效、但 ListView 上没挂着我们的过滤代理。
+        //    宿主可能自己 setAdapter 过一次把代理顶掉，也可能只 setAdapter 不发通知 ——
+        //    两种情况都得在下一次绑定时把代理装回去。
         if (!isFilterActive(env, adapter)) return
-        val cur = readData(adapter) ?: return
         val st = stateOf(adapter)
-        if (cur === st.filtered) return
         val ctx = row?.context ?: trackedActivity ?: return
         val act = findActivity(ctx) ?: trackedActivity ?: return
+        val lv = trackedList.get()?.get() ?: findListView(act) ?: return
+        if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) return
         val handler = act.window?.decorView?.handler ?: return
         if (pendingRefilter) return
         pendingRefilter = true
@@ -466,39 +549,61 @@ class StgStockFilterFeature : Feature {
     }
 
     /**
-     * 核心：把适配器的 `data` 字段换成「筛过的子集」，或者把全量还原回去。
+     * 核心：把适配器的 `data` **原地**改成「筛过的子集」，或者把全量还回去。
+     *
+     * ## 为什么要「原地」改，而不是换一个新列表进去
+     *
+     * 早期版本是 `dataField.set(adapter, 新的ArrayList)` —— 每轮都换新对象。
+     * 两个后果，真机上都撞到了：
+     *
+     *  1. **ListView 每帧作废全部可见行重绑**。宿主行情刷新本来就勤（每秒数次），
+     *     我们又给它加了一层「数据对象变了」，于是列表一直处在重建中；
+     *     `AbsListView.onTouchEvent` 的 ACTION_UP 分支里 `if (!mDataChanged)`
+     *     会把落在这个窗口里的点击**直接丢掉** —— 表现就是「有些行点不动」，
+     *     而且越靠下的行越明显（ListView 是从上往下填的，上部每帧来得及绑完）。
+     *  2. **`data` 与宿主手里那份脱节**。宿主若原地 `clear() + addAll()`，
+     *     它改的是「字段里现在这个对象」，而字段早被我们换成了别的 —— 两边各说各话。
+     *
+     * 所以现在一律原地 `clear() + addAll()`，`data` 永远是宿主那个实例。
+     *
+     * ## 怎么判断「当前 data 是我们写的」还是「宿主刚给的全量」
+     *
+     * 按**内容**比（逐项 `===`），而不是对象引用。宿主原地改写会让「引用不变、内容全变」，
+     * 只看引用会认错（这正是之前 `st.full` 被污染成空的根因）。
+     *
+     * ## 宿主给空列表时不要覆盖全量
+     *
+     * 「先 clear 再等网络回来 addAll」是很常见的写法：那一下 `notifyDataSetChanged`
+     * 我们看到的就是空列表。要是拿它当"新全量"，之后筛选永远算出 0 只，
+     * 列表会被刷成一片空白（真机上就是这样把详情页刷成一直转圈的）。
      *
      * @param notify true 时由我们主动通知列表刷新（面板点「确定 / 重置」、兜底补筛）；
      *               false 表示当前正处于宿主 `notifyDataSetChanged` 的**前置**钩子里，
      *               原方法马上会通知，不用也不要重复通知。
      */
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
-        val dataField = Reflect.findField(adapter.javaClass, DATA_FIELD) ?: run {
-            GLog.w("筛选股票：适配器上没有 $DATA_FIELD 字段，无法换数据")
-            return
-        }
-        @Suppress("UNCHECKED_CAST")
-        val current = runCatching { dataField.get(adapter) as? List<Any> }.getOrNull()
         val st = stateOf(adapter)
-
         val ctx = trackedActivity ?: return
+        val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return
+        val base = adapter as? android.widget.ListAdapter ?: return
 
-        // 功能关掉 / 三个都不勾 → 还原全量
-        if (!env.config.stgStockFilter || !filtersBy(ctx).active) {
-            if (st.filtered != null && current === st.filtered) {
-                st.full?.let { runCatching { dataField.set(adapter, it) } }
-                if (notify) notifyAdapter(adapter)
+        // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
+        val full = readData(adapter) ?: return
+        val active = env.config.stgStockFilter && filtersBy(ctx).active
+
+        // 功能关掉 / 三个都不勾 / 数据还没到 → 把 ListView 换回原适配器
+        if (!active || full.isEmpty()) {
+            if (st.proxy != null) {
+                runCatching { lv.adapter = base }
+                    .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
+                st.proxy = null
+                st.snap = null
+                StgFilterBridge.publish(null)
+                lastSummary = null
+                GLog.i("筛选股票：筛选未生效，已还原全量（${full.size} 只）")
             }
-            st.filtered = null
-            st.keptIndices = null
-            lastSummary = null
-            GLog.i("筛选股票：筛选未生效，已还原全量（${st.full?.size ?: 0} 只）")
             return
         }
-
-        // 当前不是我们装的 → 这就是宿主最新一次给的「全量」
-        if (current !== st.filtered) st.full = current
-        val full = st.full ?: return
 
         val f = filtersBy(ctx)
         val keep = ArrayList<Any>(full.size)
@@ -525,13 +630,43 @@ class StgStockFilterFeature : Feature {
             }
         }
 
-        val summary = "全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat）"
-        val changed = !sameList(st.filtered, keep)
-        st.filtered = keep
-        st.keptIndices = keptIdx.toIntArray()
-        if (current !== keep) runCatching { dataField.set(adapter, keep) }
-        if (notify && changed) notifyAdapter(adapter)
+        val rows = keptIdx.toIntArray()
+        val snap = st.snap
+        val proxy = st.proxy
 
+        // 结果与上一轮一致、代理也还挂在列表上 → 什么都别动。
+        // 宿主行情刷新很勤，这里放过就等于不给 ListView 多加一次「数据变了」。
+        if (proxy != null && snap != null && sameList(keep, snap.kept) &&
+            unwrapHeaderAdapter(lv.adapter) === proxy
+        ) {
+            StgFilterBridge.publish(keep)
+            return
+        }
+
+        // 下标表与结果一起替换（点击回映射读的是这一份，不能出现「新结果 + 旧下标」）
+        st.snap = Snapshot(keep, rows)
+
+        if (proxy == null) {
+            val p = FilteredAdapter(base, rows)
+            st.proxy = p
+            runCatching { lv.adapter = p }
+                .onFailure {
+                    GLog.w("筛选股票：装过滤代理失败", it)
+                    st.proxy = null
+                }
+        } else {
+            proxy.update(rows)
+            if (unwrapHeaderAdapter(lv.adapter) !== proxy) {
+                // 宿主自己 setAdapter 过一次 → 代理被顶掉，重装
+                runCatching { lv.adapter = proxy }
+                    .onFailure { GLog.w("筛选股票：重装过滤代理失败", it) }
+            }
+        }
+
+        StgFilterBridge.publish(keep)
+        if (notify) notifyAdapter(adapter)
+
+        val summary = "全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat）"
         if (summary != lastSummary) {
             lastSummary = summary
             GLog.i("筛选股票：$summary")
@@ -558,52 +693,94 @@ class StgStockFilterFeature : Feature {
         return runCatching { f.get(adapter) as? List<Any> }.getOrNull()
     }
 
+    /** 同一个原因只记一次 —— `ensureClickRemap` 每帧都会被调到，不这样会刷屏 */
+    @Volatile private var lastSkipReason: String? = null
+
+    private fun noteSkip(reason: String) {
+        if (lastSkipReason == reason) return
+        lastSkipReason = reason
+        GLog.w("筛选股票：暂时没装行点击回映射 —— $reason")
+    }
+
     /**
      * 给 ListView 的行点击装一层「下标回映射」。
      *
      * ## 为什么必须做
      *
-     * 换掉 `adapter.data` 之后，ListView 的 position 变成**子集下标**；但宿主自己的
-     * 点击处理是拿 `position` 去索引**它自己那份全量列表**（实测：筛到只剩 6 只、
-     * 点第一行「思特威-W」，结果打开的是全量第一只「新华文轩 601811」）。
-     * 所以要把「子集下标」还原成「全量下标」再交给宿主 ——
-     * 用 [AdapterState.keptIndices] 这张表换算。
+     * ListView 上挂的是我们的过滤代理，`position` 是**子集下标**；而宿主的点击处理
+     * 是拿 `position` 去索引**它自己那份全量列表**（实测：不做映射时点列表第 1 行
+     * 「华建集团」，打开的是全量第 1 只「莱美药业」）。
+     * 所以要还原成「全量下标」再交给宿主 —— 用 [Snapshot.keptIndices] 换算。
      *
      * 做法是把宿主原来的 `OnItemClickListener`（`AdapterView.mOnItemClickListener`
-     * 是隐藏 API，得反射取）包一层。没装筛选时 [AdapterState.keptIndices] 为空，
-     * 等价于原样透传。
+     * 是隐藏 API，得反射取）包一层。没装筛选时下标表为空，等价于原样透传。
      */
     private fun ensureClickRemap() {
-        val act = trackedActivity ?: return
-        val listId = listViewId(act)
-        if (listId == 0) return
-        val lv = act.findViewById<View>(listId) as? ListView ?: return
-        val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
-        if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) return
+        val act = trackedActivity ?: return noteSkip("没有 trackedActivity")
+        val lv = findListView(act) ?: return noteSkip("找不到列表控件")
+        var adapter = unwrapHeaderAdapter(lv.adapter) ?: return noteSkip("列表还没有 adapter")
+        // 列表上可能是我们的过滤代理 —— 认它包着的那个原适配器
+        if (adapter is FilteredAdapter) adapter = adapter.target
+        if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) {
+            return noteSkip("adapter 不是目标：${adapter.javaClass.name}")
+        }
 
         val existing = itemClickListener(lv)
         if (existing != null && wrappedLists[lv] === existing) return   // 已经包过
+
+        if (existing == null) {
+            // 宿主没走 ListView 的行点击（比如它自己给每行设了 OnClickListener），
+            // 那我们包了也没人接 —— 记一条，排查「点了没反应」时先看它。
+            GLog.w("筛选股票：ListView 上没有宿主自己的行点击监听，回映射无处可转发")
+        }
 
         val wrapper = AdapterView.OnItemClickListener { parent, view, position, id ->
             var mapped = position
             runCatching {
                 val header = lv.headerViewsCount
-                val idx = stateOf(adapter).keptIndices?.getOrNull(position - header)
+                // 每次都重新读：两次点击之间筛选结果可能已经换过，
+                // 而 kept 与 keptIndices 是一起原子替换的，不会读到错位组合。
+                val idx = stateOf(adapter).snap?.keptIndices?.getOrNull(position - header)
                 if (idx != null) mapped = header + idx
             }.onFailure { GLog.w("筛选股票：点击下标回映射失败", it) }
-            runCatching { existing?.onItemClick(parent, view, mapped, id) }
-                .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+            val sink = existing
+            if (sink == null) {
+                GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")
+            } else {
+                runCatching { sink.onItemClick(parent, view, mapped, id) }
+                    .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+            }
         }
         runCatching { lv.onItemClickListener = wrapper }
             .onSuccess { wrappedLists[lv] = wrapper }
             .onFailure { GLog.w("筛选股票：包裹行点击监听失败", it) }
     }
 
+    /**
+     * 拿策略详情页那个列表。
+     *
+     * 结果缓一份：`ensureClickRemap` 会被每次 `getView` 调到（用来发现宿主把我们的
+     * 行点击监听顶掉的情况），每帧都走一遍 `findViewById` 太浪费。
+     * 缓存的是弱引用，Activity 重建 / 视图被回收后自动失效。
+     */
+    private fun findListView(act: Activity): ListView? {
+        trackedList.get()?.get()?.let { if (it.isAttachedToWindow) return it }
+        val blockId = listViewId(act)
+        if (blockId == 0) return null
+        val lv = act.findViewById<View>(blockId) as? ListView ?: return null
+        trackedList.set(java.lang.ref.WeakReference(lv))
+        return lv
+    }
+
     /** 读宿主原本挂在 ListView 上的 `OnItemClickListener`（`AdapterView.getOnItemClickListener` 是隐藏 API） */
     private fun itemClickListener(lv: ListView): AdapterView.OnItemClickListener? =
         runCatching {
-            val f = AdapterView::class.java.getDeclaredField("mOnItemClickListener")
-            f.isAccessible = true
+            val f = clickListenerField ?: AdapterView::class.java
+                .getDeclaredField("mOnItemClickListener")
+                .also {
+                    it.isAccessible = true
+                    clickListenerField = it
+                }
             f.get(lv) as? AdapterView.OnItemClickListener
         }.getOrNull()
 

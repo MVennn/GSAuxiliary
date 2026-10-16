@@ -9,6 +9,7 @@ import io.github.SansKritO4.GSAuxiliary.core.GLog
 import io.github.SansKritO4.GSAuxiliary.core.HookBag
 import io.github.SansKritO4.GSAuxiliary.feature.Feature
 import io.github.SansKritO4.GSAuxiliary.feature.FeatureEnv
+import io.github.SansKritO4.GSAuxiliary.feature.stgfilter.StgFilterBridge
 import io.github.SansKritO4.GSAuxiliary.util.Reflect
 
 /**
@@ -142,9 +143,24 @@ class StgDirectQuoteFeature : Feature {
      *     `putParcelableArrayList`，否则退回 `putSerializable`）。
      */
     private fun rewriteExtras(env: FeatureEnv, ei: Intent, bundle: Bundle, swipe: Boolean): Boolean {
-        val originalList = runCatching { bundle.get(StgDirectQuoteTargets.KEY_STOCK_LIST) }.getOrNull()
+        val rawList = runCatching { bundle.get(StgDirectQuoteTargets.KEY_STOCK_LIST) }.getOrNull()
             as? List<*>
         val clicked = runCatching { bundle.get(StgDirectQuoteTargets.KEY_STOCK_ITEM) }.getOrNull()
+
+        // 翻页列表必须与用户**在列表页看到的那一份**一致。
+        // 筛过之后列表只剩子集，而宿主塞进 extras 的仍是全量 —— 不收敛的话，
+        // 左右滑动会滑到本该被筛掉的股票（真机实测：筛「自选」也能滑出跌股「华北制药」）。
+        // 桥里存的是与适配器同一批对象，按身份挑出该留下的那几只，顺序天然保持一致。
+        var originalList = rawList
+        val kept = StgFilterBridge.keepOnly(rawList)
+        if (kept != null) {
+            if (clicked == null || kept.any { it === clicked }) {
+                originalList = kept
+                GLog.i("策略直达标准行情：翻页列表按筛选结果收敛 ${rawList?.size} → ${kept.size}")
+            } else {
+                GLog.w("策略直达标准行情：被点的股票不在筛选结果里，翻页列表退回全量")
+            }
+        }
 
         val cls = resolveItemClass(env, originalList, clicked) ?: run {
             GLog.w("直达标准行情：拿不到 ${StgDirectQuoteTargets.CLS_INTENT_STOCK_INFO}")

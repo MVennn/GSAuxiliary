@@ -6,8 +6,13 @@
 
 LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**，
 源码仓库发 Release **不会**同步过去。而 LSPosed 的网站与 App 只读模块仓库，
-所以每次发版必须在**两个仓库各发一份同 tag、同 APK 的 Release**，
+所以每次发版必须在**两个仓库各发一份同 tag、同产物的 Release**，
 并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
+
+每次 Release 传**两个包**：`GSAuxiliary_<tag>.apk`（release）与
+`GSAuxiliary_<tag>-debug.apk`（debug）。debug 包保留完整日志，
+让用户装上复现问题比只发 release 好排查得多；两个包用同一个 keystore 签名，
+可以直接覆盖安装，不用先卸载。
 
 同步的四个元文件（母本都在源码仓库里，见 `xposed-repo/README.md`）：
 
@@ -234,8 +239,9 @@ def check_publish_access(tok):
 # --------------------------------------------------------------------------- 步骤
 
 def build():
-    print("[1/5] 构建 release …")
-    r = run([os.path.join(ROOT, "gradlew"), "assembleRelease", "--console=plain"])
+    print("[1/5] 构建 release + debug …")
+    r = run([os.path.join(ROOT, "gradlew"), "assembleRelease", "assembleDebug",
+             "--console=plain"])
     if r.returncode != 0:
         print(r.stdout[-3000:])
         print(r.stderr[-2000:])
@@ -244,19 +250,35 @@ def build():
 
 
 def stage_apk(vc, vn):
-    src = os.path.join(ROOT, "app", "build", "outputs", "apk", "release", "app-release.apk")
-    if not os.path.exists(src):
-        sys.exit("[X] 找不到 %s —— 先跑一次 assembleRelease，或去掉 --skip-build" % src)
+    """备好要上传的两个包：release 给普通用户，debug 给排查问题用。
+
+    两个包**都用同一个 keystore 签名**（`app/build.gradle.kts` 的 debug 块
+    显式用了 release 的签名配置），所以能互相覆盖安装 —— 让用户装个 debug 包
+    复现问题时不用先卸载。debug 包保留完整日志，排查省事很多。
+    """
+    variants = [
+        ("release", "app-release.apk", "GSAuxiliary_%d-%s.apk" % (vc, vn)),
+        ("debug", "app-debug.apk", "GSAuxiliary_%d-%s-debug.apk" % (vc, vn)),
+    ]
     os.makedirs(WORK, exist_ok=True)
-    name = "GSAuxiliary_%d-%s.apk" % (vc, vn)
-    dst = os.path.join(WORK, name)
-    shutil.copyfile(src, dst)
-    print("[2/5] APK %s（%d 字节）" % (name, os.path.getsize(dst)))
-    return name, dst
+    out = []
+    for variant, fname, name in variants:
+        src = os.path.join(ROOT, "app", "build", "outputs", "apk", variant, fname)
+        if not os.path.exists(src):
+            sys.exit("[X] 找不到 %s —— 先跑一次 assembleRelease assembleDebug，"
+                     "或去掉 --skip-build" % src)
+        dst = os.path.join(WORK, name)
+        shutil.copyfile(src, dst)
+        print("[2/5] APK %s（%d 字节）" % (name, os.path.getsize(dst)))
+        out.append((name, dst))
+    return out
 
 
-def upsert_release(tok, repo, tag, vn, notes, apk_name=None, apk_path=None, dry=False):
-    """在 repo 上建或更新 tag 对应的 Release，并按需替换 APK 资产。"""
+def upsert_release(tok, repo, tag, vn, notes, assets=None, dry=False):
+    """在 repo 上建或更新 tag 对应的 Release，并按需替换 APK 资产。
+
+    [assets] 是 `[(文件名, 本地路径), …]` —— 通常是 release 与 debug 两个包。
+    """
     status, rel = api(tok, "GET", "/repos/%s/releases/tags/%s" % (repo, tag))
     exists = status == 200
     if dry:
@@ -273,7 +295,7 @@ def upsert_release(tok, repo, tag, vn, notes, apk_name=None, apk_path=None, dry=
         if status not in (200, 201):
             sys.exit("[X] %s 建 Release 失败 HTTP %s：%s" % (repo, status, rel))
 
-    if apk_name:
+    for apk_name, apk_path in (assets or []):
         # 同名资产要先删，否则 GitHub 会报 already_exists
         for a in rel.get("assets", []):
             if a["name"] == apk_name:
@@ -283,8 +305,8 @@ def upsert_release(tok, repo, tag, vn, notes, apk_name=None, apk_path=None, dry=
         status, asset = api(tok, "POST", up, raw=data,
                             ctype="application/vnd.android.package-archive")
         if status not in (200, 201):
-            sys.exit("[X] %s 传 APK 失败 HTTP %s：%s" % (repo, status, asset))
-        print("      APK 已上传，%d 字节" % asset.get("size", -1))
+            sys.exit("[X] %s 传 %s 失败 HTTP %s：%s" % (repo, apk_name, status, asset))
+        print("      %s 已上传，%d 字节" % (apk_name, asset.get("size", -1)))
     print("      %s  ->  %s" % (repo, rel.get("html_url")))
     return rel.get("html_url")
 
@@ -396,21 +418,19 @@ def main():
         print("[1/5] 跳过构建（--skip-build）")
 
     if args.dry_run:
-        apk_name = "GSAuxiliary_%d-%s.apk" % (vc, vn)
-        apk_path = None
-        print("[2/5] [dry-run] 将使用 %s" % apk_name)
+        names = ["GSAuxiliary_%d-%s%s.apk" % (vc, vn, sfx) for sfx in ("", "-debug")]
+        print("[2/5] [dry-run] 将上传 %s" % "、".join(names))
+        assets = []
     else:
-        apk_name, apk_path = stage_apk(vc, vn)
+        assets = stage_apk(vc, vn)
 
     tok = "" if args.dry_run else token()
 
     print("[3/5] 源码仓库 %s" % SOURCE_REPO)
-    src_url = upsert_release(tok, SOURCE_REPO, tag, vn, notes,
-                             apk_name, apk_path, args.dry_run)
+    src_url = upsert_release(tok, SOURCE_REPO, tag, vn, notes, assets, args.dry_run)
 
     print("[4/5] 模块仓库 %s" % MODULE_REPO)
-    mod_url = upsert_release(tok, MODULE_REPO, tag, vn, notes,
-                             apk_name, apk_path, args.dry_run)
+    mod_url = upsert_release(tok, MODULE_REPO, tag, vn, notes, assets, args.dry_run)
 
     print("[5/5] 同步模块仓库元文件")
     sync_repo_files(tok, args.dry_run)

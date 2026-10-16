@@ -242,6 +242,27 @@ adb -s "$DEV" shell ...
 
 ---
 
+## stayon.sh
+
+**调试期息屏超时**。无线调试时手机动不动就息屏 —— 点不动、截图全黑、
+`dump` 拿回来的还是上一帧。把超时拉长，收工再还原：
+
+```bash
+bash tools/stayon.sh            # 息屏超时 → 10 分钟（首次会把原值备份下来）
+bash tools/stayon.sh off        # 还原（优先用备份里的原值，没备份则 1 分钟）
+bash tools/stayon.sh status     # 只看当前值，什么都不动
+```
+
+原值存在 `.work/screen_timeout.bak`。**重复执行 `on` 不会覆盖备份**，
+所以调试中途再跑一次也不会把「10 分钟」错当成原值。备份丢了的话，`off` 一律还原成 1 分钟。
+
+用 `SCREEN_TIMEOUT_ON` / `SCREEN_TIMEOUT_OFF`（毫秒）可以改这两个数值。
+
+> 只改 `settings system screen_off_timeout`，不碰 `svc power stayon` ——
+> 后者只在充电时生效，而且它把「插电就永不熄屏」写进全局状态，收工容易忘了关。
+
+---
+
 ## adbw.sh
 
 **带自动重连的 adb 包装**。长脚本里裸调 `adb shell` 迟早挂在半路，把重试交给它。
@@ -354,10 +375,13 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 | 步骤 | 做什么 |
 |---|---|
 | 1 | 读 `app/build.gradle.kts` 的 `versionCode` / `versionName`，tag = `{vc}-{vn}` |
-| 2 | `./gradlew assembleRelease`，把 APK 复制成 `GSAuxiliary_{vc}-{vn}.apk` |
-| 3 | 在**源码仓库**建/更新 Release 并上传 APK（同名资产会先删再传） |
+| 2 | `./gradlew assembleRelease assembleDebug`，两个 APK 分别复制成 `GSAuxiliary_{vc}-{vn}.apk` 与 `GSAuxiliary_{vc}-{vn}-debug.apk` |
+| 3 | 在**源码仓库**建/更新 Release 并上传两个 APK（同名资产会先删再传） |
 | 4 | 在**模块仓库**做同样的操作 |
 | 5 | 同步四个元文件到模块仓库：`README.md` / `SUMMARY` / `SOURCE_URL` / `icon.svg` |
+
+> **release 与 debug 两个包都发**。debug 包保留完整日志，让用户装上复现问题
+> 比只发 release 好排查；两个包用同一个 keystore 签名，可直接覆盖安装。
 
 > 第 5 步的母本都在源码仓库里（`SUMMARY` 在 `xposed-repo/`，见
 > [`xposed-repo/README.md`](../xposed-repo/README.md)）。**别在网页上直接改模块仓库

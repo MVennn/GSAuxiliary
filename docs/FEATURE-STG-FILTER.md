@@ -1,6 +1,6 @@
 # 策略详情页「筛选股票」实现说明
 
-> 版本：**2.13.0**（`versionCode 33`） · 功能 id：`stg_stock_filter`
+> 版本：**2.16.1**（`versionCode 38`） · 功能 id：`stg_stock_filter`
 > 目标 App：国信金太阳 **8.6.0**（vc271） · 实测设备：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1
 > 相关代码：[`feature/stgfilter/`](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/stgfilter/)
 
@@ -172,46 +172,73 @@ ConstraintLayout #itemroot（clickable, 45dp）
 
 ## 五、行过滤
 
-### 真正移除：换掉 `adapter.data` 的内容
+### 真正移除：给 ListView 套一层过滤代理
 
 **不是藏起来，而是让列表里根本没有这些行。**
 
-`BaseQuickAdapter` 的数据就在一个叫 `data` 的字段里（实测字段名，且 `getItem(int)`
-就是从它取），所以做法是：
+做法是给 `ListView` 装一个模块自己写的 `FilteredAdapter`，包在 `AIStkAdapter` 外面：
 
 ```
-筛选生效  →  data = 筛过的子集（新的 ArrayList）  →  宿主自己的 notifyDataSetChanged()
-筛选取消  →  data = 宿主的全量                    →  同上
+筛选生效  →  lv.adapter = FilteredAdapter(原 adapter, 全量下标表)
+                ├─ getCount()               → 子集行数
+                ├─ getView / getItem        → 用全量下标转调原 adapter
+                └─ registerDataSetObserver  → 转发给原 adapter（否则宿主的 notify 刷不到列表）
+筛选取消  →  lv.adapter = 原 adapter
 ```
 
 ListView 眼里列表本来就"只有这些行"，**不存在占位空间**，滚动 / 翻页 / 惯性滑动
 全部是原生行为。这也是唯一能根治「下滑出大片空白」的做法 ——
 见下面「走过的弯路」。
 
+#### ⚠️ 为什么不能直接改 `data`（2.16.1 踩的坑，别再走回去）
+
+早期版本就是把 `AIStkAdapter.data` 整个换成筛过的子集。**这条路是错的**：
+
+宿主 `AIStkStgDetailAct.onItemClick` 是**拿 adapter 的 `getCount()` 做范围校验、
+却用它自己那份全量列表取值**的。真机日志（筛选只剩 1 只时点第一行）：
+
+```
+筛选股票：全量 35 → 保留 1（涨 1 / 跌 3 / 自选 31 / 平盘 0）
+点击 position=1 → 映射成全量下标 2 转发给宿主
+宿主 onItemClick 进入 position=2 → 正常返回（没抛）→ 页面一动不动
+```
+
+`2 - 1 = 1` 正好卡在 `getCount() = 1` 的边界上，被它的范围检查挡掉 ——
+不崩、不报错、静默无反应。
+
+**推论：只要把 `data` 换成子集，「全量下标 ≥ 筛选后行数」的行就永远点不动。**
+筛得越狠点不动的行越多：保留三十多只时几乎看不出来，只保留几只时整列都点不动。
+所以代理方案不是"更好"，是**必须**。
+
 挂点：
 
 | 挂点 | 作用 |
 |---|---|
-| `android.widget.BaseAdapter#notifyDataSetChanged`（**前置**改写） | 宿主一说"数据变了"，先把 `data` 换成筛过的再放行 → 布局的第一帧就是筛过的结果，不会先闪一下全量 |
-| `BaseQuickAdapter#getView` / `AIStkAdapter#getView`（后置） | 顺手记一份行内涨跌幅文案（兜底）；并**延后一帧**补一次筛选，防宿主只 `setAdapter` 不发通知 |
-| `android.app.Activity#onResume`（后置） | 回到本页时重读筛选状态、对齐一次数据、补装点击回映射 |
+| `android.widget.BaseAdapter#notifyDataSetChanged`（**前置**改写） | 宿主一说"数据变了"，先把代理的下标表刷新到位再放行 → 布局第一帧就是筛过的结果，不会先闪一下全量 |
+| `BaseQuickAdapter#getView` / `AIStkAdapter#getView`（后置） | 顺手记一份行内涨跌幅文案（兜底）；并**延后一帧**补一次筛选：宿主若自己 `setAdapter` 把代理顶掉，或只 `setAdapter` 不发通知，都在这里装回去 |
+| `android.app.Activity#onResume`（后置） | 回到本页时重读筛选状态、对齐一次、补装点击回映射 |
+
+> 代理的 `getView(position, ...)` 会把 `position` 换算成**全量下标**再转调原 adapter，
+> 所以挂在 `BaseQuickAdapter#getView` 上的钩子拿到的仍然是他熟悉的全量语义，
+> 行内涨跌幅兜底表（`percentByCam`）里的键值也依旧对得上。
 
 时序与幂等：
 
 - `notifyDataSetChanged` 声明在**框架类 `BaseAdapter`** 上（`BaseQuickAdapter` 没覆写），
   所以只能挂框架类，用「`thisObject` 是不是目标适配器」过滤；
-- 我们自己装进去的那个 `ArrayList` 记在 `AdapterState.filtered`，靠 `===` 区分
-  「宿主给的全量」与「我们装的子集」—— 是宿主给的（`current !== filtered`）就更新
-  `st.full`，是我们装的就不动，避免反复包装；
-- 还原只在「当前 `data` 确实是我们那份子集」时做，不动宿主自己的数据。
+- 每轮重算都比较「筛出来的结果」+「代理是否还挂在列表上」，**一致就直接返回**、
+  一个字节都不动 —— 宿主行情刷新很勤，别再给它多加一次"数据变了"；
+- 结果与下标表合在一个 `Snapshot` 里**一起替换**，避免点击回映射读到「新结果 + 旧下标」；
+- 代理还在列表上（`lv.adapter` 拆包后就是它）就只 `update(下标表)`，不重建 ——
+  省掉一次 `setAdapter` 带来的滚动位置重置；发现被宿主顶掉才重装。
 
-### ⚠️ 换数据会改掉行点击的 `position` 语义 → 必须做下标回映射
+### ⚠️ 代理会改掉行点击的 `position` 语义 → 必须做下标回映射
 
-换掉 `data` 之后，ListView 的 `position` 变成**子集下标**；而宿主自己的点击处理是拿
-`position` 去索引**它自己那份全量列表**。实测症状（修之前）：
+ListView 上挂着我们的代理，`position` 变成**子集下标**；而宿主自己的点击处理是拿
+`position` 去索引**它自己那份全量列表**。实测（不做映射时）：
 
 ```
-筛到只剩 6 只 → 点第一行「思特威-W」 → 打开的是全量第一只「新华文轩 601811」
+筛到只剩 1 只「华建集团」→ 点它 → 打开的是全量第 1 只「莱美药业」
 ```
 
 不崩、不报错，静默进错股票。修法是给 ListView 的 `OnItemClickListener` 包一层：
@@ -326,9 +353,10 @@ else               childHeightSpec = makeMeasureSpec(0, UNSPECIFIED);   // ← 0
 | 7 | **滚到列表末尾不再出现空白** | ✅ 换数据后 ListView 只认子集，无占位行 |
 | 8 | 「重置」清空并立即恢复全量 | ✅ |
 | 9 | 关掉总开关 → 立即恢复全量 | ✅ `onConfigChanged` |
-| 10 | 筛后点第 N 行 = 列表里那一只 | ⚠️ 逻辑已加（`keptIndices` 回映射），**改动后未逐点复验** |
-| 11 | 强杀重启后筛选状态仍在（含面板勾选态） | ⚠️ 存储层本次未改动，沿用上一版验收；本轮**未复跑** |
-| 12 | `assembleDebug` + `assembleRelease` 通过 | ✅ badging 2.13.0 / vc33 |
+| 10 | 筛后点第 N 行 = 列表里那一只 | ✅ 2.16.1 复验：筛「自选」点第 2 行 → 打开「华建集团 600629」，与所点行一致 |
+| 11 | 强杀重启后筛选状态仍在（含面板勾选态） | ⚠️ 存储层未改动，沿用上一版验收 |
+| 12 | `assembleDebug` + `assembleRelease` 通过 | ✅ badging 2.16.1 / vc38 |
+| 13 | 筛选与「直达标准行情 + 左右滑动」联动 | ✅ 2.16.1：筛「跌幅」保留 3 只，点第 1 行进入后左滑 4 次，停在「华北制药」（那 3 只里的最后一只）不再越界；日志 `翻页列表按筛选结果收敛 35 → 3` |
 
 ---
 
@@ -398,16 +426,12 @@ OkHttp 钩子（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`）整�
 
 ---
 
-## 十、本次「换数据」改造后仍未复验的点
-
-换成接管 `adapter.data` 之后，侵入性比"只改视图"深，风险点也随之变了。
-下面几条**没有逐条上真机复验**，下次动这块时优先看：
+## 十、还没复验的点
 
 | 项 | 风险 |
 |---|---|
-| **点击下标回映射** | 逻辑已写（`keptIndices`），但改完之后**没有逐一点过**。若点开的股票与列表不符，先查这里 |
-| **「全选」与筛选叠加** | 多选栏「全选」走 `ListView.performItemClick` → 同一个被包裹的监听器 → 记录的也是**全量下标**，理论上自洽；但「筛选 + 全选 + 加入自选」这个组合没实机跑过 |
-| **宿主改用 `adapter.getItem(position)`** | 回映射是按「宿主自己持有全量列表」这一**实测事实**做的修补。哪天宿主改成从 adapter 取股，回映射会**反向错位**（那时应当拆掉映射） |
-| **宿主原地改 `adapter.data` 那个对象** | 我们把 `data` 换成了自己的 `ArrayList`。若宿主把它当成"自己那份"做原地增删（`clear()+addAll()`），语义会打架。目前未观察到，`applyFilter` 里靠 `===` 比较也只能覆盖"换成新列表"这一种 |
+| **「全选」与筛选叠加** | 代理方案下，多选栏「全选」走 `ListView.performItemClick`，落在代理的行号上，再由我们映射成全量下标转发 —— 理论上自洽；但「筛选 + 全选 + 加入自选」这个组合仍没实机跑过 |
+| **宿主改成从 adapter 取股** | 回映射建立在「宿主自己持有全量列表」这一**实测事实**上。哪天宿主改成从 adapter 取股，回映射会**反向错位**（那时应当把映射拆掉） |
+| **宿主 `setAdapter` 后不再触发 `getView`** | 代理被顶掉后靠 `getView` 兜底装回。若宿主既换了 adapter、又完全不触发 `getView`（列表为空时有可能），筛选会暂时失效 —— 日志里能看到「暂时没装行点击回映射」那一行 |
 | **涨跌幅兜底** | 数据项 `zdf` 读不到时退回 `getView` 快照，行情原地刷新后要等下一次 bind 才修正 |
 | **平盘股** | 只要开了筛选就不显示（见 §5）。若期望"三个全勾时平盘也显示"，需再加规则 |

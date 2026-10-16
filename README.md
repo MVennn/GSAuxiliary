@@ -30,7 +30,8 @@ Make GoldenSun Great Again！
 
 ## 安装
 
-1. 到 [Releases](../../releases/latest) 下载最新的 `GSAuxiliary_*.apk` 并安装
+1. 到 [Releases](../../releases/latest) 下载最新版并安装。平时用 `GSAuxiliary_*.apk`；
+   `*-debug.apk` 保留的日志更全，反馈问题时装它更好定位，两个包签名相同、可以直接互相覆盖
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
 3. 作用域中勾上「国信金太阳」（模块已固定声明作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次

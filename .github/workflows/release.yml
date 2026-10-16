@@ -176,8 +176,8 @@ jobs:
 
       # ---------------------------------------------------------- 构建与校验
 
-      - name: 构建 release
-        run: ./gradlew --no-daemon --console=plain assembleRelease
+      - name: 构建 release + debug
+        run: ./gradlew --no-daemon --console=plain assembleRelease assembleDebug
 
       - name: 校验产物红线
         env:
@@ -189,6 +189,10 @@ jobs:
           # 这一步直接红 —— 而不是签出一个「签名和以前不一样」的包让所有用户重装。
           python3 tools/ci/verify_apk.py --reject-debug-cert \
             app/build/outputs/apk/release/app-release.apk
+          # debug 包与 release 共用同一个 keystore（见 app/build.gradle.kts 的 debug 块），
+          # 同样卡住「退回调试证书」：否则用户装它时会与已装的包签名冲突。
+          python3 tools/ci/verify_apk.py --reject-debug-cert \
+            app/build/outputs/apk/debug/app-debug.apk
 
       - name: 整理产物
         if: always()
@@ -197,6 +201,9 @@ jobs:
           TAG="$(python3 tools/ci/version.py --tag)"
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "dist/GSAuxiliary_${TAG}.apk"
+          fi
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk "dist/GSAuxiliary_${TAG}-debug.apk"
           fi
           if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
             cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
