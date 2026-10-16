@@ -34,6 +34,36 @@
 
 ---
 
+## 0.1 交付规则：不发 Release 也出一个可安装的 APK
+
+**每次交付都编一个 APK 给你装上试** —— 不发文（不动版本号、不建 tag、不推两个仓库）
+的那些改动同样要编，因为「能不能跑」只有装到机器上才知道。
+
+| | |
+|---|---|
+| 命令 | `./gradlew.bat :app:assembleRelease`（Linux / macOS：`./gradlew`） |
+| 产物 | `app/build/outputs/apk/release/app-release.apk` |
+| 交付时报告 | 产物路径 + `versionName` / `versionCode` + 构建时间 + 文件大小 |
+| 签名自检（可选但推荐） | `python tools/ci/verify_apk.py --reject-debug-cert app/build/outputs/apk/release/app-release.apk` |
+
+三条约束：
+
+1. **交的是 release 包，不是 debug 包。** 本机 `keystore.properties` 在，release 包用的是
+   `gszx.keystore` —— 签名与机器上已装的模块一致，**可以直接覆盖安装**。
+   debug 包用的是 Android 调试证书，签名不同 ⇒ 装之前必须卸载重装，
+   而卸载会连带清掉 LSPosed 的作用域勾选与模块配置，测试成本比省下的构建时间高得多。
+   （确实需要可读堆栈时再自打 debug 包，见 §0 末尾那句，但它不进交付。）
+2. **不发版就不要动版本号。** `versionCode` / `versionName` 只在发版时改
+   （见 `docs/VERSIONING.md` §4）。交付包的版本号与上一个已发版本相同是正常现象。
+3. **顺带跑一次签名自检。** `app/build.gradle.kts` 在密钥不齐时会**安静地**退回 debug
+   签名（这是 §5 记录过的坑），`--reject-debug-cert` 一条命令就能把它顶出来，
+   免得交付一个装不上的包。
+
+> 这条规则和「在途开发期间别跑 `publish.py`」（§5）是一对：日常交付只构建、不发 Release；
+> 正式发版才走 §1 / §1.1 的整套流程。
+
+---
+
 ## 1. 发版
 
 ```bash

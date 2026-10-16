@@ -1,5 +1,16 @@
 # 构建指南
 
+> **交付规则（2026-10-17 起）**：**每次交付都出一个可安装的 APK** —— 不发 Release 也一样。
+>
+> - 命令：`./gradlew.bat :app:assembleRelease`（Linux / macOS 用 `./gradlew`）
+> - 产物：`app/build/outputs/apk/release/app-release.apk`
+> - **不发 debug 包**：debug 签名与已装模块的签名不同，装之前必须卸载重装，
+>   会连带清掉 LSPosed 的作用域勾选与模块配置。排查确实需要可读堆栈时才本地
+>   `./gradlew.bat :app:assembleDebug` 自打自装，**那个包不进交付**。
+> - 不发版就**不动** `versionCode` / `versionName`（见 [VERSIONING.md](VERSIONING.md) §4）。
+>
+> 完整规则、以及交付时报什么见 [RELEASE.md](RELEASE.md) §0.1。
+
 ## 1. 环境要求
 
 | 组件 | 版本 | 说明 |
