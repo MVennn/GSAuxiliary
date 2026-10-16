@@ -17,6 +17,7 @@ Make GoldenSun Great Again！
 ## 这是什么
 
 优化 国信金太阳 的界面显示和页面操作逻辑的 LSPosed 模块。
+
 不修改金太阳的数据，也不修改服务端数据，  
 所有改动只发生在你自己的手机上。
 
@@ -24,7 +25,7 @@ Make GoldenSun Great Again！
 
 ## 安装
 
-1. 到 [Releases](../../releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
+1. [Releases](../../releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
 3. 作用域中勾上「国信金太阳」（模块已声明默认作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次
