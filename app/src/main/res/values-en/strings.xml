@@ -96,7 +96,7 @@
     <string name="quick_section_terms">Value terms</string>
     <string name="quick_section_validity">Alert validity</string>
     <string name="quick_section_actions">Actions</string>
-    <string name="quick_new_scheme">New scheme</string>
+    <string name="quick_new_scheme">＋ New scheme</string>
     <string name="quick_new_scheme_default_name">Bounce ±5%</string>
     <string name="quick_default_badge">Default</string>
     <string name="quick_menu_set_default">Set as default</string>
@@ -119,7 +119,7 @@
     <string name="quick_slot_down">Fall to</string>
     <string name="quick_slot_up_short">Rise to</string>
     <string name="quick_slot_down_short">Fall to</string>
-    <string name="quick_add_term">Add a term</string>
+    <string name="quick_add_term">＋ Add a term</string>
     <string name="quick_param_period_fmt">%1$s-day</string>
     <string name="quick_field_validity">Alert validity</string>
     <string name="quick_validity_keep">Keep unchanged</string>

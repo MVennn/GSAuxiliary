@@ -2,11 +2,12 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldState
@@ -26,23 +27,18 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigCatalog
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -53,11 +49,6 @@ import kotlinx.coroutines.flow.drop
  *
  * **每改一下立即写回 remote preferences**（§6.3，与其它二级页一致），
  * 不做「保存」按钮。写入时顺带重生成方案的一行预览（列表页与 H5 选择层共用）。
- *
- * 排版（2.18 起）：所有「点一下选一个」的行统一换成 Miuix [ArrowPreference] /
- * [BasicComponent] —— 标题、当前值（summary）、右箭头、按压高亮都交给组件，
- * 不再手写 Row + 裸文字伪按钮；取值项的删除换成真正的 [IconButton]（Close 图标）。
- * 「提醒时效」不再放同名 SmallTitle —— 行标题就是「提醒时效」，分组标题是同一句话。
  */
 @Composable
 internal fun QuickConfigEditScreen(schemeId: String) {
@@ -85,7 +76,8 @@ internal fun QuickConfigEditScreen(schemeId: String) {
         .first { it.id == "highN" }.params.first().periodChoices
     val periodTexts = periodChoices.map { stringResource(R.string.quick_param_period_fmt, it) }
 
-    var anchor by remember { mutableStateOf<Rect?>(null) }
+    var anchor by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+    fun anchorMod(): Modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() }
 
     if (scheme == null) {
         // 方案被并发删除（另一处界面 / adb 通道）：安静退出内容区即可，外层返回键照常
@@ -152,7 +144,7 @@ internal fun QuickConfigEditScreen(schemeId: String) {
             aggTexts = aggTexts,
             periodTexts = periodTexts,
             anchor = anchor,
-            anchorMod = { Modifier.onGloballyPositioned { anchor = it.boundsInWindow() } },
+            anchorMod = { anchorMod() },
             dialogs = dialogs,
             onChanged = { slot -> update { s -> s.copy(up = slot, preview = previewOf(s.copy(up = slot), termNames, upLabel, downLabel)) } },
         )
@@ -164,36 +156,47 @@ internal fun QuickConfigEditScreen(schemeId: String) {
             aggTexts = aggTexts,
             periodTexts = periodTexts,
             anchor = anchor,
-            anchorMod = { Modifier.onGloballyPositioned { anchor = it.boundsInWindow() } },
+            anchorMod = { anchorMod() },
             dialogs = dialogs,
             onChanged = { slot -> update { s -> s.copy(down = slot, preview = previewOf(s.copy(down = slot), termNames, upLabel, downLabel)) } },
         )
 
         // ---- 提醒时效 ----
-        // 行标题已经说明一切，不再放同名 SmallTitle（同一信息只说一遍，2.18）
+        SmallTitle(stringResource(R.string.quick_section_validity))
         Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
-                title = stringResource(R.string.quick_field_validity),
-                modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
-                summary = validityTexts[validityIndexOf(scheme.validity)],
-                onClick = {
-                    dialogs?.showChoice(
-                        ChoiceDialogSpec(
-                            items = validityTexts,
-                            selectedIndex = validityIndexOf(scheme.validity),
-                            onSelect = { which ->
-                                val v = when (which) {
-                                    1 -> QuickConfigStore.VALIDITY_ONCE
-                                    2 -> QuickConfigStore.VALIDITY_LONG
-                                    else -> null
-                                }
-                                update { it.copy(validity = v) }
-                            },
-                            anchor = anchor,
-                        ),
-                    )
-                },
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        dialogs?.showChoice(
+                            ChoiceDialogSpec(
+                                items = validityTexts,
+                                selectedIndex = validityIndexOf(scheme.validity),
+                                onSelect = { which ->
+                                    val v = when (which) {
+                                        1 -> QuickConfigStore.VALIDITY_ONCE
+                                        2 -> QuickConfigStore.VALIDITY_LONG
+                                        else -> null
+                                    }
+                                    update { it.copy(validity = v) }
+                                },
+                                anchor = anchor,
+                            ),
+                        )
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.quick_field_validity),
+                    fontSize = 16.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = validityTexts[validityIndexOf(scheme.validity)],
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 14.sp,
+                )
+            }
         }
 
         // ---- 设为默认 / 删除 ----
@@ -261,7 +264,7 @@ private fun SlotEditor(
     termNames: Array<String>,
     aggTexts: List<String>,
     periodTexts: List<String>,
-    anchor: Rect?,
+    anchor: androidx.compose.ui.geometry.Rect?,
     anchorMod: () -> Modifier,
     dialogs: DialogController?,
     onChanged: (QuickConfigStore.Slot) -> Unit,
@@ -271,187 +274,175 @@ private fun SlotEditor(
 
     SmallTitle(title)
     Card(modifier = Modifier.cardPadding()) {
-        // 聚合（多值才有意义，但始终显示 —— 一看就知道多个取值项怎么合并）：
-        // Miuix ArrowPreference，当前值在 summary，行尾右箭头示意「点开有选择」
-        ArrowPreference(
-            title = stringResource(R.string.quick_field_agg),
-            modifier = anchorMod(),
-            summary = aggTexts[aggIndexOf(slot.agg)],
-            onClick = {
-                dialogs?.showChoice(
-                    ChoiceDialogSpec(
-                        items = aggTexts,
-                        selectedIndex = aggIndexOf(slot.agg),
-                        onSelect = { which ->
-                            onChanged(slot.copy(agg = aggValueOf(which)))
-                        },
-                        anchor = anchor,
-                    ),
-                )
-            },
-        )
-
-        slot.terms.forEachIndexed { index, term ->
-            TermRow(
-                term = term,
-                termIndex = index,
-                termNames = termNames,
-                anchor = anchor,
-                anchorMod = anchorMod,
-                dialogs = dialogs,
-                onTermChange = { newTerm ->
-                    onChanged(
-                        slot.copy(
-                            terms = slot.terms.mapIndexed { i, t -> if (i == index) newTerm else t },
+        // 聚合（多值才有意义，但始终显示 —— 一看就知道多个取值项怎么合并）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    dialogs?.showChoice(
+                        ChoiceDialogSpec(
+                            items = aggTexts,
+                            selectedIndex = aggIndexOf(slot.agg),
+                            onSelect = { which ->
+                                onChanged(slot.copy(agg = aggValueOf(which)))
+                            },
+                            anchor = anchor,
                         ),
                     )
-                },
-                onRemove = {
-                    onChanged(slot.copy(terms = slot.terms.filterIndexed { i, _ -> i != index }))
-                },
+                }
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.quick_field_agg),
+                fontSize = 15.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = aggTexts[aggIndexOf(slot.agg)],
+                color = MiuixTheme.colorScheme.primary,
+                fontSize = 14.sp,
+                modifier = anchorMod(),
             )
         }
 
-        // ＋ 添加取值项（目录平铺，顺序 = 分组顺序）：与列表页「新建方案」同款动作行
-        BasicComponent(
-            title = stringResource(R.string.quick_add_term),
-            titleColor = BasicComponentDefaults.titleColor(
-                color = MiuixTheme.colorScheme.primary,
-                disabledColor = MiuixTheme.colorScheme.primary,
-            ),
-            startAction = {
-                Icon(
-                    imageVector = AppIcons.Add,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            modifier = anchorMod(),
-            onClick = {
-                dialogs?.showChoice(
-                    ChoiceDialogSpec(
-                        items = catalog.map { spec ->
-                            val n: String = termNames.getOrElse(QuickConfigCatalog.index(spec.id)) { spec.id }
-                            n
-                        },
-                        selectedIndex = -1,
-                        onSelect = { which ->
-                            val picked = catalog[which]
-                            // 已有同项就不再重复添加
-                            if (slot.terms.any { it.source == picked.id }) return@ChoiceDialogSpec
-                            val param = picked.params.associate { p ->
-                                p.key to when {
-                                    p.periodChoices.isNotEmpty() -> p.periodChoices.first()
-                                    p.key == QuickConfigCatalog.PARAM_PCT -> "5"
-                                    else -> ""
-                                }
+        slot.terms.forEachIndexed { index, term ->
+            val spec = catalog.firstOrNull { it.id == term.source }
+            val name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = name, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                // 参数控件（周期 = 弹层选择；百分比 / 固定价 = 数字输入）
+                for (p in spec?.params ?: emptyList()) {
+                    when {
+                        p.periodChoices.isNotEmpty() -> {
+                            val current: String = term.param[p.key] ?: p.periodChoices.first()
+                            val choiceTexts: List<String> = p.periodChoices.map {
+                                stringResource(R.string.quick_param_period_fmt, it)
                             }
-                            onChanged(
-                                slot.copy(terms = slot.terms + QuickConfigStore.Term(picked.id, param)),
+                            Text(
+                                text = stringResource(R.string.quick_param_period_fmt, current),
+                                color = MiuixTheme.colorScheme.primary,
+                                fontSize = 14.sp,
+                                modifier = anchorMod()
+                                    .clickable {
+                                        dialogs?.showChoice(
+                                            ChoiceDialogSpec(
+                                                items = choiceTexts,
+                                                selectedIndex = p.periodChoices.indexOf(current),
+                                                onSelect = { which ->
+                                                    val newParam = term.param.toMutableMap()
+                                                    newParam[p.key] = p.periodChoices[which]
+                                                    onChanged(
+                                                        slot.copy(
+                                                            terms = slot.terms.mapIndexed { i, t ->
+                                                                if (i == index) t.copy(param = newParam) else t
+                                                            },
+                                                        ),
+                                                    )
+                                                },
+                                                anchor = anchor,
+                                            ),
+                                        )
+                                    }
+                                    .padding(start = 8.dp),
                             )
-                        },
-                        anchor = anchor,
-                    ),
-                )
-            },
-        )
-    }
-}
-
-/** 一个取值项：左侧名称，右侧参数控件 + 删除按钮（真正的 IconButton，触控目标够大） */
-@Composable
-private fun TermRow(
-    term: QuickConfigStore.Term,
-    termIndex: Int,
-    termNames: Array<String>,
-    anchor: Rect?,
-    anchorMod: () -> Modifier,
-    dialogs: DialogController?,
-    onTermChange: (QuickConfigStore.Term) -> Unit,
-    onRemove: () -> Unit,
-) {
-    val catalog = QuickConfigCatalog.ALL
-    val spec = catalog.firstOrNull { it.id == term.source }
-    val name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source }
-
-    BasicComponent(
-        title = name,
-        endActions = {
-            // 参数控件（周期 = 弹层选择；百分比 / 固定价 = 数字输入）
-            for (p in spec?.params ?: emptyList()) {
-                when {
-                    p.periodChoices.isNotEmpty() -> {
-                        val current: String = term.param[p.key] ?: p.periodChoices.first()
-                        val choiceTexts: List<String> = p.periodChoices.map {
-                            stringResource(R.string.quick_param_period_fmt, it)
                         }
-                        Text(
-                            text = stringResource(R.string.quick_param_period_fmt, current),
-                            color = MiuixTheme.colorScheme.primary,
-                            fontSize = 14.sp,
-                            modifier = anchorMod()
-                                .clickable {
-                                    dialogs?.showChoice(
-                                        ChoiceDialogSpec(
-                                            items = choiceTexts,
-                                            selectedIndex = p.periodChoices.indexOf(current),
-                                            onSelect = { which ->
-                                                val newParam = term.param.toMutableMap()
-                                                newParam[p.key] = p.periodChoices[which]
-                                                onTermChange(term.copy(param = newParam))
-                                            },
-                                            anchor = anchor,
-                                        ),
-                                    )
-                                }
-                                .padding(start = 8.dp),
-                        )
-                    }
-                    p.key == QuickConfigCatalog.PARAM_PCT ||
-                        p.key == QuickConfigCatalog.PARAM_VALUE -> {
-                        val initial = term.param[p.key] ?: ""
-                        val state = remember(term.source, termIndex) {
-                            TextFieldState(initial)
-                        }
-                        LaunchedEffect(state) {
-                            snapshotFlow { state.text.toString() }
-                                .drop(1)
-                                .collect { text ->
-                                    val v = text.toDoubleOrNull()
-                                    val valid = when (p.key) {
-                                        QuickConfigCatalog.PARAM_PCT -> v != null && v >= p.pctMin && v <= p.pctMax
-                                        else -> v != null && v > 0.0
+                        p.key == QuickConfigCatalog.PARAM_PCT ||
+                            p.key == QuickConfigCatalog.PARAM_VALUE -> {
+                            val initial = term.param[p.key] ?: ""
+                            val state = remember(scheme.id, isUp, index, term.source) {
+                                TextFieldState(initial)
+                            }
+                            LaunchedEffect(state) {
+                                snapshotFlow { state.text.toString() }
+                                    .drop(1)
+                                    .collect { text ->
+                                        val v = text.toDoubleOrNull()
+                                        val valid = when (p.key) {
+                                            QuickConfigCatalog.PARAM_PCT -> v != null && v >= p.pctMin && v <= p.pctMax
+                                            else -> v != null && v > 0.0
+                                        }
+                                        if (valid) {
+                                            val newParam = term.param.toMutableMap()
+                                            newParam[p.key] = text
+                                            onChanged(
+                                                slot.copy(
+                                                    terms = slot.terms.mapIndexed { i, t ->
+                                                        if (i == index) t.copy(param = newParam) else t
+                                                    },
+                                                ),
+                                            )
+                                        }
                                     }
-                                    if (valid) {
-                                        val newParam = term.param.toMutableMap()
-                                        newParam[p.key] = text
-                                        onTermChange(term.copy(param = newParam))
-                                    }
-                                }
+                            }
+                            TextField(
+                                state = state,
+                                modifier = Modifier.width(96.dp).padding(start = 8.dp),
+                                label = if (p.key == QuickConfigCatalog.PARAM_PCT) "%" else "",
+                                useLabelAsPlaceholder = false,
+                                cornerRadius = 10.dp,
+                                colors = TextFieldDefaults.textFieldColors(
+                                    backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
+                                ),
+                            )
                         }
-                        TextField(
-                            state = state,
-                            modifier = Modifier.width(96.dp).padding(start = 8.dp),
-                            label = if (p.key == QuickConfigCatalog.PARAM_PCT) "%" else "",
-                            useLabelAsPlaceholder = false,
-                            cornerRadius = 10.dp,
-                            colors = TextFieldDefaults.textFieldColors(
-                                backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
-                            ),
-                        )
                     }
                 }
-            }
-            // 删除该项
-            IconButton(onClick = onRemove) {
-                Icon(
-                    imageVector = MiuixIcons.Basic.Close,
-                    contentDescription = null,
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                // 删除该项
+                Text(
+                    text = "✕",
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .clickable {
+                            onChanged(slot.copy(terms = slot.terms.filterIndexed { i, _ -> i != index }))
+                        }
+                        .padding(start = 12.dp),
                 )
             }
-        },
-    )
+        }
+
+        // ＋ 添加取值项（目录平铺，顺序 = 分组顺序）
+        Text(
+            text = stringResource(R.string.quick_add_term),
+            color = MiuixTheme.colorScheme.primary,
+            fontSize = 15.sp,
+            modifier = anchorMod()
+                .clickable {
+                    dialogs?.showChoice(
+                        ChoiceDialogSpec(
+                            items = catalog.map { spec ->
+                                val n: String = termNames.getOrElse(QuickConfigCatalog.index(spec.id)) { spec.id }
+                                n
+                            },
+                            selectedIndex = -1,
+                            onSelect = { which ->
+                                val picked = catalog[which]
+                                // 已有同项就不再重复添加
+                                if (slot.terms.any { it.source == picked.id }) return@ChoiceDialogSpec
+                                val param = picked.params.associate { p ->
+                                    p.key to when {
+                                        p.periodChoices.isNotEmpty() -> p.periodChoices.first()
+                                        p.key == QuickConfigCatalog.PARAM_PCT -> "5"
+                                        else -> ""
+                                    }
+                                }
+                                onChanged(
+                                    slot.copy(terms = slot.terms + QuickConfigStore.Term(picked.id, param)),
+                                )
+                            },
+                            anchor = anchor,
+                        ),
+                    )
+                }
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+    }
 }
 
 // ------------------------------------------------------------ 小工具

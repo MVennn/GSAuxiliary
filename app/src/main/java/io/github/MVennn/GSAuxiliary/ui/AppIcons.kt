@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
  * 为什么不用 `androidx.compose.material:material-icons-extended`：
  * 那个 AAR 把 Material 全量图标（Filled / Outlined / Rounded / Sharp / TwoTone
  * 五种风格）都打进了包，dex 里实测有 **11400 个类**，占整个 APK 类总数（26553）
- * 的 43%，是安装体积虚高的唯一主因。而本模块界面只用到 9 个图标。
+ * 的 43%，是安装体积虚高的唯一主因。而本模块界面只用到 7 个图标。
  *
  * 这里用 Material Design 官方 24dp 图标的 path 数据自建 ImageVector，
  * 零额外依赖、只生成 7 个类。
@@ -142,25 +142,6 @@ internal object AppIcons {
                 "-2.7,2.7H2V20c0,1.1 0.9,2 2,2h3.8v-1.5c0,-1.49 1.21,-2.7 2.7,-2.7 " +
                 "1.49,0 2.7,1.21 2.7,2.7V22H17c1.1,0 2,-0.9 2,-2v-4h1.5c1.38,0 2.5,-1.12 " +
                 "2.5,-2.5S21.88,11 20.5,11z",
-        )
-    }
-
-    /** 竖排三点（方案行的操作菜单触发）。 */
-    val MoreVert: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        icon(
-            name = "MoreVert",
-            pathData = "M12,8c1.1,0 2,-0.9 2,-2s-0.9,-2 -2,-2 -2,0.9 -2,2 " +
-                "0.9,2 2,2zm0,2c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 " +
-                "-0.9,-2 -2,-2zm0,6c-1.1,0 -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 " +
-                "-0.9,-2 -2,-2z",
-        )
-    }
-
-    /** 加号（新建方案 / 添加取值项）。 */
-    val Add: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        icon(
-            name = "Add",
-            pathData = "M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
         )
     }
 
