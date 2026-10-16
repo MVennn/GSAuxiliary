@@ -134,10 +134,10 @@ buildTypes {
 
 | 入口 | 为什么必须 keep |
 | --- | --- |
-| `io.github.SansKritO4.GSAuxiliary.GszxModule` | 框架按 `META-INF/xposed/java_init.list` 里的类名反射实例化 |
-| `io.github.SansKritO4.GSAuxiliary.app.GszxApp` | manifest 的 `android:name` |
-| `io.github.SansKritO4.GSAuxiliary.ui.SettingsActivity` | manifest 声明，LSPosed 从自己进程跳转过来 |
-| `io.github.SansKritO4.GSAuxiliary.app.DebugConfigProvider` | manifest 声明，adb 通道 |
+| `io.github.MVennn.GSAuxiliary.GszxModule` | 框架按 `META-INF/xposed/java_init.list` 里的类名反射实例化 |
+| `io.github.MVennn.GSAuxiliary.app.GszxApp` | manifest 的 `android:name` |
+| `io.github.MVennn.GSAuxiliary.ui.SettingsActivity` | manifest 声明，LSPosed 从自己进程跳转过来 |
+| `io.github.MVennn.GSAuxiliary.app.DebugConfigProvider` | manifest 声明，adb 通道 |
 | `io.github.libxposed.service.**` | `XposedProvider` 由系统实例化；binder 描述符跨进程查找 |
 | `core.ConfigKeys` / `core.ConfigSnapshot` | 模块进程与目标进程共用，键名参与序列化 |
 | `* implements feature.Feature` | 由 `FeatureManager` 直接构造 |
@@ -156,7 +156,7 @@ aapt2 dump badging "$APK" | head -2
 # 类总数与入口类
 unzip -o -q "$APK" 'classes*.dex' -d /tmp/apkx
 dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor"
-dexdump -f /tmp/apkx/classes*.dex | grep "Lio/github/SansKritO4/GSAuxiliary/GszxModule;"
+dexdump -f /tmp/apkx/classes*.dex | grep "Lio/github/MVennn/GSAuxiliary/GszxModule;"
 
 # 红线：libxposed api 必须为 0 个
 dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor.*Lio/github/libxposed/api"
@@ -525,7 +525,7 @@ git ls-files -s gradlew      # 必须是 100755
 python tools/publish.py --check
 #   [OK] token 有效，身份：MVennn
 #   [OK] MVennn/GSAuxiliary 可写（默认分支 main）
-#   [OK] Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary 可写（默认分支 main）
+#   [OK] Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary 可写（默认分支 main）
 ```
 
 
@@ -588,7 +588,7 @@ python tools/ci/verify_apk.py --reject-debug-cert \
   [OK] 无 legacy assets/xposed_init
   [OK] 【红线】dex 无 io/github/libxposed/api 类定义（发现 0 个）
   [OK] libxposed service 已打进包（35 个类）
-  [OK] 入口类已保留 Lio/github/SansKritO4/GSAuxiliary/GszxModule;
+  [OK] 入口类已保留 Lio/github/MVennn/GSAuxiliary/GszxModule;
   [OK] dex 类定义总数 3087
   [OK] manifest 无 legacy xposed key
   [OK] 打包的 module.prop 与源码母本一致

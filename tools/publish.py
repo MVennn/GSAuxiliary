@@ -52,7 +52,7 @@ tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
 ## 环境变量
 
     GITHUB_SOURCE_REPO   源码仓库，默认 MVennn/GSAuxiliary
-    GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
+    GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary
     GS_GITHUB_TOKEN      优先使用的 PAT（需要 repo scope，且对模块仓库有写权限）
     GH_TOKEN             次选
 """
@@ -75,7 +75,7 @@ WORK = os.path.join(ROOT, ".work")
 
 SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "MVennn/GSAuxiliary")
 MODULE_REPO = os.environ.get(
-    "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary")
+    "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary")
 
 API = "https://api.github.com"
 

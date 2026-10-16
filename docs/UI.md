@@ -1,9 +1,9 @@
 # 设置界面
 
-设置界面是模块自己的 App（`io.github.SansKritO4.GSAuxiliary`），用 [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)
+设置界面是模块自己的 App（`io.github.MVennn.GSAuxiliary`），用 [Miuix](https://github.com/miuix-kotlin-multiplatform/miuix)
 0.9.3 的 Compose 组件写成，小米 HyperOS 风格。
 
-代码在 `app/src/main/java/io/github/SansKritO4/GSAuxiliary/ui/`。
+代码在 `app/src/main/java/io/github/MVennn/GSAuxiliary/ui/`。
 
 ---
 

@@ -11,7 +11,7 @@
 
 ```
 ┌─────────────────────────────────────┐    ┌─────────────────────────────────────┐
-│ io.github.SansKritO4.GSAuxiliary（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
+│ io.github.MVennn.GSAuxiliary（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
 │                                     │    │                                     │
 │ ui/SettingsActivity.kt  ← 路由       │    │ GszxModule.kt      ← 被注入执行      │
 │   ├─ ui/{Dock,Glass,AppDialog,      │    │   └─ FeatureManager                  │
@@ -185,7 +185,7 @@ onHotReloaded(param)
 功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
 没有一个功能依赖另一个功能的运行结果。
 
-**挂钩子改行为 / 注入视图**（共 6 个）：
+**挂钩子改行为 / 注入视图**（共 7 个）：
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
@@ -195,6 +195,7 @@ onHotReloaded(param)
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后**换掉适配器 `data` 字段**（真删不是藏），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
 | **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
 | **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
+| **新股申购提醒弹窗净化** | `IpoDialogCleanFeature` | `MainAct#showSgbDialog`（申购专用入口）+ `android.app.Dialog#show`（按类名兜底） | 两道都拦下弹窗**显示**：拦展示不拦构造，对象建了只是不 `show`，宿主后续流程照旧 | **判据收紧** —— `Dialog#show` 对**所有**弹窗生效，类全名或简名任一命中才拦，宁可漏也不能误伤宿主其它对话框（见 [FEATURE-IPO-DIALOG](FEATURE-IPO-DIALOG.md)） |
 
 **界面精简**（其余 5 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
@@ -213,10 +214,11 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（2.16.0，共 11 个功能）**：上面两张表就是全部功能的现行挂载方式。
+> **当前状态（共 12 个功能，2.17.0 起）**：上面两张表就是全部功能的现行挂载方式。
 > 2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、`stock_bar_entry`
 > （底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
-> `nav_bar_blend`（手势导航条同色）—— 它们都已在上表，不再是「前瞻」。
+> `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
+> （新股申购提醒弹窗净化）—— 它们都已在上表，不再是「前瞻」。
 
 ### 3.3 染色主流程（自选高亮）
 
@@ -465,7 +467,7 @@ autoHotReload=true
 **`java_init.list`**
 
 ```
-io.github.SansKritO4.GSAuxiliary.GszxModule
+io.github.MVennn.GSAuxiliary.GszxModule
 ```
 
 **`scope.list`**
@@ -510,7 +512,7 @@ com.guosen.android
     <!-- 仅 adb 调试用，不参与运行期配置读取 -->
     <provider
         android:name=".app.DebugConfigProvider"
-        android:authorities="io.github.SansKritO4.GSAuxiliary.config"
+        android:authorities="io.github.MVennn.GSAuxiliary.config"
         android:exported="true" />
 </application>
 ```

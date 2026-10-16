@@ -237,7 +237,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
    加上记账表「我记过这个盒子」的判据会在宿主清掉子视图后永远误判成「已经注入过」，
    于是一旦掉了就再也补不回来。
 
-现在改走 [`PageSyncFeature`](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/PageSyncFeature.kt)
+现在改走 [`PageSyncFeature`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/PageSyncFeature.kt)
 那套公共调度（与界面精简五个功能同一套骨架）：
 
 ```

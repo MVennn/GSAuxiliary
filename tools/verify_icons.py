@@ -42,10 +42,10 @@ EXPECTED_SUBPATHS = {
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-# 注意：包路径改过一次名（com.wb.gszx → gsauxiliary.m.venn → io.github.SansKritO4.GSAuxiliary），
+# 注意：包路径改过一次名（com.wb.gszx → gsauxiliary.m.venn → io.github.MVennn.GSAuxiliary），
 # 这里跟着 applicationId 走。再改名时记得同步。
 SRC = os.path.join(REPO, "app", "src", "main", "java",
-                   "io", "github", "SansKritO4", "GSAuxiliary", "ui", "AppIcons.kt")
+                   "io", "github", "MVennn", "GSAuxiliary", "ui", "AppIcons.kt")
 
 
 # --------------------------------------------------------------------------

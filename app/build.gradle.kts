@@ -65,15 +65,15 @@ if (!hasCustomKeystore) {
 }
 
 android {
-    namespace = "io.github.SansKritO4.GSAuxiliary"
+    namespace = "io.github.MVennn.GSAuxiliary"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.SansKritO4.GSAuxiliary"
+        applicationId = "io.github.MVennn.GSAuxiliary"
         minSdk = 27
         targetSdk = 36
-        versionCode = 44
-        versionName = "2.18.0"
+        versionCode = 45
+        versionName = "3.0.0"
 
         // 构建时间（设置界面「模块」页展示用）。配置期求值，随每次构建刷新。
         // 注意：必须用顶部 import 的 SimpleDateFormat —— 脚本里 `java` 会被解析成

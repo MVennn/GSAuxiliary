@@ -1,7 +1,7 @@
 # xposed-repo/ —— LSPosed 模块仓库的元文件源
 
 这个目录**不参与 APK 构建**，只存 LSPosed 模块仓库
-（`Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary`）里那几个元文件的**母本**。
+（`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary`）里那几个元文件的**母本**。
 `tools/publish.py` 会把它们同步过去，保证两边不会各改各的。
 
 | 模块仓库里的文件 | 母本在哪 | 说明 |

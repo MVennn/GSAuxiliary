@@ -123,9 +123,9 @@ object GLog {
 **怎么验证**（比 2.2 的 dexdump 更直接，直接看源码依赖）：
 
 ```bash
-cd app/src/main/java/io/github/SansKritO4/GSAuxiliary
+cd app/src/main/java/io/github/MVennn/GSAuxiliary
 # 模块 App 进程侧引用了哪些 core/feature 类
-grep -rn "^import io\.github\.SansKritO4\.GSAuxiliary\.\(core\|feature\)" app/ ui/
+grep -rn "^import io\.github\.MVennn\.GSAuxiliary\.\(core\|feature\)" app/ ui/
 # 期望：只有 core.ConfigKeys / core.GLog（含 core.LogLevel）这类无 api 依赖的类
 grep -rn "^import io\.github\.libxposed" app/ ui/ core/
 # 期望：app/ 只有 service.*（已打包）；ui/ 只有 service.*；core/ 只有 ConfigSource、HookBag 出现 api.*

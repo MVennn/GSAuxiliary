@@ -65,11 +65,11 @@ META_SOURCE_DIR = os.path.join(
 
 # 现代模块的入口类，R8 keep 规则的底线（见 app/proguard-rules.pro）
 ENTRY_CLASSES = (
-    "Lio/github/SansKritO4/GSAuxiliary/GszxModule;",
+    "Lio/github/MVennn/GSAuxiliary/GszxModule;",
 )
 
 # 必须是 applicationId 的包名 —— LSPosed 模块仓库的收录身份就靠它
-EXPECTED_PACKAGE = "io.github.SansKritO4.GSAuxiliary"
+EXPECTED_PACKAGE = "io.github.MVennn.GSAuxiliary"
 
 # compileOnly 的 API 包：一个类定义都不许有
 FORBIDDEN_CLASS_PREFIXES = (

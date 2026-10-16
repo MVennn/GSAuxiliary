@@ -23,7 +23,8 @@ adb logcat -s GSZXEnhance
 > 这是最容易浪费时间的误区：`logcat -s GSZXEnhance` 看不到目标进程的日志，
 > 因为 `XposedInterface.log()` 被 LSPosed 收进了自己的日志文件。
 
-正常加载时应该看到（以 2.16.0 为例，**11 个功能全开**）。每个启用功能的
+正常加载时应该看到（样例取自 2.16.0，当时 **11 个功能全开**；2.17.0 起新增
+新股弹窗净化，功能共 **12** 个，各段条数相应多一行）。每个启用功能的
 钩子日志先打，随后才是 `FeatureManager` 的「已安装功能 [id] 标题」那一行：
 
 ```
@@ -47,11 +48,11 @@ GSZXEnhance: 功能安装完成：11/11，共 N 个钩子
 > ```
 > GSZXEnhance: 跳过功能 [watchlist_highlight]：当前配置下未启用
 > GSZXEnhance: 跳过功能 [stg_direct_quote]：当前配置下未启用
-> …（11 个功能各一条，id / 顺序同上一段）…
+> …（每个功能各一条，id / 顺序同上一段）…
 > GSZXEnhance: 功能安装完成：0/11，共 0 个钩子
 > ```
 >
-> `0/11` **不是故障**。先去设置界面「功能」页把要用的开关打开。
+> `0/11` **不是故障**（数字随版本走，2.17.0 起全新安装是 `0/12`）。先去设置界面「功能」页把要用的开关打开。
 
 | 缺哪一行 | 说明 |
 |---|---|
@@ -72,7 +73,7 @@ GSZXEnhance: 功能安装完成：11/11，共 N 个钩子
 adb shell su -c "grep -i gszx /data/adb/lspd/log/modules_*.log | head -5"
 
 # 2) 确认配置写进去了（adb 调试通道，仅 root/shell 可用）
-adb shell su -c "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
+adb shell su -c "content query --uri content://io.github.MVennn.GSAuxiliary.config/config"
 ```
 
 也可以直接看设置界面「**概览**」页：顶部状态卡会显示**框架连接状态**，一眼能看出问题。
@@ -102,7 +103,7 @@ adb shell su -c "content query --uri content://io.github.SansKritO4.GSAuxiliary.
    ```
 2. 确认开关是开的：
    ```bash
-   bash tools/sh.sh "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
+   bash tools/sh.sh "content query --uri content://io.github.MVennn.GSAuxiliary.config/config"
    # enabled=1 才对
    ```
 3. 用自动校验脚本看实际颜色：
@@ -161,7 +162,7 @@ adb shell su -c "content query --uri content://io.github.SansKritO4.GSAuxiliary.
 
 ```bash
 # 1) 看配置写没写进去
-bash tools/sh.sh "content query --uri content://io.github.SansKritO4.GSAuxiliary.config/config"
+bash tools/sh.sh "content query --uri content://io.github.MVennn.GSAuxiliary.config/config"
 
 # 2) 看目标进程的配置通道状态
 bash tools/sh.sh --root "grep '配置通道' /data/adb/lspd/log/modules_*.log | tail -3"
@@ -253,6 +254,7 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 | 6 | **底栏「智能盯盘」入口**：底栏 / 弹层面板 id | `feature/stockbar/StockDetailBarTargets.kt`（见 [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md)） |
 | 7 | **界面精简五个**（底栏 / 首页 / 行情市场）：各版块的资源 id | `feature/dock/DockCleanTargets.kt`、`feature/home/HomeBannerTargets.kt`、`feature/market/MarketTargets.kt`（骨架与真机校准见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)） |
 | 8 | **手势导航条同色**：取色带 / 调参常量 | `feature/navbar/NavBarTargets.kt`（见 [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md)） |
+| 9 | **新股申购提醒弹窗净化**：宿主弹窗链路 / 类名 / 方法名 | `feature/ipoclean/IpoCleanTargets.kt`（见 [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md)） |
 
 **重新定位类名的方法**：用 `tools/probe/` 里的运行时探针。
 

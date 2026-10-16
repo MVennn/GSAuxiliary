@@ -1,7 +1,7 @@
 # 隐藏新股申购提醒：实现说明与校准手册
 
 > 功能 id `ipo_dialog_clean`，代码在
-> [`feature/ipoclean/`](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/ipoclean/)。
+> [`feature/ipoclean/`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/ipoclean/)。
 > 用户可见文案与命名遵循 [NAMING.md](NAMING.md)。
 
 ---
@@ -30,7 +30,7 @@ MainAct#receiveBroadcast:943              收到引擎广播
 
 ## 2. 拦在哪、为什么
 
-见 [`IpoCleanTargets.kt`](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/ipoclean/IpoCleanTargets.kt)。
+见 [`IpoCleanTargets.kt`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/ipoclean/IpoCleanTargets.kt)。
 两道：
 
 | 位置 | 签名 | 为什么选它 |

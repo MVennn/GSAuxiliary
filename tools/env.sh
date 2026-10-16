@@ -108,7 +108,7 @@ fi
 # --- 目标 App 包名（可用 TARGET_PKG 覆盖）---
 : "${TARGET_PKG:=com.guosen.android}"
 # --- 模块包名 ---
-: "${MODULE_PKG:=io.github.SansKritO4.GSAuxiliary}"
+: "${MODULE_PKG:=io.github.MVennn.GSAuxiliary}"
 
 export TOOLS_DIR REPO_DIR SDK
 export ADB="${ADB:-}" PYTHON="${PYTHON:-}" FFMPEG="${FFMPEG:-}"

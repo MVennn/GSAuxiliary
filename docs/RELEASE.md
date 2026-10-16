@@ -12,7 +12,7 @@
 | 仓库 | 谁在用 |
 |---|---|
 | `MVennn/GSAuxiliary`（源码） | 源码、Issue、GitHub 访客的下载入口 |
-| `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary`（模块仓库） | **LSPosed 网站与 App 只读这里** |
+| `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary`（模块仓库） | **LSPosed 网站与 App 只读这里** |
 
 `Xposed-Modules-Repo/*` 是 LSPosed 官方组织下的**独立仓库**，
 由提交申请时的 bot 自动创建、我们以 `maintain` 身份维护。
@@ -131,7 +131,7 @@ git tag 34-2.14.0 && git push origin 34-2.14.0
 | `GS_KEYSTORE_PASSWORD` | 你的 keystore 密码 |
 | `GS_KEYSTORE_ALIAS` | 你的 key 别名 |
 | `GS_KEYSTORE_KEY_PASSWORD` | 你的 key 密码 |
-| `LSPOSED_REPO_TOKEN` | PAT（classic，勾 `repo`），且对 `Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary` 有写权限 |
+| `LSPOSED_REPO_TOKEN` | PAT（classic，勾 `repo`），且对 `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` 有写权限 |
 | `GS_CERT_SHA256` | **可选**。签名证书的 SHA-256（小写十六进制，无冒号）。配了就把 release 包的证书钉死 |
 
 这四个 `GS_KEYSTORE_*` 由 `app/build.gradle.kts` 直接读（见该文件「签名配置」段）。
@@ -220,7 +220,7 @@ modules.lsposed.org**。
 
 要改的话：
 
-1. 打开 https://github.com/Xposed-Modules-Repo/io.github.SansKritO4.GSAuxiliary
+1. 打开 https://github.com/Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary
 2. 右侧 **About** 区块 → **齿轮 ⚙**
 3. 改 **Description** → **Save changes**
 

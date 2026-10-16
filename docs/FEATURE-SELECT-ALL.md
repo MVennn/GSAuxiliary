@@ -61,8 +61,8 @@ ListView #lvStks [0,230][1080,2205]
 
 ## 2. 实现方式
 
-代码在 `feature/strategyselect/`：常量在 [StgSelectAllTargets.kt](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/strategyselect/StgSelectAllTargets.kt)，
-实现在 [StgSelectAllFeature.kt](../app/src/main/java/io/github/SansKritO4/GSAuxiliary/feature/strategyselect/StgSelectAllFeature.kt)。
+代码在 `feature/strategyselect/`：常量在 [StgSelectAllTargets.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllTargets.kt)，
+实现在 [StgSelectAllFeature.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllFeature.kt)。
 
 ### 2.1 挂钩点：`Activity.onResume` + 锚点按钮的 `TextWatcher`
 

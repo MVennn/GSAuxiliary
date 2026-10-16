@@ -12,7 +12,7 @@
 | `PYTHON` | python 可执行文件全路径 |
 | `FFMPEG` | ffmpeg 可执行文件全路径（取色用） |
 | `TARGET_PKG` | 目标 App 包名，默认 `com.guosen.android` |
-| `MODULE_PKG` | 模块包名，默认 `io.github.SansKritO4.GSAuxiliary` |
+| `MODULE_PKG` | 模块包名，默认 `io.github.MVennn.GSAuxiliary` |
 | `ADB_WIFI_TARGET` | 无线调试地址，如 `192.168.1.10:5555` |
 
 ---
@@ -135,7 +135,7 @@ python tools/enable_lsposed.py <modules_config.db> <module_pkg> <apk_path> <targ
 ```bash
 adb shell su -c "cp /data/adb/lspd/config/modules_config.db /sdcard/mc.db"
 adb pull /sdcard/mc.db
-python tools/enable_lsposed.py mc.db io.github.SansKritO4.GSAuxiliary /data/app/.../base.apk com.guosen.android 0
+python tools/enable_lsposed.py mc.db io.github.MVennn.GSAuxiliary /data/app/.../base.apk com.guosen.android 0
 adb push mc.db /sdcard/mc.db
 adb shell su -c "cp /sdcard/mc.db /data/adb/lspd/config/modules_config.db"
 ```
