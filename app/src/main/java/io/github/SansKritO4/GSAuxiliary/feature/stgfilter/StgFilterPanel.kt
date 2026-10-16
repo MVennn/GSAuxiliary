@@ -51,7 +51,7 @@ import io.github.SansKritO4.GSAuxiliary.core.GLog
 internal object StgFilterPanel {
 
     /** 面板里的三行，顺序即显示顺序 */
-    private val ROW_LABELS = arrayOf("涨幅", "跌幅", "自选")
+    private val ROW_LABELS = arrayOf("涨家股票", "跌家股票", "自选股票")
 
     /** 打开筛选面板。所有异常都吞掉并记日志，绝不抛给宿主。 */
     fun show(activity: Activity, current: StgFilters, onApply: (StgFilters) -> Unit) {
@@ -224,5 +224,5 @@ internal object StgFilterPanel {
     }
 
     /** 调试用：把筛选状态变成一行可读文本 */
-    fun describe(f: StgFilters): String = "涨幅=${f.up} 跌幅=${f.down} 自选=${f.zx}"
+    fun describe(f: StgFilters): String = "涨家股票=${f.up} 跌家股票=${f.down} 自选股票=${f.zx}"
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
 import android.util.TypedValue
+import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
@@ -30,10 +31,15 @@ import java.util.WeakHashMap
  *
  * 1. 在右上角三点菜单（「修改名称」/「删除策略」）里、**「修改名称」下方**新增一项
  *    `筛选股票`；
- * 2. 点击弹出筛选页，页内提供 **涨幅 / 跌幅 / 自选** 三个可切换开关；
+ * 2. 点击弹出筛选页，页内提供 **涨家股票 / 跌家股票 / 自选股票** 三个可切换开关；
  * 3. 筛选状态**本地持久化**，关掉软件重开仍在；
  * 4. 筛选页**复用目标 App 自带的筛选组件 UI**（行情页「沪深京A」左侧漏斗那个），
- *    原「取消」按钮改成「重置」，「确定」不变。
+ *    原「取消」按钮改成「重置」，「确定」不变；
+ * 5. 左上角那颗「策略个股N只」改成 **`策略个股 保留数/总数`**（宿主只写全量，不会跟着筛）；
+ * 6. 筛到**一只不剩**时，把宿主自己的**无股票页面**
+ *    （`res/layout/empty_ai_stk.xml` —— 一个带图标的 `TextView`，文案「未选出符合条件的股票」）
+ *    摆到**股票行**那块；策略名称 / 涨家数 / 标签 / 「策略个股N只」这些在列表 header 里的东西
+ *    一行都不动。
  *
  * ## 三条链路的实现方式
  *
@@ -89,18 +95,18 @@ import java.util.WeakHashMap
  *
  * ```
  * 类别(股票) =
- *     自选   在自选股里（**最高优先**）
- *     涨幅   否则 zdf > 0
- *     跌幅   否则 zdf < 0
- *     平盘   其余（zdf == 0 或读不到）
+ *     自选股票  在自选股里（**最高优先**）
+ *     涨家股票  否则 zdf > 0
+ *     跌家股票  否则 zdf < 0
+ *     平盘      其余（zdf == 0 或读不到）
  *
  * 显示(股票) = 没有任何开关勾选 ? true : 类别(股票) ∈ 已勾选的类别
  * ```
  *
  * 举例（都是需求里的例子与推论）：
- *  - 只勾「涨幅」→ 涨的要有、跌的不要、**自选里即使涨着也不要**（自选是另一个类别）；
- *  - 只勾「自选」→ 只有自选里的；
- *  - 勾「涨幅 + 自选」→ 涨的（非自选）+ 自选里的；
+ *  - 只勾「涨家股票」→ 涨的要有、跌的不要、**自选里即使涨着也不要**（自选是另一个类别）；
+ *  - 只勾「自选股票」→ 只有自选里的；
+ *  - 勾「涨家股票 + 自选股票」→ 涨的（非自选）+ 自选里的；
  *  - 三个都不勾 → 不筛（全显示）。
  *
  * ⚠️ **平盘股（zdf == 0）不属于任何类别**，所以只要开了筛选就看不到它 ——
@@ -132,6 +138,24 @@ class StgStockFilterFeature : Feature {
 
     /** 策略详情页 ListView 的资源 id 缓存 */
     @Volatile private var listIdCache = 0
+
+    /** 左上角「策略个股N只」那颗计数的资源 id 缓存 */
+    @Volatile private var resNumIdCache = 0
+
+    /** 我们摆上去的那块空态视图（宿主 `empty_ai_stk` 的实例），弱引用，页面重建后自然失效 */
+    @Volatile private var emptyViewRef: java.lang.ref.WeakReference<View>? = null
+
+    /**
+     * 进空态时被我们压成「只剩头部」的 ListView → 它**原来**的 LayoutParams。
+     *
+     * 退出空态时要原样还回去（`height=0dp + weight=1`），否则列表就再也长不回来了。
+     */
+    private val lvOriginalLp = Collections.synchronizedMap(
+        WeakHashMap<ListView, LinearLayout.LayoutParams>()
+    )
+
+    /** 进空态时被我们从列表上摘下来的「说明及风险提示」 */
+    private val detachedChrome = Collections.synchronizedMap(WeakHashMap<ListView, DetachedChrome>())
 
     /** 上面那个 ListView 本体的弱引用缓存 —— `ensureClickRemap` 每帧都可能被调到，别每次都 findViewById */
     private val trackedList = java.util.concurrent.atomic.AtomicReference<java.lang.ref.WeakReference<ListView>>()
@@ -603,6 +627,12 @@ class StgStockFilterFeature : Feature {
 
         // 功能关掉 / 三个都不勾 / 数据还没到 → 把 ListView 换回原适配器
         if (!active || full.isEmpty()) {
+            // 数据还没到（`full` 空）时什么都不动 —— 那多半是宿主「先 clear 再等回包」的中间态，
+            // 照着它把计数写成 0 只、把空态亮出来，都会在下一次刷新时闪一下
+            if (full.isNotEmpty()) {
+                updateResNum(ctx, full.size, full.size, active = false)
+                updateEmptyView(ctx, empty = false)
+            }
             if (st.proxy != null) {
                 runCatching { lv.adapter = base }
                     .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
@@ -643,6 +673,14 @@ class StgStockFilterFeature : Feature {
         val rows = keptIdx.toIntArray()
         val snap = st.snap
         val proxy = st.proxy
+
+        // 左上角计数与空态：宿主只管全量、也不认识我们的筛选，所以每轮都要照结果重写一遍。
+        // 放在「结果没变就早退」之前 —— 宿主可能刚把计数刷回「策略个股15只」。
+        // 宿主若在同一次刷新里晚于我们写这颗控件，延后一帧再拽一次（只在确实改过时才排）
+        if (updateResNum(ctx, keep.size, full.size, active = true)) {
+            runCatching { lv.post { updateResNum(ctx, keep.size, full.size, active = true) } }
+        }
+        updateEmptyView(ctx, keep.isEmpty())
 
         // 结果与上一轮一致、代理也还挂在列表上 → 什么都别动。
         // 宿主行情刷新很勤，这里放过就等于不给 ListView 多加一次「数据变了」。
@@ -701,6 +739,306 @@ class StgStockFilterFeature : Feature {
         val f = Reflect.findField(adapter.javaClass, DATA_FIELD) ?: return null
         @Suppress("UNCHECKED_CAST")
         return runCatching { f.get(adapter) as? List<Any> }.getOrNull()
+    }
+
+    // ------------------------------------------------------------------ 左上角计数 / 空态
+
+    /**
+     * 左上角那颗 `#tv_stg_res_num`。
+     *
+     * 宿主写的永远是**全量**（「策略个股15只」），筛完也不会变 —— 屏幕上只剩 3 行、
+     * 计数却还写着 15 只，看着就是没筛。这里改成 `策略个股 保留数/总数`，
+     * 筛选取消时再按宿主原来的格式（「策略个股N只」）还原回去。
+     *
+     * @param active true = 筛选生效，写成 `策略个股 保留数/总数`；
+     *               false = 不筛，按宿主格式还原成 `策略个股总数只`。
+     *               **只在当前文案确实是我们改过的那个格式时才动手**，
+     *               免得把宿主自己写的文案覆盖掉。
+     * @return 真的改写了才返回 true —— 调用方据此决定要不要延后一帧再复查一次
+     *         （宿主可能在我们之后又把计数刷回全量）。
+     */
+    private fun updateResNum(act: Activity, kept: Int, total: Int, active: Boolean): Boolean {
+        val id = resNumId(act)
+        if (id == 0) return false
+        val tv = runCatching { act.findViewById<View>(id) as? TextView }.getOrNull() ?: return false
+        val cur = tv.text?.toString().orEmpty()
+        if (!active && !OUR_RES_NUM.matches(cur)) return false
+        val want = if (active) "策略个股 $kept/$total" else "策略个股${total}只"
+        if (cur == want) return false
+        return runCatching { tv.text = want }
+            .onSuccess { GLog.i("筛选股票：左上角计数 → $want") }
+            .onFailure { GLog.w("筛选股票：改左上角计数失败", it) }
+            .isSuccess
+    }
+
+    /** 左上角计数控件的 id 解析（解析一次就缓存；找不到返回 0） */
+    private fun resNumId(act: Activity): Int {
+        var id = resNumIdCache
+        if (id == 0) {
+            id = act.resources.viewIdOrZero(*StgStockFilterTargets.RES_NUM_ID_CANDIDATES)
+            if (id != 0) resNumIdCache = id
+        }
+        return id
+    }
+
+    /**
+     * 筛到一只不剩时，把**宿主自己的**「未选出符合条件的股票」摆到列表**下面那块**；否则收起来。
+     *
+     * ## 用的就是宿主的那个布局
+     *
+     * `res/layout/empty_ai_stk.xml`（证据见 [StgStockFilterTargets.LAYOUT_EMPTY]）——
+     * 所以字号、灰字颜色、图标、上内边距全与宿主一致，换肤 / 深色模式自动跟随。
+     * 不自己画一个：自己画的迟早会和宿主对不上。
+     *
+     * ## 只让出「股票行」那块，头部一行都不动
+     *
+     * 详情页的根是**竖直 `LinearLayout`**，`#lvStks` 是 `height=0dp + weight=1` ——
+     * 列表**永远占满剩余空间**，与它里面有几行无关。所以空态想有立足之地，只能先动列表。
+     * 但**不能把整个列表收起来**：策略名称 / 涨家数 / 标签 / 「策略个股N只 · 勾选加入自选股」
+     * 这些全在列表的 **header** 里，收掉列表等于把整页的头都抹了。
+     *
+     * 做法是把列表压成「只剩 header」：`height` 改 `WRAP_CONTENT`、`weight` 改 0，
+     * 空态视图接管它让出来的那一块（`height=0dp + weight=1`）。
+     * 列表自己的 LayoutParams 存一份在 [lvOriginalLp]，退出空态时原样还原。
+     *
+     * 列表的 `visibility` **一概不碰** —— 那是宿主的，我们只借它的高度。
+     */
+    private fun updateEmptyView(act: Activity, empty: Boolean) {
+        val lv = trackedList.get()?.get() ?: findListView(act)
+        if (lv == null) {
+            GLog.w("筛选股票：找不到列表，空态没法切（empty=$empty）")
+            return
+        }
+
+        // 收起来：没造过就直接走人 —— 别为了「隐藏」去 inflate 一块永远不会显示的东西
+        if (!empty) {
+            val v = emptyViewRef?.get() ?: return
+            if (v.visibility == View.GONE) return
+            runCatching {
+                v.visibility = View.GONE
+                restoreListChrome(act, lv)
+                restoreListLp(lv)
+            }
+                .onSuccess { GLog.i("筛选股票：空态 → 隐藏（列标题 / 风险提示 / 列表高度全部还原）") }
+                .onFailure { GLog.w("筛选股票：收起空态失败", it) }
+            return
+        }
+
+        val v = ensureEmptyView(act, lv) ?: return
+        val first = v.visibility != View.VISIBLE
+        if (first) {
+            // ⚠️ 顺序要紧：**先把配件摘掉，再压列表**。
+            // 反过来会先渲染出一帧「列表只剩头部 + 名称/最新价/涨跌幅 + 风险提示」，
+            // 下一帧才收掉 —— 那就是肉眼看到的「闪一下」。
+            hideListChrome(act, lv)
+            runCatching { shrinkListToHeader(lv); v.visibility = View.VISIBLE }
+                .onSuccess { GLog.i("筛选股票：空态（未选出符合条件的股票）→ 显示（列表压成只剩头部）") }
+                .onFailure { GLog.w("筛选股票：显示空态失败", it) }
+            // 宿主刷新列表时会自己把列标题行的可见性重设回来（那是它的视图），
+            // 所以延后一帧再收一次；之后每轮 `applyFilter` 也都会重新对齐
+            runCatching { lv.post { hideListChrome(act, lv) } }
+        } else {
+            // 每轮都重新对齐一次：宿主刷新列表时会自己把列标题行显示回来，收一次不够
+            hideListChrome(act, lv)
+        }
+    }
+
+    /**
+     * 空态时把列表上的两件「配件」一并收掉：**列标题行**与**说明及风险提示**。
+     *
+     * 没有股票行了，`名称 / 最新价 / 涨跌幅` 和风险提示摆在空态旁边只是噪音。
+     * 宿主自己也是这么做的 —— `AIStkChooseDetailAct` 在 0 只股票时 `#ll_top` 就是 `GONE`。
+     *
+     * 两者的收法**不一样**：
+     *  - 列标题行是 header 里的普通 View → 翻 `visibility` 就塌了（`LinearLayout` 会跳过 GONE）；
+     *  - 风险提示是挂在 ListView 上的固定视图（footer）→ `GONE` **不塌陷**
+     *    （见 `docs/FEATURE-STG-FILTER.md` 的「走过的弯路」），只能 `removeFooterView` 摘下来。
+     *
+     * 幂等，所以 `applyFilter` 每轮调它都安全 —— 这是必须的：**宿主刷新列表时会把列标题行
+     * 显示回来**，只在「进空态」那一刻收一次，过一会儿它自己就冒出来了。
+     */
+    private fun hideListChrome(act: Activity, lv: ListView) {
+        hideColTitle(act, lv)
+        detachRiskFooter(lv)
+    }
+
+    /** ① 列标题行：普通 View，翻 `visibility` 即可。按**当前状态**判断，不记标志位 */
+    private fun hideColTitle(act: Activity, lv: ListView) {
+        runCatching {
+            val id = act.resources.viewIdOrZero(StgStockFilterTargets.COL_TITLE_ID)
+            val col = if (id != 0) lv.findViewById<View>(id) else null
+            if (col == null || col.visibility == View.GONE) return
+            col.visibility = View.GONE
+            GLog.i("筛选股票：列标题行（名称 / 最新价 / 涨跌幅）已收起")
+        }.onFailure { GLog.w("筛选股票：收列标题行失败", it) }
+    }
+
+    /** ② 风险提示：从列表上摘下来 */
+    private fun detachRiskFooter(lv: ListView) {
+        if (detachedChrome.containsKey(lv)) return
+        val found = findRiskChrome(lv) ?: return
+        val (extra, isFooter) = found
+        // 先登记再动手：removeFooterView 会回调 onChanged → 重入 applyFilter，
+        // 那时若还没登记，就会对着同一块再摘一次
+        detachedChrome[lv] = DetachedChrome(extra, isFooter)
+        val ok = runCatching {
+            if (isFooter) lv.removeFooterView(extra) else lv.removeHeaderView(extra)
+        }.getOrDefault(false)
+        if (ok) {
+            GLog.i("筛选股票：说明及风险提示已从列表上摘下（${if (isFooter) "footer" else "header"}）")
+        } else {
+            detachedChrome.remove(lv)
+            GLog.w("筛选股票：风险提示摘不下来，留在列表上")
+        }
+    }
+
+    /** [hideListChrome] 的对偶：把两件配件放回去 */
+    private fun restoreListChrome(act: Activity, lv: ListView) {
+        runCatching {
+            val id = act.resources.viewIdOrZero(StgStockFilterTargets.COL_TITLE_ID)
+            val col = if (id != 0) lv.findViewById<View>(id) else null
+            if (col != null && col.visibility != View.VISIBLE) {
+                col.visibility = View.VISIBLE
+                GLog.i("筛选股票：列标题行已还原")
+            }
+        }.onFailure { GLog.w("筛选股票：还原列标题行失败", it) }
+
+        runCatching {
+            val d = detachedChrome.remove(lv) ?: return
+            if (d.isFooter) lv.addFooterView(d.view) else lv.addHeaderView(d.view)
+            GLog.i("筛选股票：说明及风险提示已挂回列表")
+        }.onFailure { GLog.w("筛选股票：把风险提示挂回列表失败", it) }
+    }
+
+    /**
+     * 找「说明及风险提示」那一块，连带它挂在列表的哪一头。
+     *
+     * **优先反射读 ListView 的固定视图表**，而不是遍历 `getChildAt`：
+     * ListView 只把**已经布局过**的固定视图挂成子 View —— 进空态那一刻列表还铺着几十行，
+     * footer 在屏外、压根不是子 View，遍历找不到。等它被布局出来再摘，肉眼就会看到它闪一下。
+     * 反射拿得到就**能在列表被压扁之前**摘掉，一帧都不闪。
+     *
+     * `getChildAt` 那条留作兜底（反射失败时退化成「会闪一帧」）。
+     */
+    private fun findRiskChrome(lv: ListView): Pair<View, Boolean>? {
+        for ((field, isFooter) in listOf("mFooterViewInfos" to true, "mHeaderViewInfos" to false)) {
+            val f = Reflect.findField(lv.javaClass, field) ?: continue
+            val infos = runCatching { f.get(lv) as? List<*> }.getOrNull() ?: continue
+            for (info in infos) {
+                // FixedViewInfo.view 是 public 字段
+                val view = runCatching {
+                    info?.javaClass?.getField("view")?.get(info) as? View
+                }.getOrNull() ?: continue
+                if (isRiskChrome(view)) return view to isFooter
+            }
+        }
+        for (i in 0 until lv.childCount) {
+            val c = lv.getChildAt(i)
+            if (isRiskChrome(c)) return c to true
+        }
+        return null
+    }
+
+    /** 这块是不是「说明及风险提示」—— 它没有 id，只能按文案前缀认 */
+    private fun isRiskChrome(v: View): Boolean =
+        (v as? TextView)?.text?.toString()?.trimStart()
+            ?.startsWith(StgStockFilterTargets.FOOTER_TEXT_HINT) == true
+
+    /** 被我们摘下来的那块固定视图 + 它原来挂在哪一头 */
+    private class DetachedChrome(val view: View, val isFooter: Boolean)
+
+    /**
+     * 拿到（必要时先 inflate 一个）宿主的空态视图，插在 `#lvStks` 后面。
+     *
+     * 幂等：还挂在同一个父容器上就直接复用 —— `applyFilter` 会被反复调到，
+     * 每次重新 inflate 会堆出一摞空态。
+     */
+    private fun ensureEmptyView(act: Activity, lv: ListView): View? {
+        val parent = lv.parent as? ViewGroup
+        if (parent == null) {
+            GLog.w("筛选股票：列表没有父容器，空态插不进去")
+            return null
+        }
+        emptyViewRef?.get()?.let { if (it.parent === parent) return it }
+
+        val layoutId = runCatching {
+            act.resources.getIdentifier(
+                StgStockFilterTargets.LAYOUT_EMPTY, "layout", StgStockFilterTargets.TARGET_PKG,
+            )
+        }.getOrDefault(0)
+        if (layoutId == 0) {
+            GLog.w(
+                "筛选股票：找不到宿主的空态布局 ${StgStockFilterTargets.LAYOUT_EMPTY}" +
+                        "（App 版本可能已变）—— 筛到 0 只时列表会是一片空白"
+            )
+            return null
+        }
+
+        val v = runCatching {
+            LayoutInflater.from(act).inflate(layoutId, parent, false)
+        }.getOrNull() ?: run {
+            GLog.w("筛选股票：inflate 空态布局失败")
+            return null
+        }
+
+        // 竖直 LinearLayout 里「0dp + weight=1」= 吃掉别人让出来的高度。
+        // 父容器不是 LinearLayout 时退回列表自己的尺寸，至少不会塌成 0。
+        val lp: ViewGroup.LayoutParams = if (parent is LinearLayout) {
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        } else {
+            copyLayoutParams(lv)
+        }
+        val index = parent.indexOfChild(lv)
+        runCatching { parent.addView(v, if (index >= 0) index + 1 else -1, lp) }
+            .onFailure {
+                GLog.w("筛选股票：空态插进列表旁边失败", it)
+                return null
+            }
+        v.visibility = View.GONE
+        emptyViewRef = java.lang.ref.WeakReference(v)
+        GLog.i("筛选股票：已把宿主的空态布局摆到列表下面（${StgStockFilterTargets.LAYOUT_EMPTY}）")
+        return v
+    }
+
+    /**
+     * 把列表压成「只剩 header」：`height` → `WRAP_CONTENT`、`weight` → 0。
+     *
+     * 列表带 header 且一个 item 都没有时，量出来的高度就是 header 的高度 ——
+     * 于是策略名称 / 涨家数 / 标签 / 策略个股那一整块原样留着，只有股票行让了出去。
+     * 原来的 LayoutParams 先存一份，[restoreListLp] 负责还原。
+     */
+    private fun shrinkListToHeader(lv: ListView) {
+        val lp = lv.layoutParams as? LinearLayout.LayoutParams ?: run {
+            GLog.w("筛选股票：列表的 LayoutParams 不是 LinearLayout 的，空态只能叠在它上面")
+            return
+        }
+        if (!lvOriginalLp.containsKey(lv)) {
+            lvOriginalLp[lv] = LinearLayout.LayoutParams(lp)
+        }
+        lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+        lp.weight = 0f
+        lv.layoutParams = lp
+    }
+
+    /** 还原列表自己的 LayoutParams（[shrinkListToHeader] 的对偶） */
+    private fun restoreListLp(lv: ListView) {
+        val saved = lvOriginalLp.remove(lv) ?: return
+        runCatching { lv.layoutParams = saved }
+            .onFailure { GLog.w("筛选股票：还原列表高度失败", it) }
+    }
+
+    /** 复制一份 LayoutParams（含 `LinearLayout` 的 weight / margin），别把原实例挂到两个 View 上 */
+    private fun copyLayoutParams(src: View): ViewGroup.LayoutParams {
+        val lp = src.layoutParams
+        return when (lp) {
+            is LinearLayout.LayoutParams -> LinearLayout.LayoutParams(lp)
+            is ViewGroup.MarginLayoutParams -> ViewGroup.MarginLayoutParams(lp)
+            is ViewGroup.LayoutParams -> ViewGroup.LayoutParams(lp)
+            else -> ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+        }
     }
 
     /** 同一个原因只记一次 —— `ensureClickRemap` 每帧都会被调到，不这样会刷屏 */
@@ -1034,6 +1372,9 @@ class StgStockFilterFeature : Feature {
 
         /** 列表数据字段名（实测 `BaseQuickAdapter` 上就叫 `data`） */
         const val DATA_FIELD = "data"
+
+        /** 我们自己写进 `#tv_stg_res_num` 的格式：「策略个股 3/15」 */
+        val OUR_RES_NUM = Regex("""^策略个股 \d+/\d+$""")
 
         /**
          * `onResume` 之后延后多久再复查一次代理有没有装上。

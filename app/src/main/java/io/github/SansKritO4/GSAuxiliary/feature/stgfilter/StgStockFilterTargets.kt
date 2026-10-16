@@ -108,8 +108,67 @@ object StgStockFilterTargets {
     /** 策略详情页承载股票行的 ListView（实测 id = `lvStks`，与多选全选功能同一个） */
     val LIST_ID_CANDIDATES = arrayOf("lvStks")
 
-    /** 行内「涨跌幅」TextView（如 `+9.99%` / `-1.45%`），用来判定涨幅 / 跌幅 */
+    /**
+     * 策略详情页的布局文件（实测 `res/layout/act_ai_stk_stg_detail.xml`）。
+     *
+     * 根是竖直 `LinearLayout`，四个孩子：
+     * `#common_top`（标题栏）/ `#loading`（加载遮罩，GONE）/ `#lvStks`（`0dp + weight=1`）/ `#ll_bottom`。
+     *
+     * ⚠️ **列表的 header 里装着整页的「头」** —— 策略名称、涨家数、标签、
+     * 「策略个股N只 · 勾选加入自选股」全在里面（实测 header 高 640px）。
+     * 所以任何操作都**不能把 `#lvStks` 收起来**，否则整页的头一起消失。
+     */
+    const val LAYOUT_DETAIL = "act_ai_stk_stg_detail"
+
+    /** 行内「涨跌幅」TextView（如 `+9.99%` / `-1.45%`），用来判定涨 / 跌 */
     val PERCENT_ID_CANDIDATES = arrayOf("tv_item_stk_percent")
+
+    /**
+     * 列表的列标题行（`名称` / `最新价` / `涨跌幅`），实测 id = `ll_top`，
+     * 在 ListView header 的**末尾**（`0,590-1080,640`，正好压在 header 下沿）。
+     *
+     * 宿主自己**在列表为空时也把它收起来** —— `AIStkChooseDetailAct`（选股详情，0 只股票）
+     * 实测 `#ll_top` 为 `GONE`。我们跟着做。
+     */
+    const val COL_TITLE_ID = "ll_top"
+
+    /**
+     * 「说明及风险提示」那块 —— 它挂在 ListView 上（实测是 `#lvStks` 的第二个孩子、
+     * 高 248px），而且**没有 id**，只能按文案前缀认。
+     *
+     * ⚠️ 它在 ListView 里属于固定视图（header / footer），`GONE` **不会塌陷**
+     * （原因见 `docs/FEATURE-STG-FILTER.md` 的「走过的弯路」），
+     * 所以要收掉只能 `removeFooterView` / `removeHeaderView` 摘下来。
+     */
+    const val FOOTER_TEXT_HINT = "说明及风险提示"
+
+    /**
+     * 左上角那颗「策略个股8只」计数（实测 id = `tv_stg_res_num`，在多选栏那一行）。
+     *
+     * 宿主只写**全量**、筛选后不会变，所以由模块改写为「策略个股 保留数/总数」。
+     */
+    val RES_NUM_ID_CANDIDATES = arrayOf("tv_stg_res_num")
+
+    /**
+     * 宿主自己的**无股票页面** —— 筛选后一只不剩时把它摆到**股票行**那块（列表 header 不动）。
+     *
+     * 资源名 `res/layout/empty_ai_stk.xml`，实测（`aapt2 dump xmltree`，8.6.0 vc271）内容就一个
+     * `TextView`：
+     *
+     * ```xml
+     * TextView  layout_width=match_parent  layout_height=match_parent
+     *           gravity=center_horizontal
+     *           paddingTop=23dp  paddingBottom=25dp
+     *           text="未选出符合条件的股票"      ← 文案是**布局里内联的**，不在 resources.arsc 里
+     *           drawableTop=@drawable/…（一个灰色空态图标）
+     * ```
+     *
+     * 为什么能确定是它：全仓 3232 个 layout 里，只有这一个含「未选出符合条件的股票」这句话；
+     * 而 `aapt2 dump resources` 里找不到任何引用它的布局 —— 说明它是**代码里 inflate** 的，
+     * 所以它在策略详情页的视图树里查不到（那页的布局 `act_ai_stk_stg_detail.xml` 只有
+     * `#common_top` / `#loading` / `#lvStks` / `#ll_bottom` 四块，压根没有空态）。
+     */
+    const val LAYOUT_EMPTY = "empty_ai_stk"
 
     /** 策略详情页的股票适配器（双保险：挂基类 + 挂它自己） */
     val TARGET_ADAPTERS = arrayOf(
