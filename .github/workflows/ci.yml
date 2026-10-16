@@ -4,6 +4,12 @@ name: CI
 # 每次推 main / 开 PR 都完整编译一遍，并把 docs/BUILD.md 里那几条「红线」
 # 固化成自动校验（tools/ci/verify_apk.py）。
 #
+# 默认只编 **release**，理由有两条：
+#   1. release 才是要发的包，也是红线校验的对象；
+#   2. debug 包约 11 MB，占产物九成体积 —— 而它从 2.17.1 起已经不再随 Release
+#      发布（见 CHANGELOG），日常没人下载。要拿它装真机排查时，到 Actions 页面
+#      手动触发本工作流、勾上 build_debug 即可。
+#
 # 这一套是**零密钥**的：仓库没配任何 Secret 也能跑，release 会退回 debug 签名，
 # 产物只当测试包用（见 docs/BUILD.md §8）。
 #
@@ -22,6 +28,12 @@ on:
       - '.gitattributes'
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_debug:
+        description: '连 debug 包一起编（约 11 MB；只有要拿它装真机排查时才勾）'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -32,8 +44,10 @@ permissions:
 
 jobs:
   build:
-    name: 构建 debug + release
-    runs-on: ubuntu-latest
+    name: 构建 release
+    # 钉 24.04 而不是 ubuntu-latest：后者从 2026-10-19 起迁往 Ubuntu 26，
+    # 迁移期的镜像差异不该体现在构建结果里。等 26 稳了再手动改这一行。
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     env:
@@ -48,6 +62,9 @@ jobs:
       GS_KEYSTORE_PASSWORD: ${{ secrets.GS_KEYSTORE_PASSWORD }}
       GS_KEYSTORE_ALIAS: ${{ secrets.GS_KEYSTORE_ALIAS }}
       GS_KEYSTORE_KEY_PASSWORD: ${{ secrets.GS_KEYSTORE_KEY_PASSWORD }}
+      # 手动触发时勾了才编 debug。push / PR 触发时这个值是空串，
+      # 下面按 `= "true"` 判定，天然为假。
+      BUILD_DEBUG: ${{ inputs.build_debug }}
 
     steps:
       - name: 检出源码
@@ -112,7 +129,13 @@ jobs:
           echo "GS_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
       - name: 构建
-        run: ./gradlew --no-daemon --console=plain assembleDebug assembleRelease
+        run: |
+          TASKS=(assembleRelease)
+          if [ "$BUILD_DEBUG" = "true" ]; then
+            echo "手动触发且勾了 build_debug —— 连 debug 一起编"
+            TASKS+=(assembleDebug)
+          fi
+          ./gradlew --no-daemon --console=plain "${TASKS[@]}"
 
       - name: 校验产物红线
         env:
@@ -132,9 +155,14 @@ jobs:
             echo "未配置签名密钥（零密钥 CI）：release 包会用 debug 签名，只提醒不报错"
           fi
 
-          python3 tools/ci/verify_apk.py "${EXTRA[@]}" \
-            app/build/outputs/apk/debug/app-debug.apk \
-            app/build/outputs/apk/release/app-release.apk
+          APKS=(app/build/outputs/apk/release/app-release.apk)
+          # debug 包只在手动勾选时才有。有就一并过一遍 —— 它和 release 共用同一个
+          # keystore，坏掉一样装不上。
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            APKS+=(app/build/outputs/apk/debug/app-debug.apk)
+          fi
+
+          python3 tools/ci/verify_apk.py "${EXTRA[@]}" "${APKS[@]}"
 
       - name: 整理产物
         # 就算上面红线校验红了，也要把 APK 留下来 —— 那正是排查时要看的东西
@@ -150,7 +178,9 @@ jobs:
               continue
             fi
             suffix=""
-            [ "$t" = "debug" ] && suffix="-debug"
+            if [ "$t" = "debug" ]; then
+              suffix="-debug"
+            fi
             cp "$src" "dist/GSAuxiliary_${VC}-${VN}${suffix}.apk"
           done
           # R8 的混淆映射：release 崩溃栈要靠它还原成可读的类名 / 行号
@@ -172,7 +202,9 @@ jobs:
 
       - name: 上传产物
         if: always()
-        uses: actions/upload-artifact@v5
+        # v7 起跑在 Node 24。v5 是 node20 的，runner 会强制用 Node 24 跑它并
+        # 在每次运行上挂一条弃用警告 —— 别退回 v5。
+        uses: actions/upload-artifact@v7
         with:
           name: GSAuxiliary_${{ steps.ver.outputs.vc }}-${{ steps.ver.outputs.vn }}
           path: dist/*

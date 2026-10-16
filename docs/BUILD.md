@@ -429,8 +429,16 @@ cp keystore.properties.example keystore.properties
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
-| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleDebug assembleRelease` + 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
+| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleRelease`（手动触发勾了 `build_debug` 才连 `assembleDebug`）+ 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
 | `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
+
+> **`ci.yml` 默认只编 release。** debug 包从 2.17.1 起不再随 Release 发布，
+> 却占了产物九成体积（约 11 MB，release 只有 1.5 MB）—— 日常没人下载它。
+> 需要拿 debug 包装真机排查时，到 Actions 页面手动触发这个工作流、勾上 `build_debug`。
+> 产物总大小因此从约 14 MB 降到约 2 MB。
+>
+> 两个工作流都钉 `ubuntu-24.04` 而不是 `ubuntu-latest`：后者从 2026-10-19 起
+> 迁往 Ubuntu 26，迁移期的镜像差异不该体现在构建结果里。
 
 `ci.yml` 是**零密钥可跑**的：仓库什么 Secret 都没配也能跑，release 会退回 debug 签名，
 产物只当测试包用。所以「这个仓库能不能在 GitHub 上编译」的答案是 —— 推上去就跑。

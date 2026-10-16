@@ -49,7 +49,9 @@ permissions:
 jobs:
   release:
     name: 构建并双仓库发布
-    runs-on: ubuntu-latest
+    # 钉 24.04 而不是 ubuntu-latest：后者从 2026-10-19 起迁往 Ubuntu 26，
+    # 迁移期的镜像差异不该出现在发版结果里。等 26 稳了再手动改这一行。
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
 
     env:
@@ -229,7 +231,9 @@ jobs:
 
       - name: 留一份产物
         if: always()
-        uses: actions/upload-artifact@v5
+        # v7 起跑在 Node 24。v5 是 node20 的，runner 会强制用 Node 24 跑它并
+        # 在每次运行上挂一条弃用警告 —— 别退回 v5。
+        uses: actions/upload-artifact@v7
         with:
           name: release-apk
           path: dist/*
