@@ -12,6 +12,8 @@ data class ConfigSnapshot(
     val enabled: Boolean,
     val color: Int,
     val scopeStrategy: Boolean,
+    /** 日志等级，见 [LogLevel]；模块 App 与目标进程共用同一个值 */
+    val logLevel: Int,
     /** 策略详情页点股票直达个股详情（跳过中间页） */
     val stgDirectQuote: Boolean,
     /** 顺手把策略整张股票列表送进去，支持左右滑动换股 */
@@ -49,6 +51,7 @@ data class ConfigSnapshot(
         get() = ((if (enabled) 1 else 0) * 31
                 + color * 7
                 + (if (scopeStrategy) 1 else 0) * 131
+                + logLevel * 17
                 + (if (stgDirectQuote) 1 else 0) * 977
                 + (if (stgQuoteSwipe) 1 else 0) * 1231
                 + (if (stgSelectAll) 1 else 0) * 1543
@@ -69,6 +72,7 @@ data class ConfigSnapshot(
             enabled = ConfigKeys.DEFAULT_ENABLED,
             color = ConfigKeys.DEFAULT_COLOR,
             scopeStrategy = ConfigKeys.DEFAULT_SCOPE_STRATEGY,
+            logLevel = ConfigKeys.DEFAULT_LOG_LEVEL,
             stgDirectQuote = ConfigKeys.DEFAULT_STG_DIRECT_QUOTE,
             stgQuoteSwipe = ConfigKeys.DEFAULT_STG_QUOTE_SWIPE,
             stgSelectAll = ConfigKeys.DEFAULT_STG_SELECT_ALL,

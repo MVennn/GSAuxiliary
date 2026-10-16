@@ -22,7 +22,7 @@
 | ★★☆ | 类加载器不对，找不到宿主类 | `Class.forName(name, false, env.classLoader)` |
 | ★★☆ | 关闭开关后旧颜色不还原 | Hook 里**不能提前 return** |
 | ★★☆ | 钩子摘不掉 / 热重载残留 | 句柄必须收进 `HookBag` |
-| ★☆☆ | 模块日志在 logcat 里看不到 | 去 `/data/adb/lspd/log/` 找 |
+| ★☆☆ | 模块日志在 logcat 里看不到 | 去 `/data/adb/lspd/log/` 找，或用「设置 → 日志 → 导出日志」 |
 | ★☆☆ | RecyclerView 复用导致状态残留 | 记录「原始色」而非「当前色」 |
 
 ---
@@ -382,7 +382,11 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
 > 排查"模块到底有没有加载"时，**先看这里**，不要浪费时间在 logcat 上。
 >
 > 例外：**模块 App 自己的进程**没有框架接口，`core/GLog.kt` 会自动退回
-> `android.util.Log` —— 那部分日志是**在 logcat 里**的（TAG = `GSZXEnhance`）。
+> `android.util.Log` —— 那部分日志是**在 logcat 里**的（TAG = `GSZXEnhance`），
+> 同时还会落盘到 `filesDir/logs/`，供「设置 → 日志 → 导出日志」读取。
+>
+> 不想用 adb 的场合：设置页的「导出日志」把上面两处拼成一份 txt
+> （目标进程那节要 `su` 读 LSPosed 日志文件，会弹一次授权）。
 
 ---
 

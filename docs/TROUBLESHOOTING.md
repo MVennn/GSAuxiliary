@@ -8,13 +8,22 @@
 
 ## 0. 先学会看日志
 
-**被注入到目标 App 的那部分**日志不在 logcat 里：
+三条通道，按顺手程度选：
+
+**① 模块内直接导出（不需要 adb，推荐给用户）**
+
+设置 → 日志 → 导出日志。它会把**两个进程**的日志拼成一份 txt 存到你选的位置。
+目标进程那段要读 LSPosed 的 `/data/adb/lspd/log/`，会弹一次 root 授权；
+没授权也照样出文件，那一节会写明原因。想更啰嗦的日志，先把「日志等级」调到**调试**，
+复现一次问题再导出（等级对两个进程都生效，不用重启目标 App）。
+
+**② adb 看 LSPosed 日志（目标进程在这里，实时）**
 
 ```bash
 adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -30"
 ```
 
-**模块 App 自己进程**（设置界面）的日志在 logcat 里：
+**③ adb 看模块 App 自己进程的日志（在 logcat 里）**
 
 ```bash
 adb logcat -s GSZXEnhance
@@ -29,7 +38,7 @@ adb logcat -s GSZXEnhance
 
 ```
 GSZXEnhance: === GSAuxiliary v2.16.0 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
-GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
+GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
 GSZXEnhance: 已挂 com.guosen.commonui.adapter.BaseQuickAdapter.getView ×1
 GSZXEnhance: 已挂 com.guosen.quotation.adapter.aistk.AIStkAdapter.getView ×1
 GSZXEnhance: 已挂 android.app.Activity.onResume
@@ -78,7 +87,7 @@ adb shell su -c "content query --uri content://io.github.MVennn.GSAuxiliary.conf
 
 也可以直接看设置界面「**概览**」页：顶部状态卡会显示**框架连接状态**，一眼能看出问题。
 （该页 2.6.0 起由「模块」改名「概览」；页面上**不再单独列「配置通道」行**，
-排障关心的是日志 —— 3.2.0 起模块内不再有「查看日志」页，看日志按上面两条通道走。）
+排障关心的是日志 —— 模块内只提供「设置 → 日志 → 导出日志」，看日志按上面三条通道走。）
 
 **常见原因**
 

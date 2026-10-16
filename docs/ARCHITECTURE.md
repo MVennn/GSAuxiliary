@@ -30,6 +30,7 @@
 │ app/{FrameworkBridge,ModulePrefs,   │    │                                      │
 │      ConfigBackup,LauncherIcon,     │    │                                      │
 │      LocaleHelper,DebugConfig}.kt   │    │                                      │
+│ core/Log{Store,Exporter}.kt         │    │                                      │
 │                                     │    │                                      │
 │         │ 写                        │    │         │ 读                         │
 │         ▼                           │    │         ▼                            │
@@ -64,7 +65,9 @@
 | `core/ConfigSource.kt` | 打开 remote prefs、注册变更监听、产出 `ConfigSnapshot` | 目标进程 |
 | `core/ConfigSnapshot.kt` | 不可变配置快照 + 稳定指纹 | 两处共用 |
 | `core/ConfigKeys.kt` | 配置键与默认值（**纯常量，不引用任何框架类**） | 两处共用 |
-| `core/GLog.kt` | 统一日志出口 + `LogLevel`（**不引用 api 类型**） | 两处共用 |
+| `core/GLog.kt` | 统一日志出口 + `LogLevel`，等级由配置驱动（**不引用 api 类型**） | 两处共用 |
+| `core/LogStore.kt` | 日志落盘（两份滚动，`filesDir/logs`），供「导出日志」读取 | 模块 App |
+| `core/LogExporter.kt` | 导出日志：本机落盘 + 直读 / `su` 读 LSPosed 日志，拼一份文本 | 模块 App |
 | `core/HookBag.kt` | 钩子句柄集合，支持一次性卸载 | 目标进程 |
 | `core/TargetApp.kt` | 目标包名 | 两处共用 |
 | `util/Reflect.kt` | 反射：候选名、继承链查找、过滤 abstract | 目标进程 |
@@ -317,6 +320,7 @@ data class ConfigSnapshot(
     val enabled: Boolean,                // 自选高亮总开关
     val color: Int,                      // 高亮色（ARGB）
     val scopeStrategy: Boolean,          // 自选高亮：是否作用于策略详情页
+    val logLevel: Int,                   // 日志等级（两进程共用，见 core/GLog.kt）
     val stgDirectQuote: Boolean,         // 策略详情点股票直达个股详情
     val stgQuoteSwipe: Boolean,          // 直达时是否支持左右滑动换股
     val stgSelectAll: Boolean,           // 多选栏「全选 / 反选」按钮

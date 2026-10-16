@@ -863,8 +863,11 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 数据管理 | 备份模块配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gsauxiliary-backup-yyyyMMdd-HHmmss.json`（2.18.0 起前缀由 `gszx-` 更名） |
 | 数据管理 | 恢复模块 | 从 JSON 恢复（SAF `OpenDocument`），IO 在后台线程 |
 | 数据管理 | 重置模块 | **自绘确认弹窗**二次确认后 `resetAllFeaturesDeferred()`：**关闭全部功能开关 + 恢复功能参数**，不退出页面 |
+| 日志 | 日志等级 | 右侧显示当前值（`R.array.log_level_labels`），点开**自绘单选弹窗**：关闭 / 错误 / 信息 / 调试 |
+| 日志 | 导出日志 | 把两个进程的日志拼成一份 txt（SAF `CreateDocument`），文件名 `gsauxiliary-log-yyyyMMdd-HHmmss.txt`；结果走 Toast |
 
-> 「日志」分组（日志输出等级 / 查看日志）已于 3.2.0 整体移除，理由与替代入口见 §5.7。
+> 「日志」分组在 3.2.0 一度整体删除，同版本后期按用户要求以新形态装回：
+> **不再在模块里看日志，只保留「等级」与「导出」**，见 §5.7。
 
 > 「框架操作 → 热重载目标进程」已于 2.18.0 移除：模块 APK 升级时框架会自动热重载
 > （`module.prop` 的 `autoHotReload=true`），无需手动入口；`XposedService` 的
@@ -1065,34 +1068,55 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 **导出 / 恢复的整段 IO 都跑在 `Dispatchers.IO`**（跨进程读 remote preferences + 写文件），
 期间两个入口置灰并显示「正在导出… / 正在恢复…」—— 这是 2.3.0 修掉的卡顿。
 
-### 5.7 日志：模块内不再提供查看入口（3.2.0）
+### 5.7 日志：等级可调 + 一键导出（3.2.0）
 
-设置页原来的「日志」分组 —— 「日志输出等级」下拉 + 「查看日志」二级页 —— 已**整体删除**，
-`ui/LogViewer.kt` 一并删除。理由是这页属于开发期排障工具，占用设置页的位置却与普通用户无关；
-而它依赖的那套内存环形缓冲也要一直挂在 `GLog` 里占内存。
+设置页的「日志」分组只有两行 —— **「日志等级」与「导出日志」**。这一组的定位是
+「排障开关」：用户不需要读懂日志，只要能在出问题时把日志交出来。
 
-删掉的东西：
-
-| 删掉的 | 说明 |
+| 行 | 行为 |
 |---|---|
-| `ui/LogViewer.kt` | 二级页（级别筛选 / 复制 / 保存到任意位置 / 清空）与其 `Route.LogViewer` |
-| 设置页「日志」分组 | `SmallTitle(日志)` + 两个 `ArrowPreference`（日志输出等级 / 查看日志） |
-| `ConfigKeys.LOG_LEVEL` | 连同 `DEFAULT_LOG_LEVEL`、`ConfigSnapshot.logLevel`、`DebugConfigProvider` 的 `log_level` 列一起摘掉，不再进备份白名单 |
-| `GLog` 的内存缓冲 | `buffer` / `record()` / `snapshot()` / `clearBuffer()` / `LogLevel.VALUES` |
-| 字符串 | `section_log` / `item_log_level` / `item_view_log` / `log_*` / `log_level_labels`（中英各一份） |
+| 日志等级 | 右侧显示当前档（关闭 / 错误 / 信息 / 调试），点开自绘单选弹窗；写入 `ConfigKeys.LOG_LEVEL`，**两个进程共用一个值** |
+| 导出日志 | 直接弹系统保存对话框（SAF `CreateDocument`，`text/plain`），把两个进程的日志拼成一份文本；导出期间行内置灰并显示「正在导出…」，结果用 Toast 报（`log_export_done` / `log_export_partial` / `log_export_failed`） |
 
-**日志输出本身没变**，只是入口换成系统侧的两个通道：
+#### 等级怎么生效
 
-| 进程 | 日志去哪 |
+`LogLevel` 四档（`core/GLog.kt`）：`OFF / ERROR / INFO / DEBUG`，默认 `INFO`
+（`GLog.d` 不输出）。两个进程各自应用，**都不需要重启**：
+
+| 进程 | 应用点 |
 |---|---|
-| 目标进程（金太阳） | LSPosed 的 `/data/adb/lspd/log/`（`GLog.install` 注入的 sink 转发） |
-| 模块 App 进程 | logcat（`android.util.Log`，tag `GSZXEnhance`），`adb logcat -s GSZXEnhance` 直接看 |
+| 模块 App | `GszxApp.onCreate` 里应用一次；此后配置一变，`ModulePreferences.observe` 回调里再应用 |
+| 目标进程 | `GszxModule.install()` 按首帧 `ConfigSnapshot.logLevel` 设置；之后框架推来的配置变化回调里持续同步（`ConfigSource.onChanged`） |
 
-日志等级不再由用户配置：`GLog.level` 是代码里的一个值，默认 `INFO`（`GLog.d` 不输出），
-要调试就在 `core/GLog.kt` 里改成 `DEBUG`。
+选「关闭」时顺带清掉落盘历史（`GLog.clearStore()`）：等级只拦新日志，留着旧日志会让人
+以为开关没生效 —— 这条语义是 2.17.3 定的，沿用至今。
 
-> 历史：这一页 2.3.0 按 Miuix 风格重做、2.6.0 加「保存到任意位置」、3.1.1 重排过一版
-> （表头进卡 / 操作与说明合并 / 「已贴底才跟随」）。3.2.0 直接砍掉，上述细节连同页面一起不再维护。
+#### 导出的是什么
+
+`core/LogExporter` 拼一份纯文本，抬头写清模块版本 / 设备 / 当前等级，然后两节：
+
+| 节 | 来源 | 取法 |
+|---|---|---|
+| 模块 App 进程 | `filesDir/logs/gsauxiliary.log`（`core/LogStore`，单文件 512 KB、轮转留一份 `.1`） | 直接读，不需要任何权限 |
+| 目标进程 | LSPosed 的 `/data/adb/lspd/log/` | **先直读**，读不到再 `su -c`（会弹一次 root 授权，20 秒超时） |
+
+每个进程最多 3000 行（尾部），避免导出个几十 MB 的文件。目标进程那节**拿不到也照样出文件**，
+原因写在那一节的抬头（未授权 / 超时 / 文件里没有本模块的行），**不做静默降级** ——
+用户拿这份文件来排查时，最怕「看起来没日志」而不知道是被拦住了。提示语也据此分两种：
+拿全了说「已导出日志到 X」，只有一半说「已导出日志到 X（目标进程日志未取到）」。
+
+#### 为什么不再有「查看日志」页
+
+3.2.0 之前这里是「日志输出等级 + 查看日志二级页」（`ui/LogViewer.kt`，带级别筛选 /
+复制 / 保存 / 清空），页面读的是 `GLog` 的内存环形缓冲 —— 而那个缓冲只装模块 App
+进程自己的日志，**真正要看的钩子日志在目标进程里**，页面反而给不出。这一版整体换成
+「导出」：把两个进程都拿到，交给用户自己去用（发给开发者、存下来慢慢看）。
+
+代价是**模块里读不到日志内容了**：想看内容得先导出，或者照旧走 adb（见
+`docs/TROUBLESHOOTING.md` §0 的三条通道）。
+
+> 历史：查看页 2.3.0 按 Miuix 风格重做、2.6.0 加「保存到任意位置」、3.1.1 重排过一版，
+> 3.2.0 连同 `TabRow` / `TextButton` 两个只为它存在的组件一起删除。
 
 ---
 

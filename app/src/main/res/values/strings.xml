@@ -211,6 +211,17 @@
     <string name="restore_success">已恢复 %1$d 项配置</string>
     <string name="restore_failed">恢复失败：%1$s</string>
 
+    <!-- ============================ 日志 ============================ -->
+    <!-- 等级取值顺序与 core/GLog.kt 的 LogLevel.VALUES 一一对应 -->
+    <string name="section_log">日志</string>
+    <string name="item_log_level">日志等级</string>
+    <string name="item_export_log">导出日志</string>
+    <string name="item_export_log_summary">模块与目标进程日志</string>
+    <string name="log_exporting">正在导出…</string>
+    <string name="log_export_done">已导出日志到 %1$s</string>
+    <string name="log_export_partial">已导出日志到 %1$s（目标进程日志未取到）</string>
+    <string name="log_export_failed">导出失败：%1$s</string>
+
     <!-- ============================ 关于页 ============================ -->
     <!-- 只留作者 / 鸣谢 / 免责声明。版本在概览页已有（一页一处不重复摆）；
          作用范围、目标框架、Hook 技术细节是开发者向的信息，面向用户的界面不写
@@ -293,5 +304,12 @@
         <item>跟随系统</item>
         <item>亮色</item>
         <item>暗色</item>
+    </string-array>
+
+    <string-array name="log_level_labels">
+        <item>关闭</item>
+        <item>错误</item>
+        <item>信息</item>
+        <item>调试</item>
     </string-array>
 </resources>

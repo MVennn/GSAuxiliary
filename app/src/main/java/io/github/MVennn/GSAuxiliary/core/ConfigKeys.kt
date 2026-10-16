@@ -9,9 +9,10 @@ package io.github.MVennn.GSAuxiliary.core
  * 配置分两类：
  *  - **功能开关**（[ENABLED] / [COLOR] / [SCOPE_STRATEGY]）：目标进程要读，
  *    必须同步进 [ConfigSnapshot]，并通过 `ConfigSource.read()` 读取。
- *  - **模块设置**（[DESKTOP_ICON] / [LIQUID_GLASS] / [GLASS_EFFECT] /
+ *  - **模块设置**（[LOG_LEVEL] / [DESKTOP_ICON] / [LIQUID_GLASS] / [GLASS_EFFECT] /
  *    [LANGUAGE] / [THEME] / [PREDICTIVE_BACK]）：只有模块 App 自己的进程消费，
  *    **不进 ConfigSnapshot** —— 目标进程不需要知道底栏长什么样、桌面图标显不显示。
+ *    （[LOG_LEVEL] 是例外：它同时被目标进程用于控制日志等级，已在 snapshot 中。）
  */
 object ConfigKeys {
 
@@ -183,6 +184,9 @@ object ConfigKeys {
 
     // ---------------------------------------------------------------- 模块设置
 
+    /** 日志等级，取值见 [LogLevel] */
+    const val LOG_LEVEL = "log_level"
+
     /** 桌面图标开关：是否在桌面显示本模块的入口图标 */
     const val DESKTOP_ICON = "desktop_icon"
 
@@ -338,6 +342,9 @@ object ConfigKeys {
 
     const val DEFAULT_DESKTOP_ICON = true
 
+    /** 默认「信息」档：`GLog.d` 的调试日志不输出，常规流程日志照记 */
+    const val DEFAULT_LOG_LEVEL = LogLevel.INFO
+
     /** 默认开启液态玻璃（低版本系统自动降级为半透明胶囊 / 无模糊） */
     const val DEFAULT_LIQUID_GLASS = true
 
@@ -363,6 +370,7 @@ object ConfigKeys {
         IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
+        LOG_LEVEL,
     )
 
     /**
@@ -418,6 +426,7 @@ object ConfigKeys {
         LANGUAGE to DEFAULT_LANGUAGE,
         THEME to DEFAULT_THEME,
         PREDICTIVE_BACK to DEFAULT_PREDICTIVE_BACK,
+        LOG_LEVEL to DEFAULT_LOG_LEVEL,
     )
 
     // ---------------------------------------------------------------- 展示用

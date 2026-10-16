@@ -78,11 +78,11 @@ object FrameworkBridge {
         // 回调一次当前状态，避免错过已经发生的 bind。
         //
         // ⚠️ 必须 **post** 而不是同步调用（2.17.3）：订阅方往往在 Application.onCreate
-        // 里 addListener，随后才做自己的收尾初始化。若在这里同步回调，
-        // ModulePreferences 回调里打的「配置后端 = LOCAL…」会抢在订阅方初始化之前落进
-        // 日志，启动期的日志次序会乱（2.17.3 修的是同一类问题的实锤：当时的订阅方
-        // GszxApp 要应用「日志输出等级」，同步回调会让等级晚于这几条日志生效 ——
-        // 那项配置已在 3.2.0 删除，但「回调不插队」这条约定照旧）。
+        // 里 addListener，随后才做自己的收尾初始化 —— 比如 GszxApp 在
+        // ModulePreferences.init() 之后才 applyLogLevel()。若在这里同步回调，
+        // ModulePreferences 回调里打的「配置后端 = LOCAL…」会抢在等级应用之前落进
+        // 日志，于是用户哪怕把日志等级设成「关闭」，每次启动也必新增一条 ——
+        // 表现就是「日志等级开关关不掉日志」（2.17.3 修复的实锤根因）。
         // post 一轮之后，调用方的 onCreate 已经跑完，回调与订阅方初始化次序稳定。
         mainHandler.post { runCatching { l.onServiceChanged(service) } }
     }

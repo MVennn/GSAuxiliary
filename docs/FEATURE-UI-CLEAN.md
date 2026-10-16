@@ -151,7 +151,8 @@ if (stillAttached(lastGroup?.get())) return true
 打开功能、进一次页面、看模块日志即可（目标进程的日志在 LSPosed 的
 `/data/adb/lspd/log/`，见 §4）。
 
-> 3.2.0 起模块里不再有「查看日志」页，这条日志只能从上面那个路径（或 adb）看。
+> 3.2.0 起模块里没有「查看日志」页了，这条日志从上面那个路径看（adb），
+> 或者用「设置 → 日志 → 导出日志」导出成文件再翻。
 
 ---
 
@@ -294,8 +295,8 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
    adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"
    ```
 
-> 「认不出控件」这类快照走 `GLog.w` / `GLog.i`，阈值是固定的 `INFO`，
-> 不用再调什么等级就能看到（3.2.0 起模块内的日志等级开关与查看页都已移除）。
+> 「认不出控件」这类快照走 `GLog.w` / `GLog.i`，都是 `INFO` 及以上，
+> 默认等级（信息）就能看到，不用先调等级。
 
 如果功能没生效，日志里会出现（注意：**先切到目标页面**再看，快照打的是当前页）：
 

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Process
 import io.github.MVennn.GSAuxiliary.core.ConfigSource
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogLevel
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.FeatureManager
@@ -44,6 +45,7 @@ class GszxModule : XposedModule() {
         GLog.install { priority, tag, msg, tr ->
             if (tr != null) log(priority, tag, msg, tr) else log(priority, tag, msg)
         }
+        GLog.level = LogLevel.INFO
 
         val process = param.processName
         if (process.isEmpty() || !process.startsWith(TargetApp.PACKAGE)) {
@@ -106,11 +108,15 @@ class GszxModule : XposedModule() {
 
         val configSource = ConfigSource(xposed)
         configSource.open()
+        // 目标进程的日志等级跟着模块设置走（3.2.0 起由用户在「设置 → 日志」里调）；
+        // 与 sink 刚装上时的默认阈值之间只隔一次配置读取，启动期日志不会漏。
+        GLog.level = configSource.snapshot.logLevel
         env.config = configSource.snapshot
 
         val manager = FeatureManager(env)
         // 配置变化由框架在 Binder 线程推送，FeatureManager 负责切主线程
         configSource.onChanged = { cfg ->
+            GLog.level = cfg.logLevel
             manager.onConfigChanged(cfg)
         }
 

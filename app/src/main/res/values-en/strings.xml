@@ -207,6 +207,17 @@
     <string name="restore_success">Restored %1$d settings</string>
     <string name="restore_failed">Restore failed: %1$s</string>
 
+    <!-- ============================ Logs ============================ -->
+    <!-- Order mirrors LogLevel.VALUES in core/GLog.kt -->
+    <string name="section_log">Logs</string>
+    <string name="item_log_level">Log level</string>
+    <string name="item_export_log">Export logs</string>
+    <string name="item_export_log_summary">Module and target process logs</string>
+    <string name="log_exporting">Exporting…</string>
+    <string name="log_export_done">Logs exported to %1$s</string>
+    <string name="log_export_partial">Logs exported to %1$s (target process logs unavailable)</string>
+    <string name="log_export_failed">Export failed: %1$s</string>
+
     <!-- ============================ About tab ============================ -->
     <!-- Author / credits / disclaimer only. The version lives on the Overview tab (shown once);
          scope, framework and hook details are developer-facing, users don't read them —
@@ -289,5 +300,12 @@
         <item>Follow system</item>
         <item>Light</item>
         <item>Dark</item>
+    </string-array>
+
+    <string-array name="log_level_labels">
+        <item>Off</item>
+        <item>Error</item>
+        <item>Info</item>
+        <item>Debug</item>
     </string-array>
 </resources>

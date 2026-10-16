@@ -34,6 +34,9 @@ import io.github.MVennn.GSAuxiliary.app.ConfigBackup
 import io.github.MVennn.GSAuxiliary.app.LauncherIcon
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogExporter
+import io.github.MVennn.GSAuxiliary.core.LogLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,10 +56,11 @@ import java.util.Locale
  *  - 材质设置：液态玻璃（总开关，+ 其下的玻璃光效）
  *  - 通用：深色模式、语言、可预测返回
  *  - 数据管理：备份 / 恢复 / 重置
+ *  - 日志：日志等级、导出日志
  *
  * ## 选择类设置一律走自绘弹窗（2.8.0 起）
  *
- * 深色模式 / 语言这两项，历史上用 Miuix 的
+ * 深色模式 / 语言 / 日志等级这三项，历史上用 Miuix 的
  * `OverlayDropdownPreference`，表现为**一点就闪退**，反复修了三个版本都没根治。
  * 现在全部改成「一行 [ArrowPreference]（右侧显示当前值）→ 点开自绘弹窗选」，
  * 弹窗实现见 [AppDialog]，材质跟随「液态玻璃」总开关。
@@ -91,6 +95,8 @@ internal fun SettingsTab() {
     // 备份 / 恢复的结果提示（热重载的结果走 Toast，不占用这里）
     var actionResult by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    // 导出日志自己的忙标记：它可能挂起几秒等 root 授权，与备份/恢复互不影响
+    var exportingLog by remember { mutableStateOf(false) }
 
     // --- 预取带占位符的文案：回调（非 Composable）里没法再调 stringResource ---
     val backupSuccessFmt = stringResource(R.string.backup_success)
@@ -101,18 +107,25 @@ internal fun SettingsTab() {
     val backupWorking = stringResource(R.string.backup_working)
     val restoreWorking = stringResource(R.string.restore_working)
 
+    // 导出日志的结果提示（走 Toast —— 它会拉起 root 授权、耗时不确定，页面里不留状态）
+    val logExporting = stringResource(R.string.log_exporting)
+    val logExportDoneFmt = stringResource(R.string.log_export_done)
+    val logExportPartialFmt = stringResource(R.string.log_export_partial)
+    val logExportFailedFmt = stringResource(R.string.log_export_failed)
+
     // 重置对话框文案
     val resetTitle = stringResource(R.string.dialog_reset_title)
     val resetMessage = stringResource(R.string.dialog_reset_message)
     val confirmText = stringResource(R.string.action_confirm)
     val cancelText = stringResource(R.string.action_cancel)
 
-    // 注意：两个选择类弹窗**不画标题**（2.9.2 起），所以这里不需要预取标题字符串。
+    // 注意：三个选择类弹窗**不画标题**（2.9.2 起），所以这里不需要预取标题字符串。
 
-    // 两个选择项的**触发控件位置**（窗口坐标）。弹窗是下拉菜单形态，要贴着控件弹，
+    // 三个选择项的**触发控件位置**（窗口坐标）。弹窗是下拉菜单形态，要贴着控件弹，
     // 所以用 `onGloballyPositioned` 把每一行的矩形记下来，点击时带进 spec。
     var themeAnchor by remember { mutableStateOf<Rect?>(null) }
     var languageAnchor by remember { mutableStateOf<Rect?>(null) }
+    var logLevelAnchor by remember { mutableStateOf<Rect?>(null) }
 
     val desktopIcon by rememberBoolPref(ConfigKeys.DESKTOP_ICON, ConfigKeys.DEFAULT_DESKTOP_ICON)
     val liquidGlass by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
@@ -120,9 +133,11 @@ internal fun SettingsTab() {
     val theme by rememberStringPref(ConfigKeys.THEME, ConfigKeys.DEFAULT_THEME)
     val language by rememberStringPref(ConfigKeys.LANGUAGE, ConfigKeys.DEFAULT_LANGUAGE)
     val predictiveBack by rememberBoolPref(ConfigKeys.PREDICTIVE_BACK, ConfigKeys.DEFAULT_PREDICTIVE_BACK)
+    val logLevel by rememberIntPref(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL)
 
     val themeLabels = stringArrayResource(R.array.theme_labels)
     val languageLabels = stringArrayResource(R.array.language_labels)
+    val logLabels = stringArrayResource(R.array.log_level_labels)
 
     // --- 备份：走 SAF，不需要任何存储权限。IO 全部丢到后台线程，避免卡顿 ---
     val backupLauncher = rememberLauncherForActivityResult(
@@ -165,6 +180,42 @@ internal fun SettingsTab() {
             }
             actionResult = msg
             busy = false
+        }
+    }
+
+    // 供导出文件抬头使用：当前等级的展示名（core 层不依赖资源，由界面解析好传进去）
+    val logLevelLabel = logLabels.getOrElse(
+        LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
+    ) { "" }
+
+    // --- 导出日志：同样走 SAF，不需要任何存储权限 ---
+    //
+    // 与备份 / 恢复的差别在于**耗时不固定**：目标进程那一段可能要走 su（首次要等用户
+    // 点授权弹窗，20 秒超时），所以它不进 `busy`（那是备份/恢复共用的），自己一个标记，
+    // 结果也用 Toast 而不是页面里的结果卡 —— 用户此刻很可能已经切走了。
+    val logExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        exportingLog = true
+        scope.launch {
+            val msg = withContext(Dispatchers.IO) {
+                runCatching {
+                    val result = LogExporter.build(logLevelLabel)
+                    ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(result.text.toByteArray(Charsets.UTF_8))
+                    } ?: throw IllegalStateException("无法打开所选文件")
+                    val name = uri.lastPathSegment ?: uri.toString()
+                    // 目标进程那段拿不到也照样出文件（原因写在文件的那一节抬头里），
+                    // 但提示里要带一句 —— 否则用户会以为「日志就这么多」
+                    String.format(
+                        if (result.hasTarget) logExportDoneFmt else logExportPartialFmt,
+                        name,
+                    )
+                }.getOrElse { String.format(logExportFailedFmt, it.message ?: it.javaClass.simpleName) }
+            }
+            exportingLog = false
+            Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -351,17 +402,59 @@ internal fun SettingsTab() {
             }
         }
 
+        // --- 日志 ---
+        //
+        // 这一组曾经在 3.2.0 被整体删掉（当时的形态是「日志输出等级 + 查看日志」二级页），
+        // 3.2.0 后期按用户要求以新形态装回来：**不再在模块里看日志，只导出**。
+        //  - 日志等级：两进程共用（App 进程立即生效，目标进程由框架推送配置变化），
+        //    所以它既是「设置」也是「排障开关」；
+        //  - 导出日志：把两个进程的日志拼成一份文本交给用户（见 LogExporter），
+        //    取代了原来那个只能在模块 App 进程里翻的查看页。
+        SmallTitle(stringResource(R.string.section_log))
+        Card(modifier = Modifier.cardPadding()) {
+            ArrowPreference(
+                title = stringResource(R.string.item_log_level),
+                modifier = Modifier.onGloballyPositioned { logLevelAnchor = it.boundsInWindow() },
+                summary = logLabels.getOrElse(
+                    LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
+                ) { "" },
+                onClick = {
+                    dialogs?.showChoice(
+                        ChoiceDialogSpec(
+                            items = logLabels.toList(),
+                            selectedIndex = LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
+                            anchor = logLevelAnchor,
+                            onSelect = { idx ->
+                                val value = LogLevel.VALUES.getOrNull(idx) ?: LogLevel.INFO
+                                if (value != logLevel) {
+                                    ModulePreferences.editDeferred { putInt(ConfigKeys.LOG_LEVEL, value) }
+                                    // 界面这一侧立即生效，不必等配置回流；目标进程等框架推送
+                                    GLog.level = value
+                                    // 选「关闭」时顺带清掉落盘历史（2.17.3 的同一套语义）：
+                                    // 等级只拦新日志，不给清旧的就是「关了还有一堆日志」，
+                                    // 看起来跟开关没生效一样。
+                                    if (value == LogLevel.OFF) GLog.clearStore()
+                                }
+                            },
+                        ),
+                    )
+                },
+            )
+            ArrowPreference(
+                title = stringResource(R.string.item_export_log),
+                // 范围类的副标题保留：不写这一句，没人知道导出里是两个进程的日志（且会弹 root）
+                summary = if (exportingLog) logExporting else stringResource(R.string.item_export_log_summary),
+                enabled = !exportingLog,
+                onClick = { logExportLauncher.launch(defaultLogFileName()) },
+            )
+        }
+
         // --- 框架操作 ---
         //
         // 「热重载目标进程」已移除（2.18.0）：它只是个手动触发入口，日常用不上，
         // 还把 libxposed service 的类型（HotReloadResult / HookedTarget）拖进了
         // 界面层。目标进程的热重载能力本身保留（模块升级时框架自动走
         // onHotReloading / onHotReloaded，见 module.prop 的 autoHotReload）。
-        //
-        // 「日志」分组（输出等级 / 查看日志）已移除（3.2.0）：本模块的日志是排障用的
-        // 开发信息，不再占设置页的位置。日志本身照旧输出（模块 App 进程进 logcat，
-        // 目标进程进 LSPosed 的 /data/adb/lspd/log/），只是模块内不再提供查看入口；
-        // 等级也不再由用户配置，回到 GLog 里的固定阈值。
 
         // 悬浮底栏的让位空白（见 LocalDockInset）
         Spacer(Modifier.height(24.dp + LocalDockInset.current))
@@ -372,4 +465,10 @@ internal fun SettingsTab() {
 private fun defaultBackupFileName(): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
     return "gsauxiliary-backup-$stamp.json"
+}
+
+/** 导出日志的默认文件名，与备份同一套命名：`gsauxiliary-log-20261017-015939.txt` */
+private fun defaultLogFileName(): String {
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+    return "gsauxiliary-log-$stamp.txt"
 }
