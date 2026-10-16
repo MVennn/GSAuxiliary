@@ -582,10 +582,20 @@ class StgStockFilterFeature : Feature {
      *               原方法马上会通知，不用也不要重复通知。
      */
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
-        val st = stateOf(adapter)
         val ctx = trackedActivity ?: return
         val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return
         val base = adapter as? android.widget.ListAdapter ?: return
+
+        // 保险：只给「当前列表在用的那个适配器」装代理。
+        // 宿主换过适配器 / 页面重建之后，旧实例的 notify 与 getView 回调仍会打到我们身上，
+        // 照着旧实例装代理会把列表的数据源换成过期内容（见 [liveAdapter]）。
+        // 列表还没有适配器时（live == null）放行 —— 那是首次安装的场景。
+        unwrapHeaderAdapter(lv.adapter)?.let { live ->
+            val liveBase = if (live is FilteredAdapter) live.target else live
+            if (liveBase !== adapter) return
+        }
+
+        val st = stateOf(adapter)
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
         val full = readData(adapter) ?: return
@@ -764,7 +774,11 @@ class StgStockFilterFeature : Feature {
      * 缓存的是弱引用，Activity 重建 / 视图被回收后自动失效。
      */
     private fun findListView(act: Activity): ListView? {
-        trackedList.get()?.get()?.let { if (it.isAttachedToWindow) return it }
+        trackedList.get()?.get()?.let { lv ->
+            // 必须还挂在**当前这个** Activity 的窗口上 —— 页面重建之后旧列表可能仍是
+            // attached 状态，拿它去操作等于对着一块已经不在屏幕上的列表干活。
+            if (lv.isAttachedToWindow && lv.rootView === act.window?.decorView) return lv
+        }
         val blockId = listViewId(act)
         if (blockId == 0) return null
         val lv = act.findViewById<View>(blockId) as? ListView ?: return null
@@ -861,16 +875,43 @@ class StgStockFilterFeature : Feature {
 
     // ------------------------------------------------------------------ 页面回调
 
+    /**
+     * 当前策略详情列表**真正在用**的那个适配器（是我们的过滤代理就拆包取原适配器）。
+     *
+     * 为什么要这么取：`states` 是按适配器实例存的，页面重建 / 宿主换适配器之后，
+     * 里面会同时留着**旧实例**。旧实例的 notify 与 getView 回调仍然会打到我们身上，
+     * 要是照着它去给当前 ListView 装代理，等于把列表的数据源换成一份过期内容
+     * （返回详情页时旧实例的数据多半已经被清空了）—— 表现就是**整列股票刷不出来**，
+     * 而且因为 `WeakHashMap` 的遍历顺序不定，只在某些时候才撞上。
+     */
+    private fun liveAdapter(act: Activity): Any? {
+        val lv = findListView(act) ?: return null
+        val a = unwrapHeaderAdapter(lv.adapter) ?: return null
+        return if (a is FilteredAdapter) a.target else a
+    }
+
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
         if (!StgStockFilterTargets.isWatchActivity(activity.javaClass.name)) return
         trackedActivity = activity
         cachedFilters = null                       // 回到本页重新读一次筛选状态
         ensureClickRemap()
-        // 页面上的适配器可能还是旧数据，按最新条件对齐一次
-        for (a in synchronized(states) { states.keys.toList() }) {
-            runCatching { applyFilter(env, a, notify = true) }
-                .onFailure { GLog.w("筛选股票：onResume 对齐失败", it) }
-        }
+        // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
+        val a = liveAdapter(activity) ?: return
+        runCatching { applyFilter(env, a, notify = true) }
+            .onFailure { GLog.w("筛选股票：onResume 对齐失败", it) }
+
+        // 从个股页返回时，宿主通常还在重新拉数据：上面这次对齐拿到的多半是空列表
+        // （于是什么代理都没装上）。数据到位后如果没走 notifyDataSetChanged
+        // （宿主可能只刷新可见行），代理就永远装不回去，列表整列空着。
+        // 所以延后再复查一次 —— 代理不在列表上就补装，装上了就什么都不做（幂等）。
+        val handler = activity.window?.decorView?.handler ?: return
+        handler.postDelayed({
+            runCatching {
+                val now = liveAdapter(activity) ?: return@runCatching
+                applyFilter(env, now, notify = true)
+                ensureClickRemap()
+            }.onFailure { GLog.w("筛选股票：onResume 二次对齐失败", it) }
+        }, RESUME_RECHECK_MS)
     }
 
     private fun onFilterApplied(env: FeatureEnv, activity: Activity, applied: StgFilters) {
@@ -879,18 +920,17 @@ class StgStockFilterFeature : Feature {
         lastSummary = null
         ensureClickRemap()
         GLog.i("筛选股票：筛选条件已生效（${StgFilterPanel.describe(applied)}）")
-        for (a in synchronized(states) { states.keys.toList() }) {
-            runCatching { applyFilter(env, a, notify = true) }
-                .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
-        }
+        val a = liveAdapter(activity) ?: return
+        runCatching { applyFilter(env, a, notify = true) }
+            .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
     }
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         cachedFilters = null
-        for (a in synchronized(states) { states.keys.toList() }) {
-            runCatching { applyFilter(env, a, notify = true) }
-                .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
-        }
+        val act = trackedActivity ?: return
+        val a = liveAdapter(act) ?: return
+        runCatching { applyFilter(env, a, notify = true) }
+            .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
     }
 
     // ------------------------------------------------------------------ 取值与工具
@@ -994,6 +1034,12 @@ class StgStockFilterFeature : Feature {
 
         /** 列表数据字段名（实测 `BaseQuickAdapter` 上就叫 `data`） */
         const val DATA_FIELD = "data"
+
+        /**
+         * `onResume` 之后延后多久再复查一次代理有没有装上。
+         * 从个股页返回时宿主还在重新拉数据，得给它一点时间；已经装上就幂等早退。
+         */
+        const val RESUME_RECHECK_MS = 600L
 
         /** `+9.99%` / `-1.45%` / `0.00%` / `--` */
         fun parsePercent(s: String?): Double? {
