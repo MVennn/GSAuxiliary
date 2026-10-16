@@ -221,6 +221,24 @@ python tools/verify_icons.py out.png      # 指定输出文件
 
 ---
 
+## make_social_preview.py
+
+生成 GitHub 仓库的 **social preview**（1280×640，`assets/social-preview.png`）。
+只在改品牌视觉（配色 / 图标 / 标语）时才需要重跑。
+
+```bash
+python tools/make_social_preview.py            # 覆盖 assets/social-preview.png
+python tools/make_social_preview.py out.png    # 指定输出文件
+```
+
+配色与 `assets/icon.svg` 同一套（底色 `#2B3242 → #161A22`，主色 `#FFC24A → #FF7A00`），
+内部 2x 超采样后缩放，避免斜线毛边。
+
+> **需要 Pillow**（`pip install pillow`）—— 这是 `tools/` 下唯一一个非标准库依赖的脚本。
+> 传完后那张图要在 GitHub 仓库 **Settings → Social preview** 里手动上传，脚本不管上传。
+
+---
+
 ## dev.sh
 
 **无线调试保活 / 自动重连**。返回一个可用的 `ip:port` serial。
