@@ -1,6 +1,6 @@
 <div align="center">
 
-![GSAuxiliary](https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png)
+<img src="https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
 
 # GSAuxiliary
 
@@ -8,17 +8,7 @@
 
 Make GoldenSun Great Again！
 
-![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary)
-
-![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github\&logoColor=white)
-
-![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github\&logoColor=white)
-
-![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android\&logoColor=white)
-
-![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0)
-
-![License](https://img.shields.io/badge/License-Apache--2.0-blue)
+![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary) ![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white) ![问题反馈](https://img.shields.io/badge/问题反馈-Issues-EA4335?logo=github&logoColor=white) ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white) ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0) ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
 </div>
 
