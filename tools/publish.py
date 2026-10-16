@@ -238,9 +238,19 @@ def check_publish_access(tok):
 
 # --------------------------------------------------------------------------- 步骤
 
+def gradle_launcher():
+    """Gradle 启动脚本的路径。
+
+    Windows 上必须用 `gradlew.bat`：裸 `gradlew` 是给 shell 读的脚本，
+    直接交给 `CreateProcess` 会报 `WinError 193: %1 不是有效的 Win32 应用程序`
+    （本机发版时踩到过，CI 是 Linux、不受影响）。
+    """
+    return os.path.join(ROOT, "gradlew.bat" if os.name == "nt" else "gradlew")
+
+
 def build():
     print("[1/5] 构建 release + debug …")
-    r = run([os.path.join(ROOT, "gradlew"), "assembleRelease", "assembleDebug",
+    r = run([gradle_launcher(), "assembleRelease", "assembleDebug",
              "--console=plain"])
     if r.returncode != 0:
         print(r.stdout[-3000:])
