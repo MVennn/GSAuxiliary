@@ -56,6 +56,7 @@ import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.LocaleHelper
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -127,9 +128,16 @@ class SettingsActivity : ComponentActivity() {
             window.isStatusBarContrastEnforced = false
         }
         syncTaskDescription()
+        // 「管理方案…」从宿主 H5 拉起时带 route extra 直达「一键配置」二级页（§6.1）
+        val initialRoute = intent?.getStringExtra(QuickConfigStore.EXTRA_ROUTE)?.let { key ->
+            when (key) {
+                QuickConfigStore.ROUTE_QUICK_CONFIG -> Route.QuickConfig
+                else -> null
+            }
+        }
         setContent {
             AppTheme {
-                MainScreen()
+                MainScreen(initialRoute = initialRoute ?: Route.Home)
             }
         }
     }
@@ -241,11 +249,14 @@ private fun AppTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** 极简路由：一级首页 + 四个二级页 */
+/** 极简路由：一级首页 + 六个二级页 */
 private sealed interface Route {
     data object Home : Route
     data object WatchlistDetail : Route
     data object StgDirectQuoteDetail : Route
+    data object QuickConfig : Route
+    /** 方案编辑页：带方案 id（方案被删时页面自己回落空态） */
+    data class QuickConfigEdit(val schemeId: String) : Route
     data object LogViewer : Route
     data object Disclaimer : Route
 }
@@ -254,11 +265,11 @@ private sealed interface Route {
 private const val RouteAnimMillis = 300
 
 @Composable
-private fun MainScreen() {
+private fun MainScreen(initialRoute: Route = Route.Home) {
     val scope = rememberCoroutineScope()
 
     var currentTab by remember { mutableStateOf(Tab.MODULE) }
-    var route by remember { mutableStateOf<Route>(Route.Home) }
+    var route by remember { mutableStateOf<Route>(initialRoute) }
 
     // 首次启动的免责声明同意门槛：没同意就必须先同意。
     //
@@ -280,6 +291,9 @@ private fun MainScreen() {
     val predictiveBack = rememberPredictiveBack()
     val progress = remember { Animatable(if (route == Route.Home) 0f else 1f) }
 
+    // 返回目标：方案编辑页回方案列表（不是首页），其余二级页回首页
+    fun backTarget(): Route = if (route is Route.QuickConfigEdit) Route.QuickConfig else Route.Home
+
     // 常规前进 / 返回：把进度动画到目标值
     LaunchedEffect(route) {
         progress.animateTo(if (route == Route.Home) 0f else 1f, tween(RouteAnimMillis))
@@ -290,7 +304,7 @@ private fun MainScreen() {
             try {
                 // 手势跟手：进度直接映射成二级页的位移
                 flow.collect { progress.snapTo(1f - it.progress) }
-                route = Route.Home
+                route = backTarget()
             } catch (e: CancellationException) {
                 // 手势取消：滑回去
                 scope.launch { progress.animateTo(1f, tween(200)) }
@@ -298,7 +312,7 @@ private fun MainScreen() {
             }
         }
     } else {
-        BackHandler(enabled = route != Route.Home) { route = Route.Home }
+        BackHandler(enabled = route != Route.Home) { route = backTarget() }
     }
 
     val p = progress.value
@@ -347,6 +361,7 @@ private fun MainScreen() {
                     // 功能 id → 二级菜单。新增带二级菜单的功能时在这里加一行。
                     route = when (id) {
                         "stg_direct_quote" -> Route.StgDirectQuoteDetail
+                        "aistare_quick_config" -> Route.QuickConfig
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -381,6 +396,25 @@ private fun MainScreen() {
                         onBack = { route = Route.Home },
                     ) {
                         StrategyQuoteDetailScreen()
+                    }
+
+                    Route.QuickConfig -> SubScreen(
+                        title = stringResource(R.string.detail_quick_config_title),
+                        onBack = { route = Route.Home },
+                    ) {
+                        QuickConfigScreen(
+                            onEdit = { schemeId -> route = Route.QuickConfigEdit(schemeId) },
+                        )
+                    }
+
+                    is Route.QuickConfigEdit -> {
+                        val editRoute = lastSub as Route.QuickConfigEdit
+                        SubScreen(
+                            title = stringResource(R.string.detail_quick_edit_title),
+                            onBack = { route = Route.QuickConfig },
+                        ) {
+                            QuickConfigEditScreen(schemeId = editRoute.schemeId)
+                        }
                     }
 
                     Route.LogViewer -> SubScreen(
@@ -715,32 +749,62 @@ private fun SubScreen(
 ) {
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    Scaffold(
-        // 与一级页同源，保证二级页与底衬颜色一致（见 HomeScaffold 的注释）
-        containerColor = MiuixTheme.colorScheme.surface,
-        topBar = {
-            SmallTopAppBar(
-                title = title,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = AppIcons.ArrowBack,
-                            contentDescription = stringResource(R.string.common_back),
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        CompositionLocalProvider(LocalNavBarInset provides navBarInset) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding()),
+    // 二级页自己的弹窗宿主（3.1.0 起）。
+    // 一级页的 DialogController 在 HomeScaffold 里，二级页不在其内容树里拿不到 ——
+    // 「一键配置」的方案菜单 / 删除确认需要弹层，所以每个二级页自带一份。
+    // 不用液态玻璃（一级页的 backdrop 在二级页拿不到），走纯色卡片分支。
+    val dialogs = remember { DialogController() }
+    val plainBackdrop = rememberLayerBackdrop()
+
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            // 与一级页同源，保证二级页与底衬颜色一致（见 HomeScaffold 的注释）
+            containerColor = MiuixTheme.colorScheme.surface,
+            topBar = {
+                SmallTopAppBar(
+                    title = title,
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = AppIcons.ArrowBack,
+                                contentDescription = stringResource(R.string.common_back),
+                            )
+                        }
+                    },
+                )
+            },
+        ) { padding ->
+            CompositionLocalProvider(
+                LocalNavBarInset provides navBarInset,
+                LocalDialogController provides dialogs,
             ) {
-                content()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = padding.calculateTopPadding()),
+                ) {
+                    content()
+                }
+
+                // 贴底弹窗（删除方案确认）：必须在 Scaffold 的 composition 范围内，
+                // 理由见 BottomSheetDialogHost 的 KDoc（MiuixPopupHost 登记表）
+                BottomSheetDialogHost(
+                    controller = dialogs,
+                    backdrop = plainBackdrop,
+                    liquidGlass = false,
+                    effect = false,
+                )
             }
         }
+
+        // 锚定菜单（⋮ 动作 / 取值项选择 / 聚合与周期选择）：挂最外层，
+        // 锚点是 boundsInWindow() 窗口坐标，放 Scaffold content 里会被顶栏偏移
+        DialogHost(
+            controller = dialogs,
+            backdrop = plainBackdrop,
+            liquidGlass = false,
+            effect = false,
+        )
     }
 }
 

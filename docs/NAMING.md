@@ -148,6 +148,7 @@
 | `category_login` | 登录 |
 | `category_strategy` | 策略页 |
 | `category_stock_detail` | 股票详情页 |
+| `category_aistare` | 智能盯盘 |
 | `category_dock` | 底栏 |
 | `category_home` | 首页 |
 | `category_market` | 行情市场 |
@@ -167,6 +168,7 @@
 | `stg_select_all` | 策略页 | 增加 全选 按钮 | 新增 | 无 |
 | `stg_stock_filter` | 策略页 | 增加 筛选股票 菜单项 | 新增 | 无 |
 | `stock_bar_entry` | 股票详情页 | 增加 智能盯盘 入口 | 新增 | 无 |
+| `aistare_quick_config` | 智能盯盘 | 增加 配置 按钮 | 新增 | 盯盘价格页保存按钮右边 |
 | `dock_clean` | 底栏 | 隐藏理财项 | 增强 | 无 |
 | `home_banner_hide` | 首页 | 隐藏横幅 | 增强 | 无 |
 | `market_banner_hide` | 行情市场 | 隐藏滚动横幅与快捷入口 | 增强 | 无 |
@@ -175,7 +177,7 @@
 | `nav_bar_blend` | 显示 | 手势导航条同色 | 增强 | 无 |
 | `watchlist_highlight` | 显示 | 自选股高亮 | 增强 | 无 |
 
-> 十二个功能里五个留了副标题，且每条都在说「塞到了哪」—— 这就是 §1 规则四想要的结果。
+> 十三个功能里六个留了副标题，且每条都在说「塞到了哪」—— 这就是 §1 规则四想要的结果。
 > 副标题一旦开始复述标题（「隐藏 X」+ 「X 不再显示」），卡片就退化成把同一句话说两遍。
 
 ---

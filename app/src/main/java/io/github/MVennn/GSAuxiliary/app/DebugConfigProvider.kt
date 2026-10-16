@@ -44,6 +44,8 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_STG_STOCK_FILTER = "stg_stock_filter"
         const val COL_STOCK_BAR_ENTRY = "stock_bar_entry"
         const val COL_IPO_DIALOG_CLEAN = "ipo_dialog_clean"
+        const val COL_AISTARE_QUICK = "aistare_quick_enabled"
+        const val COL_AISTARE_SCHEMES = "aistare_quick_config"
     }
 
     override fun onCreate(): Boolean {
@@ -75,6 +77,7 @@ class DebugConfigProvider : ContentProvider() {
                 COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
                 COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
                 COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
+                COL_AISTARE_QUICK, COL_AISTARE_SCHEMES,
             )
         ).apply {
             addRow(
@@ -91,6 +94,8 @@ class DebugConfigProvider : ContentProvider() {
                     if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
                     if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
                     if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
+                    if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED)) 1 else 0,
+                    ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
                 )
             )
         }
@@ -151,6 +156,14 @@ class DebugConfigProvider : ContentProvider() {
             }
             if (values.containsKey(COL_IPO_DIALOG_CLEAN)) {
                 putBoolean(ConfigKeys.IPO_DIALOG_CLEAN, values.getAsInteger(COL_IPO_DIALOG_CLEAN) != 0)
+                n++
+            }
+            if (values.containsKey(COL_AISTARE_QUICK)) {
+                putBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, values.getAsInteger(COL_AISTARE_QUICK) != 0)
+                n++
+            }
+            if (values.containsKey(COL_AISTARE_SCHEMES)) {
+                putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
                 n++
             }
         }

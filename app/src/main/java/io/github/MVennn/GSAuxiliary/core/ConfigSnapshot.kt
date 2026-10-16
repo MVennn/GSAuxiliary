@@ -37,6 +37,10 @@ data class ConfigSnapshot(
     val navBarBlend: Boolean,
     /** 登录后不再弹出「今日新股申购提醒」弹窗 */
     val ipoDialogClean: Boolean,
+    /** 智能盯盘价格页「一键配置」按钮的总开关 */
+    val aistareQuickEnabled: Boolean,
+    /** 「一键配置」的方案数据（JSON 字符串，结构见 QuickConfigStore） */
+    val aiStareQuickConfig: String,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -58,7 +62,9 @@ data class ConfigSnapshot(
                 + (if (marketSectorCompact) 1 else 0) * 2347
                 + (if (marketOverviewCompact) 1 else 0) * 2467
                 + (if (navBarBlend) 1 else 0) * 2671
-                + (if (ipoDialogClean) 1 else 0) * 2741)
+                + (if (ipoDialogClean) 1 else 0) * 2741
+                + (if (aistareQuickEnabled) 1 else 0) * 2851
+                + aiStareQuickConfig.hashCode() * 2879)
 
     companion object {
         val DEFAULT = ConfigSnapshot(
@@ -78,6 +84,8 @@ data class ConfigSnapshot(
             marketOverviewCompact = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
             navBarBlend = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
             ipoDialogClean = ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN,
+            aistareQuickEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
+            aiStareQuickConfig = ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
         )
     }
 }

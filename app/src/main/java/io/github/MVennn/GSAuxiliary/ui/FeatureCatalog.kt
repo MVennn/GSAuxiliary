@@ -15,6 +15,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * | **登录** `category_login` | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么，与具体页面无关 | 隐藏新股申购提醒弹窗 … |
  * | **策略页** `category_strategy` | **改变「策略页」的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、策略列表长按菜单 … |
  * | **股票详情页** `category_stock_detail` | **改变「个股 / 指数详情页」的交互行为** —— 判据同「策略页」，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
+ * | **智能盯盘** `category_aistare` | **改的是「盯盘页面本身」** —— 智能盯盘页（H5）里的交互与内容 | 价格页「一键配置」按钮、盯盘页结构 … |
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
  * | **首页** `category_home` | **只改首页的结构** —— 隐藏 / 压缩首页上某一块 | 隐藏快捷入口下方的横幅、隐藏首页某个卡片 … |
  * | **行情市场** `category_market` | **只改行情市场页的结构** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块六项压三项、市场概览压矮 … |
@@ -61,6 +62,9 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  *   时才新开分区，并且要同时更新上表、`docs/EXTENDING.md` 的「分区怎么选」
  *   一节，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`
  *   （引一个不存在的 `category_*` 会直接编译失败）。
+ * - `category_aistare`（智能盯盘）与 `category_stock_detail`（股票详情页）的边界：
+ *   `stock_bar_entry` 改的是**详情页底栏**（入口加在哪），归股票详情页；
+ *   智能盯盘分区装的是**改盯盘页面本身**的功能（页面在盯盘流程内部，H5）。
  * - 分区名只是**展示文案**，落在 `R.string.category_*`；改名字不影响任何逻辑。
  *   分区名与功能名的起名规则见 `docs/NAMING.md`（**名称里不写「增强」「启用」**）。
  */
@@ -180,6 +184,22 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         enableKey = ConfigKeys.STOCK_BAR_ENTRY,
         defaultEnabled = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    // ---- 智能盯盘：改盯盘页面本身（价格页是 H5，入口在详情页底栏不归这里）----
+    FeatureSpec(
+        id = "aistare_quick_config",
+        categoryRes = R.string.category_aistare,
+        titleRes = R.string.feature_quick_config_title,
+        summaryRes = R.string.feature_quick_config_summary,
+        switchTitleRes = R.string.feature_quick_config_switch,
+        // 副标题说位置：按钮塞在盯盘价格页底部哪一格，不开副标题不知道
+        switchSummaryRes = R.string.feature_quick_config_switch_summary,
+        enableKey = ConfigKeys.AISTARE_QUICK_ENABLED,
+        defaultEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
+        detailTitleRes = R.string.detail_quick_config_title,
+        detailEntryRes = R.string.feature_quick_config_detail_entry,
+        // 无入口副标题：「方案设置」已经说清进去做什么，不列里面的项目（docs/NAMING.md §3）
     ),
 
     // ---- 底栏：只改主界面底栏的结构 ----

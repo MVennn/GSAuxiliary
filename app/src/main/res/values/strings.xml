@@ -45,6 +45,7 @@
     <string name="category_login">登录</string>
     <string name="category_strategy">策略页</string>
     <string name="category_stock_detail">股票详情页</string>
+    <string name="category_aistare">智能盯盘</string>
     <string name="category_dock">底栏</string>
     <string name="category_home">首页</string>
     <string name="category_market">行情市场</string>
@@ -110,6 +111,54 @@
     <string name="feature_nav_bar_title">手势导航条同色</string>
     <string name="feature_nav_bar_summary">屏幕底部的手势导航条区域填充与紧邻界面一致的颜色，深色与浅色模式下都不再是一条生硬的纯黑或纯白</string>
     <string name="feature_nav_bar_switch">手势导航条同色</string>
+
+    <!-- 智能盯盘 -->
+    <string name="feature_quick_config_title">价格页一键配置</string>
+    <string name="feature_quick_config_summary">智能盯盘的价格页底部，保存右边多一个配置按钮，点一下按方案填好涨到跌到价格</string>
+    <string name="feature_quick_config_switch">增加 配置 按钮</string>
+    <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右边</string>
+    <string name="feature_quick_config_detail_entry">方案设置</string>
+
+    <!-- ============================ 一键配置 · 方案设置（二级菜单） ============================ -->
+    <string name="detail_quick_config_title">一键配置</string>
+    <string name="detail_quick_edit_title">编辑方案</string>
+    <string name="quick_section_schemes">方案</string>
+    <string name="quick_section_terms">取值项说明</string>
+    <string name="quick_section_validity">提醒时效</string>
+    <string name="quick_section_actions">操作</string>
+    <string name="quick_new_scheme">＋ 新建方案</string>
+    <string name="quick_new_scheme_default_name">反弹 ±5%</string>
+    <string name="quick_default_badge">默认</string>
+    <string name="quick_menu_set_default">设为默认</string>
+    <string name="quick_menu_move_up">上移</string>
+    <string name="quick_menu_move_down">下移</string>
+    <string name="quick_menu_delete">删除方案</string>
+    <string name="quick_terms_note">区间与均线的周期按交易日计；取值项随行情软件口径四舍五入到分。取不到数据的项会让整个方案放弃填入，不会写半截值。</string>
+    <string name="quick_group_realtime">实时</string>
+    <string name="quick_group_position">持仓</string>
+    <string name="quick_group_range">区间</string>
+    <string name="quick_group_ma">均线</string>
+    <string name="quick_group_pct">幅度</string>
+    <string name="quick_group_fixed">固定</string>
+    <string name="quick_field_name">方案名称</string>
+    <string name="quick_field_agg">多个取值项时</string>
+    <string name="quick_agg_max">取最大</string>
+    <string name="quick_agg_min">取最小</string>
+    <string name="quick_agg_avg">取平均</string>
+    <string name="quick_slot_up">最新涨到</string>
+    <string name="quick_slot_down">最新跌到</string>
+    <string name="quick_slot_up_short">涨到</string>
+    <string name="quick_slot_down_short">跌到</string>
+    <string name="quick_add_term">＋ 添加取值项</string>
+    <string name="quick_param_period_fmt">%1$s 日</string>
+    <string name="quick_field_validity">提醒时效</string>
+    <string name="quick_validity_keep">不修改</string>
+    <string name="quick_validity_once">一次</string>
+    <string name="quick_validity_long">长期</string>
+    <string name="quick_set_default">设为默认</string>
+    <string name="quick_delete_scheme">删除方案</string>
+    <string name="quick_delete_last_hint">至少保留一个方案</string>
+    <string name="quick_delete_confirm">删除后不可恢复，确定删除这个方案？</string>
 
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
     <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关。
@@ -236,6 +285,28 @@
         <item>金橙</item>
         <item>正红</item>
         <item>主色蓝</item>
+    </string-array>
+
+    <!-- 一键配置的取值项名称：与 core/QuickConfigCatalog.ALL 的顺序一一对应 -->
+    <string-array name="quick_term_names">
+        <item>最新价</item>
+        <item>昨收价</item>
+        <item>今开价</item>
+        <item>今日最高</item>
+        <item>今日最低</item>
+        <item>涨停价</item>
+        <item>跌停价</item>
+        <item>持仓成本价</item>
+        <item>N日最高价</item>
+        <item>N日最低价</item>
+        <item>N日最高收盘</item>
+        <item>N日最低收盘</item>
+        <item>MA N</item>
+        <item>最新价 +p%</item>
+        <item>最新价 −p%</item>
+        <item>昨收 +p%</item>
+        <item>昨收 −p%</item>
+        <item>固定价</item>
     </string-array>
 
     <string-array name="log_level_labels">

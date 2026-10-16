@@ -270,9 +270,9 @@ FeatureSpec(
 )
 ```
 
-> 当前只存在七个分类资源：`category_login`（登录）、
+> 当前只存在八个分类资源：`category_login`（登录）、
 > `category_strategy`（策略页）、
-> `category_stock_detail`（股票详情页）、`category_dock`（底栏）、
+> `category_stock_detail`（股票详情页）、`category_aistare`（智能盯盘）、`category_dock`（底栏）、
 > `category_home`（首页）、`category_market`（行情市场）与 `category_display`（显示）。
 > 引一个不存在的 `category_*` 会直接编译失败。
 
@@ -290,7 +290,7 @@ FeatureSpec(
 >
 > 这样「重置模块」才能各归各位：开关一律关掉，参数恢复默认。
 
-**分区怎么选（必读）** —— 功能列表按分区展示，目前七个分区，
+**分区怎么选（必读）** —— 功能列表按分区展示，目前八个分区，
 写 `categoryRes` 前先按下表对号入座（完整判据见 `ui/FeatureCatalog.kt` 顶部注释）：
 
 | 分区 | 一句话判据 | 归属范围 |
@@ -298,6 +298,7 @@ FeatureSpec(
 | `R.string.category_login` **登录** | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么 | 隐藏新股申购提醒弹窗 … |
 | `R.string.category_strategy` **策略页** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、长按菜单 … |
 | `R.string.category_stock_detail` **股票详情页** | **改变「个股 / 指数详情页」的交互行为** —— 判据同上，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
+| `R.string.category_aistare` **智能盯盘** | **改的是「盯盘页面本身」** —— 盯盘页（H5）内部的交互与内容，与详情页底栏入口区分开 | 价格页「一键配置」按钮、盯盘页结构 … |
 | `R.string.category_dock` **底栏** | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
 | `R.string.category_home` **首页** | **只改首页的结构** —— 隐藏 / 压缩首页上某一块 | 隐藏快捷入口下方的横幅、隐藏首页某个卡片 … |
 | `R.string.category_market` **行情市场** | **只改行情市场页的结构** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块六项压三项、市场概览压矮 … |
@@ -321,7 +322,7 @@ FeatureSpec(
 > **组内顺序 = `FEATURE_CATALOG` 的出现顺序**（`FeatureTab` 用 `groupBy` 分组，
 > 首次出现的分组排最前）。所以想让某分区排在前面，就把它的一条 `FeatureSpec`
 > 写在前面。分区顺序按「上游 → 具体页面 → 通用外观」排：
-> 登录 → 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 显示。
+> 登录 → 策略页 → 股票详情页 → 智能盯盘 → 底栏 → 首页 → 行情市场 → 显示。
 > **新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
 > 本表，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`。
 
@@ -393,7 +394,7 @@ Scaffold { padding ->
 | 能力 | 位置 | 说明 |
 |---|---|---|
 | 反射找类 / 找方法 / 读字段 | `util/Reflect.kt` | 沿继承链查找；`methodsNamed` 自动过滤 abstract 方法 |
-| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。每加一个功能就多一份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets`、`stgfilter/StgStockFilterTargets`、`stockbar/StockDetailBarTargets`、`dock/DockCleanTargets`、`home/HomeBannerTargets`、`market/MarketTargets`、`navbar/NavBarTargets` |
+| **候选名 + 多级兜底** | 每个功能自己的 `XxxTargets.kt` | 这是本项目的**核心容错模式**：所有目标 App 的类名 / 方法名 / 字段名都写成常量数组，App 升级后只加一项，不用重做逆向。每加一个功能就多一份：`watchlist/WatchlistTargets`、`strategyquote/StgDirectQuoteTargets`、`strategyselect/StgSelectAllTargets`、`stgfilter/StgStockFilterTargets`、`stockbar/StockDetailBarTargets`、`aistare/AiStareQuickConfigTargets`、`dock/DockCleanTargets`、`home/HomeBannerTargets`、`market/MarketTargets`、`navbar/NavBarTargets` |
 | 自选判定 | `feature/watchlist/ZxWatchlist.kt` | 与行情页同源，20/20 校准过 |
 | 配置读取 | `env.config`（`ConfigSnapshot`） | 内存快照，热路径零 IO |
 | 日志 | `core/GLog.kt` | 两个进程共用，自动选落点 |

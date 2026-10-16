@@ -149,6 +149,29 @@ object ConfigKeys {
     const val NAV_BAR_BLEND = "nav_bar_blend"
 
     /**
+     * 智能盯盘「一键配置」的**方案数据**：用户搭好的取值方案列表，JSON 字符串。
+     *
+     * 目标进程要读它才能计算两个提醒价，所以走 remote preferences 并进
+     * [ConfigSnapshot]。结构见
+     * [io.github.MVennn.GSAuxiliary.feature.aistare.QuickConfigStore]。
+     *
+     * 归 [FEATURE_PARAM_KEYS]（重置时恢复出厂方案），**不归** [FEATURE_KEYS] ——
+     * 它是数据不是开关，方案不能被「重置」一键清掉。
+     */
+    const val AISTARE_QUICK_CONFIG = "aistare_quick_config"
+
+    /**
+     * 智能盯盘「一键配置」的**总开关**：在价格页（H5）底部「保存」右侧注入
+     * 「配置」按钮，点击后按方案把「最新涨到 / 最新跌到」两个输入框填上。
+     *
+     * 与 [AISTARE_QUICK_CONFIG]（方案数据）分开是刻意的：开关进 [FEATURE_KEYS]
+     * （重置 = 关），方案进参数组（重置 = 恢复出厂方案），「重置模块」才能各归各位。
+     *
+     * 见 [io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigFeature]。
+     */
+    const val AISTARE_QUICK_ENABLED = "aistare_quick_enabled"
+
+    /**
      * 登录后不再弹出「今日新股申购提醒」弹窗。
      *
      * 该弹窗是宿主的 `com.guosen.commonui.dialog.IpoAlertDialog`，由
@@ -303,6 +326,20 @@ object ConfigKeys {
      */
     const val DEFAULT_IPO_DIALOG_CLEAN = false
 
+    /**
+     * 「一键配置」的出厂方案：用户举例的那个 ——「30 日高低」。
+     * 涨到 = 30 日最高价，跌到 = 30 日最低价（方案文档 §4.2 的默认方案）。
+     */
+    const val DEFAULT_AISTARE_QUICK_CONFIG: String =
+        "{\"v\":1,\"defaultId\":\"s1\",\"schemes\":[" +
+            "{\"id\":\"s1\",\"name\":\"30日高低\",\"validity\":null,\"isDefault\":true," +
+            "\"up\":{\"agg\":\"MAX\",\"terms\":[{\"source\":\"highN\",\"param\":{\"period\":\"30\"}}]}," +
+            "\"down\":{\"agg\":\"MIN\",\"terms\":[{\"source\":\"lowN\",\"param\":{\"period\":\"30\"}}]}" +
+            "}]}"
+
+    /** 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）——「一键配置」按钮的总开关。 */
+    const val DEFAULT_AISTARE_QUICK_ENABLED = false
+
     const val DEFAULT_LOG_LEVEL = LogLevel.INFO
     const val DEFAULT_DESKTOP_ICON = true
 
@@ -329,6 +366,7 @@ object ConfigKeys {
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
         IPO_DIALOG_CLEAN,
+        AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         LOG_LEVEL, DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
     )
 
@@ -346,6 +384,7 @@ object ConfigKeys {
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
             IPO_DIALOG_CLEAN,
+            AISTARE_QUICK_ENABLED,
         )
 
     /**
@@ -353,8 +392,11 @@ object ConfigKeys {
      *
      * [STG_QUOTE_SWIPE] 归这里而不是 [FEATURE_KEYS]：它是「直达」这个功能下面的
      * 子选项（与 [SCOPE_STRATEGY] 同类），重置时应回到默认值 true 而不是被关掉。
+     *
+     * [AISTARE_QUICK_CONFIG] 也归这里：它是方案**数据**，重置 = 恢复出厂方案
+     * （「30 日高低」），不能被一键清空。
      */
-    val FEATURE_PARAM_KEYS = arrayOf(COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE)
+    val FEATURE_PARAM_KEYS = arrayOf(COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, AISTARE_QUICK_CONFIG)
 
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
     val DEFAULTS: Map<String, Any> = mapOf(
@@ -373,6 +415,8 @@ object ConfigKeys {
         MARKET_OVERVIEW_COMPACT to DEFAULT_MARKET_OVERVIEW_COMPACT,
         NAV_BAR_BLEND to DEFAULT_NAV_BAR_BLEND,
         IPO_DIALOG_CLEAN to DEFAULT_IPO_DIALOG_CLEAN,
+        AISTARE_QUICK_ENABLED to DEFAULT_AISTARE_QUICK_ENABLED,
+        AISTARE_QUICK_CONFIG to DEFAULT_AISTARE_QUICK_CONFIG,
         LOG_LEVEL to DEFAULT_LOG_LEVEL,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,

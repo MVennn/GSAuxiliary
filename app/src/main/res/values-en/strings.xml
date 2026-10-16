@@ -44,6 +44,7 @@
     <string name="category_login">Sign-in</string>
     <string name="category_strategy">Strategy page</string>
     <string name="category_stock_detail">Stock detail page</string>
+    <string name="category_aistare">AI stare</string>
     <string name="category_dock">Dock</string>
     <string name="category_home">Home</string>
     <string name="category_market">Market</string>
@@ -80,6 +81,54 @@
     <string name="feature_stock_bar_summary">Adds a "Smart Watch" entry between "+Watchlist" and "More" on the stock detail bottom bar, one tap instead of digging into "More"</string>
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
     <string name="feature_stock_bar_switch_summary">Stock detail bottom bar, between Watchlist and More</string>
+
+    <!-- AI stare -->
+    <string name="feature_quick_config_title">One-tap price setup</string>
+    <string name="feature_quick_config_summary">On the AI stare price page, a Config button appears next to Save; one tap fills the alert prices from your scheme</string>
+    <string name="feature_quick_config_switch">Add \"Config\" button</string>
+    <string name="feature_quick_config_switch_summary">Price page, to the right of Save</string>
+    <string name="feature_quick_config_detail_entry">Schemes</string>
+
+    <!-- ============================ One-tap config · schemes (sub screen) ============================ -->
+    <string name="detail_quick_config_title">One-tap config</string>
+    <string name="detail_quick_edit_title">Edit scheme</string>
+    <string name="quick_section_schemes">Schemes</string>
+    <string name="quick_section_terms">Value terms</string>
+    <string name="quick_section_validity">Alert validity</string>
+    <string name="quick_section_actions">Actions</string>
+    <string name="quick_new_scheme">＋ New scheme</string>
+    <string name="quick_new_scheme_default_name">Bounce ±5%</string>
+    <string name="quick_default_badge">Default</string>
+    <string name="quick_menu_set_default">Set as default</string>
+    <string name="quick_menu_move_up">Move up</string>
+    <string name="quick_menu_move_down">Move down</string>
+    <string name="quick_menu_delete">Delete scheme</string>
+    <string name="quick_terms_note">Range and MA periods count in trading days; values are rounded to the cent like the quote app. A term without data aborts the whole fill — half-written values are never saved.</string>
+    <string name="quick_group_realtime">Realtime</string>
+    <string name="quick_group_position">Position</string>
+    <string name="quick_group_range">Range</string>
+    <string name="quick_group_ma">MA</string>
+    <string name="quick_group_pct">Percentage</string>
+    <string name="quick_group_fixed">Fixed</string>
+    <string name="quick_field_name">Scheme name</string>
+    <string name="quick_field_agg">With several terms</string>
+    <string name="quick_agg_max">Take the max</string>
+    <string name="quick_agg_min">Take the min</string>
+    <string name="quick_agg_avg">Take the average</string>
+    <string name="quick_slot_up">Rise to</string>
+    <string name="quick_slot_down">Fall to</string>
+    <string name="quick_slot_up_short">Rise to</string>
+    <string name="quick_slot_down_short">Fall to</string>
+    <string name="quick_add_term">＋ Add a term</string>
+    <string name="quick_param_period_fmt">%1$s-day</string>
+    <string name="quick_field_validity">Alert validity</string>
+    <string name="quick_validity_keep">Keep unchanged</string>
+    <string name="quick_validity_once">Once</string>
+    <string name="quick_validity_long">Long-term</string>
+    <string name="quick_set_default">Set as default</string>
+    <string name="quick_delete_scheme">Delete scheme</string>
+    <string name="quick_delete_last_hint">At least one scheme is required</string>
+    <string name="quick_delete_confirm">This cannot be undone. Delete this scheme?</string>
 
     <!-- Dock -->
     <string name="feature_dock_clean_title">Hide "Wealth" in dock</string>
@@ -230,6 +279,28 @@
     <string name="disclaimer_full"># Disclaimer\n\nThis module (hereinafter \"the Module\") is open-source software independently developed by an individual for the purpose of studying Android reverse engineering and hooking techniques. It is not a commercial product, and has no affiliation, cooperation, authorization, endorsement or support relationship with any enterprise, application, service or their affiliates.\n\n*This statement is made to clarify the rights and obligations of all parties and to guard against legal risk.*\n\n---\n\n## I. Determination of use\n\nAny entity or individual that downloads, installs, enables or otherwise uses the Module in any manner **shall be deemed to have fully read, thoroughly understood and voluntarily accepted all terms of this statement**.\n\nAnyone who does not agree with any part of this statement **shall immediately cease use and completely delete the Module and all of its copies**.\n\n- The Module is provided solely for technical research and academic exchange.\n- It shall not be used for any commercial purpose.\n- It shall be deleted by the user within twenty-four hours of download.\n\n## II. Complete exclusion of liability\n\nTo the maximum extent permitted by applicable law, the developer, contributors and distributors of the Module (collectively, \"the Developer\") **shall bear no liability of any kind towards the user or any third party**.\n\nAll risks, losses and consequences arising from the use of, or inability to use, the Module shall be borne solely by the user, including but not limited to device damage, system malfunction, data loss, account suspension or restriction, application malfunction, trading or investment losses, loss of profit and service interruption, as well as any direct, indirect, incidental, special, punitive or consequential damages.\n\n*The Developer shall bear no liability even if previously advised of the possibility of such damages.*\n\n## III. Warranty and maintenance\n\nThe Module is provided on an \"as is\" basis, without any express or implied warranty, including but not limited to warranties of merchantability, fitness for a particular purpose, freedom from viruses, non-infringement and continued availability.\n\n- The Developer undertakes no obligation to fix any defect.\n- No maintenance, updates or technical support are promised.\n- Distribution may be terminated at any time without prior notice.\n\n## IV. Compliance obligations\n\nThe user shall independently ascertain and comply with the laws and regulations of the user\'s jurisdiction and the terms of service of any related application.\n\nAll consequences and liabilities arising from the user\'s violation of the foregoing or misuse of the Module (including but not limited to contractual, tortious, administrative and criminal liability) shall be borne solely by the user and shall have no connection with the Developer.\n\n*The Developer does not encourage, support or participate in any unlawful act or breach of terms of service, and has not authorized any entity or individual to make commitments or assume liability in the name of the Developer.*\n\n## V. Affiliation and trademarks\n\nThe Module is not directed at any particular application, enterprise or service and represents no third party\'s position.\n\nThe rights in all application names, trademarks and logos appearing in this statement or in the Module belong to their respective owners and are used for descriptive purposes only, constituting no affiliation, sponsorship or endorsement of any kind.\n\n## VI. Personal information\n\nThe Module **does not collect, upload or store any personal information** and contains no networking, statistical analysis or advertising components. All configuration data is stored solely on the user\'s device.\n\n## VII. Validity of terms\n\nIf any provision of this statement is held invalid or unenforceable by a competent authority, the validity of the remaining provisions shall not be affected, and such provision shall be construed as narrowly as possible in favour of the Developer to the maximum extent permitted by law.\n\nThe Developer may revise this statement at any time, and a revised version shall take effect on the date it is published.\n\n> Continued use of the Module by the user shall be deemed acceptance of the revised statement.</string>
 
     <!-- ============================ Option arrays ============================ -->
+    <!-- One-tap config term names: order mirrors core/QuickConfigCatalog.ALL -->
+    <string-array name="quick_term_names">
+        <item>Latest</item>
+        <item>Prev close</item>
+        <item>Open</item>
+        <item>Day high</item>
+        <item>Day low</item>
+        <item>Limit up</item>
+        <item>Limit down</item>
+        <item>Cost basis</item>
+        <item>N-day high</item>
+        <item>N-day low</item>
+        <item>N-day high close</item>
+        <item>N-day low close</item>
+        <item>MA N</item>
+        <item>Latest +p%</item>
+        <item>Latest −p%</item>
+        <item>Prev close +p%</item>
+        <item>Prev close −p%</item>
+        <item>Fixed value</item>
+    </string-array>
+
     <string-array name="preset_color_names">
         <item>Amber</item>
         <item>Gold</item>

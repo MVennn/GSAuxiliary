@@ -5,6 +5,7 @@ import android.os.Looper
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigFeature
 import io.github.MVennn.GSAuxiliary.feature.dock.DockCleanFeature
 import io.github.MVennn.GSAuxiliary.feature.home.HomeBannerFeature
 import io.github.MVennn.GSAuxiliary.feature.ipoclean.IpoDialogCleanFeature
@@ -50,6 +51,7 @@ class FeatureManager(private val env: FeatureEnv) {
         MarketOverviewCompactFeature(),
         NavBarBlendFeature(),
         IpoDialogCleanFeature(),
+        AiStareQuickConfigFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */

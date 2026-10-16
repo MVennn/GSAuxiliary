@@ -523,27 +523,35 @@ QuoteRepository
 
 ## 7. 模块侧改动清单
 
+> 下表是 3.1.0 的**落地实况**（与最初设计的差异见行内说明）。
+> 最重要的偏差：**方案模型 / 目录 / 引擎放进了 `core/` 而不是 `feature/aistare/`** ——
+> 设置页（`ui/`）也要读写方案，而 `ui/` 不能引用 `feature/`（架构红线 3：
+> 会把 `io.github.libxposed.api` 类型带进模块 App 进程）；这三件都是纯 Kotlin +
+> `org.json`，放 `core/` 两处共用零风险。
+
 | 文件 | 改动 |
 |---|---|
-| `feature/aistare/AiStareQuickConfigTargets.kt`（新增） | 全部常量：页面 URL 片段、桥类名/方法名、DOM 选择器、配色 `#FF3A3B`、板块系数表 + 实测说明 |
-| `feature/aistare/AiStareQuickConfigFeature.kt`（新增） | 功能本体：挂 Hook → 注入 JS → 接桥 → 回填 |
-| `feature/aistare/QuickConfigEngine.kt`（新增） | 取值项计算（§4.2 那张表的实现，纯函数，可单测） |
-| `feature/aistare/QuickConfigStore.kt`（新增） | 方案 JSON 的编解码 + 校验 + 容错 |
-| `feature/aistare/quote/QuoteRepository.kt`（新增） | 取数接口 + 通道锁定 |
-| `feature/aistare/quote/HostQuoteSource.kt`（新增） | 宿主行情通道（反射，候选名数组） |
-| `feature/aistare/quote/PublicQuoteSource.kt`（新增） | 公开行情 HTTP |
-| `feature/aistare/quote/DomQuoteSource.kt`（新增） | 从页面文本正则抠最新价 |
-| `core/ConfigKeys.kt` | 加 `AISTARE_QUICK_CONFIG` / `DEFAULT_AISTARE_QUICK_CONFIG`，进 `ALL_KEYS` / `FEATURE_KEYS` / `FEATURE_PARAM_KEYS` / `DEFAULTS` |
-| `core/ConfigSnapshot.kt` | 加 `aiStareQuickConfig: String` 字段 + 进 `fingerprint`（乘数 2851） |
-| `core/ConfigSource.kt` | `read()` 补一行 |
+| `core/QuickConfigStore.kt`（新增） | 方案数据模型 + JSON 编解码 + 容错（坏 JSON 回落出厂、未知 source 只丢该项）+ H5 拉起模块 App 的 Intent 契约常量 |
+| `core/QuickConfigCatalog.kt`（新增） | 取值项目录（§4.2 那张表）：id / 分类 / 参数约束；展示名在 `strings.xml` 的 `quick_term_names`（按下标对应） |
+| `core/QuickConfigEngine.kt`（新增） | 取值项计算（纯函数）：BigDecimal、涨停表（前缀 + ST）、区间校验；`QuoteSnapshot` / `QuoteBar` 数据类也在这里（取数层产出、引擎消费） |
+| `feature/aistare/AiStareQuickConfigTargets.kt`（新增） | 全部常量：页面 URL 片段、桥名/命名空间、配色 `#FF3A3B`、宿主行情字段候选 + 实测说明 |
+| `feature/aistare/AiStareQuickConfigFeature.kt`（新增） | 功能本体：`setWebViewClient` 动态抓子类 → 挂 `onPageFinished` → 注入 JS + 自建 `gsaux` 桥 → 取数调度（会话锁通道）→ 回填；`StockInfo` 构造器钩子喂宿主行情缓存 |
+| `feature/aistare/AiStareJs.kt`（新增） | 注入脚本常量：找「保存」（文本+底部 1/4 双判据）→ 三等分 → 克隆改「配置」→ 弹方案层 → `fill()` 派发 input/change/blur → 方向校验 → `MutationObserver`+500ms 自检 |
+| `feature/aistare/quote/QuoteRepository.kt`（新增） | `QuoteSource` 接口 + `QuoteSession`（第一次成功给出数据的通道全程锁定，杜绝口径混搭） |
+| `feature/aistare/quote/HostQuoteSource.kt`（新增） | 宿主行情（反射）：挂 `StockInfo` 构造器缓存最近实例，代码对得上才用；日 K 入口未确认暂不实现（待探针，§10-4/5） |
+| `feature/aistare/quote/PublicQuoteSource.kt`（新增） | 腾讯公开行情：实时（`qt.gtimg.cn`）+ 日 K（`web.ifzq.gtimg.cn`，不复权，5 分钟缓存） |
+| `feature/aistare/quote/DomQuoteSource.kt`（新增） | 从页面文本正则抠「最新价:xx ±x%」，昨收反推；只能救 latest/prevClose |
+| `core/ConfigKeys.kt` | 加 `AISTARE_QUICK_ENABLED`（开关，进 `FEATURE_KEYS`）与 `AISTARE_QUICK_CONFIG`（方案 JSON，进 `FEATURE_PARAM_KEYS`）及两者默认值，进 `ALL_KEYS` / `DEFAULTS` —— **开关与数据分两个键**：重置 = 关开关、恢复出厂方案，不清用户数据 |
+| `core/ConfigSnapshot.kt` | 加 `aistareQuickEnabled: Boolean` + `aiStareQuickConfig: String`，进 `fingerprint`（乘数 2851 / 2879） |
+| `core/ConfigSource.kt` | `read()` 补两行 |
 | `feature/FeatureManager.kt` | `features` 列表加一行 |
 | `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`（新分区 `category_aistare`）+ 更新顶部「分区归属标准」注释 |
-| `ui/SettingsActivity.kt` | 加 `Route.AiStareQuickConfig` + 二级页分支 + **读 Intent extra 直达** |
-| `ui/QuickConfigScreen.kt`（新增） | 方案列表页 |
-| `ui/QuickConfigEditScreen.kt`（新增） | 方案编辑页 |
-| `res/values/strings.xml`、`values-en/strings.xml` | 新分区名 + 功能名 + 二级页全部文案（中英同步） |
-| `app/DebugConfigProvider.kt` | 加 `aistare_quick_config` 列（开发期脚本化） |
-| `docs/NAMING.md` §4/§5、`docs/EXTENDING.md`、`docs/ARCHITECTURE.md` §3.2 | 同步新分区与新功能 |
+| `ui/SettingsActivity.kt` | 加 `Route.QuickConfig` / `Route.QuickConfigEdit(schemeId)` + 二级页分支 + 读 Intent extra（`QuickConfigStore.EXTRA_ROUTE`）直达 + **二级页自带弹窗宿主**（锚定菜单 + 贴底确认，方案菜单需要） |
+| `ui/QuickConfigScreen.kt`（新增） | 方案列表页：行（点进编辑）+ ⋮ 锚定菜单（设默认/上移/下移/删除）+ 新建 + 取值项说明卡 |
+| `ui/QuickConfigEditScreen.kt`（新增） | 方案编辑页：名称 / 两槽（聚合 + 取值项增删 + 参数）/ 提醒时效 / 设默认 / 删除；每改即写 |
+| `res/values/strings.xml`、`values-en/strings.xml` | 新分区名 + 功能名 + 二级页全部文案 + `quick_term_names` 数组（中英同步） |
+| `app/DebugConfigProvider.kt` | 加 `aistare_quick_enabled`（int 0/1）与 `aistare_quick_config`（string）列（开发期脚本化） |
+| `docs/NAMING.md` §4/§5、`docs/EXTENDING.md`、`docs/ARCHITECTURE.md` | 同步新分区与新功能（含候选名能力表、功能计数 12 → 13） |
 
 **不动**：`GszxModule.kt`、`scope.list`、其余 12 个功能、`ConfigKeys.GROUP`。
 
@@ -551,6 +559,14 @@ QuoteRepository
 > `docs/NAMING.md` §4 —— 这是 `FeatureCatalog` 注释里明写的约定。
 > **刻意不把 `stock_bar_entry`（底栏智能盯盘入口）挪过来** —— 它改的是详情页底栏，
 > 归「股票详情页」是对的；新分区只装「改盯盘页面本身」的功能。
+>
+> 与设计的另外两处有意偏差：
+> ① §3.3 的四条「顺手改」只做了**方向校验**（纯 JS 零成本）——第 1 条宿主 H5
+> 已原生自带「较最新价 ±x.x%」（§3.3 表内已标），键盘遮挡 sticky（第 3 条）
+> 与 placeholder 参考值（第 4 条）风险收益比不划算，砍；
+> ② §6.4 编辑页顶部「实时预览」没做 —— 模块 App 进程拿不到「当前股票」，
+> 真实取数预览无法实现；列表页/弹层显示方案的一行文本预览（写入时按当前
+> 语言生成存进 JSON），这是能诚实落地的最接近形态。
 
 ---
 
