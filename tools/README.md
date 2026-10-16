@@ -162,8 +162,8 @@ python tools/gen_launcher_icons.py
 |---|---|---|
 | `res/mipmap-{mdpi..xxxhdpi}/ic_launcher.png` | 48 / 72 / 96 / 144 / 192 | launcher 位图回退 |
 | `res/mipmap-{mdpi..xxxhdpi}/ic_launcher_round.png` | 同上 | 圆形变体（多套一层圆形遮罩） |
-| `docs/logo.png` | **512** | README 顶部的仓库 logo |
-| `docs/icon.svg` | 矢量 | 与位图同源；提交到 LSPosed 模块仓库当模块图标用 |
+| `assets/logo.png` | **512** | README 顶部的仓库 logo |
+| `assets/icon.svg` | 矢量 | 与位图同源；提交到 LSPosed 模块仓库当模块图标用 |
 
 自适应图标（`mipmap-anydpi-v26`）只在 API 26+ 生效，低版本和部分第三方桌面
 仍会读 `mipmap-*dpi` 的 PNG，所以这些位图必须存在。
@@ -176,7 +176,7 @@ python tools/gen_launcher_icons.py
 
 脚本顶部的 `BG_TOP` / `BG_BOTTOM` / `LINE_TOP` / `LINE_BOTTOM` /
 `POLYLINE` / `ARROW` / `STROKE` / `CORNER` 就是这份对照表，
-**改了一边就要改另一边**。`docs/icon.svg` 由 `svg_text()` 用同一批常量生成，
+**改了一边就要改另一边**。`assets/icon.svg` 由 `svg_text()` 用同一批常量生成，
 所以四种产物不会各走各的。
 
 实现要点：

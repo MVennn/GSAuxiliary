@@ -9,7 +9,7 @@
 | `README.md` | 仓库根的 `README.md` | 两个仓库必须逐字一致 |
 | `SUMMARY` | **本目录的 `SUMMARY`** | 模块页标题下面那行**一句话简介** |
 | `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/SansKritO4/GSAuxiliary` |
-| `icon.svg` | `docs/icon.svg` | 由 `tools/gen_launcher_icons.py` 生成，与 APK 内 launcher 图标同源 |
+| `icon.svg` | `assets/icon.svg` | 由 `tools/gen_launcher_icons.py` 生成，与 APK 内 launcher 图标同源 |
 
 ## ⚠️ 关于 `SUMMARY`
 

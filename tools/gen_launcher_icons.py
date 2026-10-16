@@ -271,15 +271,15 @@ def main():
 
     # 仓库用的大尺寸图标 —— README 顶部与 LSPosed 模块仓库共用同一份设计。
     # 512 是 2 的幂，缩放到任意尺寸都不会有半像素抖动。
-    docs = os.path.normpath(os.path.join(here, "..", "docs"))
-    os.makedirs(docs, exist_ok=True)
-    write_png(os.path.join(docs, "logo.png"), REPO_LOGO_PX, REPO_LOGO_PX,
+    assets = os.path.normpath(os.path.join(here, "..", "assets"))
+    os.makedirs(assets, exist_ok=True)
+    write_png(os.path.join(assets, "logo.png"), REPO_LOGO_PX, REPO_LOGO_PX,
               render(REPO_LOGO_PX, False))
-    print("wrote docs/logo.png (%dpx)" % REPO_LOGO_PX)
+    print("wrote assets/logo.png (%dpx)" % REPO_LOGO_PX)
 
-    with open(os.path.join(docs, "icon.svg"), "w", encoding="utf-8", newline="\n") as f:
+    with open(os.path.join(assets, "icon.svg"), "w", encoding="utf-8", newline="\n") as f:
         f.write(svg_text())
-    print("wrote docs/icon.svg")
+    print("wrote assets/icon.svg")
 
 
 if __name__ == "__main__":

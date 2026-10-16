@@ -251,7 +251,7 @@ bot 在收录 issue 里的原话：
 | `README.md` | `README.md` | 与源码仓库**逐字一致** |
 | `SUMMARY` | **`xposed-repo/SUMMARY`** | 模块页标题下面那行**一句话简介** |
 | `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/SansKritO4/GSAuxiliary` |
-| `icon.svg` | `docs/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
+| `icon.svg` | `assets/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
 
 > ⚠️ **`SUMMARY` 不是名字**。模块的**显示名**来自仓库 Description（见 4.1），
 > `SUMMARY` 只是副标题那一行简介。早期曾把模块名写进去，等于显示了两遍。

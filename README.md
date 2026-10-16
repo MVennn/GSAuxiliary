@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/SansKritO4/GSAuxiliary/main/docs/logo.png" width="128" alt="GSAuxiliary">
+<img src="https://raw.githubusercontent.com/SansKritO4/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
 
 # GSAuxiliary
 

@@ -20,7 +20,7 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 | `README.md` | `README.md` |
 | `SUMMARY` | `xposed-repo/SUMMARY` |
 | `SOURCE_URL` | 按 `SOURCE_REPO` 生成 |
-| `icon.svg` | `docs/icon.svg` |
+| `icon.svg` | `assets/icon.svg` |
 
 ## 用法
 
@@ -88,7 +88,7 @@ def repo_files():
     out = {
         "README.md": open(README, encoding="utf-8").read(),
         "SOURCE_URL": "https://github.com/%s\n" % SOURCE_REPO,
-        "icon.svg": open(os.path.join(ROOT, "docs", "icon.svg"), encoding="utf-8").read(),
+        "icon.svg": open(os.path.join(ROOT, "assets", "icon.svg"), encoding="utf-8").read(),
     }
     summary = os.path.join(ROOT, "xposed-repo", "SUMMARY")
     if not os.path.exists(summary):
