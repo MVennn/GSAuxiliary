@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,8 +47,20 @@ import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/**
+ * **上一个默认方案**的 id —— 只活在模块 App 进程里、不落盘（3.1.1）。
+ *
+ * 「设为默认」在编辑页是一个开关，用户把它**关掉**时得知道默认该交给谁：交回上一个
+ * 默认方案最符合直觉（文档里叫「恢复之前的默认值」）。进程重启后这个记忆就没了，
+ * 那种情况下退化成「列表里第一个别的方案」—— 无论哪条路，都保证永远有一套默认。
+ */
+internal var lastDefaultId: String? = null
+
 /** 新建方案那一行的展开动画时长（也是「动画期间保留 justAdded 标记」的时长） */
 private const val SchemeAppearMillis = 260
+
+/** 删除方案那一行的收起动画时长（也是「动画之后才真正写配置」的等待时长） */
+private const val SchemeRemoveMillis = 220
 
 /**
  * 「一键配置」的方案列表页（二级页）。
@@ -86,6 +100,15 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
 
     // 刚新建的那一行：只为它播一次展开动画（见下方 AnimatedVisibility 的注释）
     var justAdded by remember { mutableStateOf<String?>(null) }
+    // 正在播「删除」动画的那一行：动画播完才真正写配置（见下方 LaunchedEffect）
+    var removing by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(removing) {
+        val id = removing ?: return@LaunchedEffect
+        delay(SchemeRemoveMillis.toLong())
+        deleteScheme(id)
+        removing = null
+    }
 
     Column(
         modifier = Modifier
@@ -103,10 +126,20 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                         preview = scheme.preview,
                         isDefault = scheme.id == data.defaultId,
                         menuTexts = menuTexts,
+                        // 点了不会有任何变化的项置灰且不可点：已经是默认 / 已在第一位 /
+                        // 已在最后一位 / 只剩这一套。原来这些项点了没反应，像菜单坏了。
+                        disabledMenuIndices = buildSet {
+                            if (scheme.id == data.defaultId) add(0)
+                            if (index == 0) add(1)
+                            if (index == data.schemes.size - 1) add(2)
+                            if (data.schemes.size <= 1) add(3)
+                        },
                         onClick = { onEdit(scheme.id) },
                         onMenu = { which ->
                             when (which) {
                                 0 -> {
+                                    // 记下被顶替的那个默认方案：「设为默认」开关关掉时要交还给它
+                                    lastDefaultId = data.defaultId.takeIf { it != scheme.id }
                                     val updated =
                                         data.schemes.map { it.copy(isDefault = it.id == scheme.id) }
                                     writeSchemes(data.copy(defaultId = scheme.id, schemes = updated))
@@ -125,27 +158,33 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
                                     list.add(index + 1, list.removeAt(index))
                                     writeSchemes(data.copy(schemes = list))
                                 }
-                                3 -> deleteScheme(scheme.id, data)
+                                // 删除：先让这一行收起来（动画），播完再写配置
+                                3 -> removing = scheme.id
                             }
                         },
                     )
                 }
-                if (scheme.id == justAdded) {
-                    // 新建的那一行从 0 高度展开 + 淡入，落位后把标记清掉
-                    // （清掉之后这一行回到和别的行一样的普通分支，不再重播动画）。
-                    var shown by remember(scheme.id) { mutableStateOf(false) }
-                    LaunchedEffect(scheme.id) {
-                        shown = true
+                // 每一行**都常驻一个 AnimatedVisibility**，出现 / 删除两种动画都由它播。
+                //
+                // 为什么不能按状态分三种分支各画一次：`AnimatedVisibility(visible = false)`
+                // 在**首次**挂载时是「直接不可见」，不会播退出动画 —— 分成
+                // 「normal / appearing / removing」三条分支的话，删除那一刻节点是新建的，
+                // 收缩动画根本不会跑（看着还是凭空消失）。常驻一个节点、只翻 `visible`
+                // 才有 true → false 这个过渡。
+                val isRemoving = scheme.id == removing
+                var appeared by remember(scheme.id) { mutableStateOf(!(scheme.id == justAdded)) }
+                LaunchedEffect(scheme.id) {
+                    if (scheme.id == justAdded) {
+                        appeared = true
                         delay(SchemeAppearMillis.toLong())
                         if (justAdded == scheme.id) justAdded = null
                     }
-                    AnimatedVisibility(
-                        visible = shown,
-                        enter = expandVertically(tween(SchemeAppearMillis)) + fadeIn(tween(180)),
-                    ) {
-                        row()
-                    }
-                } else {
+                }
+                AnimatedVisibility(
+                    visible = appeared && !isRemoving,
+                    enter = expandVertically(tween(SchemeAppearMillis)) + fadeIn(tween(180)),
+                    exit = shrinkVertically(tween(SchemeRemoveMillis)) + fadeOut(tween(140)),
+                ) {
                     row()
                 }
             }
@@ -188,6 +227,7 @@ private fun SchemeRow(
     preview: String,
     isDefault: Boolean,
     menuTexts: List<String>,
+    disabledMenuIndices: Set<Int>,
     onClick: () -> Unit,
     onMenu: (Int) -> Unit,
 ) {
@@ -212,6 +252,7 @@ private fun SchemeRow(
                             selectedIndex = -1, // 动作菜单，无选中态
                             onSelect = onMenu,
                             anchor = anchor,
+                            disabledIndices = disabledMenuIndices,
                         ),
                     )
                 },
@@ -243,10 +284,20 @@ private fun DefaultBadge(modifier: Modifier = Modifier) {
     }
 }
 
-/** 删除方案：只剩一个时忽略（§6.3「必须有默认方案可用」） */
-private fun deleteScheme(id: String, data: QuickConfigStore.Data) {
+/**
+ * 删除方案：只剩一个时忽略（§6.3「必须有默认方案可用」）。
+ *
+ * 这里**重新读一次配置**而不是用调用点捕获的 `data`：删除动作排在收起动画之后执行，
+ * 那一瞬间拿到的快照必须是最新的。同时兜住「过滤后为空」的极端情况（老版本写坏的
+ * 配置里同一 id 出现两次时会发生，`first()` 会直接抛 NoSuchElementException）。
+ */
+private fun deleteScheme(id: String) {
+    val data = QuickConfigStore.decode(
+        ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
+    )
     if (data.schemes.size <= 1) return
     val rest = data.schemes.filter { it.id != id }
+    if (rest.isEmpty()) return
     val newDefault = data.defaultId.takeIf { def -> rest.any { it.id == def } }
         ?: rest.first().id
     writeSchemes(

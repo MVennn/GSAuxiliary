@@ -156,6 +156,20 @@ internal object AppIcons {
         )
     }
 
+    /**
+     * 朝下的箭头（弹窗类控件用）。
+     *
+     * 会**呼出弹窗**的行（主题设置 / 语言 / 聚合方式 / 周期 / 提醒时效）用它替掉 Miuix
+     * `ArrowPreference` 那颗朝右的箭头 —— 朝右的意思是「进入下一级页面」，会让这些
+     * 原地弹窗的行看起来像能点进去（3.1.1 用户反馈）。
+     */
+    val ArrowDown: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
+        icon(
+            name = "ArrowDown",
+            pathData = "M16.59,8.59L12,13.17 7.41,8.59 6,10l6,6 6,-6z",
+        )
+    }
+
     /** 加号（新建方案 / 添加取值项）。 */
     val Add: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
         icon(

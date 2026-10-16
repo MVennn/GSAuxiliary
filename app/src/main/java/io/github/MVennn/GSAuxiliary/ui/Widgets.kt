@@ -188,6 +188,24 @@ internal fun TintedIcon(
     )
 }
 
+/**
+ * 会「呼出弹窗」的行，右端统一放这颗**朝下**的小箭头（3.1.1）。
+ *
+ * Miuix `ArrowPreference` 自带的箭头是朝右的，含义是「进入下一级页面」；用在
+ * 主题设置 / 语言 / 聚合方式 / 周期 / 提醒时效这些**原地弹窗**的行上会误导用户。
+ * 需要这种语义的行改用 `BasicComponent` + 这颗箭头（它不会自动补箭头，箭头位置
+ * 由我们自己定，也才能保证「参数控件 → ✕ / 箭头」的右端对齐）。
+ * 备份 / 恢复 / 重置 / 导出日志这些「动作行」保持朝右箭头不变。
+ */
+@Composable
+internal fun DownArrowIcon(modifier: Modifier = Modifier.size(18.dp)) {
+    TintedIcon(
+        imageVector = AppIcons.ArrowDown,
+        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+        modifier = modifier,
+    )
+}
+
 /** 卡片内的一行说明文字（用于放补充提示） */
 @Composable
 internal fun CardNote(text: String) {

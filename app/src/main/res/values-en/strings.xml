@@ -86,12 +86,12 @@
     <string name="feature_quick_config_title">One-tap price setup</string>
     <string name="feature_quick_config_summary">On the AI stare price page, a Config button appears next to Save; one tap fills the alert prices from your scheme</string>
     <string name="feature_quick_config_switch">Add \"Config\" button</string>
-    <string name="feature_quick_config_switch_summary">Price page, to the right of Save</string>
+    <string name="feature_quick_config_switch_summary">Right of Save on the price page — one-tap setup for your alerts</string>
     <string name="feature_quick_config_detail_entry">Schemes</string>
     <string name="feature_quick_config_detail_entry_summary">Add custom schemes to the price page config button</string>
 
     <!-- ============================ One-tap config · schemes (sub screen) ============================ -->
-    <string name="detail_quick_config_title">One-tap config</string>
+    <string name="detail_quick_config_title">Schemes</string>
     <string name="detail_quick_edit_title">Edit scheme</string>
     <string name="quick_section_schemes">Schemes</string>
     <string name="quick_section_actions">Actions</string>
@@ -280,10 +280,10 @@
         <item>N-day high close</item>
         <item>N-day low close</item>
         <item>MA N</item>
-        <item>Latest +p%</item>
-        <item>Latest −p%</item>
-        <item>Prev close +p%</item>
-        <item>Prev close −p%</item>
+        <item>Latest +P%</item>
+        <item>Latest −P%</item>
+        <item>Prev close +P%</item>
+        <item>Prev close −P%</item>
         <item>Fixed value</item>
     </string-array>
 

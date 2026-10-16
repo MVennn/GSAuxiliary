@@ -1639,8 +1639,16 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   换成 `Color.Red` 也照旧画成占位黑），图标一律是黑的。统一改用 `Widgets.TintedIcon`
   （miuix `Icon(painter, tint = ColorProducer, ...)` → `layer.colorFilter`，
   与 Miuix 底栏图标同一条路）
-- **锚定菜单要有最大高度**（3.1.1）：`MenuMaxHeightFraction = 0.6` 把卡片限在屏高 60%，
-  超出的选项由列表自己 `verticalScroll` —— 取值项目录 18 项，不封顶时菜单几乎铺满整屏
+- **锚定菜单要有最大高度**（3.1.1）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
+  超出的选项由列表自己 `verticalScroll`（右侧还有一条**只在滚动时出现**的指示条）——
+  取值项目录 18 项，不封顶时菜单几乎铺满整屏
+- **`AnimatedVisibility(visible = false)` 首次挂载不播退出动画**（3.1.1 踩过）：
+  想给列表行的「删除」补收起动画，不能按状态分成「普通 / 进入 / 移除」三条分支 ——
+  删除那一刻节点是新建的，`visible` 直接就是 false，动画不会跑。正确写法是
+  **每一行常驻一个 `AnimatedVisibility`**，出现与移除都只翻 `visible`
+- **会呼出弹窗的行用朝下箭头**（3.1.1）：Miuix `ArrowPreference` 自带朝右箭头，
+  语义是「进入下一级」；主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效这些
+  **原地弹窗**的行改用 `BasicComponent` + `Widgets.DownArrowIcon()`（动作行保持朝右）
 - **`values-en/strings.xml` 里的撇号必须写成 `\'`，引号写成 `\"`**。
   写 `&#39;` / `&quot;` 会在 AGP 合并资源时被**解码成裸字符**写进
   `merged.dir/values-en.xml`，而 aapt2 要求撇号转义，报

@@ -2,9 +2,11 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -36,6 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -153,6 +160,14 @@ internal class ChoiceDialogSpec(
     val selectedIndex: Int,
     val onSelect: (Int) -> Unit,
     override val anchor: Rect? = null,
+    /**
+     * 置灰且不可点的项（3.1.1）。
+     *
+     * 用在「点了也不会有任何变化」的动作菜单项上 —— 例如方案已经是默认时的「设为默认」、
+     * 只有一套方案时的「删除方案」、第一项的「上移」。原来这些项点了没反应，用户会以为
+     * 菜单坏了。**只是不可点，不会隐藏**：位置固定，菜单高度不会因为状态变化而跳动。
+     */
+    val disabledIndices: Set<Int> = emptySet(),
 ) : DialogSpec
 
 /** 一个「确认 / 取消」弹窗：标题 + 说明 + 两个按钮，贴屏幕底部弹出 */
@@ -388,7 +403,7 @@ private val MenuWidth = 200.dp
  * 又把身后的界面全盖住（用户反馈「弹窗高度已接近占满整个屏幕」）。
  * 超过这个高度就由内容自己滚动（[DialogBody] 的选择列表带了 `verticalScroll`）。
  */
-private const val MenuMaxHeightFraction = 0.6f
+private const val MenuMaxHeightFraction = 0.45f
 
 /** 卡片与屏幕边缘的最小距离；同时也是底部弹窗的左右留白（= 主页卡片的 `cardPadding`） */
 private val ScreenMargin = 12.dp
@@ -679,20 +694,46 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
         // 多一行标题只会让下拉菜单变高、变啰嗦。
         // `verticalScroll`：选项多到超过卡片高度上限时（见 MenuMaxHeightFraction）
         // 由列表自己滚动，而不是把卡片撑满整屏。
-        is ChoiceDialogSpec -> Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(vertical = 8.dp),
-        ) {
-            spec.items.forEachIndexed { index, label ->
-                ChoiceRow(
-                    label = label,
-                    selected = index == spec.selectedIndex,
-                    // 先关弹窗、**播完收起动画**再落配置：`onSelect` 里往往是一次
-                    // 配置写入（删除方案 / 上移下移 / 设为默认），同步执行会让列表在
-                    // 弹窗动画还没结束时重组 —— 见 [DialogController.dismiss]。
-                    onClick = { controller.dismiss { spec.onSelect(index) } },
-                )
+        is ChoiceDialogSpec -> {
+            val scrollState = rememberScrollState()
+            val scrolling = scrollState.isScrollInProgress
+            // 滚动时才出现的小指示条：内容没超出（maxValue == 0）时连画都不画
+            val thumbAlpha by animateFloatAsState(
+                targetValue = if (scrolling && scrollState.maxValue > 0) 1f else 0f,
+                // 出现要快（跟手）、消失慢一点（停手后还能看到它在哪）
+                animationSpec = tween(if (scrolling) 90 else 420),
+                label = "menu-scroll-thumb",
+            )
+            Box {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(scrollState)
+                        .padding(vertical = 8.dp),
+                ) {
+                    spec.items.forEachIndexed { index, label ->
+                        ChoiceRow(
+                            label = label,
+                            selected = index == spec.selectedIndex,
+                            enabled = index !in spec.disabledIndices,
+                            // 先关弹窗、**播完收起动画**再落配置：`onSelect` 里往往是一次
+                            // 配置写入（删除方案 / 上移下移 / 设为默认），同步执行会让列表在
+                            // 弹窗动画还没结束时重组 —— 见 [DialogController.dismiss]。
+                            onClick = { controller.dismiss { spec.onSelect(index) } },
+                        )
+                    }
+                }
+                if (thumbAlpha > 0.01f) {
+                    MenuScrollThumb(
+                        scrollState = scrollState,
+                        alpha = thumbAlpha,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 6.dp)
+                            .width(3.dp)
+                            .fillMaxHeight()
+                            .padding(vertical = 8.dp),
+                    )
+                }
             }
         }
 
@@ -813,37 +854,78 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
     }
 }
 
+/**
+ * 选项列表右侧的滚动指示条 —— **只在滚动时出现**（淡入淡出由调用方给的 [alpha] 驱动）。
+ *
+ * 为什么自己画：Miuix 0.9.3 没有给「任意可滚动容器」用的指示条（它的滚动条是 Lazy 列表
+ * 内部实现），而这里是一个 `verticalScroll` 的 Column。几何按「视口 / 内容总高」算、
+ * 位置按当前 value 算，与系统滚动条语义一致：条越短说明内容越长，条到底等于滚到底。
+ * 状态值都在 `drawBehind` 里读 —— 滚动只触发重绘，不触发重组。
+ */
+@Composable
+private fun MenuScrollThumb(
+    scrollState: ScrollState,
+    alpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    val color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    Box(
+        modifier = modifier.drawBehind {
+            val max = scrollState.maxValue
+            val viewport = scrollState.viewportSize
+            if (max <= 0 || viewport <= 0) return@drawBehind
+            val total = (max + viewport).toFloat()
+            // 最短不低于自身宽度的两倍，免得内容极长时细到看不见
+            val h = (size.height * viewport / total).coerceAtLeast(size.width * 2f)
+            val y = (size.height - h) * (scrollState.value.toFloat() / max)
+            drawRoundRect(
+                color = color.copy(alpha = 0.7f * alpha),
+                topLeft = Offset(0f, y),
+                size = Size(size.width, h),
+                cornerRadius = CornerRadius(size.width / 2f),
+            )
+        },
+    )
+}
+
 /** 单选弹窗里的一行：左标题、右对勾 */
+
 @Composable
 private fun ChoiceRow(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            // 禁用项**不挂 clickable**：连按压高亮都不该有，免得看着像能点
+            .then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            color = if (selected) {
-                MiuixTheme.colorScheme.primary
-            } else {
-                MiuixTheme.colorScheme.onSurfaceContainer
+            color = when {
+                !enabled -> MiuixTheme.colorScheme.disabledOnSurface
+                selected -> MiuixTheme.colorScheme.primary
+                else -> MiuixTheme.colorScheme.onSurfaceContainer
             },
             fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            fontWeight = if (selected && enabled) FontWeight.Medium else FontWeight.Normal,
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(12.dp))
         if (selected) {
-            Icon(
+            // TintedIcon：`Icon(imageVector, tint = …)` 的染色在本机不生效（见 Widgets.kt）
+            TintedIcon(
                 imageVector = AppIcons.Check,
-                contentDescription = null,
-                tint = MiuixTheme.colorScheme.primary,
+                tint = if (enabled) {
+                    MiuixTheme.colorScheme.primary
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSurface
+                },
                 modifier = Modifier.size(18.dp),
             )
         } else {

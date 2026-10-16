@@ -132,8 +132,19 @@ object QuickConfigStore {
             val root = JSONObject(json)
             val schemesJson = root.optJSONArray("schemes") ?: return@runCatching null
             val schemes = ArrayList<Scheme>()
+            // 同一 id 只留第一份。3.1.0 的「上移 / 下移」有个写入缺陷（见 QuickConfigScreen
+            // 的注释）会把同一套方案写进两个下标，列表里出现两条相同 id 的方案 —— 之后删掉
+            // 其中一条时 `filter { it.id != id }` 会得到空表，`rest.first()` 直接抛
+            // NoSuchElementException（用户报的「删除方案闪退」）。解析层把重复项丢掉，
+            // 已经写坏的老配置也能自愈。
+            val seenIds = HashSet<String>()
             for (i in 0 until schemesJson.length()) {
-                decodeScheme(schemesJson.optJSONObject(i) ?: continue)?.let { schemes.add(it) }
+                val scheme = decodeScheme(schemesJson.optJSONObject(i) ?: continue) ?: continue
+                if (!seenIds.add(scheme.id)) {
+                    GLog.w("一键配置：方案 id 重复（${scheme.id}），已丢弃后出现的那条")
+                    continue
+                }
+                schemes.add(scheme)
             }
             if (schemes.isEmpty()) return@runCatching null
             // defaultId 失效（指向被丢弃的方案）时回落第一个 —— decode 的注释里说过

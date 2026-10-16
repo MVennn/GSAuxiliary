@@ -40,6 +40,7 @@ import io.github.MVennn.GSAuxiliary.core.LogLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -296,12 +297,14 @@ internal fun SettingsTab() {
         Card(modifier = Modifier.cardPadding()) {
             // 主题设置：右侧直接显示当前值，点开弹窗选（弹窗贴在控件右下方）。
             // 写入走 editDeferred —— 主题变化会整树重组，必须等弹窗关闭之后再落盘。
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_theme),
                 modifier = Modifier.onGloballyPositioned { themeAnchor = it.boundsInWindow() },
                 summary = themeLabels.getOrElse(
                     ConfigKeys.THEME_VALUES.indexOf(theme).coerceAtLeast(0),
                 ) { "" },
+                // 朝下箭头：这一行是**原地弹窗**，不是进入下一级（见 DownArrowIcon）
+                endActions = { DownArrowIcon() },
                 onClick = {
                     dialogs?.showChoice(
                         ChoiceDialogSpec(
@@ -317,12 +320,13 @@ internal fun SettingsTab() {
                     )
                 },
             )
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_language),
                 modifier = Modifier.onGloballyPositioned { languageAnchor = it.boundsInWindow() },
                 summary = languageLabels.getOrElse(
                     ConfigKeys.LANGUAGE_VALUES.indexOf(language).coerceAtLeast(0),
                 ) { "" },
+                endActions = { DownArrowIcon() },
                 onClick = {
                     dialogs?.showChoice(
                         ChoiceDialogSpec(
@@ -412,12 +416,13 @@ internal fun SettingsTab() {
         //    取代了原来那个只能在模块 App 进程里翻的查看页。
         SmallTitle(stringResource(R.string.section_log))
         Card(modifier = Modifier.cardPadding()) {
-            ArrowPreference(
+            BasicComponent(
                 title = stringResource(R.string.item_log_level),
                 modifier = Modifier.onGloballyPositioned { logLevelAnchor = it.boundsInWindow() },
                 summary = logLabels.getOrElse(
                     LogLevel.VALUES.indexOf(logLevel).coerceAtLeast(0),
                 ) { "" },
+                endActions = { DownArrowIcon() },
                 onClick = {
                     dialogs?.showChoice(
                         ChoiceDialogSpec(

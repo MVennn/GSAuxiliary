@@ -312,13 +312,18 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
     )
     val showAgreement = !agreedDisclaimer && route == Route.Home
 
-    // 退出动画期间 `route` 已经变回上一页，仍需知道「刚才那页是谁」：两层各记一份。
-    // 初值直接取 `initialRoute`（带 route extra 拉起时直达二级页），
-    // 否则首帧会先按占位值画一帧错的页面再被 LaunchedEffect 纠正。
-    var shownSub by remember {
-        mutableStateOf<Route>(if (initialRoute is Route.QuickConfigEdit) Route.QuickConfig else initialRoute)
-    }
-    var shownEdit by remember { mutableStateOf(initialRoute as? Route.QuickConfigEdit) }
+    // 「这两层此刻该画哪一页」在**组合期**就算出来，不放进 LaunchedEffect：
+    //
+    //  - 进入时当帧就位 —— 放 effect 里会晚一帧（先空一帧再开始滑，看着像「打开慢」）；
+    //  - 退出动画期间 `route` 已经不是它了，但那一层还得继续画完 —— 靠这两个变量记住。
+    //
+    // （组合期写 state 会让这一帧多跑一遍组合，值是确定的，最多两遍就收敛。）
+    val editRouteNow = route as? Route.QuickConfigEdit
+    val subRouteNow = if (editRouteNow != null) Route.QuickConfig else route
+    var shownSub by remember { mutableStateOf(subRouteNow) }
+    var shownEdit by remember { mutableStateOf(editRouteNow) }
+    if (subRouteNow != Route.Home && subRouteNow != shownSub) shownSub = subRouteNow
+    if (editRouteNow != null && editRouteNow != shownEdit) shownEdit = editRouteNow
 
     val predictiveBack = rememberPredictiveBack()
     // 二级 / 三级各自的滑动进度：0 = 完全滑出屏幕右侧，1 = 完全盖住下面那层
@@ -332,8 +337,8 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
     LaunchedEffect(route) {
         when (route) {
             Route.Home -> {
-                // 三级页（若有）先滑走，再滑走二级页
-                if (editProgress.value > 0f) {
+                // 三级页（若在）先滑走，再滑走二级页
+                if (shownEdit != null) {
                     editProgress.animateTo(0f, tween(RouteAnimMillis))
                     shownEdit = null
                 }
@@ -341,17 +346,17 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
             }
 
             is Route.QuickConfigEdit -> {
-                shownSub = Route.QuickConfig
-                // 显式转换：`route` 是被 lambda 捕获的 var，编译器不做智能转换
-                shownEdit = route as Route.QuickConfigEdit
                 subProgress.animateTo(1f, tween(RouteAnimMillis))
                 editProgress.animateTo(1f, tween(RouteAnimMillis))
             }
 
             else -> {
-                shownSub = route
-                if (editProgress.value > 0f) {
-                    // 从三级页回到二级页：只动三级页，二级页留在原地
+                // 从三级页回到二级页：只动三级页，二级页留在原地。
+                //
+                // 判据是「三级层还在不在」，**不是**「进度 > 0」—— 3.1.1 修的就是这个：
+                // 入场动画刚起步（甚至还没开始跑）时按返回，进度还是 0，原来会直接把
+                // 那一层销毁掉，表现就是「按返回时入场动画凭空消失（页面瞬没）」。
+                if (shownEdit != null) {
                     editProgress.animateTo(0f, tween(RouteAnimMillis))
                     shownEdit = null
                 }
@@ -450,11 +455,20 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer {
-                            val s = 1f - 0.06f * pe
-                            scaleX = s
-                            scaleY = s
-                        },
+                        // 只有三级页盖上来时（pe > 0）才挂缩放层：`graphicsLayer` 一旦挂上
+                        // 就是一张全屏离屏图层，「打开三级页要画三张整屏」本来就不便宜，
+                        // 平时这一层是恒等变换，白白多一层（3.1.1 打开速度优化）。
+                        .then(
+                            if (pe > 0.001f) {
+                                Modifier.graphicsLayer {
+                                    val s = 1f - 0.06f * pe
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     when (shownSub) {
                         Route.WatchlistDetail -> SubScreen(
@@ -838,11 +852,15 @@ private fun SubScreen(
     // 卡片 / 开关 / 输入框自己会消费点击，只有真正点在空白处才会走到这里。
     val focusManager = LocalFocusManager.current
 
+    // 二级页的内容只有**弹窗打开时**才需要被采进 backdrop 图层（玻璃卡片要采它身后的
+    // 画面）。平时挂着等于每帧多录一张全屏图层 —— 弹窗关了就把这一层摘掉（3.1.1）。
+    val needsBackdrop = dialogs.spec != null
+
     Box(Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop),
+                .then(if (needsBackdrop) Modifier.layerBackdrop(backdrop) else Modifier),
         ) {
             Scaffold(
                 // 与一级页同源，保证二级页与底衬颜色一致（见 HomeScaffold 的注释）

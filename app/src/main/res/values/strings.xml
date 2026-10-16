@@ -116,12 +116,12 @@
     <string name="feature_quick_config_title">价格页一键配置</string>
     <string name="feature_quick_config_summary">智能盯盘的价格页底部，保存右边多一个配置按钮，点一下按方案填好涨到跌到价格</string>
     <string name="feature_quick_config_switch">增加 配置 按钮</string>
-    <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右边</string>
+    <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右侧，为盯盘增加一键配置功能</string>
     <string name="feature_quick_config_detail_entry">方案设置</string>
     <string name="feature_quick_config_detail_entry_summary">为 价格 配置 增加自定义方案</string>
 
     <!-- ============================ 一键配置 · 方案设置（二级菜单） ============================ -->
-    <string name="detail_quick_config_title">一键配置</string>
+    <string name="detail_quick_config_title">方案设置</string>
     <string name="detail_quick_edit_title">编辑方案</string>
     <string name="quick_section_schemes">方案</string>
     <string name="quick_section_actions">操作</string>
@@ -290,10 +290,10 @@
         <item>N日最高收盘</item>
         <item>N日最低收盘</item>
         <item>MA N</item>
-        <item>最新价 +p%</item>
-        <item>最新价 −p%</item>
-        <item>昨收 +p%</item>
-        <item>昨收 −p%</item>
+        <item>最新价 +P%</item>
+        <item>最新价 −P%</item>
+        <item>昨收 +P%</item>
+        <item>昨收 −P%</item>
         <item>固定价</item>
     </string-array>
 

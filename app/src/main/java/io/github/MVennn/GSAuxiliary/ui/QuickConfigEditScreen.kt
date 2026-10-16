@@ -1,7 +1,15 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,6 +36,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlinx.coroutines.delay
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigCatalog
@@ -39,11 +50,18 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** 取值项增删动画时长（也是「动画播完再写配置」的等待时长） */
+private const val TermAnimMillis = 200
+
+/** 数字输入框的圆角：描边与 `TextField` 的 `cornerRadius` 必须用同一个值 */
+private val NumberFieldCorner = 10.dp
 
 /**
  * 方案编辑页（三级页，§6.3）：名称、涨到槽、跌到槽、提醒时效、设为默认、删除。
@@ -190,14 +208,26 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
         // ---- 设为默认 / 删除 ----
         SmallTitle(stringResource(R.string.quick_section_actions))
         Card(modifier = Modifier.cardPadding()) {
+            // 「设为默认」可以开、也可以关（3.1.1 用户反馈原来关不掉）。
+            //  - 开着：把它设为默认，同时记住**被顶替的那个默认方案**；
+            //  - 关掉：默认位置交回上一个默认方案；它已经不在了（被删/被改名）就取
+            //    列表里第一个别的方案 —— 无论如何永远有一套默认（§6.3）。
+            // 只剩一套方案时它就是默认、也没有别的可交，开关**置灰不可点**。
             SwitchPreference(
                 checked = scheme.isDefault,
+                enabled = data.schemes.size > 1,
                 onCheckedChange = { v ->
-                    if (v) {
-                        val updated = data.schemes.map { it.copy(isDefault = it.id == schemeId) }
-                        writeSchemes(data.copy(defaultId = schemeId, schemes = updated))
+                    val target = if (v) {
+                        lastDefaultId = data.defaultId.takeIf { it != schemeId }
+                        schemeId
+                    } else {
+                        lastDefaultId
+                            ?.takeIf { last -> last != schemeId && data.schemes.any { it.id == last } }
+                            ?: data.schemes.firstOrNull { it.id != schemeId }?.id
+                            ?: schemeId
                     }
-                    // 取消默认：不响应 —— 必须有一个默认方案（§6.3），换默认走另一条的开关或 ⋮ 菜单
+                    val updated = data.schemes.map { it.copy(isDefault = it.id == target) }
+                    writeSchemes(data.copy(defaultId = target, schemes = updated))
                 },
                 title = stringResource(R.string.quick_set_default),
             )
@@ -283,6 +313,12 @@ private fun SlotEditor(
     aggTexts: List<String>,
     onChanged: (QuickConfigStore.Slot) -> Unit,
 ) {
+    // 刚添加的那一项：只为它播一次展开动画
+    var justAddedKey by remember { mutableStateOf<String?>(null) }
+
+    /** 取值项的行标识：删掉中间某一项后，剩下的项 index 会变，所以把 source 也带上 */
+    fun keyOf(index: Int, term: QuickConfigStore.Term) = "$schemeId-$isUp-$index-${term.source}"
+
     SmallTitle(title)
     Card(modifier = Modifier.cardPadding()) {
         // 聚合（多值才有意义，但始终显示 —— 一看就知道多个取值项怎么合并）
@@ -294,13 +330,15 @@ private fun SlotEditor(
 
         slot.terms.forEachIndexed { index, term ->
             TermRow(
-                key = "$schemeId-$isUp-$index-${term.source}",
+                key = keyOf(index, term),
                 term = term,
                 name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source },
                 // 一个槽至少留一个取值项：空槽写进 JSON 之后会被
                 // `QuickConfigStore.decodeSlot` 当成坏数据丢弃（连带整条方案），
                 // 于是三级页会「自己变空 / 跳走」—— 用户看到的就是删一下就崩了。
+                // 只剩一项时**整颗 ✕ 都不画**（不留灰按钮占位）。
                 deletable = slot.terms.size > 1,
+                justAdded = keyOf(index, term) == justAddedKey,
                 onParam = { newParam ->
                     onChanged(
                         slot.copy(
@@ -330,14 +368,24 @@ private fun SlotEditor(
                             else -> ""
                         }
                     }
-                    onChanged(slot.copy(terms = slot.terms + QuickConfigStore.Term(picked.id, param)))
+                    val added = slot.terms + QuickConfigStore.Term(picked.id, param)
+                    onChanged(slot.copy(terms = added))
+                    justAddedKey = keyOf(added.size - 1, added.last())
                 }
             },
         )
     }
+
+    // 动画播完把标记清掉，免得这一行以后被重组时又播一次
+    LaunchedEffect(justAddedKey) {
+        if (justAddedKey != null) {
+            delay(TermAnimMillis.toLong())
+            justAddedKey = null
+        }
+    }
 }
 
-/** 聚合方式：点整行弹选择 */
+/** 聚合方式：点整行弹选择（箭头朝下，表示原地弹窗而不是进下一级） */
 @Composable
 private fun AggregateRow(
     agg: String,
@@ -346,9 +394,10 @@ private fun AggregateRow(
 ) {
     var anchor by remember { mutableStateOf<Rect?>(null) }
     val dialogs = LocalDialogController.current
-    ArrowPreference(
+    BasicComponent(
         title = stringResource(R.string.quick_field_agg),
         summary = texts[aggIndexOf(agg)],
+        endActions = { DownArrowIcon() },
         modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
         onClick = {
             dialogs?.showChoice(
@@ -359,11 +408,17 @@ private fun AggregateRow(
 }
 
 /**
- * 一个取值项 —— 三种形态按参数类型分：
+ * 一个取值项 —— 参数控件在右、**删除键永远是最右边那一个**。
  *
- *  - 周期（`period`）：整行可点，点开选周期；
- *  - 百分比 / 固定价（`pct` / `value`）：行内一个数字输入框；
- *  - 无参数（如「最新价」）：只有名字和一颗删除。
+ * ## ✕ 为什么必须贴着行尾
+ *
+ * 3.1.1 之前，带周期的项用 `ArrowPreference`（Miuix 会在 `endActions` **之后**再补一颗
+ * 朝右的箭头），于是那一行的 ✕ 被箭头挤到了左边，跟「涨停价」「最新价」这些行的 ✕
+ * 差着一个箭头的宽度（用户看到的「X 不对齐」）。现在所有取值项行都用 `BasicComponent`：
+ * 右端固定是「参数控件 → ✕」，✕ 一律落在同一列上。
+ *
+ * 周期的当前值 + 朝下的小箭头也放在这里（不再借用组件自带箭头）—— 朝下表示
+ * 「点开就地选一个值」，而不是「进入下一级页面」。
  */
 @Composable
 private fun TermRow(
@@ -371,60 +426,88 @@ private fun TermRow(
     term: QuickConfigStore.Term,
     name: String,
     deletable: Boolean,
+    justAdded: Boolean,
     onParam: (Map<String, String>) -> Unit,
     onDelete: () -> Unit,
 ) {
     val param = QuickConfigCatalog.byId(term.source)?.params?.firstOrNull()
 
-    when {
-        // 周期：整行是一个选择项，当前值进 summary
-        param != null && param.periodChoices.isNotEmpty() -> {
-            var anchor by remember { mutableStateOf<Rect?>(null) }
-            val dialogs = LocalDialogController.current
-            val current = term.param[param.key] ?: param.periodChoices.first()
-            val choices = param.periodChoices.map { stringResource(R.string.quick_param_period_fmt, it) }
-            ArrowPreference(
+    // 删除动画：点了 ✕ **先收起来再写配置**（直接删是「凭空消失」，看不见过渡）
+    var removing by remember(key) { mutableStateOf(false) }
+    LaunchedEffect(removing) {
+        if (removing) {
+            delay(TermAnimMillis.toLong())
+            onDelete()
+        }
+    }
+    // 新增动画：只有刚添加的那一行从 0 高度展开
+    var shown by remember(key) { mutableStateOf(!justAdded) }
+    LaunchedEffect(key) { if (justAdded) shown = true }
+
+    val dialogs = LocalDialogController.current
+    var anchor by remember { mutableStateOf<Rect?>(null) }
+
+    AnimatedVisibility(
+        visible = shown && !removing,
+        enter = expandVertically(tween(TermAnimMillis)) + fadeIn(tween(160)),
+        exit = shrinkVertically(tween(TermAnimMillis)) + fadeOut(tween(140)),
+    ) {
+        when {
+            // 周期：整行可点，右端是「当前周期 + 朝下小箭头」
+            param != null && param.periodChoices.isNotEmpty() -> {
+                val current = term.param[param.key] ?: param.periodChoices.first()
+                val choices = param.periodChoices.map { stringResource(R.string.quick_param_period_fmt, it) }
+                BasicComponent(
+                    title = name,
+                    endActions = {
+                        Text(
+                            text = stringResource(R.string.quick_param_period_fmt, current),
+                            color = MiuixTheme.colorScheme.primary,
+                            fontSize = 14.sp,
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        DownArrowIcon()
+                        if (deletable) RemoveTermButton { removing = true }
+                    },
+                    modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
+                    onClick = {
+                        dialogs?.showChoice(
+                            ChoiceDialogSpec(
+                                items = choices,
+                                selectedIndex = param.periodChoices.indexOf(current),
+                                onSelect = { which -> onParam(term.param + (param.key to param.periodChoices[which])) },
+                                anchor = anchor,
+                            ),
+                        )
+                    },
+                )
+            }
+
+            // 百分比 / 固定价：行内一个数字输入框
+            param != null && (
+                param.key == QuickConfigCatalog.PARAM_PCT ||
+                    param.key == QuickConfigCatalog.PARAM_VALUE
+                ) -> {
+                BasicComponent(
+                    title = name,
+                    endActions = {
+                        NumberField(
+                            key = key,
+                            param = param,
+                            initial = term.param[param.key] ?: "",
+                            onChanged = { text -> onParam(term.param + (param.key to text)) },
+                        )
+                        if (deletable) RemoveTermButton { removing = true }
+                    },
+                )
+            }
+
+            // 无参数项（也兜住以后新增的参数类型：至少名字和删除还在）
+            else -> BasicComponent(
                 title = name,
-                summary = stringResource(R.string.quick_param_period_fmt, current),
-                modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
-                endActions = { RemoveTermButton(deletable, onDelete) },
-                onClick = {
-                    dialogs?.showChoice(
-                        ChoiceDialogSpec(
-                            items = choices,
-                            selectedIndex = param.periodChoices.indexOf(current),
-                            onSelect = { which -> onParam(term.param + (param.key to param.periodChoices[which])) },
-                            anchor = anchor,
-                        ),
-                    )
-                },
+                endActions = { if (deletable) RemoveTermButton { removing = true } },
             )
         }
-
-        // 百分比 / 固定价：行内一个数字输入框
-        param != null && (
-            param.key == QuickConfigCatalog.PARAM_PCT ||
-                param.key == QuickConfigCatalog.PARAM_VALUE
-            ) -> {
-            BasicComponent(
-                title = name,
-                endActions = {
-                    NumberField(
-                        key = key,
-                        param = param,
-                        initial = term.param[param.key] ?: "",
-                        onChanged = { text -> onParam(term.param + (param.key to text)) },
-                    )
-                    RemoveTermButton(deletable, onDelete)
-                },
-            )
-        }
-
-        // 无参数项（也兜住以后新增的参数类型：至少名字和删除还在）
-        else -> BasicComponent(
-            title = name,
-            endActions = { RemoveTermButton(deletable, onDelete) },
-        )
     }
 }
 
@@ -433,6 +516,8 @@ private fun TermRow(
  *
  * `insideMargin` 收窄到 10×6dp —— 默认值 16×16dp 会把 88dp 宽的框挤得只剩五十多 dp，
  * 数字和光标贴边。只接受**合法**的值才回写，与 3.1.x 一致（写半截会让方案解析失败）。
+ *
+ * 外观上加了**一圈常驻描边**：框里的底色与卡片同色，不加边就看不出这里能点、能输。
  */
 @Composable
 private fun NumberField(
@@ -459,10 +544,12 @@ private fun NumberField(
     }
     TextField(
         state = state,
-        modifier = Modifier.width(88.dp),
+        modifier = Modifier
+            .width(88.dp)
+            .border(1.dp, MiuixTheme.colorScheme.outline, RoundedCornerShape(NumberFieldCorner)),
         label = if (param.key == QuickConfigCatalog.PARAM_PCT) "%" else "",
         useLabelAsPlaceholder = true,
-        cornerRadius = 10.dp,
+        cornerRadius = NumberFieldCorner,
         insideMargin = DpSize(10.dp, 6.dp),
         lineLimits = TextFieldLineLimits.SingleLine,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -472,21 +559,13 @@ private fun NumberField(
     )
 }
 
-/**
- * 删掉一个取值项。`enabled = false` 用在「这个槽只剩这一项」时 ——
- * 一个槽至少要留一项（空槽会被解析层当成坏数据丢弃，见调用点注释）。
- */
+/** 删掉一个取值项（一个槽只剩一项时**整颗都不画**，见 [SlotEditor]） */
 @Composable
-private fun RemoveTermButton(enabled: Boolean, onDelete: () -> Unit) {
-    IconButton(onClick = onDelete, enabled = enabled) {
+private fun RemoveTermButton(onDelete: () -> Unit) {
+    IconButton(onClick = onDelete) {
         TintedIcon(
             imageVector = AppIcons.Close,
-            tint = if (enabled) {
-                MiuixTheme.colorScheme.onSurfaceVariantActions
-            } else {
-                // 禁用态：图标压到 38% 不透明度（Miuix 的 disabled 观感）
-                MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.38f)
-            },
+            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
         )
     }
 }
@@ -514,7 +593,7 @@ private fun AddTermRow(
     )
 }
 
-/** 提醒时效 */
+/** 提醒时效：与其它弹窗类控件一致 —— 右端朝下箭头 */
 @Composable
 private fun ValidityRow(
     validity: String?,
@@ -523,9 +602,10 @@ private fun ValidityRow(
 ) {
     var anchor by remember { mutableStateOf<Rect?>(null) }
     val dialogs = LocalDialogController.current
-    ArrowPreference(
+    BasicComponent(
         title = stringResource(R.string.quick_field_validity),
         summary = texts[validityIndexOf(validity)],
+        endActions = { DownArrowIcon() },
         modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
         onClick = {
             dialogs?.showChoice(
