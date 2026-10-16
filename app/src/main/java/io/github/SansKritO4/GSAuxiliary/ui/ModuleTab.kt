@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -188,11 +187,11 @@ private data class FrameworkInfo(
  *    装饰图标放进 `matchParentSize` 容器，**不再参与高度测量** ——
  *    于是「只调字号」不会连带改变卡片高度（2.9.1 / 2.9.2 时高度其实是被图标
  *    顶到 150 / 170dp 的，见 [StatusCardMinHeight] 的注释）；
- *  - **图标放大并移到右下角**（2.9.1 / 2.9.2 / 2.9.3 / 2.17.1）：图标尺寸
- *    [StatusCardIconSize]，`align(BottomEnd)` 后各推半个身位、再回缩
- *    [StatusCardIconInset]，于是卡内露出图标的左上一块，成为一枚角落里的装饰弧线。
- *    2.17.1 尺寸再放大一档、内缩量同时加大 —— 露出部分竖向盖满整条卡片右缘，
- *    弧线从右上一直连到右下。
+ *  - **图标完整显示、右侧垂直居中**（2.17.2 定稿；2.9.1 ~ 2.17.1 为裁切弧）：
+ *    图标尺寸 [StatusCardIconSize]，`align(CenterEnd)` 靠右垂直居中、距右缘
+ *    [StatusCardIconEndPadding]，整个圆完整露出 —— 132dp 对 148dp 的卡高，
+ *    上下各留 8dp。此前一直走「顶到右下角、只露左上一块弧线」的路线，
+ *    2.17.1 放大到 260dp 后弧线盖满整条卡片右缘，认不出是个对勾，故废弃。
  *
  *    > Miuix `Card` 的 `BasicCard` 内部走 `squircleSurface`，其中调用了
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
@@ -244,6 +243,38 @@ private fun OverviewStatusCard(
                 .fillMaxWidth()
                 .heightIn(min = StatusCardMinHeight),
         ) {
+            // --- 右侧装饰图标：完整显示，垂直居中（2.17.2 定稿） ---
+            //
+            // 2.9.1 ~ 2.17.1 一直走「裁切弧」路线：图标顶到右下角、只露左上一块，
+            // 且一版比一版大 —— 2.17.1 到 260dp / 内缩 60dp 后弧线盖满整条卡片右缘，
+            // 看着像一条乱入的曲线，认不出是个对勾。2.17.2 改回**完整显示**：
+            // 132dp（卡片 148dp 高，上下各留 8dp）、右侧垂直居中、距右缘
+            // [StatusCardIconEndPadding] —— 对齐 LSPosed 那张「已激活 + 大对勾」
+            // 卡的原始版式，图标是图标，不再是切出来的弧。
+            //
+            // 仍放在 `matchParentSize` 容器里：`matchParentSize` 的节点**不参与父级
+            // 尺寸测量**，卡片高度只由文字内容 + [StatusCardMinHeight] 决定，
+            // 以后再怎么调图标尺寸都不会把卡片撑高（2.9.1 / 2.9.2 的教训见
+            // [StatusCardMinHeight] 的注释）。
+            //
+            // 图标**画在文字下层**（先声明）：万一窄屏 / 大字号下文字延长线碰到
+            // 图标，也是 0.30 透明度的水印垫底，不会盖住文字。
+            Box(Modifier.matchParentSize()) {
+                Icon(
+                    imageVector = if (state == FrameworkState.Active) {
+                        AppIcons.CheckCircle
+                    } else {
+                        AppIcons.ErrorCircle
+                    },
+                    contentDescription = null,
+                    tint = accent.copy(alpha = StatusCardIconAlpha),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = StatusCardIconEndPadding)
+                        .size(StatusCardIconSize),
+                )
+            }
+
             // --- 左侧三行文字：垂直居中（2.9.2 起字号整体上调一档） ---
             Column(
                 modifier = Modifier
@@ -269,36 +300,6 @@ private fun OverviewStatusCard(
                     text = api,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     fontSize = 15.sp,
-                )
-            }
-
-            // --- 右下角装饰图标 ---
-            //
-            // ⚠️ 必须放在 `matchParentSize` 的容器里：`matchParentSize` 的节点
-            // **不参与父级尺寸测量**，所以这枚超大图标不会再把卡片撑高。
-            // 直接把它当 Box 的子节点时，`Modifier.size(StatusCardIconSize)` 会把 Box
-            // 顶到图标那么高 —— 那正是 2.9.1 / 2.9.2 卡片「越改越高」的真正原因
-            // （`offset` 只挪位置、不改测量尺寸）。现在卡片高度只由文字内容 +
-            // [StatusCardMinHeight] 决定。
-            //
-            // offset 正向 = 向右 / 向下；推「半个身位 - 内缩量」，图标中心就落在
-            // 卡片右下角的左上方。溢出部分由 Card 自身的 squircle 裁剪切掉。
-            Box(Modifier.matchParentSize()) {
-                Icon(
-                    imageVector = if (state == FrameworkState.Active) {
-                        AppIcons.CheckCircle
-                    } else {
-                        AppIcons.ErrorCircle
-                    },
-                    contentDescription = null,
-                    tint = accent.copy(alpha = StatusCardIconAlpha),
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(
-                            x = StatusCardIconSize / 2f - StatusCardIconInset,
-                            y = StatusCardIconSize / 2f - StatusCardIconInset,
-                        )
-                        .size(StatusCardIconSize),
                 )
             }
         }
@@ -330,27 +331,26 @@ private val StatusCardMinHeight = 148.dp
 private val StatusActiveColor = Color(0xFF0E8A52)
 
 /**
- * 右下角装饰图标的透明度（2.9.1 起为 0.16，2.17.1 提到 0.30）。
+ * 右侧装饰图标的透明度（2.9.1 起为 0.16，2.17.1 提到 0.30）。
  *
- * 0.16 在浅色卡面上几乎糊成一片，放大之后尤其明显 —— 提到 0.30 才看得出弧线，
- * 又不会盖过左侧文字。配合 [StatusActiveColor] 的加深，图标整体深了一档。
+ * 0.16 在浅色卡面上几乎糊成一片 —— 提到 0.30 图标读得清，又不会盖过左侧文字。
  */
 private const val StatusCardIconAlpha = 0.30f
 
 /**
- * 右下角装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp）。
+ * 右侧装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp，
+ * 2.17.2 收到 132dp 并改为**完整显示**、不再裁切）。
  *
- * 图标在 `matchParentSize` 容器里，所以这个尺寸**不影响卡片高度**，
- * 只决定露出的弧度有多大。
+ * 图标在 `matchParentSize` 容器里，所以这个尺寸**不影响卡片高度**。
+ * 132dp 对 148dp 的卡片最小高度正好上下各留 8dp —— 图标与卡片近乎等高，
+ * 对勾读得清，也不压过左侧文字。
  */
-private val StatusCardIconSize = 260.dp
+private val StatusCardIconSize = 132.dp
 
 /**
- * 图标中心相对卡片右下角**向左上**内缩的量（2.9.2 新增 16dp，2.9.3 加大到 26dp，
- * 2.17.1 再到 60dp）。
+ * 图标右缘距卡片右缘的距离（2.17.2 新增，16dp）。
  *
- * 取 0 时中心正好压在角上，只露左上四分之一；内缩越多露出越多。
- * 现在露出的是 `图标一半 + inset` = 130 + 60 = **190dp** 见方，竖向超出
- * 148dp 的卡顶 42dp —— 弧线把整条右边缘都占满了。
+ * 取 0 时图标贴着卡边；留 16dp 与左侧文字的 16dp 起始边距对称，
+ * 也给卡片圆角让出余地。
  */
-private val StatusCardIconInset = 60.dp
+private val StatusCardIconEndPadding = 16.dp

@@ -56,6 +56,10 @@ internal fun StrategyQuoteDetailScreen() {
         Spacer(Modifier.height(8.dp))
 
         // --- 左右滑动 ---
+        // 开关不带副标题：「左右滑动切换股票」已经把行为说完，开 / 关两种状态的
+        // 说明文字（「在个股详情页左右滑动…」「只显示当前这一只…」）都是标题的
+        // 展开写法，卡片底的「与行情、自选列表点进去的效果一致」讲的是实现效果 ——
+        // 按 docs/NAMING.md §3 的同一把尺子，一律不写（2.17.2 清理）。
         SmallTitle(stringResource(R.string.section_stg_swipe))
         Card(modifier = Modifier.cardPadding()) {
             SwitchPreference(
@@ -64,13 +68,8 @@ internal fun StrategyQuoteDetailScreen() {
                     ModulePreferences.edit { putBoolean(ConfigKeys.STG_QUOTE_SWIPE, v) }
                 },
                 title = stringResource(R.string.item_stg_quote_swipe),
-                summary = stringResource(
-                    if (swipe) R.string.item_stg_quote_swipe_summary_on
-                    else R.string.item_stg_quote_swipe_summary_off
-                ),
                 enabled = direct,
             )
-            CardNote(stringResource(R.string.note_stg_swipe))
         }
 
         // 手势导航条让位（同 WatchlistDetailScreen）

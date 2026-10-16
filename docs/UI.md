@@ -523,7 +523,8 @@ Miuix 基础件拼的。
 
 ```kotlin
 Card(
-    // 内边距改由文字列自己加 —— 装饰图标要溢出到卡片角外，不能被 Card 的内边距挡住
+    // 内边距改由文字列自己加 —— 装饰图标要与卡边留出距离、贴到卡片边缘之外的范围，
+    // 不能被 Card 的内边距挡住
     insideMargin = PaddingValues(0.dp),
     colors = CardDefaults.defaultColors(
         color = accent.copy(alpha = 0.14f),        // 卡面：主色 14% 透明度
@@ -531,37 +532,35 @@ Card(
     ),
 ) {
     Box(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
-        Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
-            标题(22sp) / 版本(16sp) / API(15sp)                // 2.9.2：字号上调一档
-        }
         // 2.9.3 关键：装饰图标放进 matchParentSize 容器 —— 它不参与父级尺寸测量，
-        // 卡片高度不再被 170dp 的图标顶高，只由「文字内容 + min 高度」决定。
+        // 卡片高度只由「文字内容 + min 高度」决定，调图标尺寸不会撑高卡片。
+        // 2.17.2：图标画在文字下层（先声明），窄屏 / 大字号下碰到也只是水印垫底。
         Box(Modifier.matchParentSize()) {
             Icon(
                 AppIcons.CheckCircle | ErrorCircle,
-                tint = accent.copy(alpha = 0.16f),
+                tint = accent.copy(alpha = 0.30f), // 2.17.1：0.16 → 0.30
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    // 各推半个身位再回缩一个 inset —— 露出左上约 111dp 见方
-                    .offset(
-                        x = StatusCardIconSize / 2f - StatusCardIconInset,
-                        y = StatusCardIconSize / 2f - StatusCardIconInset,
-                    )
+                    .align(Alignment.CenterEnd)    // 2.17.2：完整显示，右侧垂直居中
+                    .padding(end = StatusCardIconEndPadding)
                     .size(StatusCardIconSize),
             )
+        }
+        Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
+            标题(22sp) / 版本(16sp) / API(15sp)                // 2.9.2：字号上调一档
         }
     }
 }
 
 private val StatusCardMinHeight = 148.dp    // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
-private val StatusCardIconSize = 170.dp     // 2.9.2：150 → 170
-private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上移一些
+private val StatusCardIconSize = 132.dp     // 2.17.2：260 → 132，不再裁切
+private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文字起始边距对称
 ```
 
 | 状态 | 主色 | 图标 |
 |---|---|---|
-| 已激活（框架已连接） | `Color(0xFF1AAE6A)` 绿 | `AppIcons.CheckCircle` |
-| 未激活（没接上框架） | `MiuixTheme.colorScheme.error` | `AppIcons.ErrorCircle` |
+| 已激活（连上框架，作用域非空、信息可读） | `Color(0xFF0E8A52)` 绿 | `AppIcons.CheckCircle` |
+| 未激活（连上框架，但作用域为空 / 信息读不出） | `MiuixTheme.colorScheme.error` | `AppIcons.ErrorCircle` |
+| 未连接（拿不到框架服务） | `MiuixTheme.colorScheme.onBackgroundVariant` | `AppIcons.ErrorCircle` |
 
 卡面用主色 14% 透明度而不是实色，深浅色主题下都不用另外配一套。
 
@@ -629,6 +628,19 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
    **之后只调字号不会再改变卡片高度**（这正是用户要的）。
 2. **`StatusCardIconInset` 16dp → 26dp**：露出部分从 101dp 见方变成
    **111dp 见方**（约占图标 65%），图标整体再往左上挪 10dp。
+
+#### 3.1.4 2.17.2：裁切弧废弃，图标完整显示
+
+2.9.1 ~ 2.17.1 一直走「顶到右下角、只露左上一块弧线」的路线，且一版比一版大 ——
+2.17.1 到 260dp / 内缩 60dp 后，露出的 190dp 见方竖向盖满整条卡片右缘，
+弧线从右上连到右下，认不出是个对勾。2.17.2 推倒重来：
+
+- **完整显示**：`align(CenterEnd)` 右侧垂直居中，132dp 对 148dp 卡高上下各留
+  8dp，`StatusCardIconEndPadding = 16.dp` 让图标与右缘留出与文字起始边距对称的
+  空隙 —— 对齐 LSPosed 那张「已激活 + 大对勾」卡的原始版式；
+- **`StatusCardIconInset` 删除**：不再裁切，偏移推导公式随之消失；
+- **图标画在文字下层**（Box 里先声明图标、后声明文字列）：窄屏 / 大字号下
+  文字延长线碰到图标，也只是 0.30 透明度的水印垫底，不会盖字。
 
 ### 3.2 分类按「信息归属」划分
 
@@ -758,7 +770,7 @@ private val StatusCardIconInset = 26.dp     // 2.9.3：16 → 26，再向左上�
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|
 | `WatchlistDetail.kt` | 自选股高亮 → 染色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设 + 预览）/ 效果预览 |
-| `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，带 `note_stg_swipe` 注脚） |
+| `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，不带副标题 —— 2.17.2 起，见 [NAMING.md](NAMING.md) §3） |
 
 **二级页只放「总开关之外」的参数。**
 

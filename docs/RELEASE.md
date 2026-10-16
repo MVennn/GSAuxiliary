@@ -176,7 +176,7 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 > 你只需要保证第 1、2、10 条 —— 也就是「版本号递增了、CHANGELOG 写了、
 > 没有在途开发」。手工在本机发版才需要全部自己过一遍。
 
-- [ ] `app/build.gradle.kts` 的 `versionCode` / `versionName` 已递增
+- [ ] `app/build.gradle.kts` 的 `versionCode` / `versionName` 已递增（进位规则见 `docs/VERSIONING.md`：有功能更新 +0.1.0、没有 +0.0.1）
 - [ ] `CHANGELOG.md` 顶部已加该版本的段落
 - [ ] `docs/release-notes/<versionName>.md` 已写（CI 找它当 Release 说明）
 - [ ] `python tools/publish.py --check` 说两个仓库都可写

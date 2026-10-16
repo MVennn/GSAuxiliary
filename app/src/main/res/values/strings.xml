@@ -78,7 +78,6 @@
     <string name="feature_stg_direct_switch">直达标准行情</string>
     <string name="feature_stg_direct_switch_summary">策略详情点击股票直接跳转详情页</string>
     <string name="feature_stg_direct_detail_entry">滑动设置</string>
-    <string name="feature_stg_direct_detail_entry_summary">左右滑动换股</string>
 
     <string name="feature_select_all_title">策略多选全选</string>
     <string name="feature_select_all_summary">策略详情页多选时，取消按钮左侧多一个全选按钮，一键勾选全部股票</string>
@@ -125,13 +124,11 @@
     <string name="feature_nav_bar_switch">手势导航条同色</string>
 
     <!-- ============================ 直达标准行情（二级菜单） ============================ -->
-    <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关 -->
+    <!-- 总开关在一级页面（功能 Tab）；二级菜单只放总开关之外的参数，不重复放开关。
+         开关不带副标题：标题已把行为说完（2.17.2 起，规则见 docs/NAMING.md §3） -->
     <string name="detail_stg_direct_title">滑动设置</string>
     <string name="section_stg_swipe">左右滑动</string>
     <string name="item_stg_quote_swipe">左右滑动切换股票</string>
-    <string name="item_stg_quote_swipe_summary_on">在个股详情页左右滑动，切换策略内的其它股票</string>
-    <string name="item_stg_quote_swipe_summary_off">只显示当前这一只，不能左右滑动</string>
-    <string name="note_stg_swipe">与行情、自选列表点进去的效果一致</string>
 
     <!-- ============================ 染色设置（二级菜单） ============================ -->
     <string name="detail_color_title">染色设置</string>

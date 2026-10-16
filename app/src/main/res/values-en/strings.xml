@@ -77,7 +77,6 @@
     <string name="feature_stg_direct_switch">Direct standard quote</string>
     <string name="feature_stg_direct_switch_summary">Tap a stock in strategy detail to jump to its page</string>
     <string name="feature_stg_direct_detail_entry">Swipe settings</string>
-    <string name="feature_stg_direct_detail_entry_summary">Swipe between stocks</string>
 
     <string name="feature_select_all_title">Multi-select: select all</string>
     <string name="feature_select_all_summary">Adds a "Select all" button left of "Cancel" in the strategy detail multi-select bar</string>
@@ -124,13 +123,11 @@
     <string name="feature_nav_bar_switch">Match gesture bar color</string>
 
     <!-- ============================ Direct standard quote (detail) ============================ -->
-    <!-- The master switch lives on the feature tab; this menu holds parameters only -->
+    <!-- The master switch lives on the feature tab; this menu holds parameters only.
+         No summary on the switch: the title already says it all (since 2.17.2, see docs/NAMING.md §3) -->
     <string name="detail_stg_direct_title">Swipe settings</string>
     <string name="section_stg_swipe">Swipe switching</string>
     <string name="item_stg_quote_swipe">Swipe to switch stocks</string>
-    <string name="item_stg_quote_swipe_summary_on">Swipe left or right to move between the strategy stocks</string>
-    <string name="item_stg_quote_swipe_summary_off">Only the current stock is shown, no swiping</string>
-    <string name="note_stg_swipe">Same behaviour as tapping a stock in the quote / watchlist list</string>
 
     <!-- ============================ Highlight settings (detail) ============================ -->
     <string name="detail_color_title">Highlight settings</string>

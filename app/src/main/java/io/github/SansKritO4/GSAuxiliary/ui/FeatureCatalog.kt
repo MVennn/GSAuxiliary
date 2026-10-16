@@ -138,7 +138,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_STG_DIRECT_QUOTE,
         detailTitleRes = R.string.detail_stg_direct_title,
         detailEntryRes = R.string.feature_stg_direct_detail_entry,
-        detailEntrySummaryRes = R.string.feature_stg_direct_detail_entry_summary,
+        // 无入口副标题：「滑动设置」已经说清进去做什么，不再列一遍里面的项目（docs/NAMING.md §3）
     ),
 
     FeatureSpec(
