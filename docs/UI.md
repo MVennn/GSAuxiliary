@@ -159,9 +159,9 @@ SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 
 | | `ChoiceDialogSpec`（主题 / 语言 / 日志等级） | `ConfirmDialogSpec`（重置） |
 |---|---|---|
-| 定位 | **锚定触发控件右侧竖直居中**（中右，对齐控件一半高度），上下放不下整体收进屏幕留白 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
-| 入场 | 以**右缘中点**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4） | 从屏幕下方**向上滑入** |
-| 出场 | 向右缘中点**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
+| 定位 | **从触发控件右中（箭头处）弹出**：优先顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
+| 入场 | 以**离箭头最近的右角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4）：在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长 | 从屏幕下方**向上滑入** |
+| 出场 | 向该右角**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
 | 标题 | **没有**（2.9.2 去掉，选项本身已说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp —— 2.9.6 定稿，调参史见 §1.3.6） |
 | 内容 | 若干选项行（选中项主色 + 对勾） | 标题 + 说明 + 「取消 / 确定」两个等宽按钮 |
 
@@ -267,7 +267,7 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 
 | 形态 | 入场 | 出场（2.9.3 起两种都有） |
 |---|---|---|
-| 锚定菜单 | 以 `TransformOrigin(1f, 0.5f)`（**右缘中点**）为原点，`AppearScale = 0.80f` 缩放展开 + **渐显**（alpha 0 → 1，2.9.4） | 向右缘中点**缩回** + **渐隐**（alpha 1 → 0，2.9.4，progress 1 → 0） |
+| 锚定菜单 | 以 `TransformOrigin`（**离箭头最近的右角**：卡片在下方 = `(1f, 0f)` 右上角、翻到上方 = `(1f, 1f)` 右下角，布局期裁决）为原点，`AppearScale = 0.80f` 缩放展开 + **渐显**（alpha 0 → 1，2.9.4） | 向该右角**缩回** + **渐隐**（alpha 1 → 0，2.9.4，progress 1 → 0） |
 | 贴底弹窗 | `translationY = (1 - progress) * height`，从屏幕下方滑上来（不渐隐） | 向**下滑出**（progress 1 → 0） |
 
 > 2.9.2 时锚定菜单关闭是「立即置空、直接消失」—— 只有展开没有缩回，
@@ -281,11 +281,11 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 > 绑定两条动画就是「动一个必动另一个」，独立驱动才能各自调时长、互不干扰。
 > 贴底确认弹窗不使用渐隐（`fade` 恒为 1），行为与 2.9.3 完全一致。
 
-> **为什么锚定菜单定位「中右」、缩放用「右缘中点原点」**：卡片竖直居中于触发控件
-> （对齐控件一半高度；上下放不下时**整体收进**屏幕留白，居中优先、越界让位），
-> 右边缘与控件右边缘对齐。以右缘中点为原点缩放，右缘固定不动、卡片向**上下 + 向左**
-> 长出来 —— 观感上就是「从控件右缘向左展开」，与中右定位一致；被收进时原点跟着卡片
-> 走，但展开方向始终是从右缘往左。
+> **为什么锚定菜单「从箭头（控件右中）弹出」**：入口行的箭头就在控件右缘、竖直居中处
+> —— 弹出的起点应该就是它。卡片右边缘与控件右缘对齐，缩放原点取**离箭头更近的右角**：
+> 卡片在箭头下方 → 右上角固定不动、往左下长；下方放不下翻到上方 → 右下角固定、往左上长。
+> 位置（y）与原点由同一把尺（`resolveAnchorPlacement`）配套裁决：布局期算位置、
+> 绘制期取原点，两边拿到的卡片高度一致，必然不会错位。
 
 卡片内容外面再叠一层 `clickable(indication = null) { }` 的容器**吃掉点击**，
 否则点卡片内部会穿透到遮罩上把弹窗关掉。
@@ -316,9 +316,10 @@ Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = ScrimAlpha * prog
 
 #### 1.3.4 相对触发控件定位（2.9.0；2.9.2 加入贴底分支）
 
-2.9.0 时按用户要求做过「优先控件**右下**方、下方放不下翻**右上**方」；
-后来按新的定位要求改为**「中右」**：卡片竖直居中于触发控件（对齐控件一半高度），
-上下空间不够时**整体收进**屏幕留白 —— 居中优先、越界让位。
+2.9.0 时按用户要求做过「优先控件**右下**方、下方放不下翻**右上**方」（锚点是控件底边）；
+现在改为**「从控件右中（箭头处）弹出」**：锚点换成控件的竖直中心（入口行箭头所在处），
+优先卡片**顶边**贴箭头向下展开，下方放不下翻到**底边**贴箭头向上展开 ——
+即「从右上往左下」，翻侧时「从右下往左上」。
 
 定位不能用 `Popup` / `DropdownMenu` —— 那些要么自己管坐标系、要么带库内动画。
 这里用 **`SubcomposeLayout`**：先量出卡片实际尺寸，再算坐标，**一次成型**，
@@ -347,12 +348,17 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
             side to (height - cardH - side - navBottom).coerceAtLeast(side)  // 贴底、抬过导航条
         }
         anchor != null -> {
-            // 右对齐触发控件右边缘；竖直居中于控件（「中右」），越界整体收进
+            // 右对齐触发控件右边缘；从控件右中（箭头处）弹出：
+            // 顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开
             val x = (anchor.right - cardW).coerceIn(side, (width - cardW - side).coerceAtLeast(side))
-            val centerY = (anchor.top + anchor.bottom) / 2f
-            val y = (centerY - cardH / 2f)
-                .coerceIn(side, (height - cardH - side).coerceAtLeast(side))
-            x to y
+            val placement = resolveAnchorPlacement(
+                cardH = cardH.toFloat(),
+                centerY = (anchor.top + anchor.bottom) / 2f,
+                screenHeight = height.toFloat(),
+                marginPx = side.toFloat(),
+            )
+            // placement.origin 写回 menuOrigin（state），绘制期取同一份做缩放原点
+            x to placement.y.toInt()
         }
         else -> (width - cardW) / 2 to (height - cardH) / 2     // 居中兜底
     }
@@ -368,9 +374,10 @@ SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
 - **右对齐控件右边缘**（`anchor.right - cardW`），不是左对齐 —— 视觉上弹窗从控件
   右缘「长出来」。
 - **`coerceIn` 保证不出屏**：左右夹在 `[side, width - cardW - side]`；
-  「中右」的 y 先取「控件竖直中心 − 卡片半高」，再夹在 `[side, height - cardH - side]`
-  —— 上下放不下时卡片整体往屏幕里收，始终贴边留白。
-- 缩放原点（`TransformOrigin`）取 `(1f, 0.5f)`（右缘中点）—— 见 §1.3.2 的理由。
+  y 由 `resolveAnchorPlacement` 裁决 —— 顶边贴箭头（`centerY`）优先、
+  底边贴箭头（`centerY - cardH`）兜底，两头都放不下再收进 `[side, height - cardH - side]`。
+- 缩放原点（`TransformOrigin`）取**离箭头更近的右角**（下方 = 右上角 / 上方 = 右下角），
+  与 y 由同一个函数配套算出 —— 见 §1.3.2 的理由。
 - **贴底弹窗用同一个 `cap`**（`width - 2 × 12dp`），所以它和主页卡片左右边缘对齐，
   细节见 §1.3.6。
 

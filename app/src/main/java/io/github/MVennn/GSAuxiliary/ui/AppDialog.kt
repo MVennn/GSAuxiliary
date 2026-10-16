@@ -60,6 +60,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * 自绘弹窗（Miuix 风格 + 可选液态玻璃）。
@@ -80,15 +81,16 @@ import kotlinx.coroutines.launch
  *
  * | | [ChoiceDialogSpec]（主题 / 语言 / 日志等级） | [ConfirmDialogSpec]（重置）<br>[AgreementDialogSpec]（首次启动同意） |
  * |---|---|---|
- * | 定位 | **锚定触发控件右侧竖直居中**（中右，对齐控件一半高度），上下放不下整体收进屏幕留白 | **贴屏幕底部**，宽度 = 主页卡片宽 |
- * | 入场 | 以**右缘中点**为原点缩放展开 + **渐显**（alpha 0 → 1），苹果风回弹曲线 | 从屏幕下方**向上滑入**，苹果风回弹曲线 |
- * | 出场 | 向**右缘中点**缩回 + **渐隐**（alpha 1 → 0），苹果风 easeInOut | 向**下滑出**，苹果风 easeInOut |
+ * | 定位 | **从触发控件右中（箭头处）弹出**：优先卡片顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽 |
+ * | 入场 | 以**离箭头最近的右角**为原点缩放展开 + **渐显**（alpha 0 → 1），苹果风回弹曲线<br>（卡片在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长） | 从屏幕下方**向上滑入**，苹果风回弹曲线 |
+ * | 出场 | 向该右角**缩回** + **渐隐**（alpha 1 → 0），苹果风 easeInOut | 向**下滑出**，苹果风 easeInOut |
  * | 标题 | **没有**（2.9.2 去掉，选项本身已经说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp，2.9.6 定稿） |
  *
  * ## 动画：缩放与透明度**各自独立**（2.9.4）
  *
  * 锚定菜单的入场 / 出场由两条**互不读写**的动画叠成：
- *  - 缩放：`progress`（`Animatable`）驱动 `scaleX/scaleY` + `TransformOrigin(1f, 0f)`；
+ *  - 缩放：`progress`（`Animatable`）驱动 `scaleX/scaleY` + `TransformOrigin`
+ *    （原点由布局期裁决：卡片在箭头下方 → 右上角、翻到上方 → 右下角，见 [resolveAnchorPlacement]）；
  *  - 透明度：`fade`（**另一个** `Animatable`）驱动 `alpha`，渐显 / 渐隐。
  *
  * 两条进度分别跑在自己的协程里（入场是两个 `LaunchedEffect`，出场是两个 `launch`
@@ -294,6 +296,51 @@ private val AppleSheetEnterEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
  */
 private val AppleExitEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 
+/** [resolveAnchorPlacement] 的裁决结果：摆放 y（px）+ 配套的缩放原点 */
+private data class AnchorPlacement(val y: Float, val origin: TransformOrigin)
+
+/**
+ * 锚定菜单「从触发控件右中（箭头处）弹出」的**一次性裁决** —— 布局与绘制共用。
+ *
+ * 布局期（[SubcomposeLayout]）用它定卡片 y；绘制期（`graphicsLayer`）取配套算出的
+ * 缩放原点。两边拿到的 `cardH` 是同一张卡片量出来的同一个值，其余入参也一致，
+ * 所以**位置与原点必然配套**：原点永远落在离箭头更近的那个右角上 ——
+ * 卡片整体在箭头下方就是右上角（往左下长），在上方就是右下角（往左上长）。
+ *
+ * 规则（沿用「贴箭头展开」的思路，锚点从控件底边换成控件竖直中心）：
+ *  - 下方放得下 → 卡片**顶边**贴箭头，从右上角往左下长；
+ *  - 下方放不下、上方放得下 → 卡片**底边**贴箭头，从右下角往左上长；
+ *  - 两头都放不下（菜单比一屏还高，理论上到不了）→ 整体收进屏幕留白，
+ *    箭头离哪个角近就按哪个角缩放。
+ */
+private fun resolveAnchorPlacement(
+    cardH: Float,
+    centerY: Float,
+    screenHeight: Float,
+    marginPx: Float,
+): AnchorPlacement {
+    val lo = marginPx
+    val hi = (screenHeight - cardH - marginPx).coerceAtLeast(marginPx)
+    return when {
+        // 优先：顶边贴箭头、向下展开（「从右上往左下」）
+        centerY + cardH + marginPx <= screenHeight ->
+            AnchorPlacement(centerY, TransformOrigin(1f, 0f))
+        // 下方放不下：底边贴箭头、向上展开（「从右下往左上」）
+        centerY - cardH >= marginPx ->
+            AnchorPlacement(centerY - cardH, TransformOrigin(1f, 1f))
+        // 两头都放不下：收进留白，取离箭头更近的右角
+        else -> {
+            val y = centerY.coerceIn(lo, hi)
+            val origin = if (abs(centerY - y) <= abs(centerY - (y + cardH))) {
+                TransformOrigin(1f, 0f)
+            } else {
+                TransformOrigin(1f, 1f)
+            }
+            AnchorPlacement(y, origin)
+        }
+    }
+}
+
 /** 选择类弹窗入场时的起始缩放（只做缩放、不做透明度，避免「空白卡片」观感） */
 private const val AppearScale = 0.80f
 
@@ -360,6 +407,11 @@ internal fun DialogHost(
     // 贴底确认弹窗（重置）不走渐隐，起始值直接取 1，行为与 2.9.3 一致。
     val isMenu = spec is ChoiceDialogSpec
     val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
+
+    // 锚定菜单的缩放原点：布局期按「卡片落在箭头上方还是下方」裁决
+    // （resolveAnchorPlacement）写进来，绘制期读同一份值 —— 同一帧里布局先于绘制，
+    // 首帧画出来的就是与位置配套的原点，不会闪错展开方向。
+    var menuOrigin by remember(spec) { mutableStateOf(TransformOrigin(1f, 0f)) }
 
     LaunchedEffect(spec) {
         // 入场曲线按形态分：锚定菜单走缩放（区间小，过冲可以给足），
@@ -442,6 +494,7 @@ internal fun DialogHost(
                     progress = p,
                     fade = fadeValue,
                     sheet = sheet,
+                    menuOrigin = menuOrigin,
                 )
             }.first()
             val placeable = measurable.measure(
@@ -471,12 +524,17 @@ internal fun DialogHost(
                             (width - cardW - marginPx).coerceAtLeast(marginPx),
                         )
                         .toInt()
-                    // 「中右」：卡片竖直居中于触发控件（对齐控件一半高度处）。
-                    // 上下空间不够时**整体收进**屏幕留白 —— 居中优先，越界让位。
+                    // 从触发控件「右中」（箭头处）弹出：位置与缩放原点用同一把尺裁决
+                    // （resolveAnchorPlacement），原点写回 menuOrigin 供绘制期取用。
                     val centerY = (anchor.top + anchor.bottom) / 2f
-                    y = (centerY - cardH / 2f)
-                        .coerceIn(marginPx, (height - cardH - marginPx).coerceAtLeast(marginPx))
-                        .toInt()
+                    val placement = resolveAnchorPlacement(
+                        cardH = cardH.toFloat(),
+                        centerY = centerY,
+                        screenHeight = height.toFloat(),
+                        marginPx = marginPx,
+                    )
+                    menuOrigin = placement.origin
+                    y = placement.y.toInt()
                 }
 
                 else -> {
@@ -494,7 +552,8 @@ internal fun DialogHost(
  *
  * @param progress 0 = 收起、1 = 完全展开（驱动缩放 / 位移）
  * @param fade     0 = 全透明、1 = 不透明（驱动 alpha，仅锚定菜单用；贴底弹窗恒 1）
- * @param sheet    `true` = 贴底弹窗（纵向滑入滑出），`false` = 锚定菜单（右缘中点缩放 + 渐隐渐出）
+ * @param sheet    `true` = 贴底弹窗（纵向滑入滑出），`false` = 锚定菜单（贴箭头缩放 + 渐隐渐出）
+ * @param menuOrigin 锚定菜单的缩放原点（布局期按箭头方位裁决，见 [resolveAnchorPlacement]）；贴底弹窗不用
  */
 @Composable
 private fun DialogCard(
@@ -507,6 +566,7 @@ private fun DialogCard(
     progress: Float,
     fade: Float,
     sheet: Boolean,
+    menuOrigin: TransformOrigin,
 ) {
     val shape = RoundedCornerShape(DialogCorner)
     Box(
@@ -515,13 +575,14 @@ private fun DialogCard(
                 // 从屏幕下方滑上来；关闭时反向滑回去
                 translationY = (1f - progress) * size.height
             } else {
-                // 以**右缘中点**为原点缩放：卡片竖直居中挂在触发控件右侧（「中右」），
-                // 展开时向上下 + 向左「长」出来，关闭时（progress 1 → 0）再缩回右缘中点
-                // —— 入场 / 出场同一套变换。
+                // 以**离箭头最近的右角**为原点缩放（原点由布局期裁决，见
+                // [resolveAnchorPlacement]）：卡片在箭头下方 → 右上角固定，向左下长出来；
+                // 翻到上方 → 右下角固定，向左上长出来。关闭时（progress 1 → 0）
+                // 缩回同一个角 —— 入场 / 出场同一套变换。
                 val s = AppearScale + (1f - AppearScale) * progress
                 scaleX = s
                 scaleY = s
-                transformOrigin = TransformOrigin(1f, 0.5f)
+                transformOrigin = menuOrigin
                 // 渐隐渐出：alpha 走**另一条独立动画**（`fade`，见 DialogHost 的注释），
                 // 与上面的缩放各跑各的、互不干扰。
                 alpha = fade
