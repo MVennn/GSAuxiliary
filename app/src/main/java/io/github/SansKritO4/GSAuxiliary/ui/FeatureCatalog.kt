@@ -91,10 +91,11 @@ internal data class FeatureSpec(
     /**
      * 开关下方那一行说明 —— **可空**。
      *
-     * 主标题已经把功能说清楚时**不要写**（传 null，卡片就只显示标题）：
+     * 副标题的核心职责是**说清功能塞到了哪里**（底栏、右上角三点菜单、多选栏 …）
+     * —— 标题只说「加了 / 隐藏了什么」，没说「在哪」；位置说不清的功能必须补。
+     * 主标题连同分组已经把话说全时不要写（传 null，卡片就只显示标题）：
      * 「隐藏新股申购提醒」下面再写「新股申购提醒不再弹出」是同一句话说了两遍。
-     * 只有主标题装不下的信息（页面位置、宿主里的术语是什么）才配副标题，
-     * 且必须一行说完 —— 详见 `docs/NAMING.md` §「副标题」。
+     * 一行说完、能不用逗号就不用 —— 详见 `docs/NAMING.md` §「副标题」。
      */
     @StringRes val switchSummaryRes: Int? = null,
     /** 开关对应的配置键与默认值 */
@@ -131,7 +132,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_stg_direct_title,
         summaryRes = R.string.feature_stg_direct_summary,
         switchTitleRes = R.string.feature_stg_direct_switch,
-        // 保留副标题：「标准行情」是宿主自己的叫法，得说清它指的就是个股详情页
+        // 副标题说清交互路径：点了什么、跳到哪里
         switchSummaryRes = R.string.feature_stg_direct_switch_summary,
         enableKey = ConfigKeys.STG_DIRECT_QUOTE,
         defaultEnabled = ConfigKeys.DEFAULT_STG_DIRECT_QUOTE,
@@ -146,7 +147,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_select_all_title,
         summaryRes = R.string.feature_select_all_summary,
         switchTitleRes = R.string.feature_select_all_switch,
-        // 无副标题：「增加 全选 按钮」已经说清加了什么
+        // 副标题说位置：多选栏只有长按股票才会出现，「取消」左边是按钮的确切落点
+        switchSummaryRes = R.string.feature_select_all_switch_summary,
         enableKey = ConfigKeys.STG_SELECT_ALL,
         defaultEnabled = ConfigKeys.DEFAULT_STG_SELECT_ALL,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
@@ -158,7 +160,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_stg_filter_title,
         summaryRes = R.string.feature_stg_filter_summary,
         switchTitleRes = R.string.feature_stg_filter_switch,
-        // 无副标题：「增加 筛选股票 菜单项」已经说清加了什么
+        // 副标题说位置：三点菜单平时是收起的，不开副标题不知道加在了哪个菜单里
+        switchSummaryRes = R.string.feature_stg_filter_switch_summary,
         enableKey = ConfigKeys.STG_STOCK_FILTER,
         defaultEnabled = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
         // 三个筛选开关的编辑入口在**目标 App 自己的筛选面板**里（策略详情页三点菜单），
@@ -172,7 +175,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_stock_bar_title,
         summaryRes = R.string.feature_stock_bar_summary,
         switchTitleRes = R.string.feature_stock_bar_switch,
-        // 无副标题：原副标题「买卖按钮自动让位」讲的是宿主怎么腾地方，用户不关心
+        // 副标题说位置：入口塞在底栏哪一格，开了开关去哪里看
+        switchSummaryRes = R.string.feature_stock_bar_switch_summary,
         enableKey = ConfigKeys.STOCK_BAR_ENTRY,
         defaultEnabled = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
@@ -198,7 +202,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_home_banner_title,
         summaryRes = R.string.feature_home_banner_summary,
         switchTitleRes = R.string.feature_home_banner_switch,
-        // 无副标题：原副标题「下面的内容顺势上移」是布局后果
+        // 副标题说位置：首页横幅不止一条，得说清隐藏的是哪一条
+        switchSummaryRes = R.string.feature_home_banner_switch_summary,
         enableKey = ConfigKeys.HOME_BANNER_HIDE,
         defaultEnabled = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）

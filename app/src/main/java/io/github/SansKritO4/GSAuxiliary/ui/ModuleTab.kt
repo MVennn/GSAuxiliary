@@ -65,6 +65,7 @@ internal fun ModuleTab() {
     val noFramework = stringResource(R.string.overview_status_no_framework)
     val activeTitle = stringResource(R.string.overview_status_active)
     val inactiveTitle = stringResource(R.string.overview_status_inactive)
+    val disconnectedTitle = stringResource(R.string.overview_status_disconnected)
 
     val moduleVersion = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
     val androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
@@ -75,7 +76,12 @@ internal fun ModuleTab() {
     val framework = remember(connected.value, unknown, unreadable, noFramework) {
         val svc = FrameworkBridge.service()
         if (svc == null) {
-            FrameworkInfo(active = false, version = noFramework, api = "—")
+            // 连都没连上：框架没装 / 没启用模块 / 服务已断开
+            FrameworkInfo(
+                state = FrameworkState.Disconnected,
+                version = noFramework,
+                api = "—",
+            )
         } else {
             val version = runCatching {
                 listOfNotNull(svc.frameworkName, svc.frameworkVersion)
@@ -83,8 +89,22 @@ internal fun ModuleTab() {
                     .ifEmpty { unreadable }
             }.getOrDefault(unreadable)
             val api = runCatching { "API ${svc.apiVersion}" }.getOrDefault(unknown)
-            FrameworkInfo(active = true, version = version, api = api)
+            // 连上了不等于生效：作用域为空说明框架认得这个模块、但没把它派到任何应用上。
+            // 读不到版本号 / API 也算异常态。两者任一不成立就落到「未激活」。
+            val scope = runCatching { svc.scope }.getOrNull()
+            val activated = version != unreadable && api != unknown && !scope.isNullOrEmpty()
+            FrameworkInfo(
+                state = if (activated) FrameworkState.Active else FrameworkState.Inactive,
+                version = version,
+                api = api,
+            )
         }
+    }
+
+    val statusTitle = when (framework.state) {
+        FrameworkState.Active -> activeTitle
+        FrameworkState.Inactive -> inactiveTitle
+        FrameworkState.Disconnected -> disconnectedTitle
     }
 
     Column(
@@ -95,10 +115,10 @@ internal fun ModuleTab() {
         // 玻璃顶栏时内容铺到屏幕顶边，首屏空白在这里补（见 Glass.kt 的 LocalTopInset）
         Spacer(Modifier.height(8.dp + LocalTopInset.current))
 
-        // --- 顶部状态卡：已激活 / 未激活 ---
+        // --- 顶部状态卡：已激活 / 未激活 / 未连接 ---
         OverviewStatusCard(
-            active = framework.active,
-            title = if (framework.active) activeTitle else inactiveTitle,
+            state = framework.state,
+            title = statusTitle,
             version = framework.version,
             api = framework.api,
             modifier = Modifier.cardPadding(),
@@ -138,9 +158,12 @@ internal fun ModuleTab() {
     }
 }
 
+/** 顶部状态卡的三态：已激活 / 未激活 / 未连接框架 */
+private enum class FrameworkState { Active, Inactive, Disconnected }
+
 /** 框架信息的一次性快照（只给顶部状态卡用） */
 private data class FrameworkInfo(
-    val active: Boolean,
+    val state: FrameworkState,
     val version: String,
     val api: String,
 )
@@ -165,28 +188,47 @@ private data class FrameworkInfo(
  *    装饰图标放进 `matchParentSize` 容器，**不再参与高度测量** ——
  *    于是「只调字号」不会连带改变卡片高度（2.9.1 / 2.9.2 时高度其实是被图标
  *    顶到 150 / 170dp 的，见 [StatusCardMinHeight] 的注释）；
- *  - **图标放大并移到右下角**（2.9.1 / 2.9.2 / 2.9.3）：图标尺寸 [StatusCardIconSize]，
- *    `align(BottomEnd)` 后各推半个身位、再回缩 [StatusCardIconInset]，于是卡内露出
- *    图标的左上约 65%（111dp 见方），成为一枚角落里的装饰弧线。
+ *  - **图标放大并移到右下角**（2.9.1 / 2.9.2 / 2.9.3 / 2.17.1）：图标尺寸
+ *    [StatusCardIconSize]，`align(BottomEnd)` 后各推半个身位、再回缩
+ *    [StatusCardIconInset]，于是卡内露出图标的左上一块，成为一枚角落里的装饰弧线。
+ *    2.17.1 尺寸再放大一档、内缩量同时加大 —— 露出部分竖向盖满整条卡片右缘，
+ *    弧线从右上一直连到右下。
  *
  *    > Miuix `Card` 的 `BasicCard` 内部走 `squircleSurface`，其中调用了
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
  *    > 所以**不需要自己再包一层裁剪**，超出卡片范围的部分会被自动切掉。
  *
+ * ## 三态配色（2.17.1）
+ *
+ * 状态从「激活 / 未激活」两态扩成三态，颜色各自独立：
+ *
+ *  | 状态 | 条件 | 颜色 |
+ *  |---|---|---|
+ *  | 已激活 | 连上框架服务，且作用域非空、版本可读 | [StatusActiveColor] |
+ *  | 未激活 | 连上框架服务，但作用域为空 / 信息读不出来 | `colorScheme.error` |
+ *  | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
+ *
+ * 三处用色都从同一个 `accent` 派生：卡面 `alpha = 0.14`、装饰图标 [StatusCardIconAlpha]、
+ * 标题用原色。所以「加深」只要动这一个变量。
+ *
  * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释）。
  *
- * @param active 框架是否已连接（决定配色与右侧图标）
+ * @param state 三态之一，决定配色与右侧图标
  */
 @Composable
 private fun OverviewStatusCard(
-    active: Boolean,
+    state: FrameworkState,
     title: String,
     version: String,
     api: String,
     modifier: Modifier = Modifier,
 ) {
-    // 绿色 = 正常工作；红色 = 没接上框架。都取低透明度做卡面，深浅色主题下都能用
-    val accent = if (active) Color(0xFF1AAE6A) else MiuixTheme.colorScheme.error
+    // 卡面取低透明度，深浅色主题下都能用
+    val accent = when (state) {
+        FrameworkState.Active -> StatusActiveColor
+        FrameworkState.Inactive -> MiuixTheme.colorScheme.error
+        FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
+    }
 
     Card(
         modifier = modifier,
@@ -217,7 +259,9 @@ private fun OverviewStatusCard(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = version,
-                    color = MiuixTheme.colorScheme.onBackgroundVariant,
+                    // 与下一行的 API 用同一档颜色（2.17.1）：原来走 onBackgroundVariant，
+                    // 两行灰度不一致，看着像两个层级
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     fontSize = 16.sp,
                 )
                 Spacer(Modifier.height(2.dp))
@@ -231,18 +275,23 @@ private fun OverviewStatusCard(
             // --- 右下角装饰图标 ---
             //
             // ⚠️ 必须放在 `matchParentSize` 的容器里：`matchParentSize` 的节点
-            // **不参与父级尺寸测量**，所以这枚 170dp 的图标不会再把卡片撑高。
-            // 直接把它当 Box 的子节点时，`Modifier.size(170.dp)` 会把 Box 顶到 170dp
-            // —— 那正是 2.9.1 / 2.9.2 卡片「越改越高」的真正原因（`offset` 只挪位置、
-            // 不改测量尺寸）。现在卡片高度只由文字内容 + [StatusCardMinHeight] 决定。
+            // **不参与父级尺寸测量**，所以这枚超大图标不会再把卡片撑高。
+            // 直接把它当 Box 的子节点时，`Modifier.size(StatusCardIconSize)` 会把 Box
+            // 顶到图标那么高 —— 那正是 2.9.1 / 2.9.2 卡片「越改越高」的真正原因
+            // （`offset` 只挪位置、不改测量尺寸）。现在卡片高度只由文字内容 +
+            // [StatusCardMinHeight] 决定。
             //
             // offset 正向 = 向右 / 向下；推「半个身位 - 内缩量」，图标中心就落在
             // 卡片右下角的左上方。溢出部分由 Card 自身的 squircle 裁剪切掉。
             Box(Modifier.matchParentSize()) {
                 Icon(
-                    imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
+                    imageVector = if (state == FrameworkState.Active) {
+                        AppIcons.CheckCircle
+                    } else {
+                        AppIcons.ErrorCircle
+                    },
                     contentDescription = null,
-                    tint = accent.copy(alpha = 0.16f),
+                    tint = accent.copy(alpha = StatusCardIconAlpha),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .offset(
@@ -273,18 +322,35 @@ private fun OverviewStatusCard(
 private val StatusCardMinHeight = 148.dp
 
 /**
- * 右下角装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp）。
+ * 「已激活」的绿色（2.17.1 由 `0xFF1AAE6A` 加深到 `0xFF0E8A52`）。
+ *
+ * 原来的中绿在浅色卡面上偏亮，标题读起来发飘。加深一档之后标题稳下来，
+ * 卡面底色（同一颜色 `alpha = 0.14`）几乎看不出变化。
+ */
+private val StatusActiveColor = Color(0xFF0E8A52)
+
+/**
+ * 右下角装饰图标的透明度（2.9.1 起为 0.16，2.17.1 提到 0.30）。
+ *
+ * 0.16 在浅色卡面上几乎糊成一片，放大之后尤其明显 —— 提到 0.30 才看得出弧线，
+ * 又不会盖过左侧文字。配合 [StatusActiveColor] 的加深，图标整体深了一档。
+ */
+private const val StatusCardIconAlpha = 0.30f
+
+/**
+ * 右下角装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp）。
  *
  * 图标在 `matchParentSize` 容器里，所以这个尺寸**不影响卡片高度**，
  * 只决定露出的弧度有多大。
  */
-private val StatusCardIconSize = 170.dp
+private val StatusCardIconSize = 260.dp
 
 /**
- * 图标中心相对卡片右下角**向左上**内缩的量（2.9.2 新增 16dp，2.9.3 加大到 26dp）。
+ * 图标中心相对卡片右下角**向左上**内缩的量（2.9.2 新增 16dp，2.9.3 加大到 26dp，
+ * 2.17.1 再到 60dp）。
  *
  * 取 0 时中心正好压在角上，只露左上四分之一；内缩越多露出越多。
- * 现在露出的是 `图标一半 + inset` = 85 + 26 = **111dp** 见方（约占图标 65%），
- * 观感更像「有意的角落装饰」而不是「被裁掉的图标」。
+ * 现在露出的是 `图标一半 + inset` = 130 + 60 = **190dp** 见方，竖向超出
+ * 148dp 的卡顶 42dp —— 弧线把整条右边缘都占满了。
  */
-private val StatusCardIconInset = 26.dp
+private val StatusCardIconInset = 60.dp

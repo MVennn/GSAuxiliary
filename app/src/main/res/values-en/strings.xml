@@ -22,6 +22,7 @@
     <!-- Hero status card -->
     <string name="overview_status_active">Activated</string>
     <string name="overview_status_inactive">Not activated</string>
+    <string name="overview_status_disconnected">Not connected</string>
     <string name="overview_status_no_framework">Not connected to the LSPosed framework</string>
 
     <!-- Group 1: the module itself -->
@@ -74,21 +75,24 @@
     <string name="feature_stg_direct_title">Direct standard quote</string>
     <string name="feature_stg_direct_summary">Tap a stock in My Strategies to open the stock detail page directly, skipping the extra tap</string>
     <string name="feature_stg_direct_switch">Direct standard quote</string>
-    <string name="feature_stg_direct_switch_summary">Open the stock detail page straight from the strategy detail list</string>
+    <string name="feature_stg_direct_switch_summary">Tap a stock in strategy detail to jump to its page</string>
     <string name="feature_stg_direct_detail_entry">Swipe settings</string>
     <string name="feature_stg_direct_detail_entry_summary">Swipe between stocks</string>
 
     <string name="feature_select_all_title">Multi-select: select all</string>
     <string name="feature_select_all_summary">Adds a "Select all" button left of "Cancel" in the strategy detail multi-select bar</string>
     <string name="feature_select_all_switch">Add "Select all" button</string>
+    <string name="feature_select_all_switch_summary">In the strategy multi-select bar, left of "Cancel"</string>
 
     <string name="feature_stg_filter_title">Strategy stock filter</string>
     <string name="feature_stg_filter_summary">Adds a "Filter stocks" item to the strategy detail top-right menu, filtering by gain / loss / watchlist</string>
     <string name="feature_stg_filter_switch">Add "Filter stocks" menu item</string>
+    <string name="feature_stg_filter_switch_summary">In the strategy detail top-right "more" menu</string>
 
     <string name="feature_stock_bar_title">Bottom bar "Smart Watch" entry</string>
     <string name="feature_stock_bar_summary">Adds a "Smart Watch" entry between "+Watchlist" and "More" on the stock detail bottom bar, one tap instead of digging into "More"</string>
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
+    <string name="feature_stock_bar_switch_summary">Stock detail bottom bar, between Watchlist and More</string>
 
     <!-- Dock -->
     <string name="feature_dock_clean_title">Hide "Wealth" in dock</string>
@@ -99,6 +103,7 @@
     <string name="feature_home_banner_title">Hide home banner</string>
     <string name="feature_home_banner_summary">The banner below the home quick entries is hidden; the content underneath moves up</string>
     <string name="feature_home_banner_switch">Hide banner</string>
+    <string name="feature_home_banner_switch_summary">The banner under the home quick entries</string>
 
     <!-- Market -->
     <string name="feature_market_banner_title">Hide ticker and quick entries</string>

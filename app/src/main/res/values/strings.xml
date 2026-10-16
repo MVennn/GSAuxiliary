@@ -23,6 +23,7 @@
     <!-- 顶部状态卡 -->
     <string name="overview_status_active">已激活</string>
     <string name="overview_status_inactive">未激活</string>
+    <string name="overview_status_disconnected">未连接</string>
     <string name="overview_status_no_framework">未连接到 LSPosed 框架</string>
 
     <!-- 分组一：模块自身 -->
@@ -75,21 +76,24 @@
     <string name="feature_stg_direct_title">策略直达标准行情</string>
     <string name="feature_stg_direct_summary">我的策略里点股票直接进个股详情，不用再点一次标准行情</string>
     <string name="feature_stg_direct_switch">直达标准行情</string>
-    <string name="feature_stg_direct_switch_summary">在策略详情页点股票，直接进入个股详情页</string>
+    <string name="feature_stg_direct_switch_summary">策略详情点击股票直接跳转详情页</string>
     <string name="feature_stg_direct_detail_entry">滑动设置</string>
     <string name="feature_stg_direct_detail_entry_summary">左右滑动换股</string>
 
     <string name="feature_select_all_title">策略多选全选</string>
     <string name="feature_select_all_summary">策略详情页多选时，取消按钮左侧多一个全选按钮，一键勾选全部股票</string>
     <string name="feature_select_all_switch">增加 全选 按钮</string>
+    <string name="feature_select_all_switch_summary">策略详情多选栏「取消」按钮左边</string>
 
     <string name="feature_stg_filter_title">策略筛选股票</string>
     <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个筛选股票，可按涨幅、跌幅、自选筛掉不看的股票</string>
     <string name="feature_stg_filter_switch">增加 筛选股票 菜单项</string>
+    <string name="feature_stg_filter_switch_summary">策略详情右上角三点菜单里</string>
 
     <string name="feature_stock_bar_title">底栏智能盯盘入口</string>
     <string name="feature_stock_bar_summary">个股详情页底栏，自选与更多之间多一个智能盯盘，一点直达，不用再进更多里找</string>
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
+    <string name="feature_stock_bar_switch_summary">详情页底栏「自选」与「更多」之间</string>
 
     <!-- 底栏 -->
     <string name="feature_dock_clean_title">底栏隐藏理财项</string>
@@ -100,6 +104,7 @@
     <string name="feature_home_banner_title">首页隐藏横幅</string>
     <string name="feature_home_banner_summary">首页快捷入口下方的那条横幅不再显示，下面的内容顺势上移</string>
     <string name="feature_home_banner_switch">隐藏横幅</string>
+    <string name="feature_home_banner_switch_summary">首页「快捷入口」下方那条</string>
 
     <!-- 行情市场 -->
     <string name="feature_market_banner_title">行情市场隐藏滚动横幅与快捷入口</string>
