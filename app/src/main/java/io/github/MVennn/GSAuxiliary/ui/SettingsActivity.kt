@@ -75,9 +75,11 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
  *   Scaffold(SmallTopAppBar) + 4 个 Tab 内容 + Dock（两种形态，见 [MiuixDock] / [LiquidGlassDock]）
  * 二级页面：功能详情、日志、免责声明，用一层极简路由（[Route]）切，不引入导航库。
  *
- * **布局分两层**（从下到上）：
+ * **布局分三层**（从下到上）：
  *   1. 一级首页 [HomeScaffold] —— 常驻，作为二级页下方的底衬（可预测返回时露出来）
- *   2. 二级页 [SubScreen] —— 按 [Animatable] 进度右滑进出，不裁剪、不闪白
+ *   2. 二级页 [SubScreen] —— 按进度右滑进出，不裁剪、不闪白
+ *   3. 三级页（目前只有方案编辑）—— 叠在二级页之上，**各自一条进度**，
+ *      返回时只滑走三级页、露出底下那张二级页（详见 [MainScreen]）
  *
  * 系统栏（状态栏 / 手势导航条）的沉浸处理在 [SyncSystemBars]，理由见该函数。
  *
@@ -250,21 +252,46 @@ private fun AppTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** 极简路由：一级首页 + 六个二级页 */
+/** 极简路由：一级首页 + 六个二级页 + 一个三级页 */
 private sealed interface Route {
     data object Home : Route
     data object WatchlistDetail : Route
     data object StgDirectQuoteDetail : Route
     data object QuickConfig : Route
-    /** 方案编辑页：带方案 id（方案被删时页面自己回落空态） */
+    /** 方案编辑页（三级）：带方案 id（方案被删时页面自己回落空态） */
     data class QuickConfigEdit(val schemeId: String) : Route
     data object LogViewer : Route
     data object Disclaimer : Route
 }
 
-/** 一级 → 二级的滑动进度：0 = 只显示一级，1 = 二级完全覆盖 */
+/** 页面滑动动画时长 */
 private const val RouteAnimMillis = 300
 
+/**
+ * 三层叠放 + 两条独立的滑动进度。
+ *
+ * ## 为什么三级页要单独一层
+ *
+ * 3.1.x 只有「一级 / 二级」两层，三级页（方案编辑）直接顶掉二级页的内容 ——
+ * 于是两条问题：
+ *
+ *  - **进三级页没有任何动画**（内容原地替换）；
+ *  - **从三级页可预测返回时，动画看着像要回一级页**：手势把整层二级页往右推，
+ *    底下露出的是首页，手势提交后又把方案列表推回来 —— 用户看到的是
+ *    「退回首页 → 又跳回列表」，而不是「编辑页滑走、列表在下面等着」。
+ *
+ * 现在二级、三级各有一条进度（`subProgress` / `editProgress`）：
+ *
+ * | 动作 | 二级页 | 三级页 |
+ * |---|---|---|
+ * | 进二级页 | 0 → 1 | 保持 0 |
+ * | 进三级页 | 保持 1 | 0 → 1 |
+ * | 三级页返回 | 保持 1（顺带 0.94 → 1 回正） | 1 → 0 |
+ * | 二级页返回 | 1 → 0 | 已为 0 |
+ *
+ * 可预测返回手势只动**当前最上面那一层**的进度，所以从三级页往回滑，
+ * 滑走的是编辑页，露出来的是方案列表 —— 与系统的返回预期一致。
+ */
 @Composable
 private fun MainScreen(initialRoute: Route = Route.Home) {
     val scope = rememberCoroutineScope()
@@ -285,30 +312,65 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
         ConfigKeys.DEFAULT_DISCLAIMER_ACCEPTED,
     )
     val showAgreement = !agreedDisclaimer && route == Route.Home
-    // 退出动画期间 `route` 已经回到 Home，仍需知道「刚才那个二级页」是谁
-    var lastSub by remember { mutableStateOf<Route>(Route.WatchlistDetail) }
-    if (route != Route.Home) lastSub = route
+
+    // 退出动画期间 `route` 已经变回上一页，仍需知道「刚才那页是谁」：两层各记一份。
+    // 初值直接取 `initialRoute`（带 route extra 拉起时直达二级页），
+    // 否则首帧会先按占位值画一帧错的页面再被 LaunchedEffect 纠正。
+    var shownSub by remember {
+        mutableStateOf<Route>(if (initialRoute is Route.QuickConfigEdit) Route.QuickConfig else initialRoute)
+    }
+    var shownEdit by remember { mutableStateOf(initialRoute as? Route.QuickConfigEdit) }
 
     val predictiveBack = rememberPredictiveBack()
-    val progress = remember { Animatable(if (route == Route.Home) 0f else 1f) }
+    // 二级 / 三级各自的滑动进度：0 = 完全滑出屏幕右侧，1 = 完全盖住下面那层
+    val subProgress = remember { Animatable(if (route == Route.Home) 0f else 1f) }
+    val editProgress = remember { Animatable(if (route is Route.QuickConfigEdit) 1f else 0f) }
 
     // 返回目标：方案编辑页回方案列表（不是首页），其余二级页回首页
     fun backTarget(): Route = if (route is Route.QuickConfigEdit) Route.QuickConfig else Route.Home
 
-    // 常规前进 / 返回：把进度动画到目标值
+    // 常规前进 / 返回：把对应层的进度动画到目标值
     LaunchedEffect(route) {
-        progress.animateTo(if (route == Route.Home) 0f else 1f, tween(RouteAnimMillis))
+        when (route) {
+            Route.Home -> {
+                // 三级页（若有）先滑走，再滑走二级页
+                if (editProgress.value > 0f) {
+                    editProgress.animateTo(0f, tween(RouteAnimMillis))
+                    shownEdit = null
+                }
+                subProgress.animateTo(0f, tween(RouteAnimMillis))
+            }
+
+            is Route.QuickConfigEdit -> {
+                shownSub = Route.QuickConfig
+                // 显式转换：`route` 是被 lambda 捕获的 var，编译器不做智能转换
+                shownEdit = route as Route.QuickConfigEdit
+                subProgress.animateTo(1f, tween(RouteAnimMillis))
+                editProgress.animateTo(1f, tween(RouteAnimMillis))
+            }
+
+            else -> {
+                shownSub = route
+                if (editProgress.value > 0f) {
+                    // 从三级页回到二级页：只动三级页，二级页留在原地
+                    editProgress.animateTo(0f, tween(RouteAnimMillis))
+                    shownEdit = null
+                }
+                subProgress.animateTo(1f, tween(RouteAnimMillis))
+            }
+        }
     }
 
     if (predictiveBack) {
         PredictiveBackHandler(enabled = route != Route.Home) { flow ->
+            // 手势只推动最上面那一层：三级页返回时底下是二级页，不是首页
+            val onEdit = route is Route.QuickConfigEdit
             try {
-                // 手势跟手：进度直接映射成二级页的位移
-                flow.collect { progress.snapTo(1f - it.progress) }
+                flow.collect { (if (onEdit) editProgress else subProgress).snapTo(1f - it.progress) }
                 route = backTarget()
             } catch (e: CancellationException) {
                 // 手势取消：滑回去
-                scope.launch { progress.animateTo(1f, tween(200)) }
+                scope.launch { (if (onEdit) editProgress else subProgress).animateTo(1f, tween(200)) }
                 throw e
             }
         }
@@ -316,7 +378,8 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
         BackHandler(enabled = route != Route.Home) { route = backTarget() }
     }
 
-    val p = progress.value
+    val p = subProgress.value
+    val pe = editProgress.value
     // 页面底色 = `colorScheme.surface`，**不是** `background`。
     //
     // Miuix 的取值很反直觉（0.9.3 实测）：
@@ -384,32 +447,69 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                     .graphicsLayer { translationX = size.width * (1f - p) }
                     .background(background),
             ) {
-                when (lastSub) {
-                    Route.WatchlistDetail -> SubScreen(
-                        title = stringResource(R.string.detail_color_title),
-                        onBack = { route = Route.Home },
-                    ) {
-                        WatchlistDetailScreen()
-                    }
+                // 二级页本体：被三级页盖住时缩一点（可预测返回时随手势回正）。
+                // 缩放只在**这一层**，不能挂到外层 Box —— 否则三级页会跟着一起缩。
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val s = 1f - 0.06f * pe
+                            scaleX = s
+                            scaleY = s
+                        },
+                ) {
+                    when (shownSub) {
+                        Route.WatchlistDetail -> SubScreen(
+                            title = stringResource(R.string.detail_color_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            WatchlistDetailScreen()
+                        }
 
-                    Route.StgDirectQuoteDetail -> SubScreen(
-                        title = stringResource(R.string.detail_stg_direct_title),
-                        onBack = { route = Route.Home },
-                    ) {
-                        StrategyQuoteDetailScreen()
-                    }
+                        Route.StgDirectQuoteDetail -> SubScreen(
+                            title = stringResource(R.string.detail_stg_direct_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            StrategyQuoteDetailScreen()
+                        }
 
-                    Route.QuickConfig -> SubScreen(
-                        title = stringResource(R.string.detail_quick_config_title),
-                        onBack = { route = Route.Home },
-                    ) {
-                        QuickConfigScreen(
-                            onEdit = { schemeId -> route = Route.QuickConfigEdit(schemeId) },
-                        )
-                    }
+                        Route.QuickConfig -> SubScreen(
+                            title = stringResource(R.string.detail_quick_config_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            QuickConfigScreen(
+                                onEdit = { schemeId -> route = Route.QuickConfigEdit(schemeId) },
+                            )
+                        }
 
-                    is Route.QuickConfigEdit -> {
-                        val editRoute = lastSub as Route.QuickConfigEdit
+                        Route.LogViewer -> SubScreen(
+                            title = stringResource(R.string.log_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            LogViewerScreen()
+                        }
+
+                        Route.Disclaimer -> SubScreen(
+                            title = stringResource(R.string.disclaimer_detail_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            DisclaimerScreen()
+                        }
+
+                        is Route.QuickConfigEdit -> Unit
+                        Route.Home -> Unit
+                    }
+                }
+
+                // ---- 第 3 层：三级页（叠在二级页之上，只自己滑）----
+                val editRoute = shownEdit
+                if (editRoute != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { translationX = size.width * (1f - pe) }
+                            .background(background),
+                    ) {
                         SubScreen(
                             title = stringResource(R.string.detail_quick_edit_title),
                             onBack = { route = Route.QuickConfig },
@@ -417,22 +517,6 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                             QuickConfigEditScreen(schemeId = editRoute.schemeId)
                         }
                     }
-
-                    Route.LogViewer -> SubScreen(
-                        title = stringResource(R.string.log_title),
-                        onBack = { route = Route.Home },
-                    ) {
-                        LogViewerScreen()
-                    }
-
-                    Route.Disclaimer -> SubScreen(
-                        title = stringResource(R.string.disclaimer_detail_title),
-                        onBack = { route = Route.Home },
-                    ) {
-                        DisclaimerScreen()
-                    }
-
-                    Route.Home -> Unit
                 }
             }
         }

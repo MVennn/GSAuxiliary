@@ -27,6 +27,8 @@
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**染色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
 | `LogViewer.kt` | 二级页：查看日志（筛选 / 复制 / **保存到任意位置** / 清空） |
+| `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
+| `QuickConfigEditScreen.kt` | **三级页**：单个方案的编辑（名称 / 涨到槽 / 跌到槽 / 提醒时效 / 设为默认 / 删除，见 §4.4） |
 | `MarkdownText.kt` | 轻量 Markdown 渲染（`AboutTab` 的免责声明正文用；不引 Markdown 库） |
 
 一级页面的骨架：
@@ -50,15 +52,18 @@ Scaffold
 
 ### 1.0 三层布局（2.3.1 重写，2.5.0 去掉自绘覆盖层，2.7.0 加底色层，2.8.0 换底色 token）
 
-`MainScreen` 不再是「用 `AnimatedContent` 整体替换页面」，而是叠放：
+`MainScreen` 不再是「用 `AnimatedContent` 整体替换页面」，而是叠放
+（3.1.1 起二级之上还有一层三级页）：
 
 ```
 Box(根容器，铺 MiuixTheme.colorScheme.surface)
 ├── 第 0 层  底色层 —— 只铺一个 surface 色，不挂任何 graphicsLayer 变换（2.7.0 新增）
 ├── 第 1 层  一级首页 HomeScaffold —— 常驻底衬
-│            按进度 p 缩放 1 → 0.94、透明度 1 → 0.65
-└── 第 2 层  二级页 SubScreen —— graphicsLayer.translationX = width * (1 - p)
-             p = 1 完全覆盖（位移 0）；p = 0 滑到屏幕右侧之外
+│            按 subProgress 缩放 1 → 0.94、透明度 1 → 0.65
+└── 第 2 层  二级页 SubScreen —— translationX = width * (1 - subProgress)
+             │  其本体（一个内层 Box）再按 editProgress 缩放 1 → 0.94
+             └── 第 3 层  三级页 —— translationX = width * (1 - editProgress)
+                          （与二级页本体是**兄弟节点**，不跟着一起缩）
 ```
 
 > **第 0 层为什么必须存在**（2.7.0 修的「预测手势灰边」）：可预测返回会把一级页
@@ -93,13 +98,36 @@ Box(根容器，铺 MiuixTheme.colorScheme.surface)
 
 `p` 是一个 `Animatable<Float>`：
 
-- 常规前进 / 返回：`LaunchedEffect(route)` 把它动画到 0 / 1
+- 常规前进 / 返回：`LaunchedEffect(route)` 把它们动画到 0 / 1
 - 可预测返回手势：`PredictiveBackHandler` 里 `snapTo(1f - it.progress)` 跟手，
   手势取消再动画回 1
 
 这样做的好处：
 - **可预测返回时一级菜单就在二级页下方**（第 1 层常驻），不再是黑底
 - 两层各自铺背景，切换过程**不会闪白**（原先 `SizeTransform(clip = false)` 会露窗口底色）
+
+### 1.0.0 三级页为什么单独一层（3.1.1）
+
+3.1.0 只有一条进度，三级页（方案编辑）直接顶掉二级页的内容，于是：
+
+- **进三级页没有动画**（内容原地替换）；
+- **从三级页可预测返回，看着像要回一级页**：手势把整层二级页往右推，底下露出
+  首页，提交后又把方案列表推回来 —— 用户看到的是「退回首页 → 又跳回列表」。
+
+现在二级、三级各一条进度，手势只推**最上面那一层**：
+
+| 动作 | subProgress | editProgress |
+|---|---|---|
+| 进二级页 | 0 → 1 | 保持 0 |
+| 进三级页 | 保持 1 | 0 → 1 |
+| 三级页返回 | 保持 1（本体 0.94 → 1 回正） | 1 → 0 |
+| 二级页返回 | 1 → 0 | 已为 0 |
+
+两个注意点：
+
+- **缩放只能挂在第 2 层内层的那个 Box 上**。挂到外层 Box 会连三级页一起缩 ——
+  三级页是它的子节点，父节点的 `graphicsLayer` 变换会传给子节点。
+- 二级页缩到 0.94 时与一级页（此时也是 0.94）**同尺寸**，所以四周不会露出一级页。
 
 ### 1.0.1 板块切换动画
 
@@ -801,6 +829,24 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 >
 > 「左右滑动」的 `enabled` 仍跟随 `stg_direct_quote`：正常路径下恒为 `true`，
 > 留着是兜住非常规路径（进程重建后路由被恢复、而配置已被重置）。
+
+#### 4.4 「一键配置」的方案列表页与编辑页（3.1.1 重排）
+
+| 页面 | 层级 | 结构 |
+|---|---|---|
+| `QuickConfigScreen.kt` | 二级 | 「方案」一张卡：方案行（`ArrowPreference`：名称 + 预览 + 默认徽标 + ⋮ 菜单）+ 新建方案（主色 + 加号）+ 卡底一句口径脚注 |
+| `QuickConfigEditScreen.kt` | **三级** | 名称卡 → 「最新涨到」「最新跌到」两张槽卡 → 提醒时效单卡 → 「操作」卡（设为默认 / 删除方案） |
+
+三件事值得记：
+
+- **卡内一律 Miuix 组件**（`ArrowPreference` / `BasicComponent` / `SwitchPreference` /
+  `IconButton`），不再手写 `Row` + `Text` + `clickable`：按压高亮、字号、内边距、
+  触控目标都由组件给，手写版本每处都要自己对齐一遍。
+- **弹层锚点每个控件自己 `remember` 一份**（见 §9）。3.1.0 用共享变量接所有控件的
+  `boundsInWindow`，谁最后布局完谁就是锚点 —— 点第一行的 ⋮，菜单从**最后一行**
+  弹出来；编辑页点「聚合」，菜单贴在「添加取值项」上。
+- **取值项清单不摆在列表页**：18 个取值项按分组平铺比方案列表还长，而那些名字在
+  编辑页「添加取值项」的弹层里本来就有。列表页只留一句脚注（`quick_terms_note`）。
 
 ---
 
@@ -1553,6 +1599,10 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   `rememberLayerBackdrop` 的底衬。色值表见 §1.0
 - **可预测返回要有一层不参与变换的底色层**：一级页缩放后露出的那一圈，必须由
   一个**最底层、不挂任何 `graphicsLayer` 变换**的 `Box` 铺 `surface` 兜住（见 §1.0）
+- **三级页要单独一层、单独一条进度**（3.1.1，见 §1.0.0）：只有一条进度时，
+  三级页的可预测返回会把整层二级页推走、露出首页，看着像要回一级页
+- **锚定菜单的锚点必须每个触发控件一份**：共享一个 `Rect` 状态的写法是错的 ——
+  `onGloballyPositioned` 谁最后回调谁就是锚点，菜单会贴在别的行上（3.1.1 修）
 - **自绘弹窗关闭后要立刻落配置**：`DialogHost` 没有「库的收起动画」，但关闭瞬间
   仍是一次状态翻转；配置写入统一走 `ModulePreferences.editDeferred { }`
   （延迟 360ms + `AtomicReference` 只保留最后一次）作为第二层防御；
