@@ -389,8 +389,9 @@ object ConfigKeys {
 
     /**
      * 可选高亮色（ARGB）。
-     * 名称与说明是**展示文本**，放在 `R.array.preset_color_names` /
-     * `R.array.preset_color_descriptions` 里以便本地化，顺序与本数组一一对应。
+     * 名称是**展示文本**（色块下方的标签），放在 `R.array.preset_color_names`
+     * 里以便本地化，顺序与本数组一一对应。（2.17.2 起不再有说明数组 ——
+     * 色块下写颜色名就够了。）
      */
     val PRESET_COLORS = intArrayOf(
         0xFFFF8000.toInt(),

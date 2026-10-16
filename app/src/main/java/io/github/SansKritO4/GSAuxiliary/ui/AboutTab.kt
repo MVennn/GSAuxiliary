@@ -13,16 +13,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import io.github.SansKritO4.GSAuxiliary.BuildConfig
 import io.github.SansKritO4.GSAuxiliary.R
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Tab 4 · 关于 —— 版本、作者、开源鸣谢、免责声明。 */
+/** Tab 4 · 关于 —— 作者、开源鸣谢、免责声明。 */
 @Composable
 internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
     val ctx = LocalContext.current
@@ -46,21 +43,12 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
         // 玻璃顶栏时内容铺到屏幕顶边，首屏空白在这里补（见 Glass.kt 的 LocalTopInset）
         Spacer(Modifier.height(8.dp + LocalTopInset.current))
 
-        // --- 模块信息：只留版本 ---
-        //
-        // 2.17.2 把「模块名称 / 作用范围 / 目标框架」和整组「技术细节」（Hook 入口 /
-        // 挂钩点 / 判定依据 / 控件 ID / 配置通道）请出了界面：这是面向用户的页面，
-        // 类名 / 控件 ID / API 版本对用户是噪音。模块名称与顶栏标题重复；其余信息
-        // 的完整档案在 docs/ARCHITECTURE.md、docs/HOOK-NOTES.md 与
-        // docs/REVERSE-ENGINEERING.md，开发者去那里看。
-        SmallTitle(stringResource(R.string.section_module_info))
-        Card(modifier = Modifier.cardPadding()) {
-            BasicComponent(
-                title = stringResource(R.string.info_module_version),
-                summary = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-            )
-        }
-
+        // 2.17.2 起关于页只回答「谁写的、用了谁的东西、有什么后果」：
+        // 「模块信息」整组（模块名称 / 版本 / 作用范围 / 目标框架）与「技术细节」
+        // 整组（Hook 入口 / 挂钩点 / 判定依据 / 控件 ID / 配置通道）都请出了界面 ——
+        // 模块名称与顶栏标题重复、版本在「概览」页已有（一页一处，不重复摆）、
+        // 其余是用户看不懂的开发者向字段。完整档案在 docs/ARCHITECTURE.md、
+        // docs/HOOK-NOTES.md 与 docs/REVERSE-ENGINEERING.md。
         SmallTitle(stringResource(R.string.section_author))
         Card(modifier = Modifier.cardPadding()) {
             BasicComponent(

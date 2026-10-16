@@ -769,7 +769,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|
-| `WatchlistDetail.kt` | 自选股高亮 → 染色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设 + 预览）/ 效果预览 |
+| `WatchlistDetail.kt` | 自选股高亮 → 染色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设）/ 效果预览（两行示例，无说明行） |
 | `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，不带副标题 —— 2.17.2 起，见 [NAMING.md](NAMING.md) §3） |
 
 **二级页只放「总开关之外」的参数。**

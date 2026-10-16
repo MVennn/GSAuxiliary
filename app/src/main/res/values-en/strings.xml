@@ -137,7 +137,6 @@
     <string name="section_preview">Preview</string>
     <string name="preview_in_watchlist">In watchlist</string>
     <string name="preview_not_in_watchlist">Not in watchlist</string>
-    <string name="preview_note">Name color only; change colors stay as-is</string>
     <string name="preview_sample_in">Leimei Pharma</string>
     <string name="preview_sample_out">712</string>
 
@@ -203,9 +202,9 @@
     <string name="log_hint">Only in-memory logs from the module app process (up to 500 lines). Target-process logs live in /data/adb/lspd/log/</string>
 
     <!-- ============================ About tab ============================ -->
-    <!-- Version / author / credits / disclaimer only. Scope, framework and hook details
-         are developer-facing; users don't read them — full records live in docs/ (since 2.17.2) -->
-    <string name="section_module_info">Module info</string>
+    <!-- Author / credits / disclaimer only. The version lives on the Overview tab (shown once);
+         scope, framework and hook details are developer-facing, users don't read them —
+         full records live in docs/ (since 2.17.2) -->
 
     <string name="section_author">Author</string>
     <string name="about_developer">Developer</string>
@@ -248,13 +247,6 @@
         <item>Gold</item>
         <item>Red</item>
         <item>Accent blue</item>
-    </string-array>
-
-    <string-array name="preset_color_descriptions">
-        <item>Identical to the original Market tab highlight</item>
-        <item>Brighter; more visible on dark themes</item>
-        <item>Careful: may be confused with gain colors</item>
-        <item>Matches the system accent color</item>
     </string-array>
 
     <string-array name="log_level_labels">

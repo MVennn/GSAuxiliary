@@ -40,8 +40,6 @@ internal fun WatchlistDetailScreen() {
     val scopeStrategy by rememberBoolPref(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY)
 
     val presetNames = stringArrayResource(R.array.preset_color_names)
-    val presetDescs = stringArrayResource(R.array.preset_color_descriptions)
-    val selectedIndex = ConfigKeys.PRESET_COLORS.indexOf(color)
 
     Column(
         modifier = Modifier
@@ -70,6 +68,8 @@ internal fun WatchlistDetailScreen() {
         // --- 高亮颜色 ---
         // 一个控件同时承担「看颜色」和「选颜色」：大圆色块 + 名称，
         // 选中描主色环 + 对勾；不再叠一份重复的 RadioButton 列表。
+        // 卡底不放随选中色变化的说明行（2.17.2 删）—— 颜色名已经写在色块下面，
+        // 说明行只是把同一件事再讲一遍，真机看着信息量为零。
         SmallTitle(stringResource(R.string.section_highlight_color))
         Card(modifier = Modifier.cardPadding()) {
             Row(
@@ -88,12 +88,11 @@ internal fun WatchlistDetailScreen() {
                     )
                 }
             }
-            if (selectedIndex in presetDescs.indices) {
-                CardNote(presetDescs[selectedIndex])
-            }
         }
 
         // --- 效果预览 ---
+        // 预览本身已经说明了一切（两个名字一高一低的色差摆在眼前），
+        // 卡底不再放口径说明（2.17.2 删）。
         SmallTitle(stringResource(R.string.section_preview))
         Card(modifier = Modifier.cardPadding()) {
             PreviewRow(
@@ -112,7 +111,6 @@ internal fun WatchlistDetailScreen() {
                 changeColor = PreviewDownColor,
                 tag = stringResource(R.string.preview_not_in_watchlist),
             )
-            CardNote(stringResource(R.string.preview_note))
         }
 
         // 手势导航条让位：内容铺到屏幕最底边（沉浸），最后一项再让开导航条高度
