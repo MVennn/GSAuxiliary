@@ -36,7 +36,7 @@ Make GoldenSun Great Again！
 
 ## 反馈
 
-遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，都可以到[Issues](https://github.com/MVennn/GSAuxiliary/issues) 进行反馈。
+遇到问题、想要新功能，或者金太阳升级之后某个开关失灵了，都可以到 [Issues](https://github.com/MVennn/GSAuxiliary/issues) 进行反馈。
 
 请上传相关信息与日志。相关信息主要包括：
 
