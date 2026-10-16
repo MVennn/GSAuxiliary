@@ -15,10 +15,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,7 +49,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -58,7 +58,6 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -66,35 +65,26 @@ import kotlin.math.abs
 /**
  * 自绘弹窗（Miuix 风格 + 可选液态玻璃）。
  *
- * ## 为什么「一半自绘、一半用库」
+ * ## 为什么自己画，不用 Miuix 的 `OverlayDropdownPreference` / `OverlayDialog`
  *
- * Miuix 的下拉弹层（`OverlayDropdownPreference` / `OverlayDialog`，0.3.x 时代）会在
+ * Miuix 的弹层由 `Scaffold` 内部的 `MiuixPopupHost` 渲染，而它的弹层实现会在
  * 自己的 `onClick` 里**同步开始收起动画**，此时任何一次配置写入（`commit()` →
  * `OnSharedPreferenceChangeListener` 同步回调 → Compose 状态改写）都会把弹层
  * 入参换掉，动画与重组打架 → 崩。历史上一共两条独立根因，其中一条治不干净。
  *
- * 所以**锚定菜单**（主题 / 语言 / 日志等级）维持自绘覆盖层：
+ * 换成**自绘覆盖层**之后，弹层只是普通 Composition 的一部分：
  *  - 没有「库自己的收起动画」，关闭就是一次普通的状态翻转；
  *  - 层级完全由我们决定（画在最外层 Box 的最后一个子节点，天然压住顶栏 / 底栏）；
  *  - 液态玻璃能直接用宿主那边的 [LayerBackdrop]，和顶栏 / 底栏是同一套材质。
  *
- * **贴底弹窗**（重置确认 / 免责声明同意）则换用 Miuix 0.9.3 的
- * `OverlayBottomSheet`（见 [BottomSheetDialogHost]）：它有自绘版做不出来的
- * 原生手感 —— folme 弹簧上滑 / 下滑、把手拖拽关闭、预测性返回手势。当年的崩溃
- * 路径对它不成立：收起由**我们的 `show` 状态**驱动（不是库在 onClick 里自作主张），
- * 确认回调全部走 `rememberUpdatedState`，且重置的配置写入本来就是延迟落盘
- * （`resetAllFeaturesDeferred`），动画期间没有同步入参改写。它渲染进 `Scaffold`
- * 内置的 `MiuixPopupHost`，所以**调用点必须在 Scaffold 的 composition 范围内**。
- *
- * ## 两种形态
+ * ## 两种形态（2.9.2 分化；2.9.4 锚定菜单补渐隐渐出）
  *
  * | | [ChoiceDialogSpec]（主题 / 语言 / 日志等级） | [ConfirmDialogSpec]（重置）<br>[AgreementDialogSpec]（首次启动同意） |
  * |---|---|---|
- * | 实现 | 自绘覆盖层（本文件 `DialogHost`） | Miuix `OverlayBottomSheet`（[BottomSheetDialogHost]） |
- * | 定位 | **从触发控件右中（箭头处）弹出**：优先卡片顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**（Miuix 原生），左右留白 = 主页卡片宽 |
- * | 入场 | 以**离箭头最近的右角**为原点缩放展开 + **渐显**（alpha 0 → 1），苹果风回弹曲线<br>（卡片在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长） | folme 弹簧从屏幕下方**向上滑入**（库动画） |
- * | 出场 | 向该右角**缩回** + **渐隐**（alpha 1 → 0），苹果风 easeInOut | folme 弹簧**下滑出屏**（库动画），把手可拖拽关闭 |
- * | 标题 | **没有**（2.9.2 去掉，选项本身已经说明一切） | 有（库的标题行，`title4` 18sp + Medium 居中，与 2.9.6 定稿同规格） |
+ * | 定位 | **从触发控件右中（箭头处）弹出**：优先卡片顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽 |
+ * | 入场 | 以**离箭头最近的右角**为原点缩放展开 + **渐显**（alpha 0 → 1），苹果风回弹曲线<br>（卡片在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长） | 从屏幕下方**向上滑入**，苹果风回弹曲线 |
+ * | 出场 | 向该右角**缩回** + **渐隐**（alpha 1 → 0），苹果风 easeInOut | 向**下滑出**，苹果风 easeInOut |
+ * | 标题 | **没有**（2.9.2 去掉，选项本身已经说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp，2.9.6 定稿） |
  *
  * ## 动画：缩放与透明度**各自独立**（2.9.4）
  *
@@ -106,16 +96,14 @@ import kotlin.math.abs
  * 两条进度分别跑在自己的协程里（入场是两个 `LaunchedEffect`，出场是两个 `launch`
  * 并发跑完再 `finishDismiss`），时长也各自独立 —— 缩放调整不会连带改掉渐隐的节奏，
  * 反之亦然。刻意**不**复用同一个进度：那等于把两种动画焊死，动一个必动另一个。
- *
- * 贴底弹窗换 `OverlayBottomSheet` 后不再吃这套 tween 曲线 —— 它的滑入 / 滑出 /
- * 拖拽全是库的 folme 弹簧，与自绘动画互不相干。
+ * 贴底确认弹窗不使用 alpha 渐隐，`fade` 恒为 1，行为与 2.9.3 完全一致。
  *
  * ## 出场动画与 `closing` 标记
  *
  * 两种形态的出场都要播动画，所以 [DialogController.dismiss] 统一只置 `closing`，
  * **不立刻清空 spec** —— 退出期间内容必须还在，否则会渲染出一张空卡片
  * （用户反馈过的「关闭时先出现空白弹窗」）。动画跑完由 [DialogController.finishDismiss]
- * 真正清空；`OverlayBottomSheet` 那边对应的时点是 `onDismissFinished`。
+ * 真正清空。
  *
  * ## 为什么用 `SubcomposeLayout`
  *
@@ -123,22 +111,20 @@ import kotlin.math.abs
  * 用 offset 挪过去」，那会露出「先出现在错误位置再跳一下」的空窗。
  * [SubcomposeLayout] 允许先量卡片、再决定摆放位置，**一次成型**。
  *
- * ## 动画：锚定菜单只用 `tween` + 苹果风贝塞尔曲线，**没有弹簧**
+ * ## 动画：只用 `tween` + 苹果风贝塞尔曲线，**没有弹簧**
  *
- * 入场 / 出场全部走 `tween` + 单段缓动，曲线是「苹果风味」的
- * `CubicBezierEasing`：入场带一点 easeOutBack 式回弹过冲（缩放区间小，
- * 折算下来约 2%），落位稳稳收住；出场 easeInOut（`UIView.animate` 的默认曲线）
- * 平滑离场。仍然没有任何 `spring`：时长可预期，而且出场方向一旦回弹就会冲过 0
- * （缩得比起始还小 / 滑出屏幕又弹回来）。
+ * 入场 / 出场仍全部走 `tween` + 单段缓动，但曲线换成「苹果风味」的
+ * `CubicBezierEasing`：入场带一点 easeOutBack 式回弹过冲（缩放区间小，锚定菜单
+ * 折算下来约 2%；贴底弹窗的位移区间是整卡高度，过冲单独压到约 3%），落位稳稳收住；
+ * 出场 easeInOut（`UIView.animate` 的默认曲线）平滑离场。仍然没有任何 `spring`：
+ * 时长可预期，而且出场方向一旦回弹就会冲过 0（缩得比起始还小 / 滑出屏幕又弹回来）。
  *
  * ## 液态玻璃
  *
- * 两种弹窗都由「液态玻璃」总开关控制：
+ * 由「液态玻璃」总开关控制：
  *  - **开** → 玻璃卡片（`drawBackdrop`：模糊 + 增艳 + 半透明面色 + 外投影），
- *    面色同样走 [glassSurfaceTint]，所以深色是黑玻璃、浅色是白玻璃。
- *    贴底弹窗的玻璃从 `OverlayBottomSheet` 的 `modifier` 注入 —— 那个 modifier
- *    插在库的 `squircleSurface(纯色)` 之前，玻璃能铺满整张 sheet（含把手区）；
- *  - **关** → 纯色卡片（`surfaceContainerHigh`，与 2.9.x 自绘版同色），
+ *    面色同样走 [glassSurfaceTint]，所以深色是黑玻璃、浅色是白玻璃；
+ *  - **关** → 纯色卡片（`surfaceContainerHigh`），
  *    它在 Miuix 里与页面底色 `surface` 有明显对比（深色 #242424 / 浅色 #E8E8E8）。
  */
 
@@ -293,6 +279,15 @@ private const val DialogFadeMillis = 180
 private val AppleMenuEnterEasing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
 /**
+ * 苹果风入场曲线 —— **贴底弹窗**（位移）用。
+ *
+ * 与 [AppleMenuEnterEasing] 同族，但控制点从 1.56 压到 1.3：位移的动画区间
+ * 是**整个卡片高度**，同样的过冲比例会放大成一大段肉眼可见的弹跳，所以把
+ * 峰值过冲压到 ~3%（几 dp 的落位回坐），保留「滑到位再稳一下」的苹果味。
+ */
+private val AppleSheetEnterEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
+
+/**
  * 苹果风出场曲线（两种形态共用）。
  *
  * `(0.42, 0, 0.58, 1)` 即 `UIView.animate` 的默认 easeInOut ——
@@ -368,15 +363,11 @@ private val MenuWidth = 200.dp
 private val ScreenMargin = 12.dp
 
 /**
- * 锚定菜单宿主 —— 挂在 `MainScreen` **最外层 `Box`** 的最后一个子节点上。
+ * 弹窗宿主 —— 挂在 `MainScreen` **最外层 `Box`** 的最后一个子节点上。
  *
  * 之所以不在 `Scaffold` 的 content 里：锚点用的是窗口坐标，而 content 的坐标系
  * 被顶栏整体下移了一段，直接用会整体偏上。挂在最外层既对齐了坐标系，
  * 也保证弹窗压住顶栏 / 底栏 / 内容。
- *
- * 只渲染 [ChoiceDialogSpec]（主题 / 语言 / 日志等级的下拉菜单）；
- * 贴底弹窗（[ConfirmDialogSpec] / [AgreementDialogSpec]）由
- * [BottomSheetDialogHost] 接管 —— 见其 KDoc。
  *
  * @param backdrop 与顶栏 / 底栏同一个内容图层，玻璃卡片靠它采样身后的画面
  * @param liquidGlass 「液态玻璃」总开关
@@ -391,15 +382,16 @@ internal fun DialogHost(
     modifier: Modifier = Modifier,
 ) {
     val spec = controller.spec ?: return
-    // 贴底弹窗走 Miuix OverlayBottomSheet（BottomSheetDialogHost）—— 收起期间
-    // spec 仍然保留，这里用类型判断互斥，谁都不画对方的形态。
-    if (spec !is ChoiceDialogSpec) return
     val dark = LocalDarkTheme.current
     val density = LocalDensity.current
     val marginPx = with(density) { ScreenMargin.toPx() }
     val menuWidthPx = with(density) { MenuWidth.roundToPx() }
+    // 底部弹窗要抬到导航条之上
+    val navBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
 
     val anchor = spec.anchor
+    // 贴底弹出：确认弹窗 / 同意弹窗，且没有锚点
+    val sheet = (spec is ConfirmDialogSpec || spec is AgreementDialogSpec) && anchor == null
 
     // 进度：0 = 收起（初始态）、1 = 完全展开。
     // `remember(spec)` 让每换一个弹窗都重新从 0 开始 —— 于是「入场」天然成立，
@@ -408,10 +400,13 @@ internal fun DialogHost(
 
     // 透明度进度：**独立于 progress 的第二条动画**（2.9.4）。
     //
-    // 锚定菜单除缩放外还要「渐隐渐出」：入场 0 → 1、出场 1 → 0。刻意用**单独的
-    // Animatable** 驱动、跑在各自的协程里，与缩放那条线**互不读写**（时长也各自
-    // 独立）—— 两条动画叠加显示，但谁也不会把对方拽慢、打断或改写。
-    val fade = remember(spec) { Animatable(0f) }
+    // 主题 / 语言 / 日志等级这类锚定菜单，除缩放外还要「渐隐渐出」：
+    // 入场 0 → 1、出场 1 → 0。刻意用**单独的 Animatable** 驱动、跑在各自的协程里，
+    // 与缩放那条线**互不读写**（时长也各自独立）—— 两条动画叠加显示，
+    // 但谁也不会把对方拽慢、打断或改写。
+    // 贴底确认弹窗（重置）不走渐隐，起始值直接取 1，行为与 2.9.3 一致。
+    val isMenu = spec is ChoiceDialogSpec
+    val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
 
     // 锚定菜单的缩放原点：布局期按「卡片落在箭头上方还是下方」裁决
     // （resolveAnchorPlacement）写进来，绘制期读同一份值 —— 同一帧里布局先于绘制，
@@ -419,13 +414,16 @@ internal fun DialogHost(
     var menuOrigin by remember(spec) { mutableStateOf(TransformOrigin(1f, 0f)) }
 
     LaunchedEffect(spec) {
-        progress.animateTo(1f, tween(DialogMillis, easing = AppleMenuEnterEasing))
+        // 入场曲线按形态分：锚定菜单走缩放（区间小，过冲可以给足），
+        // 贴底弹窗走位移（区间是整卡高度，过冲必须压小）—— 见两条曲线的 KDoc。
+        val enterEasing = if (isMenu) AppleMenuEnterEasing else AppleSheetEnterEasing
+        progress.animateTo(1f, tween(DialogMillis, easing = enterEasing))
     }
     // 渐显：自己的一条协程，独立于上面的缩放动画
     LaunchedEffect(spec) {
-        fade.animateTo(1f, tween(DialogFadeMillis, easing = LinearOutSlowInEasing))
+        if (isMenu) fade.animateTo(1f, tween(DialogFadeMillis, easing = LinearOutSlowInEasing))
     }
-    // 出场：缩放 1 → 0（缩回离箭头最近的右角）+ 透明 1 → 0，
+    // 出场：缩放 1 → 0（锚定菜单缩回右缘中点 / 贴底弹窗向下滑走）+ 透明 1 → 0（仅锚定菜单），
     // 两条并发跑，**都跑完**才真正清空 spec。
     // 出场统一走苹果风 easeInOut（[AppleExitEasing]）—— 出场方向不能回弹，见其 KDoc。
     LaunchedEffect(controller.closing) {
@@ -433,39 +431,45 @@ internal fun DialogHost(
         val scaleDone = launch {
             progress.animateTo(0f, tween(DialogMillis, easing = AppleExitEasing))
         }
-        val fadeDone = launch {
-            fade.animateTo(0f, tween(DialogFadeMillis, easing = AppleExitEasing))
+        val fadeDone = if (isMenu) {
+            launch { fade.animateTo(0f, tween(DialogFadeMillis, easing = AppleExitEasing)) }
+        } else {
+            null
         }
         scaleDone.join()
-        fadeDone.join()
+        fadeDone?.join()
         controller.finishDismiss()
     }
 
     // 系统返回键：弹窗开着时先关弹窗（后注册的 BackHandler 优先）。
+    // 不可关闭的弹窗（首次启动同意）这里**只吞掉返回**，不放行给下层 ——
+    // 否则一按返回就退出 App，用户会以为模块坏了。
     BackHandler(enabled = true) { if (spec.dismissible) controller.dismiss() }
 
     val p = progress.value
     val fadeValue = fade.value
 
     Box(modifier.fillMaxSize()) {
-        // 遮罩：随 progress「渐变压黑」——
+        // 遮罩：**所有弹窗都有**，且随 progress「渐变压黑」——
         // 出现时由透明渐变到 ScrimAlpha，关闭时再渐变回透明。
-        // （贴底弹窗的遮罩由 OverlayBottomSheet 自带，不走这里。）
         Box(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = ScrimAlpha * p)),
         )
         // 点空白处关闭。刻意不要水波纹（indication = null）。
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = { controller.dismiss() },
-                ),
-        )
+        // 不可关闭的弹窗不加这层 —— 加了就等于给了绕过的口子。
+        if (spec.dismissible) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { controller.dismiss() },
+                    ),
+            )
+        }
 
         // 先量卡片、再算位置，一次成型
         SubcomposeLayout(Modifier.fillMaxSize()) { constraints ->
@@ -475,7 +479,7 @@ internal fun DialogHost(
             val cap = if (anchor != null) {
                 menuWidthPx.coerceAtMost((width - side * 2).coerceAtLeast(0))
             } else {
-                // 无锚点兜底：吃满「卡片宽度」
+                // 贴底弹窗与居中弹窗都吃满「卡片宽度」
                 (width - side * 2).coerceAtLeast(0)
             }
 
@@ -489,13 +493,14 @@ internal fun DialogHost(
                     dark = dark,
                     progress = p,
                     fade = fadeValue,
+                    sheet = sheet,
                     menuOrigin = menuOrigin,
                 )
             }.first()
             val placeable = measurable.measure(
                 Constraints(
-                    // 锚定菜单定宽
-                    minWidth = if (anchor != null) cap else 0,
+                    // 锚定菜单定宽；贴底弹窗铺满卡片宽度
+                    minWidth = if (anchor != null || sheet) cap else 0,
                     maxWidth = cap,
                 ),
             )
@@ -505,6 +510,12 @@ internal fun DialogHost(
             val x: Int
             val y: Int
             when {
+                // 贴底：左右各留 ScreenMargin，底部再抬起导航条高度
+                sheet -> {
+                    x = side
+                    y = (height - cardH - side - navBottomPx.toInt()).coerceAtLeast(side)
+                }
+
                 anchor != null -> {
                     // 卡片右边缘与触发控件右边缘对齐
                     x = (anchor.right - cardW)
@@ -537,189 +548,12 @@ internal fun DialogHost(
 }
 
 /**
- * 贴底弹窗宿主（Miuix `OverlayBottomSheet`）—— 重置确认 + 首次启动同意。
+ * 卡片本体：材质 + 内容 + 入场 / 出场变换。
  *
- * ⚠️ **调用点必须在 Miuix `Scaffold` 的 composition 范围内**（HomeScaffold 的
- * content lambda 里即可）：`OverlayBottomSheet` 经 `MiuixPopupUtils.DialogLayout`
- * 把内容登记进 Scaffold 内置的 `MiuixPopupHost`，登记表存放在 Scaffold 提供的
- * `LocalRootDialogStates` 里 —— 在 Scaffold 外面调用拿到的是空表，
- * 弹层永远不显示。它与自绘的 [DialogHost] 读同一个 [DialogController]，
- * 只是渲染通道不同；两个宿主按 spec 类型互斥，谁都不画对方的形态。
- *
- * ## 与 `closing` / `finishDismiss` 的配合
- *
- * `show = spec 在且未在收起`。`dismiss()` 置 `closing` → `show` 翻 false →
- * 库播下滑动画，期间 spec 保留（不会闪空卡）；播完 `onDismissFinished` →
- * [DialogController.finishDismiss] 真正清空 —— 与自绘时代同一套语义。
- * 收起由**我们的 `show` 状态**驱动，不是库在 onClick 里自作主张 ——
- * 0.3.x 时代「同步收起动画 × 配置写入」的崩溃路径对它不成立；
- * 重置的配置写入本来就是延迟落盘（`resetAllFeaturesDeferred`），双保险。
- *
- * ## 玻璃材质跟随「液态玻璃」开关
- *
- *  - **开**：`backgroundColor` 给透明，玻璃从 `modifier` 注入 —— 那个 modifier
- *    插在库容器 `squircleSurface(纯色)` 之前，[drawBackdrop] 的玻璃
- *    （模糊 + 增艳 + 面色 + 外投影）铺满整张 sheet（含把手区），
- *    形状对齐库的顶部圆角（底部 0，sheet 贴屏幕底边）；
- *  - **关**：`surfaceContainerHigh` 纯色（与 2.9.x 自绘版同色）。
- */
-@Composable
-internal fun BottomSheetDialogHost(
-    controller: DialogController,
-    backdrop: LayerBackdrop,
-    liquidGlass: Boolean,
-    effect: Boolean,
-) {
-    val spec = controller.spec ?: return
-    if (spec !is ConfirmDialogSpec && spec !is AgreementDialogSpec) return
-    val dark = LocalDarkTheme.current
-
-    OverlayBottomSheet(
-        show = !controller.closing,
-        title = when (spec) {
-            is ConfirmDialogSpec -> spec.title
-            is AgreementDialogSpec -> spec.title
-            else -> null
-        },
-        backgroundColor = if (liquidGlass) {
-            Color.Transparent
-        } else {
-            MiuixTheme.colorScheme.surfaceContainerHigh
-        },
-        modifier = if (liquidGlass) {
-            Modifier.drawBackdrop(
-                backdrop = backdrop,
-                shape = { RoundedCornerShape(topStart = DialogCorner, topEnd = DialogCorner) },
-                effects = {
-                    if (effect) {
-                        vibrancy()
-                        blur(24.dp.toPx())
-                    }
-                },
-                shadow = { Shadow(radius = 24.dp, alpha = 0.30f) },
-                onDrawSurface = { drawRect(glassSurfaceTint(dark, effect)) },
-            )
-        } else {
-            Modifier
-        },
-        // 左右留白对齐主页卡片（cardPadding = ScreenMargin = 12dp）；
-        // 纵向交给库的贴底样式
-        outsideMargin = DpSize(ScreenMargin, 0.dp),
-        // 内容的 18dp 横向留白由库的 insideMargin 承担（与 2.9.x 自绘版一致），
-        // 底部空间在 content 里自己补导航条 inset
-        insideMargin = DpSize(18.dp, 0.dp),
-        // 免责声明同意弹窗是硬门槛：拖拽 / 返回 / 点外部都关不掉
-        allowDismiss = spec.dismissible,
-        onDismissRequest = { controller.dismiss() },
-        onDismissFinished = { controller.finishDismiss() },
-        content = {
-            // 库的弹层宿主贴屏幕底边且不吃导航条 inset，内容自己让开
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                when (spec) {
-                    is ConfirmDialogSpec -> ConfirmSheetContent(controller, spec)
-                    is AgreementDialogSpec -> AgreementSheetContent(controller, spec)
-                    else -> {}
-                }
-            }
-        },
-    )
-}
-
-/** 重置确认的 sheet 内容：说明 + 「取消 / 确定」两个等宽按钮（规格沿用 2.9.x 定稿） */
-@Composable
-private fun ConfirmSheetContent(controller: DialogController, spec: ConfirmDialogSpec) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = spec.message,
-            // 与标题同色（2.9.3）：正文就是标题的展开说明
-            color = MiuixTheme.colorScheme.onSurfaceContainer,
-            // 副标题 15sp（2.9.6 定稿）
-            fontSize = 15.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // 按钮前留白 2.9.3 由 20dp 加到 28dp：把整体高度撑起来
-        Spacer(Modifier.height(28.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            // 间距 12 → 16dp（2.9.7）：两个按钮各**收窄 2dp**
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            DialogButton(
-                text = spec.cancelText,
-                emphasized = false,
-                onClick = { controller.dismiss() },
-                modifier = Modifier.weight(1f),
-            )
-            DialogButton(
-                text = spec.confirmText,
-                emphasized = true,
-                onClick = {
-                    // 先关弹窗再落配置：重置走 resetAllFeaturesDeferred（延迟落盘），
-                    // 写入发生在关闭之后（与历史崩溃同一套防御）。
-                    controller.dismiss()
-                    spec.onConfirm()
-                },
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-/** 免责声明同意的 sheet 内容：说明 + 勾选行（带链接）+ 唯一一颗「同意」 */
-@Composable
-private fun AgreementSheetContent(controller: DialogController, spec: AgreementDialogSpec) {
-    // 勾选状态放这里：`remember(spec)` 让「换一个新的同意弹窗」时回到未勾选
-    var checked by remember(spec) { mutableStateOf(false) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        // 说明文字：纯文本 —— 免责声明的入口在下方勾选行里
-        Text(
-            text = spec.message,
-            color = MiuixTheme.colorScheme.onSurfaceContainer,
-            fontSize = 15.sp,
-            lineHeight = 23.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(Modifier.height(18.dp))
-        AgreementCheckRow(
-            checked = checked,
-            onCheckedChange = { checked = it },
-            prefix = spec.checkPrefix,
-            linkText = spec.checkLinkText,
-            suffix = spec.checkSuffix,
-            onOpenLink = spec.onOpenDisclaimer,
-        )
-        Spacer(Modifier.height(18.dp))
-
-        // 只有一颗按钮，且未勾选时不可点
-        DialogButton(
-            text = spec.confirmText,
-            emphasized = true,
-            enabled = checked,
-            onClick = {
-                // 同意落盘在关闭之后：dismiss 只置 closing，写入走调用方的回调
-                controller.dismiss()
-                spec.onConfirm()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-/**
- * 卡片本体（锚定菜单）：材质 + 内容 + 入场 / 出场变换。
- *
- * @param progress 0 = 收起、1 = 完全展开（驱动缩放）
- * @param fade     0 = 全透明、1 = 不透明（驱动 alpha）
- * @param menuOrigin 缩放原点（布局期按箭头方位裁决，见 [resolveAnchorPlacement]）
+ * @param progress 0 = 收起、1 = 完全展开（驱动缩放 / 位移）
+ * @param fade     0 = 全透明、1 = 不透明（驱动 alpha，仅锚定菜单用；贴底弹窗恒 1）
+ * @param sheet    `true` = 贴底弹窗（纵向滑入滑出），`false` = 锚定菜单（贴箭头缩放 + 渐隐渐出）
+ * @param menuOrigin 锚定菜单的缩放原点（布局期按箭头方位裁决，见 [resolveAnchorPlacement]）；贴底弹窗不用
  */
 @Composable
 private fun DialogCard(
@@ -731,22 +565,28 @@ private fun DialogCard(
     dark: Boolean,
     progress: Float,
     fade: Float,
+    sheet: Boolean,
     menuOrigin: TransformOrigin,
 ) {
     val shape = RoundedCornerShape(DialogCorner)
     Box(
         modifier = Modifier.graphicsLayer {
-            // 以**离箭头最近的右角**为原点缩放（原点由布局期裁决，见
-            // [resolveAnchorPlacement]）：卡片在箭头下方 → 右上角固定，向左下长出来；
-            // 翻到上方 → 右下角固定，向左上长出来。关闭时（progress 1 → 0）
-            // 缩回同一个角 —— 入场 / 出场同一套变换。
-            val s = AppearScale + (1f - AppearScale) * progress
-            scaleX = s
-            scaleY = s
-            transformOrigin = menuOrigin
-            // 渐隐渐出：alpha 走**另一条独立动画**（`fade`，见 DialogHost 的注释），
-            // 与上面的缩放各跑各的、互不干扰。
-            alpha = fade
+            if (sheet) {
+                // 从屏幕下方滑上来；关闭时反向滑回去
+                translationY = (1f - progress) * size.height
+            } else {
+                // 以**离箭头最近的右角**为原点缩放（原点由布局期裁决，见
+                // [resolveAnchorPlacement]）：卡片在箭头下方 → 右上角固定，向左下长出来；
+                // 翻到上方 → 右下角固定，向左上长出来。关闭时（progress 1 → 0）
+                // 缩回同一个角 —— 入场 / 出场同一套变换。
+                val s = AppearScale + (1f - AppearScale) * progress
+                scaleX = s
+                scaleY = s
+                transformOrigin = menuOrigin
+                // 渐隐渐出：alpha 走**另一条独立动画**（`fade`，见 DialogHost 的注释），
+                // 与上面的缩放各跑各的、互不干扰。
+                alpha = fade
+            }
         },
     ) {
         // --- 卡片背景 ---
@@ -796,10 +636,10 @@ private fun DialogCard(
 
 @Composable
 private fun DialogBody(controller: DialogController, spec: DialogSpec) {
-    // 选择类弹窗**不画标题**（2.9.2 去掉）——选项本身已经说明这是哪个设置项，
-    // 多一行标题只会让下拉菜单变高、变啰嗦。
-    if (spec is ChoiceDialogSpec) {
-        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+    when (spec) {
+        // 选择类弹窗**不画标题**（2.9.2 去掉）——选项本身已经说明这是哪个设置项，
+        // 多一行标题只会让下拉菜单变高、变啰嗦。
+        is ChoiceDialogSpec -> Column(modifier = Modifier.padding(vertical = 8.dp)) {
             spec.items.forEachIndexed { index, label ->
                 ChoiceRow(
                     label = label,
@@ -810,6 +650,119 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                         controller.dismiss()
                         spec.onSelect(index)
                     },
+                )
+            }
+        }
+
+        is ConfirmDialogSpec -> Column(
+            // 纵向留白 2.9.3 由 22dp 加到 32dp：贴底弹窗铺满整条卡片宽度，
+            // 内容却只有两行字 + 一排按钮，太紧就会「扁长」。
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = spec.title,
+                color = MiuixTheme.colorScheme.onSurfaceContainer,
+                // 主标题字号 = `title4`（**18sp**）+ Medium（2.9.6 定稿）：夹在
+                // 「主页卡片标题 headline1 = 17sp」与「顶栏标题 title3 = 20sp」之间 ——
+                // 17sp 观感偏低（2.9.4）、20sp 又过大（2.9.5），18sp 是这一档的稳定解，
+                // 且正好是 Miuix 文字样式表里 17 与 20 之间的那一档。
+                fontSize = MiuixTheme.textStyles.title4.fontSize,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = spec.message,
+                // 与标题**同色**（2.9.3）：之前正文用 onSurfaceContainerVariant、
+                // 标题用 onSurfaceContainer，两者只差字号 —— 看上去像两种不同层级的
+                // 信息，但这里正文就是标题的展开说明，用同一个颜色更干净。
+                color = MiuixTheme.colorScheme.onSurfaceContainer,
+                // 副标题 15sp（2.9.6 定稿）：Miuix 文字样式表里没有 15 这一档
+                // （body2 = 14、body1 = 16），按用户要求取二者中间，故这里直接写 sp。
+                // 与主标题 18 : 15 的层级差足够，仍是 Normal 字重。
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // 按钮前留白 2.9.3 由 20dp 加到 28dp（同上：把整体高度撑起来）
+            Spacer(Modifier.height(28.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                // 间距 12 → 16dp（2.9.7）：两个按钮各**收窄 2dp**。总宽不变、外缘不动，
+                // 只是中间让出 4dp —— 想让每个按钮自身变窄，只能从这一处（或整行两侧
+                // 留白）扣，`weight(1f)` 的两颗按钮宽度是算出来的。
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                DialogButton(
+                    text = spec.cancelText,
+                    emphasized = false,
+                    onClick = { controller.dismiss() },
+                    modifier = Modifier.weight(1f),
+                )
+                DialogButton(
+                    text = spec.confirmText,
+                    emphasized = true,
+                    onClick = {
+                        controller.dismiss()
+                        spec.onConfirm()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+
+        is AgreementDialogSpec -> {
+            // 勾选状态放这里：`remember(spec)` 让「换一个新的同意弹窗」时回到未勾选
+            var checked by remember(spec) { mutableStateOf(false) }
+            val colors = MiuixTheme.colorScheme
+
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = spec.title,
+                    color = colors.onSurfaceContainer,
+                    fontSize = MiuixTheme.textStyles.title4.fontSize,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
+
+                // 说明文字：纯文本 —— 免责声明的入口在下方勾选行里
+                Text(
+                    text = spec.message,
+                    color = colors.onSurfaceContainer,
+                    fontSize = 15.sp,
+                    lineHeight = 23.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Spacer(Modifier.height(18.dp))
+                AgreementCheckRow(
+                    checked = checked,
+                    onCheckedChange = { checked = it },
+                    prefix = spec.checkPrefix,
+                    linkText = spec.checkLinkText,
+                    suffix = spec.checkSuffix,
+                    onOpenLink = spec.onOpenDisclaimer,
+                )
+                Spacer(Modifier.height(18.dp))
+
+                // 只有一颗按钮，且未勾选时不可点
+                DialogButton(
+                    text = spec.confirmText,
+                    emphasized = true,
+                    enabled = checked,
+                    onClick = {
+                        controller.dismiss()
+                        spec.onConfirm()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

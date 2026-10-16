@@ -354,18 +354,16 @@ Scaffold { padding ->
    图标用 `AppIcons`（自绘 `ImageVector`，**不要引回 `material-icons-extended`**，
    原因见 `docs/UI.md` §10）。
 
-   > ⚠️ **选择列表走自绘 `DialogHost`（`ChoiceDialogSpec`），不要用 Miuix 的
+   > ⚠️ **选择列表 / 二次确认一律走自绘 `DialogHost`，不要用 Miuix 的
    > `OverlayDropdownPreference` / `OverlayDialog`。**
    >
    > 这两个组件在库内部的 `onClick` 里**同步**开始收起动画，同时又同步回写配置状态，
    > 动画与重组互相打架 —— 表现为**一点就闪退**，调用侧无法规避
    > （2.8.0 已整体换成自绘，根因分析见 `docs/UI.md` §1.3 与 `ui/AppDialog.kt` 顶部注释）。
    >
-   > **二次确认 / 全屏同意**例外：走 Miuix 0.9.3 的 `OverlayBottomSheet`
-   > （`ConfirmDialogSpec` / `AgreementDialogSpec` + `BottomSheetDialogHost`）——
-   > 它的收起由调用方的 `show` 状态驱动，避开了那条崩溃路径
-   > （见 `docs/UI.md` §1.3.6）。⚠️ 它必须挂在 `HomeScaffold` 的 Scaffold content
-   > 里（内容登记进 Scaffold 内置的 `MiuixPopupHost`，放外面弹层不显示）。
+   > 3.1.0 曾试过把贴底弹窗换回 Miuix `OverlayBottomSheet`（它的收起由调用方
+   > `show` 状态驱动，避开了那条崩溃路径），但观感与动画手感不合，
+   > 按用户要求回退为自绘 —— 弹层维持全自绘。
    >
    > 自绘弹层的用法：在 `HomeScaffold` 里取 `LocalDialogController.current`，
    > 调 `showChoice(ChoiceDialogSpec(...))` / `showConfirm(ConfirmDialogSpec(...))`；
@@ -373,8 +371,7 @@ Scaffold { padding ->
    >
    > 顺带一条层级约定：**挂在 `Scaffold` 外面的浮层会盖住弹层** ——
    > 自绘 `DialogHost` 挂在最外层 `Box`（窗口坐标需要），液态悬浮底栏因此放在
-   > content 里（见 `docs/UI.md` §1.3.3）；`OverlayBottomSheet` 渲染在 Scaffold
-   > 内置宿主里，天然压住顶栏 / 底栏。
+   > content 里（见 `docs/UI.md` §1.3.3）。
 
 3）在 `SettingsActivity.kt` 的 `Route` 里加一个 `data object`，
    并在 `MainScreen` 的 `when` 里挂上 `SubScreen(title = ..., onBack = ...) { XxxDetailScreen() }`。
