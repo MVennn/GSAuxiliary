@@ -20,6 +20,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
@@ -42,8 +43,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -510,6 +513,17 @@ private fun HomeScaffold(
 
     // 直接读属性即可：`hidden` 本身由 `mutableStateOf` 支撑，读它就订阅了变化
     val hidden = dockScroll.hidden
+
+    // 点击内容区空白处时收起输入框焦点（键盘随之收起）。
+    //
+    // Compose 里 TextField 的焦点只有两条释放路径：被别的可聚焦组件抢走，或显式
+    // `clearFocus()`。点在卡片 / 开关上没问题 —— 它们会消费点击；但点在列表
+    // 空白、页面边缘这些「没人要」的位置，事件一路冒泡都无人消费，焦点就赖着
+    // 不走 —— 表现为搜索框的高亮只能靠切板块才能摘掉。
+    // 所以在内容容器上挂一个 tap 探测兜底：子级消费了点击（卡片 / 开关 /
+    // 搜索框自己）就不会触发，只有真正点在空白处才清焦点。
+    val focusManager = LocalFocusManager.current
+
     val hideFraction by animateFloatAsState(
         targetValue = if (hidden) 1f else 0f,
         animationSpec = tween(DockHideMillis),
@@ -576,7 +590,12 @@ private fun HomeScaffold(
                             )
                             .layerBackdrop(backdrop)
                             // 只观测滚动方向，不消费增量（返回 Offset.Zero），滚动本身不受影响
-                            .nestedScroll(scrollConnection),
+                            .nestedScroll(scrollConnection)
+                            // 点击空白处清掉输入框焦点（见上方 focusManager 处的注释）。
+                            // 手指拖动滚动超过 touch slop 就不再是 tap，不影响列表滚动。
+                            .pointerInput(focusManager) {
+                                detectTapGestures(onTap = { focusManager.clearFocus() })
+                            },
                     ) {
                         // 四个板块切换时淡入 + 轻微横移，避免生硬跳变
                         AnimatedContent(
