@@ -139,10 +139,9 @@
     <string name="switch_save_back_to_stock">保存成功后直接返回个股详情页</string>
 
     <!-- ============================ 我的盯盘卡片直达详情（智能盯盘） ============================ -->
-    <string name="feature_card_detail_title">卡片直达详情</string>
-    <string name="feature_card_detail_summary">我的盯盘里的卡片点一下直接进该股的个股详情页，不用再退出去搜代码</string>
-    <string name="feature_card_detail_switch">点卡片看详情</string>
-    <string name="feature_card_detail_switch_summary">右下角编辑、删除不受影响</string>
+    <string name="feature_card_detail_title">我的盯盘卡片跳转股票详情页</string>
+    <string name="feature_card_detail_summary">我的盯盘里的卡片点一下直接进该股的个股详情页，右下角编辑、删除不受影响</string>
+    <string name="feature_card_detail_switch">我的盯盘卡片跳转股票详情页</string>
 
     <!-- ============================ 配置按钮设置（二级菜单） ============================ -->
     <string name="switch_pick_scheme">在多配置下弹出选择方案弹窗</string>

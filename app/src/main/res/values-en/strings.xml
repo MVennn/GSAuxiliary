@@ -105,10 +105,9 @@
     <string name="feature_skip_save_switch_summary">Show a toast and go back automatically</string>
     <string name="feature_skip_save_detail_title">After saving</string>
     <string name="feature_skip_save_detail_entry">Where to go back</string>
-    <string name="feature_card_detail_title">Card to stock detail</string>
-    <string name="feature_card_detail_summary">Tap a card in My watch to open the stock detail page directly, no need to search the code again</string>
-    <string name="feature_card_detail_switch">Tap card for detail</string>
-    <string name="feature_card_detail_switch_summary">Edit and delete at the corner stay untouched</string>
+    <string name="feature_card_detail_title">Open stock detail from watch card</string>
+    <string name="feature_card_detail_summary">Tap a card in My watch to open the stock detail page directly; edit and delete at the corner stay untouched</string>
+    <string name="feature_card_detail_switch">Open stock detail from watch card</string>
     <string name="switch_save_back_to_stock">Return straight to the stock detail page</string>
 
     <!-- ============================ Config button (sub screen) ============================ -->

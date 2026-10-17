@@ -242,8 +242,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_card_detail_title,
         summaryRes = R.string.feature_card_detail_summary,
         switchTitleRes = R.string.feature_card_detail_switch,
-        // 副标题说边界：右下角编辑 / 删除不受影响，点的是卡片其余区域
-        switchSummaryRes = R.string.feature_card_detail_switch_summary,
+        // 无副标题：标题已把「哪张卡片、点了去哪」说全（docs/NAMING.md §副标题）
         enableKey = ConfigKeys.AISTARE_CARD_DETAIL,
         defaultEnabled = ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
