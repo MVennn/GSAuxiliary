@@ -31,8 +31,10 @@
 """
 import math
 import os
-import struct
-import zlib
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _png import write_png_rgba as write_png  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # 设计常量 —— 与 drawable/ic_launcher_{background,foreground}.xml 保持一致
@@ -60,32 +62,6 @@ SS = 4              # 超采样倍率，用于抗锯齿
 
 # 仓库用图标边长（README 顶部 / LSPosed 模块仓库）。2 的幂，缩放无半像素抖动。
 REPO_LOGO_PX = 512
-
-
-def write_png(path, w, h, rgba):
-    raw = bytearray()
-    stride = w * 4
-    for y in range(h):
-        raw.append(0)
-        raw += rgba[y * stride:(y + 1) * stride]
-
-    def chunk(typ, data):
-        return (
-            struct.pack(">I", len(data))
-            + typ
-            + data
-            + struct.pack(">I", zlib.crc32(typ + data) & 0xFFFFFFFF)
-        )
-
-    ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
-    blob = (
-        b"\x89PNG\r\n\x1a\n"
-        + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
-        + chunk(b"IEND", b"")
-    )
-    with open(path, "wb") as f:
-        f.write(blob)
 
 
 def _lerp(c0, c1, t):

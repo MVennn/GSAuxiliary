@@ -20,12 +20,11 @@ path 数据写错一个数字，编译一样能过，只有装到机器上才看
 """
 import os
 import re
-import struct
 import sys
-import zlib
 
 NUM = r"-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
-ARGN = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "A": 7, "Z": 0}
+# A（圆弧）不支持：parse_path 遇到会直接报「暂不支持的命令」，故不在表内。
+ARGN = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "Z": 0}
 
 # 图标语义预期：名字 -> 期望的子路径数（None 表示不校验）
 EXPECTED_SUBPATHS = {
@@ -199,27 +198,10 @@ def parse_path(d):
 
 
 # --------------------------------------------------------------------------
-# 极简 PNG 编码 + 描边渲染
+# 描边渲染（PNG 编码走公共模块 _png.py）
 # --------------------------------------------------------------------------
-def write_png(path, w, h, gray):
-    rows = bytearray()
-    for y in range(h):
-        rows.append(0)
-        base = y * w
-        for x in range(w):
-            v = gray[base + x]
-            rows += bytes((v, v, v))
-
-    def chunk(typ, data):
-        return (struct.pack(">I", len(data)) + typ + data
-                + struct.pack(">I", zlib.crc32(typ + data) & 0xFFFFFFFF))
-
-    png = b"\x89PNG\r\n\x1a\n"
-    png += chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-    png += chunk(b"IDAT", zlib.compress(bytes(rows), 9))
-    png += chunk(b"IEND", b"")
-    with open(path, "wb") as f:
-        f.write(png)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _png import write_png_gray as write_png  # noqa: E402
 
 
 def draw_line(buf, w, h, x0, y0, x1, y1, val=0):

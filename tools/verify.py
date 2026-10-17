@@ -29,7 +29,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _color import decode_rgb, find_ffmpeg
+from _color import WHITE, decode_rgb, find_ffmpeg
 
 
 # --------------------------------------------------------------------------- 环境
@@ -110,7 +110,7 @@ def text_color(data, box, w, h):
         for x in range(max(0, x1), min(w, x2)):
             i = row + x * 3
             r, g, b = data[i], data[i + 1], data[i + 2]
-            if r > 235 and g > 235 and b > 235:          # 白底
+            if r > WHITE and g > WHITE and b > WHITE:    # 白底（阈值统一走 _color.WHITE）
                 continue
             if abs(r - g) < 20 and abs(g - b) < 20 and r < 120:
                 cnt[("DARK", r // 8 * 8, g // 8 * 8, b // 8 * 8)] += 1
