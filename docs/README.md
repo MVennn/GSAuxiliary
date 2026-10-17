@@ -42,6 +42,7 @@
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 排错手册：按「现象 → 步骤 → 原因 / 解法」组织的排查流程 |
 | [CODE-RULES.md](CODE-RULES.md) | 编码纪律：两轮代码审查（2026-10-17）提炼的必守规则与新功能自检清单，写代码前后各过一遍 |
 | [NAMING.md](NAMING.md) | 文案与命名规范：`strings.xml` 里用户可见文案怎么写 |
+| [LIQUID-GLASS.md](LIQUID-GLASS.md) | 液态玻璃材质规范：完整 / 简约两档光效的正本定义、逐表面参数矩阵、版本降级链 |
 | [DOC-RULES.md](DOC-RULES.md) | 文档规则：分类定位、单一正本映射表、链接纪律、变更触发矩阵 |
 | [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md) | tools/ 下的文档规则：README 与脚本注释怎么保持一致 |
 

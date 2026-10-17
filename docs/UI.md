@@ -266,11 +266,12 @@ ArrowPreference(
 
 #### 1.3.2 弹窗也吃「液态玻璃」开关
 
-`DialogHost` 收 `liquidGlass` / `effect` 两个参数，与顶栏 / 底栏同一套：
+`DialogHost` 收 `liquidGlass` / `effect` 两个参数，与顶栏 / 底栏同一套
+（两档光效的正本定义见 [LIQUID-GLASS.md](LIQUID-GLASS.md)，下表是 3.1.0 现状）：
 
 | 开关 | 卡片材质 |
 |---|---|
-| 液态玻璃**开** | `drawBackdrop`（`vibrancy()` + `blur(24.dp)` + `glassSurfaceTint` 面色 + `Shadow(24.dp, 0.30f)` 外投影），圆角 28dp |
+| 液态玻璃**开** | `drawBackdrop`（`vibrancy()` + `blur(24.dp)` + `glassSurfaceTint` 面色 + `Shadow(24.dp)` 外投影，描边 / 投影随「玻璃光效」开关走），圆角 28dp |
 | 液态玻璃**关** | `surfaceContainerHigh` 纯色（深色 #242424 / 浅色 #E8E8E8，与页面 `surface` 有明显对比） |
 
 遮罩：**所有弹窗都有**，且随进度「渐变压黑」——
@@ -919,7 +920,8 @@ LSPosed 找模块设置入口时优先按这个 category 查（见 LSPosed `Modu
 | Miuix 默认底栏 | Miuix `NavigationBar` + `NavigationBarItem` | 贴边、实底、随主题 |
 | 液态玻璃悬浮底栏 | 自绘胶囊 + `drawBackdrop` | 悬浮、半透明、对内容做模糊 + 折射 |
 
-液态玻璃的实现细节见 §6。
+液态玻璃的实现细节见 §6；两档光效（完整 / 简约）的**正本定义**在
+[LIQUID-GLASS.md](LIQUID-GLASS.md) —— 本节记录开关行为，不重复参数表。
 
 **底栏**两种形态之间用 `AnimatedContent` 做交叉淡变（`fadeIn(220)` / `fadeOut(180)`），
 **不是硬切**，`targetState` 就是 `ConfigKeys.LIQUID_GLASS`。
