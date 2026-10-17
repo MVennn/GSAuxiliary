@@ -91,19 +91,18 @@
 
 ---
 
-## 3. 三层文案，各写什么
+## 3. 两层文案，各写什么
 
-`FeatureSpec` 里一条功能有四个文案字段，职责不同：
+`FeatureSpec` 里一条功能有两个文案字段，职责不同：
 
 | 字段 | 谁看得见 | 写什么 |
 |---|---|---|
-| `titleRes` / `summaryRes` | **看不见**，只参与搜索匹配 | 完整功能名 + 完整说明（可带页面上下文，如「策略详情页里……」） |
 | `switchTitleRes` | **卡片上的功能名**，用户唯一可见 | 按本规范起名（短、无「启用 / 增强」、无符号） |
 | `switchSummaryRes` | 卡片下方那一行说明，**可空** | 只在主标题装不下时才写，见下 |
 
-> 界面上只渲染 `switchTitleRes` / `switchSummaryRes`（见 `ui/FeatureTab.kt` 的 `FeatureEntry`）。
-> `titleRes` / `summaryRes` 目前只喂搜索 —— 但**也必须**遵守规则一 / 二，
-> 否则用户按名字搜不到它。
+> 界面上只渲染这两个字段（见 `ui/FeatureTab.kt` 的 `FeatureEntry`）。
+> 3.2.0 移除功能页搜索后，原先只喂搜索的 `titleRes` / `summaryRes` 两个字段已删除，
+> 写一条功能只需要 `switchTitleRes` / `switchSummaryRes`。
 
 ### 副标题（`switchSummaryRes`）
 

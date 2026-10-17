@@ -30,7 +30,6 @@ ARGN = {"M": 2, "L": 2, "H": 1, "V": 1, "C": 6, "S": 4, "Q": 4, "T": 2, "Z": 0}
 EXPECTED_SUBPATHS = {
     "ArrowBack": 1,
     "Check": 1,
-    "Search": 2,      # 外圆 + 内圆（孔洞）+ 手柄
     "Settings": 2,    # 齿轮外轮廓 + 中心圆孔
     "Info": 3,        # 外圆 + 竖杠 + 点
     "Apps": 9,        # 九宫格 3×3

@@ -39,8 +39,6 @@
     <string name="info_miuix_version">Miuix 版本</string>
 
     <!-- ============================ 功能页 ============================ -->
-    <!-- 搜索框不写占位文字（提示词留空），靠左侧放大镜图标说明用途 -->
-    <string name="search_hint"></string>
     <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」；文案与命名规范见 docs/NAMING.md -->
     <string name="category_login">登录</string>
     <string name="category_strategy">策略页</string>
@@ -50,72 +48,45 @@
     <string name="category_home">首页</string>
     <string name="category_market">行情市场</string>
     <string name="category_display">显示</string>
-    <string name="feature_empty">没有匹配的功能</string>
 
     <!-- 登录 -->
-    <string name="feature_ipo_clean_title">隐藏 新股申购 弹窗</string>
-    <string name="feature_ipo_clean_summary">登录后不再弹出今日新股申购提醒，直接进主界面</string>
     <string name="feature_ipo_clean_switch">隐藏 新股申购 弹窗</string>
 
-    <string name="feature_watchlist_title">自选股高亮</string>
-    <string name="feature_watchlist_summary">策略详情页里，把已加入自选的股票名称显示为高亮色</string>
     <string name="feature_watchlist_switch">自选股高亮</string>
     <string name="feature_detail_entry">高亮颜色设置</string>
 
-    <string name="feature_stg_direct_title">策略直达标准行情</string>
-    <string name="feature_stg_direct_summary">我的策略里点股票直接进个股详情，不用再点一次标准行情</string>
     <string name="feature_stg_direct_switch">直达标准行情</string>
     <string name="feature_stg_direct_switch_summary">策略详情点击股票跳转详情页</string>
     <string name="feature_stg_direct_detail_entry">滑动设置</string>
 
-    <string name="feature_select_all_title">策略多选全选</string>
-    <string name="feature_select_all_summary">策略详情页多选时，取消按钮左侧多一个全选按钮，一键勾选全部股票</string>
     <string name="feature_select_all_switch">增加 全选 按钮</string>
     <string name="feature_select_all_switch_summary">策略详情多选栏取消按钮左边</string>
 
-    <string name="feature_stg_filter_title">策略筛选股票</string>
-    <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个筛选股票，可按涨幅、跌幅、自选筛掉不看的股票</string>
     <string name="feature_stg_filter_switch">增加 筛选股票 菜单项</string>
     <string name="feature_stg_filter_switch_summary">策略详情右上角三点菜单里</string>
 
-    <string name="feature_stock_bar_title">底栏智能盯盘入口</string>
-    <string name="feature_stock_bar_summary">个股详情页底栏，自选与更多之间多一个智能盯盘，一点直达，不用再进更多里找</string>
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
     <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
 
     <!-- 底栏 -->
-    <string name="feature_dock_clean_title">底栏隐藏理财入口</string>
-    <string name="feature_dock_clean_summary">主界面底栏不再显示理财那一格，其余入口自动均分铺满整行</string>
     <string name="feature_dock_clean_switch">隐藏 理财 入口</string>
 
     <!-- 首页 -->
-    <string name="feature_home_banner_title">首页隐藏横幅</string>
-    <string name="feature_home_banner_summary">首页快捷入口下方的那条横幅不再显示，下面的内容顺势上移</string>
     <string name="feature_home_banner_switch">隐藏 横幅</string>
     <string name="feature_home_banner_switch_summary">首页快捷入口下方那条</string>
 
     <!-- 行情市场 -->
-    <string name="feature_market_banner_title">行情市场隐藏滚动横幅与快捷入口</string>
-    <string name="feature_market_banner_summary">行情市场页概览图下方的滚动横幅、以及它下面那排快捷入口一并隐藏，板块直接顶上来</string>
     <string name="feature_market_banner_switch">隐藏 滚动横幅与快捷入口</string>
 
-    <string name="feature_market_sector_title">行情市场板块显示单行</string>
-    <string name="feature_market_sector_summary">行情市场页的板块原本一屏六个，只保留最上面三个，其余收起</string>
     <string name="feature_market_sector_switch">板块显示单行</string>
 
-    <string name="feature_market_overview_title">行情市场概览高度优化</string>
-    <string name="feature_market_overview_summary">行情市场页的市场概览区整体压矮，里面的柱状图高度一并压缩</string>
     <string name="feature_market_overview_switch">市场概览高度优化</string>
 
     <!-- 显示 -->
-    <string name="feature_nav_bar_title">手势导航条同色</string>
-    <string name="feature_nav_bar_summary">屏幕底部的手势导航条区域填充与紧邻界面一致的颜色，深色与浅色模式下都不再是一条生硬的纯黑或纯白</string>
     <string name="feature_nav_bar_switch">手势导航条同色</string>
     <string name="feature_nav_bar_switch_summary">安卓底部小白条吸色取色</string>
 
     <!-- 智能盯盘 -->
-    <string name="feature_quick_config_title">价格页一键配置</string>
-    <string name="feature_quick_config_summary">智能盯盘的价格页底部，保存右边多一个配置按钮，点一下按方案填好涨到跌到价格</string>
     <string name="feature_quick_config_switch">增加 配置 按钮</string>
     <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右侧</string>
     <string name="feature_quick_config_detail_entry">方案设置</string>
@@ -124,14 +95,10 @@
     <string name="feature_quick_config_button_entry">配置按钮设置</string>
 
     <!-- ============================ 优化确定逻辑（智能盯盘价格页） ============================ -->
-    <string name="feature_empty_save_title">保存时清空盯盘</string>
-    <string name="feature_empty_save_summary">价格页涨到跌到都没填时，保存按钮不再置灰，点一下保存就把这只股票从我的盯盘里移除，不用再去盯盘列表删</string>
     <string name="feature_empty_save_switch">优化确定逻辑</string>
     <string name="feature_empty_save_switch_summary">涨到跌到都空着也能保存</string>
 
     <!-- ============================ 保存后免确认（智能盯盘价格页） ============================ -->
-    <string name="feature_skip_save_title">保存后免确认</string>
-    <string name="feature_skip_save_summary">智能盯盘价格页保存成功后，不再弹需要手动确认的弹窗</string>
     <string name="feature_skip_save_switch">无需确定保存盯盘</string>
     <string name="feature_skip_save_switch_summary">保存后轻提示自动返回</string>
     <string name="feature_skip_save_detail_title">保存后返回位置设置</string>
@@ -139,8 +106,6 @@
     <string name="switch_save_back_to_stock">保存后返回个股详情页</string>
 
     <!-- ============================ 盯盘数据卡片拓展（智能盯盘） ============================ -->
-    <string name="feature_card_detail_title">盯盘数据卡片拓展</string>
-    <string name="feature_card_detail_summary">我的盯盘里的卡片点一下直接进该股的个股详情页，右下角编辑、删除不受影响</string>
     <string name="feature_card_detail_switch">盯盘数据卡片拓展</string>
     <string name="feature_card_detail_switch_summary">点击数据卡片跳转股票详情页</string>
 

@@ -250,15 +250,13 @@ val features: List<Feature> = listOf(
 > 写 `FeatureSpec` 之前先过一遍那份规范。
 
 1）在 `ui/FeatureCatalog.kt` 的 `FEATURE_CATALOG` 加一条 `FeatureSpec`，
-   填好分类 / 标题 / 说明 / 开关文案 / 开关对应的配置键，
-   以及二级菜单的标题与入口名：
+   填好分类 / 开关文案 / 开关对应的配置键，以及二级菜单的标题与入口名
+   （卡片上渲染的就是 `switchTitleRes` / `switchSummaryRes`，没有别的隐藏文案）：
 
 ```kotlin
 FeatureSpec(
     id = "watchlist_bold",
     categoryRes = R.string.category_display,     // 「显示」；详见下面的「分区怎么选」
-    titleRes = R.string.feature_bold_title,
-    summaryRes = R.string.feature_bold_summary,
     switchTitleRes = R.string.feature_bold_switch,
     switchSummaryRes = R.string.feature_bold_switch_summary,
     enableKey = ConfigKeys.BOLD_WATCHLIST,

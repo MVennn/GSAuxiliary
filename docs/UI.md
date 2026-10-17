@@ -21,12 +21,12 @@
 | `AppIcons.kt` | 自绘 `ImageVector` 图标（不引第三方图标库，见 [UI-HISTORY §10](UI-HISTORY.md#10-安装体积构成240-起)） |
 | `Dock.kt` | `Tab` 枚举 + `LocalDockInset` + `MiuixDock`（官方 NavigationBar）+ `LiquidGlassDock`（液态玻璃悬浮底栏，含光效、可拖动滑动指示与长按气泡） |
 | `ModuleTab.kt` | Tab 1 概览（顶部状态卡 + 模块 / 运行环境 两组，见 §3） |
-| `FeatureTab.kt` | Tab 2 功能（搜索框在**列表顶部**随列表滚动 + 按 `query` 过滤 + 功能卡片 + 二级入口） |
+| `FeatureTab.kt` | Tab 2 功能（按分类分组的开关卡片 + 开启后展开的二级入口，见 §4） |
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
 | `AboutTab.kt` | Tab 4 关于：Hero + 作者卡 + 开源鸣谢 + 免责声明二级页正文 `DisclaimerContent` |
 | `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 负空间 mark / 滚动淡出），切到该页时顶栏上滑收起 |
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
-| `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
+| `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.1） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
 | `QuickConfigEditScreen.kt` | **三级页**：单个方案的编辑（名称 / 涨到槽 / 跌到槽 / 提醒时效 / 设为默认 / 删除，见 §4.4） |
 | `MarkdownText.kt` | 轻量 Markdown 渲染（`AboutTab` 的免责声明正文用；不引 Markdown 库） |
@@ -38,7 +38,6 @@ Scaffold
 ├── topBar
 │     · 液态玻璃 = GlassTopBar（drawBackdrop 玻璃 + 透明 SmallTopAppBar）
 │     · 纯色     = SmallTopAppBar
-│     （搜索框 2.9.3 起不在顶栏，见 §4）
 ├── bottomBar（两种形态交叉淡入淡出）
 │     · Miuix 默认底栏  = 真的放在 bottomBar 槽里
 │     · 液态玻璃悬浮底栏 = bottomBar 留空，改放在 content 内做浮层
@@ -722,47 +721,9 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 
 ## 4. Tab 2 · 功能
 
-**搜索框是列表的第一个元素**（2.9.3 起），随列表一起滚动；
-按功能名 / 说明 / 开关文案匹配，按分类用 `SmallTitle` 隔开。
-
-#### 4.1 搜索框的位置史：顶栏 → 列表顶部（2.9.3）
-
-| 版本 | 位置 | 问题 |
-|---|---|---|
-| 2.8.0 | 顶栏（`GlassTopBar` 的 `extra` 插槽） | 切板块时 `if (!visible) return`，一帧直接消失 |
-| 2.9.1 | 同上，加横向动画 | 和板块左右平移撞车，`tabForward` 参数满地都是 |
-| 2.9.2 | 同上，改竖向动画 | 不撞了，但「顶栏高度随板块变」这件事本身还在 |
-| 2.9.3 | **列表顶部** | 全部历史问题一次性消失（见下） |
-
-2.9.3 的修法不是「再调一版动画」，而是**换位置**：搜索框作为功能列表的第一个元素
-（`Spacer(8dp + LocalTopInset)` 之后），跟着 `verticalScroll` 一起滚动。于是：
-
-- **不需要任何进出动画** —— 它只在「功能」板块存在，板块一切走，
-  整个列表（含搜索框）跟着 `AnimatedContent` 的板块切换动画一起走；
-- **不再和板块切换方向打架** —— `tabForward`（2.9.1）那类参数彻底没有了；
-- **顶栏四个板块完全一致** —— 高度不再随「是否在功能页」变化，切换时顶栏纹丝不动。
-
-状态仍提升在 `HomeScaffold`（`rememberTextFieldState()`）：
-`FeatureTab(searchState, …)` 既渲染搜索框又用它过滤，切走再切回关键词不丢。
-
-> `GlassTopBar` 的 `extra` 插槽保留（顶栏下挂内容的能力还在），只是不再被搜索框使用。
-
-#### 4.2 搜索框配色：与卡片同色 + 对比度增强（2.9.4）
-
-`TextField` 的默认配色（`TextFieldDefaults.textFieldColors()`）是
-`backgroundColor = secondaryContainer`（深色 #434343 / 浅色 #F0F0F0），
-和页面卡片（Card 默认色 `surfaceContainer`：深色 #242424 / 浅色 #FFFFFF）是两种不同的底。
-2.9.4 起在调用点显式覆盖：
-
-| 项 | 原值 | 现值 |
-|---|---|---|
-| 背景 | `secondaryContainer` | **`surfaceContainer`（与卡片同色）** |
-| 前置图标 | `onSurfaceVariantSummary`（浅色 60% 黑 / 深色 50% 白） | **`onSurfaceSecondary`**（浅色 80% 黑 / 深色 80% 白） |
-| 占位文字 | `onSecondaryContainer`（浅色 #A9A9A9 / 深色 #7C7C7C） | **`onSurfaceSecondary`** |
-| 边框 / 光标 | `primary`（未动） | `primary` |
-
-占位文字与图标同色、比已输入正文（`onBackground`）弱一档 —— 明确高于原来的灰，
-又不至于和正文混淆。
+页面直接渲染 `FEATURE_CATALOG`：按 `categoryRes` 分组，每组一个 `SmallTitle` + 一张
+`Card`，组内顺序即目录顺序。页面上**没有搜索、没有筛选** —— 3.2.0 起移除了原有的
+搜索框（连带 `titleRes` / `summaryRes` 这两个只喂搜索的元数据字段）。
 
 每个功能在卡片里渲染为：
 
@@ -807,9 +768,8 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
 
-> 上表第一列写的是**分区名**，第二列写的是 `titleRes`（完整功能名，只喂搜索）；
-> 卡片上用户看到的是 `switchTitleRes`，与第二列不一定逐字相同 —— 对照表见
-> [文案与命名规范](NAMING.md) §5。
+> 上表第二列写的是卡片上的功能名，即 `switchTitleRes`（与 `docs/NAMING.md` §5 的
+> 对照表逐字一致）。
 
 **所有开关出厂默认都是「关」**（2.11.2 起）。
 功能是侵入目标 App 行为的增强，装完模块不代表用户同意被改 ——
@@ -818,7 +778,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 功能清单的数据源是 `FeatureCatalog.FEATURE_CATALOG`（展示元数据），
 运行期真正生效的实现类登记在 `feature/FeatureManager.features` —— 两处都要加。
 
-#### 4.3 二级页：「高亮颜色设置」与「滑动设置」
+#### 4.1 二级页：「高亮颜色设置」与「滑动设置」
 
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|
@@ -1159,7 +1119,7 @@ Box(modifier) {
     ))
     Column {
         SmallTopAppBar(title, subtitle, color = Color.Transparent)
-        extra()                                    // ← 顶栏下挂内容的能力；2.9.3 起搜索框已移到功能列表顶部，不再挂这里
+        extra()                                    // ← 顶栏下挂内容的能力（当前没有页面使用）
     }
 }
 ```
@@ -1174,10 +1134,9 @@ Box(modifier) {
 > `SmallTopAppBar` 的 `defaultWindowInsetsPadding` 默认开启，所以它已经含了状态栏高度，
 > `matchParentSize` 的玻璃会一并盖住状态栏那条，视觉上是一整块。
 
-> **2.8.0（历史做法）：功能搜索框当时挂在 `extra()` 插槽里**，因此它和顶栏共用同一块玻璃 ——
-> 列表滚动时搜索框不动。纯色模式下同一段内容挂在 `SmallTopAppBar` 下方
-> （外面包一层带底色的 `Column`）。**2.9.3 已把搜索框移到功能列表顶部**（见 §4.1）——
-> 它现在是列表的第一个元素、随列表滚动；`extra()` 插槽本身保留（顶栏下挂内容的能力还在）。
+> **`extra()` 插槽当前没有使用方。** 2.8.0 时功能搜索框挂在里面（与顶栏共用同一块玻璃、
+> 列表滚动时不动），2.9.3 移到功能列表顶部，3.2.0 随搜索框一并移除。插槽保留，
+> 顶栏下挂内容的能力还在。
 
 **底栏**内部是**四个同级节点**，顺序即图层顺序：
 
@@ -1548,7 +1507,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `BasicComponent` | Miuix | 标题 + 副标题的信息行 |
 | `SwitchPreference` | Miuix | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回） |
 | `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言、备份、恢复、重置、开源链接、免责声明） |
-| `TextField` + `rememberTextFieldState` | Miuix / Compose | 功能搜索框（2.9.3 起是**功能列表的第一个元素**，随列表滚动；`GlassTopBar` 的 `extra()` 插槽保留但已不被搜索框使用，见 §4.1） |
+| `TextField` + `rememberTextFieldState` | Miuix / Compose | 方案名称与取值项的文本输入（`QuickConfigEditScreen`） |
 | `Surface` | Miuix | 长按气泡的底板 |
 | `IconButton` / `Icon` | Miuix | 返回按钮、行内图标（⋮ 动作菜单、删除取值项） |
 
@@ -1601,10 +1560,10 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 - **入场动画用 `remember(spec) { Animatable(0f) }` 而不是 `remember { }` + `snapTo`**：
   后者会在 spec 换了但 effect 还没跑的那一帧先按旧值（=1）画一次完整卡片再 snap 回 0，
   又是一次闪；用 `spec` 当 key 让它直接拿到全新的 `Animatable(0f)`（见 §1.3.5）
-- **搜索框动画不要跟板块切换方向耦合**（2.9.2 修）：早期做成「横向滑入 + 方向跟着
-  左右切换走」，结果从功能页切到别的页时，动画从左上 / 右上移动过来，与板块本身的
-  左右平移撞在一起 → 割裂感。改成竖向 `expandFrom = Top` / `shrinkTowards = Top`
-  + `-it/4` 位移，与板块切换**完全解耦**（见 §4.1）
+- **板块切换时不要让任何共享状态挂动画**（2.9.2 修的教训，搜索框已移除）：早期搜索框
+  挂在顶栏，为了「切板块」做了横向滑入 + 方向跟着左右切换走，结果与板块本身的左右平移
+  撞在一起 → 割裂感。教训保留：动画值只驱动它自己的元素，切换期间每页按身份取定值
+  （见 `docs/UI-HISTORY.md`）
 - **主题切换不要直接给 `MiuixTheme` 传目标 `dark`**：必须走 `shownDark`（渲染值）
   与目标值分离 + 遮罩常驻 + `withFrameNanos { }` 再切，否则会「先变白再闪黑」
   （2.9.0 修，三根因见 §5.3）
@@ -1776,10 +1735,10 @@ release APK 靠「移除 `material-icons-extended`、图标自绘 + 开启 R8」
 
 ---
 
-## 12. Launcher 图标（2.6.0 重绘，2.9.1 收紧留白）
+## 12. Launcher 图标（2.6.0 重绘，2.9.1 收紧留白，3.2.0 换成弧线 + 箭镞）
 
-圆角方形底 + 竖向渐变 + 折线箭头符号；两个矢量文件与
+圆角方形底 + 竖向渐变 + 一笔上扬的弧线，顶端一个实心箭镞；两个矢量文件与
 `tools/gen_launcher_icons.py` 的几何常量必须逐项对齐，改完重跑脚本再生位图。
 
-> 矢量层 / 位图回退的实现与 2.9.1 收紧留白的决策见
-> [UI-HISTORY.md §12](UI-HISTORY.md#12-launcher-图标260-重绘291-收紧留白)。
+> 矢量层 / 位图回退的实现、2.9.1 收紧留白与 3.2.0 换图形的决策见
+> [UI-HISTORY.md §12](UI-HISTORY.md#12-launcher-图标260-重绘291-收紧留白320-换图形)。

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -96,12 +95,6 @@ internal fun HomeScaffold(
     // **不要**用 `colorScheme.background`：Miuix 里它和 `Card` 的默认色
     // `surfaceContainer` 完全同色，页面一换卡片就整片消失（详见 MainScreen 的注释）。
     val background = MiuixTheme.colorScheme.surface
-
-    // 功能页搜索框的状态提升到这里。
-    //
-    // 2.9.3 起搜索框渲染在**功能列表的顶部**（随列表一起滚动），但状态仍放在这里：
-    // 切走再切回时关键词不会丢，过滤结果保持一致。
-    val featureSearch = rememberTextFieldState()
 
     // 两个「选择类」设置项（深色模式 / 语言）与重置确认
     // 都走自绘弹窗，宿主统一在这里渲染（见 ui/AppDialog.kt）。
@@ -321,7 +314,6 @@ internal fun HomeScaffold(
                                     when (tab) {
                                         Tab.MODULE -> ModuleTab()
                                         Tab.FEATURE -> FeatureTab(
-                                            searchState = featureSearch,
                                             onOpenDetail = { spec, second ->
                                                 onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
                                             },

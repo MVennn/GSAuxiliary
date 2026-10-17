@@ -84,9 +84,6 @@ internal data class FeatureSpec(
     /** 与 `Feature.id` 一致，用于路由二级菜单 */
     val id: String,
     @StringRes val categoryRes: Int,
-    /** 完整功能名与说明；**只参与搜索匹配**（界面不渲染，见 `FeatureTab`） */
-    @StringRes val titleRes: Int,
-    @StringRes val summaryRes: Int,
     /**
      * 功能开关的标题 / 说明 —— **用户唯一可见的功能名**，起名遵循 `docs/NAMING.md`：
      * 名称里不写「启用 / 增强」（开关本身就是启用），新增类元素写成「增加 + 内容 + 控件类型」。
@@ -125,8 +122,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "ipo_dialog_clean",
         categoryRes = R.string.category_login,
-        titleRes = R.string.feature_ipo_clean_title,
-        summaryRes = R.string.feature_ipo_clean_summary,
         switchTitleRes = R.string.feature_ipo_clean_switch,
         // 无副标题：标题已经说完（隐藏弹窗 = 不再弹）
         enableKey = ConfigKeys.IPO_DIALOG_CLEAN,
@@ -138,8 +133,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "stg_direct_quote",
         categoryRes = R.string.category_strategy,
-        titleRes = R.string.feature_stg_direct_title,
-        summaryRes = R.string.feature_stg_direct_summary,
         switchTitleRes = R.string.feature_stg_direct_switch,
         // 副标题说清交互路径：点了什么、跳到哪里
         switchSummaryRes = R.string.feature_stg_direct_switch_summary,
@@ -153,8 +146,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "stg_select_all",
         categoryRes = R.string.category_strategy,
-        titleRes = R.string.feature_select_all_title,
-        summaryRes = R.string.feature_select_all_summary,
         switchTitleRes = R.string.feature_select_all_switch,
         // 副标题说位置：多选栏只有长按股票才会出现，「取消」左边是按钮的确切落点
         switchSummaryRes = R.string.feature_select_all_switch_summary,
@@ -166,8 +157,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "stg_stock_filter",
         categoryRes = R.string.category_strategy,
-        titleRes = R.string.feature_stg_filter_title,
-        summaryRes = R.string.feature_stg_filter_summary,
         switchTitleRes = R.string.feature_stg_filter_switch,
         // 副标题说位置：三点菜单平时是收起的，不开副标题不知道加在了哪个菜单里
         switchSummaryRes = R.string.feature_stg_filter_switch_summary,
@@ -181,8 +170,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "stock_bar_entry",
         categoryRes = R.string.category_stock_detail,
-        titleRes = R.string.feature_stock_bar_title,
-        summaryRes = R.string.feature_stock_bar_summary,
         switchTitleRes = R.string.feature_stock_bar_switch,
         // 副标题说位置：入口塞在底栏哪一格，开了开关去哪里看
         switchSummaryRes = R.string.feature_stock_bar_switch_summary,
@@ -195,8 +182,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "aistare_quick_config",
         categoryRes = R.string.category_aistare,
-        titleRes = R.string.feature_quick_config_title,
-        summaryRes = R.string.feature_quick_config_summary,
         switchTitleRes = R.string.feature_quick_config_switch,
         // 副标题说位置：按钮塞在盯盘价格页底部哪一格，不开副标题不知道
         switchSummaryRes = R.string.feature_quick_config_switch_summary,
@@ -212,8 +197,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "aistare_empty_save",
         categoryRes = R.string.category_aistare,
-        titleRes = R.string.feature_empty_save_title,
-        summaryRes = R.string.feature_empty_save_summary,
         switchTitleRes = R.string.feature_empty_save_switch,
         switchSummaryRes = R.string.feature_empty_save_switch_summary,
         enableKey = ConfigKeys.AISTARE_EMPTY_SAVE,
@@ -225,8 +208,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "aistare_skip_save_confirm",
         categoryRes = R.string.category_aistare,
-        titleRes = R.string.feature_skip_save_title,
-        summaryRes = R.string.feature_skip_save_summary,
         switchTitleRes = R.string.feature_skip_save_switch,
         switchSummaryRes = R.string.feature_skip_save_switch_summary,
         enableKey = ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM,
@@ -239,8 +220,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "aistare_card_detail",
         categoryRes = R.string.category_aistare,
-        titleRes = R.string.feature_card_detail_title,
-        summaryRes = R.string.feature_card_detail_summary,
         switchTitleRes = R.string.feature_card_detail_switch,
         // 副标题说清点了会怎样：标题只说「拓展」，不说落到哪个页面
         switchSummaryRes = R.string.feature_card_detail_switch_summary,
@@ -253,8 +232,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "dock_clean",
         categoryRes = R.string.category_dock,
-        titleRes = R.string.feature_dock_clean_title,
-        summaryRes = R.string.feature_dock_clean_summary,
         switchTitleRes = R.string.feature_dock_clean_switch,
         // 无副标题：原副标题「其余入口自动均分铺满整行」是布局后果，不是功能本身
         enableKey = ConfigKeys.DOCK_CLEAN,
@@ -266,8 +243,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "home_banner_hide",
         categoryRes = R.string.category_home,
-        titleRes = R.string.feature_home_banner_title,
-        summaryRes = R.string.feature_home_banner_summary,
         switchTitleRes = R.string.feature_home_banner_switch,
         // 副标题说位置：首页横幅不止一条，得说清隐藏的是哪一条
         switchSummaryRes = R.string.feature_home_banner_switch_summary,
@@ -280,8 +255,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "market_banner_hide",
         categoryRes = R.string.category_market,
-        titleRes = R.string.feature_market_banner_title,
-        summaryRes = R.string.feature_market_banner_summary,
         switchTitleRes = R.string.feature_market_banner_switch,
         // 无副标题：原副标题「板块直接顶上来」是布局后果
         enableKey = ConfigKeys.MARKET_BANNER_HIDE,
@@ -292,8 +265,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "market_sector_compact",
         categoryRes = R.string.category_market,
-        titleRes = R.string.feature_market_sector_title,
-        summaryRes = R.string.feature_market_sector_summary,
         switchTitleRes = R.string.feature_market_sector_switch,
         // 无副标题：原副标题「板块区整体变矮」是布局后果
         enableKey = ConfigKeys.MARKET_SECTOR_COMPACT,
@@ -304,8 +275,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "market_overview_compact",
         categoryRes = R.string.category_market,
-        titleRes = R.string.feature_market_overview_title,
-        summaryRes = R.string.feature_market_overview_summary,
         switchTitleRes = R.string.feature_market_overview_switch,
         // 无副标题：「市场概览高度优化」已经说清了改的是什么
         enableKey = ConfigKeys.MARKET_OVERVIEW_COMPACT,
@@ -317,8 +286,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "nav_bar_blend",
         categoryRes = R.string.category_display,
-        titleRes = R.string.feature_nav_bar_title,
-        summaryRes = R.string.feature_nav_bar_summary,
         switchTitleRes = R.string.feature_nav_bar_switch,
         // 副标题点明是哪根条、怎么来的（「小白条」是用户对底部手势条的叫法）
         switchSummaryRes = R.string.feature_nav_bar_switch_summary,
@@ -330,8 +297,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     FeatureSpec(
         id = "watchlist_highlight",
         categoryRes = R.string.category_display,
-        titleRes = R.string.feature_watchlist_title,
-        summaryRes = R.string.feature_watchlist_summary,
         switchTitleRes = R.string.feature_watchlist_switch,
         // 无副标题：原副标题「把已加入自选的股票名称显示为高亮色」就是标题的展开写法
         enableKey = ConfigKeys.ENABLED,
