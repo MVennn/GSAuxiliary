@@ -55,12 +55,6 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
     )
 
     /**
-     * 「最近前高 / 前低」拿**现价**当基准判定「有没有回落到它下面」
-     * （最后一根 K 线盘中冲高回落的那一下也算候选），所以要顺带取一次快照。
-     */
-    private val KLINE_TERMS_NEED_SNAPSHOT = setOf("historyHigh", "historyLow")
-
-    /**
      * 取数并算价；任一必需项失败返回 null（调用方**不写值**，§3.2）。
      *
      * 三段日志都能独立对着看：
@@ -128,7 +122,8 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
     fun needsOf(scheme: QuickConfigStore.Scheme): Needs {
         val used = (scheme.up.terms + scheme.down.terms).map { it.source }.toSet()
         return Needs(
-            snapshot = used.any { it in SNAPSHOT_TERMS || it in KLINE_TERMS_NEED_SNAPSHOT },
+            // 「最近前高 / 前低」只靠日 K 就能算（返回值天然在今日高低点之外），不额外要快照
+            snapshot = used.any { it in SNAPSHOT_TERMS },
             kline = used.any { it in KLINE_TERMS },
         )
     }
