@@ -10,11 +10,12 @@ Third-party components
 
 This product incorporates third-party software under the following licenses:
 
-- LSPosed / libxposed API (io.github.libxposed:api)
-  https://github.com/LSPosed/LSPosed
-  Licensed under the GNU General Public License v3.0 (GPL-3.0).
-  This product does not modify or redistribute libxposed source; it links
-  against the published API artifact at runtime via the LSPosed framework.
+- LSPosed / libxposed (io.github.libxposed:api, :annotation, :service)
+  https://github.com/libxposed/api
+  Licensed under the Apache License, Version 2.0.
+  The api artifact is used as compileOnly and is not distributed in the APK;
+  the service artifact is distributed with this APK (Apache-2.0 §4: its
+  copyright and license notices are retained in this file).
 
 - Miuix (miuix-kotlin-multiplatform)
   https://github.com/miuix-kotlin-multiplatform/miuix

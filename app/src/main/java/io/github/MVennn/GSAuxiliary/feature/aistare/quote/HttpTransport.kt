@@ -35,8 +35,9 @@ internal object HttpTransport {
     /** 腾讯 `qt.gtimg.cn` 是 GBK（名称字段会乱码 → ST 判定失效）；日 K 与东财是 UTF-8 */
     val GBK: Charset = runCatching { Charset.forName("GBK") }.getOrDefault(Charsets.UTF_8)
 
-    // 行情接口（腾讯/东财）对非浏览器 UA 风控很严，自报 "GSAuxiliary" 既容易被拦
-    // 又暴露模块身份；伪装成常见移动浏览器 UA 通过率最高，且不与任何模块关联。
+    // 行情接口（腾讯/东财）对非浏览器 UA 会拒答或限流；使用常规移动浏览器
+    // UA 是公开行情页面的标准请求形态。模块不上传任何用户数据，仅按需查询
+    // 公开行情（见 DISCLAIMER 第六条的数据流说明）。
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     private const val MAX_BODY_BYTES = 4 * 1024 * 1024
