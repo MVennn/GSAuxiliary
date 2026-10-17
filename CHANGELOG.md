@@ -20,12 +20,97 @@
 贴死改为带一次过冲回坐，按压放大与回弹更软，颜色过渡走苹果 easeInOut。
 几何、拖动翻转、震动反馈与 Miuix 保持一致。
 
+> 注记：下次发版拟升 3.1.1 / 47，版本未定。本段如实记录 `46-3.1.0` tag 之后
+> `main` 上的全部改动——当前 HEAD 版本号仍停在 3.1.0 / 46，与 tag 内容已经分叉。
+
+
 ### 调整 液态玻璃 底栏 —— 设置页开启液态玻璃后的悬浮底栏
 
 玻璃材质与交互全面对齐 Kyant0/AndroidLiquidGlass 演示包的 LiquidBottomTabs：
 面板模糊与折射按官方配方（blur 8dp + lens 24dp），新增隐藏染色层与滑块色差折射，
 滑块按下时面板微涨、折射加深、高光 / 投影随进度浮现；拖动物理换成阻尼弹簧
 （跟手 + 甩动形变），新增跟随按压位置的动态光斑。简约版（玻璃光效关闭）行为不变。
+
+### 修复 真机验证收尾 —— G2 运行中补装实测、低危三项与日志计数口径
+
+真机（8.6.0）验证通过：热重载与强停重开两路径装载正常、M4 冷却日志实跑、
+G2「运行中补装」实测通过（关 `stock_bar_entry` 重启宿主 → adb 打开 → 钩子当场补装，
+无需再重启宿主）。文档口径修正：安装计数按功能类算（14），「功能」页 16 张卡片中
+「跳过保存确认」「空数据保存」两个开关由一键配置一并实现。
+低危三项：`install` 先绑配置回调再 `open()`，消除注册后到赋值之间的丢推送窗口；
+挂桥时顺手清 `trackedWebViews` 死引用；筛选菜单容器归一化前存档 `lp.height`，
+还原时按原值放回。
+
+### 法律 风险专项整改与 reference 数据移出公开仓库
+
+- NOTICE 事实纠错（libxposed 许可证 GPL-3.0 → Apache-2.0，法律文件不允许错），
+  并随 APK 分发（`assets/NOTICE.txt`）；关于页新增「第三方组件声明」二级页渲染全文
+- 免责声明补第四条（目标应用升级风险自评）、第八条（年满十八周岁 / 禁止用途清单）、
+  第十条（违约与授权终止）、第十一条（适用法律与争议解决）；MarkdownText 加粗渲染
+  SemiBold → Bold——「免责条款均已加粗提示」依赖真实视觉强度
+- docs/FINDINGS-LOGIN-KICK.md 与 docs/reference/（宿主 Activity 清单、Router 契约表等）
+  整体移出公开仓库，本地归档；README / docs 索引 / 各 FEATURE 文档引用同步改口径；
+  REVERSE-ENGINEERING 与 reference/README 头部补定位声明
+- HttpTransport 的 UA 注释去掉「伪装 / 规避风控」措辞，改为与免责声明一致的中性表述
+  （行为不变）
+
+### 性能 第二轮审查中危清零 —— 冷却、降频、条件挂载与缓存粒度
+
+症状：策略页高频布局回调每次全树遍历；滚动热路径每行对整份方案 JSON 做 O(n) 哈希、
+每行沿继承链全量反射扫描。改法：PageSyncFeature 有实际动作后 1.5 秒冷却（空闲轮
+不冷却，入页与重试不过闸）；一级页非玻璃模式不再常驻全屏 layerBackdrop 录制；
+AiStareJs 自检周期 500ms → 1500ms、回调先廉价判断再全扫；`ConfigSnapshot.fingerprint`
+改构造期缓存；WatchlistFeature 反射 accessor 按类缓存（WeakHashMap，失败也缓存）；
+QuoteSession 日 K 会话内 memo 防同会话重复取数。
+
+### 增加 运行中打开开关即时生效（审查高-2）
+
+症状：启动时未启用的功能被永久跳过，运行中打开开关必须重启宿主才生效。
+改法：FeatureManager 记录已装功能表，配置变化分发前对「没装过 && 本轮已启用」的
+功能就地补装钩子；安装失败从已装表移除，下次配置变化还有机会重试。
+README 安装步骤同步改口径（打开开关后无需重启金太阳）。
+
+### 修复 热重载残留、JS 桥越权与滚动热路径（第二轮审查）
+
+症状：热重载后关开关不还原（导航条颜色、隐藏的视图、底栏按钮残留）；
+策略详情 Activity 泄漏；旧实例留在 ListView 上的 FilteredAdapter 拆不掉；
+页面内第三方脚本可经 `gsaux` 桥驱使原生收栈 / 拉起设置页；INFO 及以上日志
+带完整「6位代码.市场号」。
+改法：`uninstallAll` 卸钩前先给旧实例分发「全关」快照，走各功能现成的关闭还原
+路径，主线程 FIFO 保证旧清理先于新注入；StgStockFilter 跨实例代理识别 +
+trackedActivity 改 WeakReference；StockDetailBar 按 keyed tag 扫描孤儿容器自愈；
+桥 `saved()` / `manage()` 补价格页 URL 守卫，diag 截断 200 字符 + 限频；
+个股代码日志全量脱敏（`300045.1` → `30****.1`）或降 DEBUG。
+
+### 修复 取数校验绕过与全选 / 筛选三处行为缺陷
+
+- HostQuoteSource：代码字段读不到时视为无法校验，降级不用缓存——原实现对
+  `cam == null` 放行，宿主改版时会把上一只股票的价格当当前页写入
+- StgSelectAll：计数读不到（-1）改为逐行探测，不再把「已全选」点成「全部取消」；
+  行点击 wrapper 改「比对 - 重包」，宿主重设监听后不再转发到旧监听器
+- FilteredAdapter：`update` 与 `notifyDataSetChanged` 之间越界的 `getView` / `getItem`
+  回退原始下标，不再把宿主打崩
+
+### 修复 审查收尾 —— 中危 3 条与低危 10 条全部清零
+
+中危：StockDetailBar detach 按「更多」的原始下标放回（原实现事后才查恒 -1，
+把 moreText 追加到盒尾）；一键配置 client 未覆写 `onPageFinished` 时不再误标已挂，
+下次遇到还有机会重试；ConfigBackup.exportJson 快照取一次循环用（逐键全表重建
+28 次 → 1 次）。低危：保存观察器撤除补 `disarmSkip()`；`ModulePreferences.init`
+加 `@Synchronized` 消除并发读到 null 的窗口；LogExporter 的 su 超时先温和
+`destroy` 再 `destroyForcibly`；删四处死代码常量与悬空注释等，全部清零。
+
+### 重构与整理（行为零变更与纯文档，归并概述）
+
+超文件拆分两轮：`AppDialog.kt` → AppDialogSpec / AppDialogHost / AppDialogWidgets，
+`SettingsActivity.kt` → `Routing.kt` / `Screens.kt`；`StgStockFilterFeature` 拆出
+`StgFilterPanelBuild.kt`，`StockDetailBarFeature` 拆出 `StockDetailBarMeasure.kt`；
+行情数据模型独立 `core/QuoteModels.kt`；quote 子包字段候选收敛进包内消除向上依赖；
+视图树工具上提 util 消除包级循环。文档侧：新增 docs/CODE-RULES.md（编码纪律正本）、
+DOC-RULES.md（文档规则）、MAINTENANCE.md（大扫除流程）与 UI-HISTORY.md；
+免责声明落成十一条全文（DISCLAIMER.md 单一正本）；tools 公共库抽取与 README 重排；
+其余纯文档修正（链接绝对地址、体积口径、失效预案补全等）与 chore（Issue 模板
+风险确认、模块简介措辞）从略。
 
 ---
 

@@ -20,8 +20,8 @@
 │   │      About}Tab.kt               │    │        └─ StgSelectAllFeature        │
 │   ├─ ui/{WatchlistDetail,           │    │ core/ConfigSource                    │
 │   │      StrategyQuoteDetail,       │    │ core/HookBag                         │
-│   │      QuickConfig,               │    │ core/{ConfigKeys,ConfigSnapshot,     │
-│   │      QuickConfigEdit}.kt        │    │       GLog,TargetApp}.kt             │
+│   │      QuickConfigScreen.kt,      │    │ core/{ConfigKeys,ConfigSnapshot,     │
+│   │      QuickConfigEditScreen.kt   │    │       GLog,TargetApp}.kt             │
 │   │      ← 二级 / 三级页            │    │ util/Reflect.kt                      │
 │   └─ ui/{PrefState,FeatureCatalog,  │    │                                      │
 │          Widgets,AppIcons,          │    │                                      │
@@ -88,11 +88,13 @@
 | `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
 | `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
-| `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（三点菜单注入 + 换适配器数据） | 目标进程 |
+| `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
+| `feature/stgfilter/StgFilterPanelBuild.kt` | 面板装配（从 Feature 本体拆出：三点菜单注入、菜单项高度归一化、面板样式复刻） | 目标进程 |
 | `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` · `StgFilterBridge.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs）+ 筛选结果只读通道（目标进程内：`StgStockFilterFeature` 换好数据后经 `StgFilterBridge` 流向直达标准行情，解决「筛选后滑动漏股票」） | 目标进程 |
-| `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（视图注入） | 目标进程 |
+| `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（注入按钮 + 触发面板） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
+| `feature/stockbar/StockDetailBarMeasure.kt` | 取色 / 加宽测量（从 Feature 本体拆出：从「更多」按钮上取样式与几何尺寸） | 目标进程 |
 | `feature/aistare/AiStareQuickConfigFeature.kt` | **智能盯盘价格页「一键配置」**功能本体（H5 注入 + 自建 `gsaux` JS 桥 + 取数调度） | 目标进程 |
 | `feature/aistare/AiStareQuickConfigTargets.kt` | 该功能的页面 URL / 桥名 / 配色 / 宿主行情字段候选常量（全部真机实测） | 目标进程 |
 | `feature/aistare/AiStareJs.kt` | 注入价格页 H5 的脚本常量（找保存按钮 / 三等分 / 弹方案层 / 回填输入框） | 目标进程 |
@@ -133,10 +135,15 @@
 
 | 文件 | 职责 | 运行位置 |
 |---|---|---|
-| `ui/SettingsActivity.kt` | Activity + 三层布局 + 极简路由 + Dock / 顶栏 / 弹窗装配 | 模块进程 |
+| `ui/SettingsActivity.kt` | Activity + 主题 + Dock / 顶栏装配（路由与页面骨架拆 `Routing.kt` / `Screens.kt`） | 模块进程 |
+| `ui/Routing.kt` | 路由状态机 + 返回手势接管（从 SettingsActivity 拆出） | 模块进程 |
+| `ui/Screens.kt` | `HomeScaffold` / `SubScreen` 页面骨架 + 免责 / NOTICE 渲染页（从 SettingsActivity 拆出） | 模块进程 |
 | `ui/Dock.kt` | 默认底栏 / 液态玻璃悬浮底栏（`LocalDockInset`） | 模块进程 |
 | `ui/Glass.kt` | 液态玻璃：顶栏、色料、下滑收起状态机 | 模块进程 |
-| `ui/AppDialog.kt` | 自绘弹窗宿主（绕开 Miuix 弹层的闪退路径） | 模块进程 |
+| `ui/AppDialog.kt` | 自绘弹窗：设计动机与形态说明（实现拆 AppDialogHost / Spec / Widgets） | 模块进程 |
+| `ui/AppDialogHost.kt` | 自绘弹窗宿主与进出动画（从 AppDialog 拆出） | 模块进程 |
+| `ui/AppDialogSpec.kt` | 弹窗 Spec（Choice / Confirm / Agreement）+ `DialogController`（从 AppDialog 拆出） | 模块进程 |
+| `ui/AppDialogWidgets.kt` | 弹窗子组件（`DialogBody` / 按钮行 / 勾选行等，从 AppDialog 拆出） | 模块进程 |
 | `ui/SystemBars.kt` | 系统栏沉浸（`LocalNavBarInset`） | 模块进程 |
 | `ui/AppIcons.kt` | 自绘 `ImageVector` 图标（零图标库依赖） | 模块进程 |
 | `ui/MarkdownText.kt` | 轻量 Markdown 渲染（免责声明正文） | 模块进程 |

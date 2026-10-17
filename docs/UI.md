@@ -789,6 +789,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
+| 登录 | 隐藏 新股申购 弹窗 | `ipo_dialog_clean` | 无 |
 | 策略页 | 策略直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
 | 策略页 | 策略多选全选 | `stg_select_all` | 无 |
 | 策略页 | 策略筛选股票 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |

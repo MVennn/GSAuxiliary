@@ -191,7 +191,7 @@ boldWatchlist = p.getBoolean(ConfigKeys.BOLD_WATCHLIST, ConfigKeys.DEFAULT_BOLD_
 
 ### 第 2 步：写功能类
 
-`feature/watchlist/BoldWatchlistFeature.kt`：
+`feature/watchlist/BoldWatchlistFeature.kt`（**示例文件，代码中不存在**，仅作教学演示）：
 
 ```kotlin
 class BoldWatchlistFeature : Feature {

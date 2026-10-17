@@ -23,6 +23,10 @@ Make GoldenSun Great Again！
 
 功能以模块 App「功能」页为准。
 
+## 环境要求
+
+安卓 8.1+，以及**较新的 LSPosed**（需要现代 Xposed API 102 与热重载能力）。过旧的 LSPosed 版本、太极 / LSPatch / EdXposed 等其它 Xposed 实现会**静默不加载**（表现为已启用但零日志、零生效）；如何判断框架新旧见 [排错手册](docs/TROUBLESHOOTING.md#8-热重载相关)。
+
 ## 安装
 
 1. [Releases](https://github.com/MVennn/GSAuxiliary/releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
