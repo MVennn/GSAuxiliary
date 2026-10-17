@@ -190,7 +190,9 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
-- Release 说明只讲**这版做了什么**，几句话就够。写长了说明你在解释，而解释属于 CHANGELOG。
+- Release 说明只讲**这版做了什么**，而且写成**清单**：一行一条
+  「新增 / 调整 / 修 + 功能名 —— 入口；一句话功能」，整篇一屏以内。
+  写成段落、讲故事、讲为什么，都是跑偏。
 - **形状、以及「别写什么」「『注意』区块怎么写」见 `docs/release-notes/README.md`**
   —— 那边是唯一权威，本节不再放第二份模板，免得两处规则打架。
 - **推荐写法：把短说明放进 `docs/release-notes/<versionName>.md`**（跟着 tag 一起进仓库，
