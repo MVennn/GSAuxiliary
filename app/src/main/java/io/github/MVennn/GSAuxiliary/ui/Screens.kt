@@ -222,6 +222,8 @@ internal fun HomeScaffold(
                 //
                 // 关于页把整条顶栏往上滑出去（见上方 topBarHide）：Hero 要吃到
                 // 状态栏后面，顶栏留着会把渐变头部截成一条直线。
+                // 投影透明度跟着同一条进度走：投影画在栏体下边缘之外，栏体平移出屏后
+                // 它的下半圈仍会露在屏幕顶端，所以收起时一并淡出（见 GlassTopBar）。
                 Box(
                     modifier = Modifier.graphicsLayer {
                         translationY = -size.height * topBarHide
@@ -234,6 +236,7 @@ internal fun HomeScaffold(
                             effect = glassEffect,
                             title = title,
                             subtitle = subtitle,
+                            shadowAlpha = 1f - topBarHide,
                         )
                     } else {
                         SmallTopAppBar(title = title, subtitle = subtitle)
