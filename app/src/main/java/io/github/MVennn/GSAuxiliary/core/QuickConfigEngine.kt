@@ -35,22 +35,13 @@ data class QuoteBar(
  *
  * 口径（§5.3，别改）：
  *  - `highN`/`lowN` 用最高/最低价列；`highCloseN`/`lowCloseN` 用收盘价列；
- *  - `historyHigh`/`historyLow` 是**现价上方最近 / 下方最近的波段高点 / 低点**（最近前高 / 前低）；
+ *  - `historyHigh`/`historyLow` 是**全部可取历史（不含今日）的最高价 / 最低价**（历史前高 / 前低）；
  *  - `maN` 是简单算术平均，N 含今日；
  *  - 不复权；
  *  - 涨停/跌停 = `round(昨收 × (1±幅度), 2)`，幅度按代码前缀 + ST 判定；
  *  - 全程 [BigDecimal]，输出统一 `setScale(2, HALF_UP)`，绝不用 Double 乘。
  */
 object QuickConfigEngine {
-
-    /**
-     * 「前高 / 前低」的确认窗口：左右各看 [SWING_K] 根。
-     *
-     * 取 5 是跟用户对齐过的实测口径 —— 茅台（2026-10-17）用 5 根确认出来是
-     * **1338.86（2026-09-04）**，正是他要的那个价位；3~4 根会把 9-23 的
-     * 小反抽（1271.5）也算成波峰，5 根以上结果一致。
-     */
-    const val SWING_K = 5
 
     /** 「前高 / 前低」要的日 K 根数（腾讯接口单次上限 2000 根 ≈ 8 年） */
     const val HISTORY_BARS = 2000
@@ -144,8 +135,8 @@ object QuickConfigEngine {
             "lowN" -> extreme(input, n(p), QuoteBar::low, max = false)
             "highCloseN" -> extreme(input, n(p), QuoteBar::close, max = true)
             "lowCloseN" -> extreme(input, n(p), QuoteBar::close, max = false)
-            "historyHigh" -> swingTerm(input, QuoteBar::high, max = true)
-            "historyLow" -> swingTerm(input, QuoteBar::low, max = false)
+            "historyHigh" -> historyTerm(input, QuoteBar::high, max = true)
+            "historyLow" -> historyTerm(input, QuoteBar::low, max = false)
             "maN" -> ma(input, n(p))
             "upPct" -> pctOf(input.snapshot?.latest, p, up = true)
             "downPct" -> pctOf(input.snapshot?.latest, p, up = false)
@@ -182,61 +173,22 @@ object QuickConfigEngine {
         slot.terms.any { it.source == "historyHigh" || it.source == "historyLow" }
 
     /**
-     * 最近前高 / 前低：**现价上方最近的那个波段高点 / 下方最近的那个波段低点**。
+     * 历史前高 / 前低：**全部可取历史（不含今日）里的最高价 / 最低价**。
      *
-     * ## 为什么不是「历史最高」
+     * 2026-10-17 用户定稿口径：要的是「历史前最高那个点」——比如晨曦航空
+     * 300581 周K里 2025-11 那根 21.88 的长上影才是前高，而不是右边最近的
+     * 反弹波峰。曾经实现过「现价上方最近的波段高点」（nearest overhead swing
+     * high），实测会选中右侧近端的小波峰，与预期不符，已废弃。
      *
-     * 茅台的历史最高是 2021 年的 2627.88，现价 1329 —— 拿它设「涨到」等于永远不触发。
-     * 用户要的是「前面站着的、比我高的那个人里离我最近的那个」：现价 1329 时上方有
-     * 1363.35、1568…，最近的是 **1338.86（2026-09-04）**。
-     *
-     * 反过来说，**低于现价的前高不算**：9-23 那个 1271.5 的小反抽虽然也是波段高点，
-     * 但它在现价下面，涨到它毫无意义，直接跳过。
-     *
-     * ## 判定
-     *
-     * 1. 先找**已确认的波段高/低点**：左右各 [SWING_K] 根都不高于（不高于）/不低于它，
-     *    含端点相等。右侧要 5 根，所以今天和最近 4 根天然不算「已经形成的峰」。
-     * 2. 从最新一根**往回**扫，第一个既已确认、又满足「前高 > 现价 / 前低 < 现价」的
-     *    就是答案 —— 也就是「时间上离现在最近、且站在我上方（下方）的那个」。
-     *    注意**不是价位上最接近**：茅台现价 1329 时，上方还有一个更近的 1338.00
-     *    （更早形成的），但用户认的是**上一个**波峰 1338.86。
-     * 3. 现价上方（下方）一个都没有（比如正在创历史新高）→ 退回**最近的那个波段高点**
-     *    （不看价位），仍比「历史极值」有意义；再没有就退回全部历史极值（不含今日）。
-     *
-     * 术语：这就是技术分析里的「最近阻力位 / 上方最近的前高」（nearest overhead
-     * swing high）。断言「不管它后来跌到哪我都认那个价」才叫**锚定前高**，不是这里要的。
+     * 剔掉今日那一根：今日盘中刚刷出的新高不该被当「前」高，与
+     * [QuickConfigCatalog] 的口径注释一致。
      */
-    private fun swingTerm(
+    private fun historyTerm(
         input: Input,
         column: (QuoteBar) -> String,
         max: Boolean,
     ): BigDecimal? {
         val bars = input.klines.kline(HISTORY_BARS) ?: return null
-        if (bars.size < 2) return null
-        val values = bars.map { column(it).toBigDecimalOrNull() ?: return null }
-        val k = SWING_K
-        val latest = input.snapshot?.latest
-        var fallback: BigDecimal? = null
-        // 从**最新一根往前**扫：第一个「已确认 + 在现价上方（下方）」的波段点就是答案
-        for (i in bars.size - 1 - k downTo k) {
-            val self = values[i]
-            val left = values.subList(i - k, i)
-            val right = values.subList(i + 1, i + k + 1)
-            val peak = if (max) {
-                left.all { self >= it } && right.all { self >= it }
-            } else {
-                left.all { self <= it } && right.all { self <= it }
-            }
-            if (!peak) continue
-            if (fallback == null) fallback = self
-            // 现价未知时退化为「最近的那个波段点」
-            if (latest == null) return self
-            if (if (max) self > latest else self < latest) return self
-        }
-        // 上方 / 下方一个都没有（正在创历史新高 / 新低）：退回最近的那个波段点
-        if (fallback != null) return fallback
-        // 次新股 / 一路单边没回调：退回全部历史极值（剔掉今天那一根）
         val today = todayInShanghai()
         val history = bars.filter { it.date < today }.map { column(it).toBigDecimalOrNull() ?: return null }
         if (history.isEmpty()) return null
