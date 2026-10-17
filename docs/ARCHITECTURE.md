@@ -27,9 +27,10 @@
 │          Widgets,AppIcons,          │    │                                      │
 │          MarkdownText}.kt           │    │                                      │
 │ app/GszxApp.kt                      │    │                                      │
-│ app/{FrameworkBridge,ModulePrefs,   │    │                                      │
-│      ConfigBackup,LauncherIcon,     │    │                                      │
-│      LocaleHelper,DebugConfig}.kt   │    │                                      │
+│ app/{FrameworkBridge,ConfigBackup,  │    │                                      │
+│      LauncherIcon,ModulePreferences,│    │                                      │
+│      LocaleHelper,                  │    │                                      │
+│      DebugConfigProvider}.kt        │    │                                      │
 │ core/Log{Store,Exporter}.kt         │    │                                      │
 │                                     │    │                                      │
 │         │ 写                        │    │         │ 读                         │
@@ -89,7 +90,7 @@
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
 | `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（三点菜单注入 + 换适配器数据） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
-| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` · `StgFilterBridge.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs）+ 模块 App 侧读取桥 | 目标进程 / 模块进程 |
+| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` · `StgFilterBridge.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs）+ 筛选结果只读通道（目标进程内：`StgStockFilterFeature` 换好数据后经 `StgFilterBridge` 流向直达标准行情，解决「筛选后滑动漏股票」） | 目标进程 |
 | `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（视图注入） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
 | `feature/aistare/AiStareQuickConfigFeature.kt` | **智能盯盘价格页「一键配置」**功能本体（H5 注入 + 自建 `gsaux` JS 桥 + 取数调度） | 目标进程 |
@@ -103,6 +104,7 @@
 | `core/QuickConfigStore.kt` | 「一键配置」方案的数据模型 + JSON 编解码（**两处共用**：目标进程算价、模块进程的方案设置页读写） | 两处共用 |
 | `core/QuickConfigCatalog.kt` | 取值项目录（§4.2 那张表）：id / 分类 / 参数约束；解析时「认不认识」的唯一权威 | 两处共用 |
 | `core/QuickConfigEngine.kt` | 取值项计算（纯函数）：BigDecimal、涨停表、区间校验，不碰网络 | 两处共用 |
+| `core/QuoteModels.kt` | 行情数据模型 `QuoteSnapshot` / `QuoteBar`（独立成文件：引擎与 `feature/aistare/quote/` 四个取数源共用） | 两处共用 |
 | `feature/uiclean/UiCleanFeature.kt` | 「界面精简」类功能的公共骨架（认现成视图 → 隐藏 / 压缩，走 `PageSyncFeature`） | 目标进程 |
 | `feature/uiclean/UiClean.kt` | 视图树遍历 / 文案查找 / 结构判据等共用工具 | 目标进程 |
 | `feature/uiclean/ViewPatcher.kt` | 改动记账（隐藏 / 压缩 / 缩放），支持一键还原（首帧屏障判据来源） | 目标进程 |
@@ -151,6 +153,9 @@
 挂钩子必须把句柄放进 `HookBag` —— **以
 [EXTENDING.md §2「四条架构红线」](EXTENDING.md#2-四条架构红线) 为权威**：
 逐条理由、违反后果与自查命令都在那里，本节不重抄。
+
+> 注意例外：`core/ConfigSource.kt` 与 `core/HookBag.kt` 是「不得 import api 类型」
+> 这条红线的**已声明豁免**（见 EXTENDING.md §2.3 精确边界）——其余 core/app 文件仍一律不许。
 
 > `core/GLog.kt` 是「不得 import api 类型」这条红线的典型示例（EXTENDING.md 没有这个例子）：
 > 框架接口通过纯 Java 函数式接口 `Sink` 注入，而不是直接持有 `XposedInterface`。

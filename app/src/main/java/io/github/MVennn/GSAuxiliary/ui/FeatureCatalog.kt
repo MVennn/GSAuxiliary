@@ -8,7 +8,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * ## 功能分区归属标准
  *
  * 功能列表按 [FeatureSpec.categoryRes] 分组，**组内顺序 = [FEATURE_CATALOG] 里的出现顺序**
- * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前七个分区：
+ * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前八个分区：
  *
  * | 分区 | 一句话判据 | 归属范围（举例） |
  * |---|---|---|
