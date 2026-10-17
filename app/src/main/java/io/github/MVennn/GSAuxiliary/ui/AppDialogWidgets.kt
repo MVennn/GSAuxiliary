@@ -90,12 +90,12 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
         }
 
         is ConfirmDialogSpec -> Column(
-            // 纵向留白 2.9.3 由 22dp 加到 32dp：贴底弹窗铺满整条卡片宽度，
-            // 内容却只有两行字 + 一排按钮，太紧就会「扁长」。
+            // 内容间距对齐 Miuix `DialogDefaults.insideMargin`（24×24）：标题 / 摘要
+            // 各自 fillMaxWidth + 尾随 12dp（Miuix DialogContent 的节奏）。
             // 带 `verticalScroll` 只为兜住极端情况（大字号 / 矮屏把卡片顶到高度上限）
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -108,9 +108,11 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 fontSize = MiuixTheme.textStyles.title4.fontSize,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Miuix DialogContent：标题尾随 12dp
+                    .padding(bottom = 12.dp),
             )
-            Spacer(Modifier.height(10.dp))
             Text(
                 text = spec.message,
                 // 与标题**同色**（2.9.3）：之前正文用 onSurfaceContainerVariant、
@@ -122,10 +124,12 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 // 与主标题 18 : 15 的层级差足够，仍是 Normal 字重。
                 fontSize = 15.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Miuix DialogContent：摘要尾随 12dp（原 2.9.3 的 28dp 留白取消，
+                    // 间距节奏统一交给卡片 24dp 内边距 + 两段 12dp）
+                    .padding(bottom = 12.dp),
             )
-            // 按钮前留白 2.9.3 由 20dp 加到 28dp（同上：把整体高度撑起来）
-            Spacer(Modifier.height(28.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 // 间距 12 → 16dp（2.9.7）：两个按钮各**收窄 2dp**。总宽不变、外缘不动，
@@ -155,10 +159,10 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
             val colors = MiuixTheme.colorScheme
 
             Column(
-                // 同上：`verticalScroll` 兜住大字号 / 矮屏（免责声明那段文字不短）
+                // 间距节奏与确认弹窗统一（Miuix DialogContent：24×24 内边距 + 两段 12dp）
                 modifier = Modifier
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 28.dp),
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
@@ -167,9 +171,10 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     fontSize = MiuixTheme.textStyles.title4.fontSize,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
                 )
-                Spacer(Modifier.height(12.dp))
 
                 // 说明文字：纯文本 —— 免责声明的入口在下方勾选行里
                 Text(
@@ -178,10 +183,11 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     fontSize = 15.sp,
                     lineHeight = 23.sp,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
                 )
 
-                Spacer(Modifier.height(18.dp))
                 AgreementCheckRow(
                     checked = checked,
                     onCheckedChange = { checked = it },
@@ -189,8 +195,8 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     linkText = spec.checkLinkText,
                     suffix = spec.checkSuffix,
                     onOpenLink = spec.onOpenDisclaimer,
+                    modifier = Modifier.padding(bottom = 12.dp),
                 )
-                Spacer(Modifier.height(18.dp))
 
                 // 只有一颗按钮，且未勾选时不可点
                 DialogButton(
@@ -398,6 +404,7 @@ private fun AgreementCheckRow(
     linkText: String,
     suffix: String,
     onOpenLink: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
     // 链接在整段文字里的字符区间（拼接完就确定，只依赖两段文字的长度）
@@ -410,7 +417,7 @@ private fun AgreementCheckRow(
     var textBounds by remember { mutableStateOf(Rect.Zero) }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             // 与下面的 `pointerInput` 紧挨着：两个都是「不改布局」的修饰符，

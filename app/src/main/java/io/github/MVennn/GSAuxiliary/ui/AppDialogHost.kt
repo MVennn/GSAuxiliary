@@ -21,19 +21,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
+import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.getRoundedCorner
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -135,8 +144,23 @@ private const val AppearScale = 0.80f
  */
 private const val ScrimAlpha = 0.48f
 
-/** 弹窗圆角（对齐 Miuix 对话框的观感） */
+/** 弹窗圆角（对齐 Miuix 对话框的观感）—— 锚定菜单用 */
 private val DialogCorner = 28.dp
+
+/**
+ * 贴底弹窗的圆角下限（Miuix 同款）。
+ *
+ * Miuix 的对话框圆角公式是「设备屏幕圆角半径 − 外边距」，且**不得低于 32dp**：
+ * 贴底弹窗的底边与屏幕圆角平行，圆角比屏幕自己的小太多会显得「方」。
+ */
+private const val SheetCornerMin = 32
+
+/**
+ * 贴底弹窗的宽度上限（Miuix `DialogDefaults.MaxWidth` 同款 420dp）。
+ *
+ * 手机上一般吃不满，平板 / 分屏 / 窗口模式下防止弹窗横贯整个宽度。
+ */
+private val SheetMaxWidth = 420.dp
 
 /** 锚定式弹窗（下拉菜单）的固定宽度 */
 private val MenuWidth = 200.dp
@@ -267,11 +291,13 @@ internal fun DialogHost(
             val width = constraints.maxWidth
             val height = constraints.maxHeight
             val side = marginPx.toInt()
-            val cap = if (anchor != null) {
-                menuWidthPx.coerceAtMost((width - side * 2).coerceAtLeast(0))
-            } else {
-                // 贴底弹窗与居中弹窗都吃满「卡片宽度」
-                (width - side * 2).coerceAtLeast(0)
+            // 贴底弹窗的宽度上限：420dp（Miuix 同款），超出时居中摆放
+            val sheetMaxPx = with(density) { SheetMaxWidth.toPx() }.toInt()
+            val cap = when {
+                anchor != null -> menuWidthPx.coerceAtMost((width - side * 2).coerceAtLeast(0))
+                sheet -> (width - side * 2).coerceAtLeast(0).coerceAtMost(sheetMaxPx)
+                // 居中弹窗吃满「卡片宽度」
+                else -> (width - side * 2).coerceAtLeast(0)
             }
 
             val measurable = subcompose("card") {
@@ -308,9 +334,9 @@ internal fun DialogHost(
             val x: Int
             val y: Int
             when {
-                // 贴底：左右各留 ScreenMargin，底部再抬起导航条高度
+                // 贴底：左右各留 ScreenMargin（宽度过限时居中），底部再抬起导航条高度
                 sheet -> {
-                    x = side
+                    x = if (cardW < cap) (width - cardW) / 2 else side
                     y = (height - cardH - side - navBottomPx.toInt()).coerceAtLeast(side)
                 }
 
@@ -366,7 +392,24 @@ private fun DialogCard(
     sheet: Boolean,
     menuOrigin: TransformOrigin,
 ) {
-    val shape = RoundedCornerShape(DialogCorner)
+    // 贴底弹窗走 Miuix 的圆角公式：设备屏幕圆角半径 − 外边距，下限 32dp，且是
+    // **squircle（超椭圆）**——连续曲率，大圆角下没有圆角矩形那种「突然拐弯」的观感。
+    // 锚定菜单照旧用 28dp 圆角矩形（尺寸小，两种形状看不出差别）。
+    val cardShape = if (sheet) {
+        rememberSquircleCardShape(
+            cornerRadius = (getRoundedCorner() - ScreenMargin)
+                .coerceAtLeast(SheetCornerMin.dp),
+        )
+    } else {
+        RoundedCornerShape(DialogCorner)
+    }
+    // 非玻璃底色：贴底弹窗对齐 Miuix 的 `DialogDefaults.backgroundColor()`（页面底色），
+    // 压暗全靠遮罩；锚定菜单仍用 surfaceContainerHigh（浮在内容上，需要自身对比度）。
+    val plainColor = if (sheet) {
+        MiuixTheme.colorScheme.background
+    } else {
+        MiuixTheme.colorScheme.surfaceContainerHigh
+    }
     Box(
         modifier = Modifier.graphicsLayer {
             if (sheet) {
@@ -395,7 +438,7 @@ private fun DialogCard(
                     if (liquidGlass) {
                         Modifier.drawBackdrop(
                             backdrop = backdrop,
-                            shape = { shape },
+                            shape = { cardShape },
                             effects = {
                                 if (effect) {
                                     vibrancy()
@@ -406,21 +449,21 @@ private fun DialogCard(
                             onDrawSurface = { drawRect(glassSurfaceTint(dark, effect)) },
                         )
                     } else {
-                        Modifier.background(MiuixTheme.colorScheme.surfaceContainerHigh, shape)
+                        Modifier.background(plainColor, cardShape)
                     }
                 ),
         )
 
         // --- 内容：点它不应该关闭弹窗，所以再叠一层「吃掉点击」的容器 ---
         //
-        // `.clip(shape)`（2.9.4）：Miuix 的按压高亮（`MiuixIndicationInstance.draw`
+        // `.clip(cardShape)`（2.9.4）：Miuix 的按压高亮（`MiuixIndicationInstance.draw`
         // 里就是给整个节点 `drawRect` 一层色）会铺满**整行**（`ChoiceRow` 是满宽），
-        // 首 / 末行的矩形会越过卡片的 28dp 圆角、糊到弹窗之外。这里把内容层按
+        // 首 / 末行的矩形会越过卡片的圆角、糊到弹窗之外。这里把内容层按
         // 卡片形状裁一刀，高亮和其它子节点绘制全部限制在弹窗范围内；
         // 只裁内容层、不裁外层 —— 外层的 `drawBackdrop` 还画着外投影，裁了会连投影一起切掉。
         Box(
             modifier = Modifier
-                .clip(shape)
+                .clip(cardShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -429,5 +472,28 @@ private fun DialogCard(
         ) {
             DialogBody(controller, spec)
         }
+    }
+}
+
+/**
+ * 贴底弹窗的 squircle 形状：用 Miuix squircle 包的 [Path.addSquircleRect]
+ * 生成超椭圆轮廓（extension 1.1 = 连续曲率，与 `squircleSurface` 的着色器
+ * 版本同一套几何），包成 [Shape] 供玻璃的 `drawBackdrop` 和 `clip` 共用。
+ */
+@Composable
+private fun rememberSquircleCardShape(cornerRadius: Dp): Shape =
+    remember(cornerRadius) {
+        SquircleCardShape(cornerRadius)
+    }
+
+private class SquircleCardShape(private val cornerRadius: Dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val path = Path()
+        path.addSquircleRect(
+            width = size.width,
+            height = size.height,
+            cornerRadius = with(density) { cornerRadius.toPx() },
+        )
+        return Outline.Generic(path)
     }
 }
