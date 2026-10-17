@@ -77,6 +77,6 @@ Make GoldenSun Great Again！
 
 ## 许可证
 
-本项目以 [Apache License 2.0](LICENSE) 发布。第三方组件的版权与许可证声明见 [NOTICE](NOTICE)；docs/reference/ 下的目标应用参考数据均为事实性描述（类名、键名、目录结构），不包含目标应用的代码或受版权保护的表达。
+本项目以 [Apache License 2.0](https://github.com/MVennn/GSAuxiliary/blob/main/LICENSE) 发布。第三方组件的版权与许可证声明见 [NOTICE](https://github.com/MVennn/GSAuxiliary/blob/main/NOTICE)；docs/reference/ 下的目标应用参考数据均为事实性描述（类名、键名、目录结构），不包含目标应用的代码或受版权保护的表达。
 
 模块不收集、不上传任何数据；完整数据流说明见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md) 第六条。
