@@ -316,8 +316,8 @@
         <item>N日最低价</item>
         <item>N日最高收盘</item>
         <item>N日最低收盘</item>
-        <item>最近前高</item>
-        <item>最近前低</item>
+        <item>历史前高</item>
+        <item>历史前低</item>
         <item>MA N</item>
         <item>最新价 +P%</item>
         <item>最新价 −P%</item>
