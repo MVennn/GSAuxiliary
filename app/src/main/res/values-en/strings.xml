@@ -293,6 +293,8 @@
         <item>N-day low</item>
         <item>N-day high close</item>
         <item>N-day low close</item>
+        <item>Nearest high</item>
+        <item>Nearest low</item>
         <item>MA N</item>
         <item>Latest +P%</item>
         <item>Latest −P%</item>

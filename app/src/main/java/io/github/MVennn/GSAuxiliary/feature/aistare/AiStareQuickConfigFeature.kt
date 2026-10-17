@@ -13,6 +13,7 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.core.QuickConfigEngine
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
+import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.aistare.quote.DomQuoteSource
@@ -354,13 +355,26 @@ class AiStareQuickConfigFeature : Feature {
                 runCatching {
                     // 提示先弹：原生 Toast 是系统浮层，页面立刻关掉也不影响它
                     nativeToast("保存成功")
-                    if (backToStock) {
+                    if (!backToStock) {
+                        topActivity()?.finish()
+                        return@runCatching
+                    }
+                    val pages = aistareActivities()
+                    if (pages.isEmpty()) { topActivity()?.finish(); return@runCatching }
+
+                    // 用户是从「个股详情页底栏 → 智能盯盘」进来的：详情页就在栈底，收掉上面
+                    // 这族页面它自己会露出来。不是从详情页进来的（首页 → 智能盯盘 → 创建 →
+                    // 价格），栈里压根没有详情页 —— 收完会掉到首页，所以要**自己拉起一个**。
+                    val hasDetail = allActivities().any { it.javaClass.name == STOCK_FRAG_CLASS }
+                    val parsed = parseStockCode(currentWebView?.get()?.url.orEmpty())
+                    if (!hasDetail && parsed != null) {
+                        // 先拉起详情页、再收页面：反过来做会让用户先看见首页闪一下
+                        openStockDetail(env, parsed.first, parsed.second)
+                        mainHandler.postDelayed({ pages.forEach { it.finish() } }, DETAIL_FINISH_DELAY_MS)
+                    } else {
                         // **一次性**把智能盯盘这一族页面全收掉：逐个 finish（每层等 450ms）
                         // 会让用户看见「先回智能盯盘、再回详情页」两跳
-                        val pages = aistareActivities()
-                        if (pages.isEmpty()) topActivity()?.finish() else pages.forEach { it.finish() }
-                    } else {
-                        topActivity()?.finish()
+                        pages.forEach { it.finish() }
                     }
                 }.onFailure { GLog.w("一键配置：保存后返回失败", it) }
             }
@@ -445,6 +459,55 @@ class AiStareQuickConfigFeature : Feature {
         }
     }
 
+    /** 当前栈里的**全部** Activity（用来判断「详情页在不在栈里」） */
+    private fun allActivities(): List<android.app.Activity> = runCatching {
+        val at = Class.forName("android.app.ActivityThread")
+        val thread = at.getDeclaredMethod("currentActivityThread").apply { isAccessible = true }.invoke(null)
+        val f = at.getDeclaredField("mActivities").apply { isAccessible = true }
+        val map = f.get(thread) as? Map<*, *> ?: return@runCatching emptyList()
+        map.values.mapNotNull { rec ->
+            if (rec == null) return@mapNotNull null
+            runCatching {
+                rec.javaClass.getDeclaredField("activity").apply { isAccessible = true }
+                    .get(rec) as? android.app.Activity
+            }.getOrNull()?.takeIf { !it.isFinishing }
+        }
+    }.getOrDefault(emptyList())
+
+    /**
+     * 拉起个股详情页（`StockFragAct`）。
+     *
+     * 契约来自 `docs/FEATURE-DIRECT-QUOTE.md` 路径 C（本仓 strategyquote 已经在用）：
+     * `action=quotes.stockDetail` + `adapter_key` Bundle 里放**单只** `stockInfo`
+     * （`com.guosen.android.quotes.data.IntentStockInfo`，它自带 `(String code, String market)` 构造器）。
+     * 少了这个 extras，详情页会直接崩（实测 `am start` 不带它 → 异常退出）。
+     */
+    private fun openStockDetail(env: FeatureEnv, code: String, market: String): Boolean = runCatching {
+        val cls = Reflect.loadClass(CLS_INTENT_STOCK_INFO, env.classLoader)
+            ?: run { GLog.w("一键配置：找不到 $CLS_INTENT_STOCK_INFO，无法拉起详情页"); return@runCatching false }
+        val ctor = cls.declaredConstructors.firstOrNull {
+            it.parameterTypes.size == 2 &&
+                it.parameterTypes[0] == String::class.java &&
+                it.parameterTypes[1] == String::class.java
+        } ?: run { GLog.w("一键配置：IntentStockInfo 没有 (code, market) 构造器"); return@runCatching false }
+        ctor.isAccessible = true
+        val item = ctor.newInstance(code, market) as? android.os.Parcelable
+            ?: run { GLog.w("一键配置：IntentStockInfo 不是 Parcelable"); return@runCatching false }
+
+        val bundle = android.os.Bundle().apply {
+            putParcelable(KEY_STOCK_INFO, item)
+        }
+        val ctx = currentWebView?.get()?.context?.applicationContext ?: hostApplicationContext()
+            ?: run { GLog.w("一键配置：拿不到 Context，拉不起详情页"); return@runCatching false }
+        val intent = Intent(ACTION_STOCK_DETAIL)
+            .setClassName(TargetApp.PACKAGE, STOCK_FRAG_CLASS)
+            .putExtra(KEY_ADAPTER, bundle)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(intent)
+        GLog.i("一键配置：已拉起个股详情页（$code.$market）")
+        true
+    }.getOrDefault(false)
+
     /** 当前栈里所有「智能盯盘」页（价格页 / 策略列表 / 盯盘首页 …） */
     private fun aistareActivities(): List<android.app.Activity> = runCatching {
         val at = Class.forName("android.app.ActivityThread")
@@ -506,6 +569,18 @@ class AiStareQuickConfigFeature : Feature {
             if (!paused && act != null && !act.isFinishing) act else null
         }.lastOrNull()
     }.getOrNull()
+
+    /** 个股详情页 */
+    private val STOCK_FRAG_CLASS = "com.guosen.quotation.ui.StockFragAct"
+
+    /** 详情页契约（见 openStockDetail 的注释） */
+    private val CLS_INTENT_STOCK_INFO = "com.guosen.android.quotes.data.IntentStockInfo"
+    private val ACTION_STOCK_DETAIL = "quotes.stockDetail"
+    private val KEY_ADAPTER = "adapter_key"
+    private val KEY_STOCK_INFO = "stockInfo"
+
+    /** 拉起详情页后再等多久收掉旧页面（让详情页先画出来，避免首页闪一下） */
+    private val DETAIL_FINISH_DELAY_MS = 400L
 
     /** 智能盯盘那一族页面的类名前缀（`saved()` 只收这些） */
     private val AISTARE_PACKAGE = "com.guosen.quotation.aistare"

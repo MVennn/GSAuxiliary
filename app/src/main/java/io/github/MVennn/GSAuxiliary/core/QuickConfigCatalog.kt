@@ -74,6 +74,9 @@ object QuickConfigCatalog {
         TermSpec("lowN", GROUP_RANGE, listOf(period(true))),
         TermSpec("highCloseN", GROUP_RANGE, listOf(period(true))),
         TermSpec("lowCloseN", GROUP_RANGE, listOf(period(true))),
+        // 历史前高 / 前低：全部可取历史（不含今日）里的极值，无参数
+        TermSpec("historyHigh", GROUP_RANGE, emptyList()),
+        TermSpec("historyLow", GROUP_RANGE, emptyList()),
         TermSpec("maN", GROUP_MA, listOf(period(true))),
         TermSpec("upPct", GROUP_PCT, listOf(pct())),
         TermSpec("downPct", GROUP_PCT, listOf(pct())),

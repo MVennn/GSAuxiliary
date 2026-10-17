@@ -28,8 +28,8 @@ class PublicQuoteSource : QuoteSource {
 
     override val name = "public"
 
-    /** 日 K 缓存：key = code.market，value = (时间戳, 全量 320 根) */
-    private val klineCache = HashMap<String, Pair<Long, List<QuoteBar>>>()
+    /** 日 K 缓存：key = code.market，value = (时间戳, 当时请求的根数, 拿到的行) */
+    private val klineCache = HashMap<String, Triple<Long, Int, List<QuoteBar>>>()
 
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
         val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
@@ -47,16 +47,23 @@ class PublicQuoteSource : QuoteSource {
         if (n <= 0) return null
         val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
         val key = "$code.$market"
+        // 要多少根问多少根（下限 320）：「历史前高 / 前低」要 2000 根（≈8 年），
+        // 「30 日最高价」只要 320。腾讯接口单次上限就是 2000，超过会返回 param error。
+        val want = maxOf(n, DEFAULT_BARS)
 
         val now = System.currentTimeMillis()
         synchronized(klineCache) {
-            klineCache[key]?.let { (t, bars) ->
-                if (now - t < KLINE_TTL_MS && bars.size >= n) return bars
+            klineCache[key]?.let { (t, asked, bars) ->
+                // 够用就命中：① 行数够 n；② 上次要的就不少（说明这只股票总共只有这么多）
+                if (now - t < KLINE_TTL_MS && (bars.size >= n || asked >= n)) return bars
             }
         }
 
         val url = String.format(AiStareQuickConfigTargets.QT_KLINE_URL, mkt + code)
-        val text = httpGet(url) ?: run {
+            // 连逗号一起换：模板是 `…,day,,,320,`，只替数字会少一格 → 服务端 param error
+            .replace(KLINE_COUNT_TOKEN, ",$want,")
+        // 2000 根的响应约 140 KB，3 秒容易读不完 —— 日 K 单独给 6 秒
+        val text = httpGet(url, KLINE_TIMEOUT_MS) ?: run {
             GLog.w("一键配置取数：公开行情日 K 请求失败（$mkt$code）")
             return null
         }
@@ -66,11 +73,13 @@ class PublicQuoteSource : QuoteSource {
         }
         synchronized(klineCache) {
             if (klineCache.size >= KLINE_CACHE_MAX) klineCache.clear() // 极简淘汰
-            klineCache[key] = now to bars
+            klineCache[key] = Triple(now, want, bars)
         }
+        // **不再因为「不足 n 根」返回 null**：新股 / 次新股本来就凑不到 2000 根，
+        // 「历史前高」要的是「有多少算多少」。够不够由引擎按各项口径自己判
+        // （highN/lowN/maN 仍要求 size >= N，历史项只要求 >= 2）。
         if (bars.size < n) {
-            GLog.w("一键配置取数：日 K 不足 $n 根（${bars.size}，$mkt$code），按失败处理")
-            return null
+            GLog.i("一键配置取数：日 K 只有 ${bars.size} 根（要 $n，$mkt$code），按实有数据返回")
         }
         return bars
     }
@@ -143,7 +152,20 @@ class PublicQuoteSource : QuoteSource {
     }
 
     companion object {
+        /** 请求根数的下限（普通取值项够用） */
+        private const val DEFAULT_BARS = 320
+
+        /**
+         * URL 模板里「根数」那一格的占位符 —— **连着前后逗号一起匹配**。
+         * 模板是 `…,day,,,320,`；只替数字（320 → 2000）会变成 `…,day,,2000,`，
+         * 参数少一格，服务端直接回 param error（踩过）。
+         */
+        private const val KLINE_COUNT_TOKEN = ",320,"
+
         private const val TIMEOUT_MS = 3000
+
+        /** 日 K 的读超时（2000 根 ≈ 140 KB，实时快照那 3 秒不够） */
+        private const val KLINE_TIMEOUT_MS = 6000
         private const val KLINE_TTL_MS = 5 * 60 * 1000L
         private const val KLINE_CACHE_MAX = 16
     }
