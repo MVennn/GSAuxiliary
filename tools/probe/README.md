@@ -80,7 +80,7 @@ hookAllMethods(android.app.Activity, "onResume")
 
 > 为什么必须这么验？因为探针 v16 版直接用了 `isBelongByStock`，在策略详情页 10/11 判 true，看起来"能用"；但拿行情页 20 只真值一比对，发现它语义有偏差。**不交叉验证就不知道哪个 API 是真的对。**
 >
-> 最终结论：**`ZXWorkflow.isBelongByStock(code, market)` 静态 2 参版本 20/20 全对**，被 `feature/watchlist/ZxWatchlist.kt` 采用。详见 [`../../docs/HOOK-NOTES.md`](../../docs/HOOK-NOTES.md)。
+> 最终结论：**`ZXWorkflow.isBelongByStock(code, market)` 静态 2 参版本 20/20 全对**，被 `feature/watchlist/ZxWatchlist.kt` 采用。详见 [`../../docs/REVERSE-ENGINEERING.md`](../../docs/REVERSE-ENGINEERING.md)（原 HOOK-NOTES 已并入）。
 
 ### 4. 跳转链与 Intent 契约（v19～v25 新增）
 
@@ -255,7 +255,7 @@ tools/probe/
 - 自选判定开始误判（黄名标错股票）
 - 想加**新功能**，需要摸清新的页面/数据类
 
-跑完之后，把新结论回写到 [`../../docs/REVERSE-ENGINEERING.md`](../../docs/REVERSE-ENGINEERING.md) 和 [`../../docs/HOOK-NOTES.md`](../../docs/HOOK-NOTES.md)。
+跑完之后，把新结论回写到 [`../../docs/REVERSE-ENGINEERING.md`](../../docs/REVERSE-ENGINEERING.md)（逆向与 Hook：过程与证据 + 难点与解法）。
 
 ---
 

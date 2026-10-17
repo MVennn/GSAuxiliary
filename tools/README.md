@@ -315,7 +315,7 @@ python tools/gen_launcher_icons.py
 - 背景逐行算圆角矩形的 x 区间再填竖向渐变
 - 4× 超采样降采样做抗锯齿；`ic_launcher_round.png` 额外套一层圆形遮罩
 
-设计说明见 `docs/UI.md` §12。
+设计说明见 `docs/UI-HISTORY.md` §12。
 
 ## verify_icons.py ★
 

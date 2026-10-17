@@ -3020,5 +3020,5 @@ implementation("io.github.libxposed:service:102.0.0") // 模块 App 侧服务通
 | 1.4.0 | 挂 `Activity.onResume` 即时生效；尝试 `xposedsharedprefs` + chmod 0664 解决跨进程配置 |
 
 > 这段时期的跨进程配置踩坑记录保留在
-> [Hook 难点 · 配置通道](docs/HOOK-NOTES.md)，属于仍然有价值的经验。
+> [逆向与 Hook · 配置通道](docs/REVERSE-ENGINEERING.md#7-配置通道)（原 HOOK-NOTES 已并入），属于仍然有价值的经验。
 

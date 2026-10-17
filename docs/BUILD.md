@@ -1,15 +1,8 @@
 # 构建指南
 
-> **交付规则（2026-10-17 起）**：**每次交付都出一个可安装的 APK** —— 不发 Release 也一样。
->
-> - 命令：`./gradlew.bat :app:assembleRelease`（Linux / macOS 用 `./gradlew`）
-> - 产物：`app/build/outputs/apk/release/app-release.apk`
-> - **不发 debug 包**：debug 签名与已装模块的签名不同，装之前必须卸载重装，
->   会连带清掉 LSPosed 的作用域勾选与模块配置。排查确实需要可读堆栈时才本地
->   `./gradlew.bat :app:assembleDebug` 自打自装，**那个包不进交付**。
-> - 不发版就**不动** `versionCode` / `versionName`（见 [VERSIONING.md](VERSIONING.md) §4）。
->
-> 完整规则、以及交付时报什么见 [RELEASE.md](RELEASE.md) §0.1。
+> **交付规则**：每次交付都出一个可安装的 release APK、不发 debug 包、
+> 不发版不动版本号 —— 完整规则与交付时报告的内容以
+> [RELEASE.md](RELEASE.md) §0.1 为唯一正本，这里不再重抄。
 
 ## 1. 环境要求
 
@@ -57,7 +50,7 @@ compileSdk          37
 界面图标全部在 `ui/AppIcons.kt` 里用 Material 官方 path 数据自绘。
 曾经引过 `androidx.compose.material:material-icons-extended:1.7.5`，
 它会把 **11 400 个**用不到的图标类编进 dex，APK 从 1.34 MB 涨到 11.45 MB
-（详见 `docs/UI.md` §10）。
+（详见 `docs/UI-HISTORY.md` §10）。
 
 这不是随便选的，是踩完一圈坑之后的唯一可行解。**不要轻易升级。**
 
@@ -161,7 +154,7 @@ buildTypes {
 ```bash
 APK=app/build/outputs/apk/release/app-release.apk
 
-# 版本号（以 VERSIONING 记录的当前版本为准，如 3.1.0 / 46）
+# 版本号（当前版本以 app/build.gradle.kts 与 CHANGELOG.md 为准，如 3.1.0 / 46）
 aapt2 dump badging "$APK" | head -2
 
 # 类总数与入口类
@@ -443,10 +436,10 @@ cp keystore.properties.example keystore.properties
 | `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleRelease`（手动触发勾了 `build_debug` 才连 `assembleDebug`）+ 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
 | `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
 
-> **`ci.yml` 默认只编 release。** debug 包从 2.17.1 起不再随 Release 发布，
-> 却占了产物九成体积（约 11 MB，release 只有 1.5 MB）—— 日常没人下载它。
-> 需要拿 debug 包装真机排查时，到 Actions 页面手动触发这个工作流、勾上 `build_debug`。
+> **`ci.yml` 默认只编 release**（不发 debug 包，交付规则见 [RELEASE.md](RELEASE.md) §0.1）：
+> debug 包占产物九成体积（约 11 MB，release 只有 1.5 MB）且日常没人下载，
 > 产物总大小因此从约 14 MB 降到约 2 MB。
+> 需要拿 debug 包装真机排查时，到 Actions 页面手动触发这个工作流、勾上 `build_debug`。
 >
 > 两个工作流都钉 `ubuntu-24.04` 而不是 `ubuntu-latest`：后者从 2026-10-19 起
 > 迁往 Ubuntu 26，迁移期的镜像差异不该体现在构建结果里。

@@ -226,7 +226,7 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 
 机理（`if (!cfg.enabled) return` 导致跳过 + RecyclerView 复用视图残留颜色）与解法
 （无论开关开还是关都走一遍染色逻辑，关闭时用原始色覆盖）已在
-[HOOK-NOTES.md §6](HOOK-NOTES.md#6-关闭开关后颜色不还原) 讲透，这里不重抄。仍复现时按序排查：
+[REVERSE-ENGINEERING.md §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原) 讲透，这里不重抄。仍复现时按序排查：
 
 1. 滚动一下列表，或退出重进页面（触发重新绑定）
 2. 确认 `enabled=0` 真的写进去了（见 [第 3 节](#3-设置里改了开关但-app-里没反应)）

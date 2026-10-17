@@ -445,7 +445,7 @@ RelativeLayout #container_ai_stk_detail
 
 | 通道 | 能不能写 | 结论 |
 |---|---|---|
-| `ConfigKeys` + remote preferences | ❌ 目标进程侧**只读**（见 `HOOK-NOTES.md` §7） | 用不了 |
+| `ConfigKeys` + remote preferences | ❌ 目标进程侧**只读**（见 `REVERSE-ENGINEERING.md` 难点与解法 §7） | 用不了 |
 | 模块自己的数据目录 | ❌ 目标进程是别的 UID | 用不了 |
 | **目标 App 自己的 `SharedPreferences`** | ✅ 同进程、同 UID | **采用** |
 

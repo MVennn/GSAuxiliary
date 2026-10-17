@@ -28,9 +28,9 @@
 
 | 主题 | 结论 / 证据看哪 | 依据这里哪份数据 |
 |---|---|---|
-| 定位页面类名 | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（过程与证据）、[`../HOOK-NOTES.md`](../HOOK-NOTES.md) §2（页面链路） | `recon-yellow-log.txt`（完整的页面跳转序列）+ `activities-guosen.txt`（按包归类，据此知道每个 Activity 属于哪个业务模块） |
-| 自选数据来源 | [`../HOOK-NOTES.md`](../HOOK-NOTES.md) §3 | `recon-databases.txt`：自选股确实存在 SQLite（`gs_zxstock_db`），但**实际染色不读 DB、走内存的 `ZXManager` 单例**，DB 只是持久层 |
-| 染色证据（为什么不能只看颜色） | [`../HOOK-NOTES.md`](../HOOK-NOTES.md) §3 | `recon-yellow-log.txt`：行情页「技术指标」也是黄系 `#fff5a623`，与自选黄 `#fff58000` 不同 —— 所以**判自选要看 `isZx` / `ZXWorkflow`，不能只看颜色** |
+| 定位页面类名 | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（过程与证据 §四、难点与解法 §2 页面链路） | `recon-yellow-log.txt`（完整的页面跳转序列）+ `activities-guosen.txt`（按包归类，据此知道每个 Activity 属于哪个业务模块） |
+| 自选数据来源 | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（难点与解法 §3） | `recon-databases.txt`：自选股确实存在 SQLite（`gs_zxstock_db`），但**实际染色不读 DB、走内存的 `ZXManager` 单例**，DB 只是持久层 |
+| 染色证据（为什么不能只看颜色） | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（难点与解法 §3） | `recon-yellow-log.txt`：行情页「技术指标」也是黄系 `#fff5a623`，与自选黄 `#fff58000` 不同 —— 所以**判自选要看 `isZx` / `ZXWorkflow`，不能只看颜色** |
 | 探针怎么跑、挂了哪些点 | [`../../tools/probe/README.md`](../../tools/probe/README.md) | —（探针只负责产出上面的 `recon-*.txt`） |
 
 ### App 升级后怎么核对
@@ -52,5 +52,8 @@
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场（滚动横幅 / 板块 / 概览，三功能共用一份） | `feature/market/MarketTargets.kt` |
 | 手势导航条同色 | `feature/navbar/NavBarTargets.kt` |
+| 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |
+| 我的盯盘卡片跳个股详情页 | `feature/aistare/AiStareCardDetailTargets.kt` |
+| 隐藏 新股申购 弹窗 | `feature/ipoclean/IpoCleanTargets.kt` |
 
 完整排查流程见 [`../TROUBLESHOOTING.md` §6](../TROUBLESHOOTING.md#6-app-升级后失效)。

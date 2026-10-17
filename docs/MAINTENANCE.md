@@ -66,7 +66,7 @@ python tools/hygiene.py junk
 ### L2 代码垃圾（死代码 / 冗余资源）
 
 ```bash
-python tools/hygiene.py all      # ①②③④ 四条一起跑
+python tools/hygiene.py all      # ①②③④⑤ 五条一起跑（res / decls / members / imports / junk，junk 见上文 L1）
 ```
 
 | 扫什么 | 判断 | 怎么处理 |
@@ -144,7 +144,8 @@ README 免责段只是**摘要**，不承载全文；改全文时如果摘要要
 
 - 签名与凭据：`gszx.keystore`、`keystore.properties`、`tools/probe/probe.keystore`；
 - 发布链路：`tools/publish.py`、`.github/workflows/`、`xposed-repo/`、`docs/release-notes/`；
-- 逆向结论：`docs/REVERSE-ENGINEERING.md`、`docs/HOOK-NOTES.md` 里的类名 / 字段名 / Hook 点，
+- 逆向结论：`docs/REVERSE-ENGINEERING.md`（含原 HOOK-NOTES 并入的「难点与解法」部分）
+  里的类名 / 字段名 / Hook 点，
   哪怕代码里暂时没用到（`INSTANCE_PROVIDERS` 这类空实现是**有意占位**，别当死代码删）；
 - 用户数据：任何 `*.keystore`、`local.properties`；
 - `assets/` 里的源图（`icon.svg` 是 launcher 图标的母本，删了没法重新生成）。

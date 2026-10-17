@@ -1,5 +1,9 @@
 # 国信金太阳 8.6.0 APK 解析报告
 
+> **文档定位**：本文为 8.6.0 初版原始分析，结论已收敛进
+> [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)；APK 基础信息与
+> 加固证据链以该文档为准，本文仅保留原始数据价值。
+
 分析时间：2026-10-14
 文件：`C:\Users\SansK\Downloads\国信金太阳_8.6.0.apk`（144 MB）
 

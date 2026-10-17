@@ -350,7 +350,7 @@ Scaffold { padding ->
    颜色选择用 `Widgets.kt` 里的 `ColorPresetItem`（带预览与选中态），
    卡片注脚用 `Widgets.kt` 的 `CardNote`，
    图标用 `AppIcons`（自绘 `ImageVector`，**不要引回 `material-icons-extended`**，
-   原因见 `docs/UI.md` §10）。
+   原因见 `docs/UI-HISTORY.md` §10）。
 
    > ⚠️ **选择列表 / 二次确认一律走自绘 `DialogHost`，不要用 Miuix 的
    > `OverlayDropdownPreference` / `OverlayDialog`。**

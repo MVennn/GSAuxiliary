@@ -207,7 +207,7 @@ onHotReloaded(param)
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
-| **自选高亮** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor` | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色（见 [HOOK-NOTES](HOOK-NOTES.md#6-关闭开关后颜色不还原)） |
+| **自选高亮** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor` | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)） |
 | **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态）+ 包裹宿主 `OnItemClickListener` | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型 | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效 |
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后**换掉适配器 `data` 字段**（真删不是藏），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
