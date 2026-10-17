@@ -65,13 +65,13 @@
     <string name="feature_stg_direct_title">策略直达标准行情</string>
     <string name="feature_stg_direct_summary">我的策略里点股票直接进个股详情，不用再点一次标准行情</string>
     <string name="feature_stg_direct_switch">直达标准行情</string>
-    <string name="feature_stg_direct_switch_summary">策略详情点击股票直接跳转详情页</string>
+    <string name="feature_stg_direct_switch_summary">策略详情点击股票跳转详情页</string>
     <string name="feature_stg_direct_detail_entry">滑动设置</string>
 
     <string name="feature_select_all_title">策略多选全选</string>
     <string name="feature_select_all_summary">策略详情页多选时，取消按钮左侧多一个全选按钮，一键勾选全部股票</string>
     <string name="feature_select_all_switch">增加 全选 按钮</string>
-    <string name="feature_select_all_switch_summary">策略详情多选栏「取消」按钮左边</string>
+    <string name="feature_select_all_switch_summary">策略详情多选栏取消按钮左边</string>
 
     <string name="feature_stg_filter_title">策略筛选股票</string>
     <string name="feature_stg_filter_summary">策略详情页右上角菜单里多一个筛选股票，可按涨幅、跌幅、自选筛掉不看的股票</string>
@@ -81,7 +81,7 @@
     <string name="feature_stock_bar_title">底栏智能盯盘入口</string>
     <string name="feature_stock_bar_summary">个股详情页底栏，自选与更多之间多一个智能盯盘，一点直达，不用再进更多里找</string>
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
-    <string name="feature_stock_bar_switch_summary">详情页底栏「自选」与「更多」之间</string>
+    <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
 
     <!-- 底栏 -->
     <string name="feature_dock_clean_title">底栏隐藏理财入口</string>
@@ -91,13 +91,13 @@
     <!-- 首页 -->
     <string name="feature_home_banner_title">首页隐藏横幅</string>
     <string name="feature_home_banner_summary">首页快捷入口下方的那条横幅不再显示，下面的内容顺势上移</string>
-    <string name="feature_home_banner_switch">隐藏横幅</string>
-    <string name="feature_home_banner_switch_summary">首页「快捷入口」下方那条</string>
+    <string name="feature_home_banner_switch">隐藏 横幅</string>
+    <string name="feature_home_banner_switch_summary">首页快捷入口下方那条</string>
 
     <!-- 行情市场 -->
     <string name="feature_market_banner_title">行情市场隐藏滚动横幅与快捷入口</string>
     <string name="feature_market_banner_summary">行情市场页概览图下方的滚动横幅、以及它下面那排快捷入口一并隐藏，板块直接顶上来</string>
-    <string name="feature_market_banner_switch">隐藏滚动横幅与快捷入口</string>
+    <string name="feature_market_banner_switch">隐藏 滚动横幅与快捷入口</string>
 
     <string name="feature_market_sector_title">行情市场板块显示单行</string>
     <string name="feature_market_sector_summary">行情市场页的板块原本一屏六个，只保留最上面三个，其余收起</string>
@@ -117,9 +117,8 @@
     <string name="feature_quick_config_title">价格页一键配置</string>
     <string name="feature_quick_config_summary">智能盯盘的价格页底部，保存右边多一个配置按钮，点一下按方案填好涨到跌到价格</string>
     <string name="feature_quick_config_switch">增加 配置 按钮</string>
-    <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右侧，为盯盘增加一键配置功能</string>
+    <string name="feature_quick_config_switch_summary">盯盘价格页保存按钮右侧</string>
     <string name="feature_quick_config_detail_entry">方案设置</string>
-    <string name="feature_quick_config_detail_entry_summary">为 价格 配置 增加自定义方案</string>
 
     <!-- 配置按钮的二级设置（第二个入口）：多方案时是否还弹选择层 -->
     <string name="feature_quick_config_button_entry">配置按钮设置</string>
@@ -128,13 +127,13 @@
     <string name="feature_empty_save_title">保存时清空盯盘</string>
     <string name="feature_empty_save_summary">价格页涨到跌到都没填时，保存按钮不再置灰，点一下保存就把这只股票从我的盯盘里移除，不用再去盯盘列表删</string>
     <string name="feature_empty_save_switch">优化确定逻辑</string>
-    <string name="feature_empty_save_switch_summary">在数据为空时依旧可以保存</string>
+    <string name="feature_empty_save_switch_summary">涨到跌到都空着也能保存</string>
 
     <!-- ============================ 保存后免确认（智能盯盘价格页） ============================ -->
     <string name="feature_skip_save_title">保存后免确认</string>
     <string name="feature_skip_save_summary">智能盯盘价格页保存成功后，不再弹需要手动确认的弹窗</string>
     <string name="feature_skip_save_switch">无需确定保存盯盘</string>
-    <string name="feature_skip_save_switch_summary">改为轻提示并自动返回</string>
+    <string name="feature_skip_save_switch_summary">保存后轻提示自动返回</string>
     <string name="feature_skip_save_detail_title">保存后返回位置设置</string>
     <string name="feature_skip_save_detail_entry">保存后返回位置设置</string>
     <string name="switch_save_back_to_stock">保存后返回个股详情页</string>
@@ -146,7 +145,7 @@
     <string name="feature_card_detail_switch_summary">点击数据卡片跳转股票详情页</string>
 
     <!-- ============================ 配置按钮设置（二级菜单） ============================ -->
-    <string name="switch_pick_scheme">在多配置下弹出选择方案弹窗</string>
+    <string name="switch_pick_scheme">多套方案时弹出选择方案弹窗</string>
 
     <!-- ============================ 一键配置 · 方案设置（二级菜单） ============================ -->
     <string name="detail_quick_config_title">方案设置</string>
@@ -189,7 +188,7 @@
          开关不带副标题：标题已把行为说完（2.17.2 起，规则见 docs/NAMING.md §3） -->
     <string name="detail_stg_direct_title">滑动设置</string>
     <string name="section_stg_swipe">左右滑动</string>
-    <string name="item_stg_quote_swipe">左右滑动切换股票</string>
+    <string name="item_stg_quote_swipe">切换股票</string>
 
     <!-- ============================ 高亮颜色设置（二级菜单） ============================ -->
     <!-- 页面标题就是分组名，页内不再放同名 SmallTitle；开关不带钩子目标这类开发者向说明（2.17.2） -->

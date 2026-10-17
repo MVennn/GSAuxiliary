@@ -86,9 +86,8 @@
     <string name="feature_quick_config_title">One-tap price setup</string>
     <string name="feature_quick_config_summary">On the AI stare price page, a Config button appears next to Save; one tap fills the alert prices from your scheme</string>
     <string name="feature_quick_config_switch">Add \"Config\" button</string>
-    <string name="feature_quick_config_switch_summary">Right of Save on the price page — one-tap setup for your alerts</string>
+    <string name="feature_quick_config_switch_summary">Right of Save on the price page</string>
     <string name="feature_quick_config_detail_entry">Schemes</string>
-    <string name="feature_quick_config_detail_entry_summary">Add custom schemes to the price page config button</string>
 
     <string name="feature_quick_config_button_entry">Config button</string>
 
@@ -182,7 +181,7 @@
          No summary on the switch: the title already says it all (since 2.17.2, see docs/NAMING.md §3) -->
     <string name="detail_stg_direct_title">Swipe settings</string>
     <string name="section_stg_swipe">Swipe switching</string>
-    <string name="item_stg_quote_swipe">Swipe to switch stocks</string>
+    <string name="item_stg_quote_swipe">Switch stocks</string>
 
     <!-- ============================ Highlight settings (detail) ============================ -->
     <!-- The page title doubles as the section name; no developer-facing summary on the switch (since 2.17.2) -->

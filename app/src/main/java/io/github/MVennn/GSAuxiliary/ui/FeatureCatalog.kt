@@ -204,11 +204,11 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
         detailTitleRes = R.string.detail_quick_config_title,
         detailEntryRes = R.string.feature_quick_config_detail_entry,
-        detailEntrySummaryRes = R.string.feature_quick_config_detail_entry_summary,
+        // 无入口副标题：「方案设置」已经说清进去做什么（原「为 价格 配置 增加自定义方案」是复述）
         detailEntry2Res = R.string.feature_quick_config_button_entry,
     ),
 
-    // 「优化保存按钮」：空数据也能保存（= 从我的盯盘删掉这条盯盘）
+    // 「优化确定逻辑」：空数据也能保存（= 从我的盯盘删掉这条盯盘）
     FeatureSpec(
         id = "aistare_empty_save",
         categoryRes = R.string.category_aistare,
