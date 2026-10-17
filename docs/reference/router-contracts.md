@@ -32,6 +32,23 @@ ADBW="bash tools/adbw.sh"
 - 测试目的若是**验证模块注入后的点击/手势行为**，模拟点击仍然必要；直达只省
   「导航铺垫」环节。
 
+### 直达失败排查
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `SecurityException` / Permission Denial | 没走 root shell | 确认 `su -c` 包裹，且设备 root 授权弹窗已允许 |
+| 页面秒退 / 白屏 | 该页依赖 extras（对象或必填基本类型） | `am` 补不了，回退从上游页手点一层 |
+| 跳到了但内容空（如策略详情空列表） | 少了 id 类 extras（如 `adapter_key` 里的 Strategy） | 这类页只省导航铺垫，数据仍需手点带上下文进入 |
+
+### 探针重装后的连带操作
+
+探针模块重装后，LSPosed 数据库里登记的 `apk_path` 会失效（`/data/app/~~随机`
+路径变化），表现为宿主启动后探针不再输出日志：
+
+1. `bash tools/adbw.sh shell "pm path com.wb.probe"` 拿新路径
+2. `python tools/enable_lsposed.py <拉下来的db> com.wb.probe <新路径> com.guosen.android`
+3. db 推回 `/data/adb/lspd/config/`，强停金太阳重开
+
 <!-- TABLE:BEGIN -->
 
 | router action | 次数 | 落点 Activity | extras（key: 类型） |
