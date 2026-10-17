@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -21,9 +22,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -45,6 +48,8 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -59,7 +64,7 @@ internal var lastDefaultId: String? = null
 /** 新建方案那一行的展开动画时长（也是「动画期间保留 justAdded 标记」的时长） */
 private const val SchemeAppearMillis = 260
 
-/** 删除方案那一行的收起动画时长（也是「动画之后才真正写配置」的等待时长） */
+/** 删除方案那一行的收起动画时长（真正写配置以动画收完为准，不靠这个时长对齐） */
 private const val SchemeRemoveMillis = 220
 
 /**
@@ -103,13 +108,6 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
     // 正在播「删除」动画的那一行：动画播完才真正写配置（见下方 LaunchedEffect）
     var removing by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(removing) {
-        val id = removing ?: return@LaunchedEffect
-        delay(SchemeRemoveMillis.toLong())
-        deleteScheme(id)
-        removing = null
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -120,72 +118,105 @@ internal fun QuickConfigScreen(onEdit: (String) -> Unit) {
         SmallTitle(stringResource(R.string.quick_section_schemes))
         Card(modifier = Modifier.cardPadding()) {
             data.schemes.forEachIndexed { index, scheme ->
-                val row: @Composable () -> Unit = {
-                    SchemeRow(
-                        name = scheme.name,
-                        preview = scheme.preview,
-                        isDefault = scheme.id == data.defaultId,
-                        menuTexts = menuTexts,
-                        // 点了不会有任何变化的项置灰且不可点：已经是默认 / 已在第一位 /
-                        // 已在最后一位 / 只剩这一套。原来这些项点了没反应，像菜单坏了。
-                        disabledMenuIndices = buildSet {
-                            if (scheme.id == data.defaultId) add(0)
-                            if (index == 0) add(1)
-                            if (index == data.schemes.size - 1) add(2)
-                            if (data.schemes.size <= 1) add(3)
-                        },
-                        onClick = { onEdit(scheme.id) },
-                        onMenu = { which ->
-                            when (which) {
-                                0 -> {
-                                    // 记下被顶替的那个默认方案：「设为默认」开关关掉时要交还给它
-                                    lastDefaultId = data.defaultId.takeIf { it != scheme.id }
-                                    val updated =
-                                        data.schemes.map { it.copy(isDefault = it.id == scheme.id) }
-                                    writeSchemes(data.copy(defaultId = scheme.id, schemes = updated))
-                                }
-                                // 上移 / 下移：把这一项从列表里**取出来再插到新位置**。
-                                // 3.1.x 写的是 `list[index-1] = data.schemes[index].also { list[index] = it }`
-                                // —— `also` 收到的是同一个对象，于是两个位置都变成「第二个方案」，
-                                // 第一个方案被覆盖掉（用户看到的就是「上移后第一个方案变成了第二个」）。
-                                1 -> if (index > 0) {
-                                    val list = data.schemes.toMutableList()
-                                    list.add(index - 1, list.removeAt(index))
-                                    writeSchemes(data.copy(schemes = list))
-                                }
-                                2 -> if (index < data.schemes.size - 1) {
-                                    val list = data.schemes.toMutableList()
-                                    list.add(index + 1, list.removeAt(index))
-                                    writeSchemes(data.copy(schemes = list))
-                                }
-                                // 删除：先让这一行收起来（动画），播完再写配置
-                                3 -> removing = scheme.id
-                            }
-                        },
-                    )
-                }
-                // 每一行**都常驻一个 AnimatedVisibility**，出现 / 删除两种动画都由它播。
+                // 每一行按 **id** 记身份（`key`），不是按「第几个」。
                 //
-                // 为什么不能按状态分三种分支各画一次：`AnimatedVisibility(visible = false)`
-                // 在**首次**挂载时是「直接不可见」，不会播退出动画 —— 分成
-                // 「normal / appearing / removing」三条分支的话，删除那一刻节点是新建的，
-                // 收缩动画根本不会跑（看着还是凭空消失）。常驻一个节点、只翻 `visible`
-                // 才有 true → false 这个过渡。
-                val isRemoving = scheme.id == removing
-                var appeared by remember(scheme.id) { mutableStateOf(!(scheme.id == justAdded)) }
-                LaunchedEffect(scheme.id) {
-                    if (scheme.id == justAdded) {
-                        appeared = true
-                        delay(SchemeAppearMillis.toLong())
-                        if (justAdded == scheme.id) justAdded = null
+                // 少了这层 `key`，删掉中间一行后 Compose 会按位置复用节点：原来第 3 行
+                // 的节点正好落进第 2 行那个 `AnimatedVisibility` 里，而那一个正从「可见」
+                // 往「不可见」走 —— `visible` 一翻回 true，它就把自己剩下的过渡反着播一遍，
+                // 也就是补一次展开动画。用户看到的就是「删掉的那行收起来，下面那行跟着
+                // 跳一下」。按 id 记身份之后，第 3 行还是第 3 行，谁也接不了谁的位置。
+                key(scheme.id) {
+                    val row: @Composable () -> Unit = {
+                        SchemeRow(
+                            name = scheme.name,
+                            preview = scheme.preview,
+                            isDefault = scheme.id == data.defaultId,
+                            menuTexts = menuTexts,
+                            // 点了不会有任何变化的项置灰且不可点：已经是默认 / 已在第一位 /
+                            // 已在最后一位 / 只剩这一套。原来这些项点了没反应，像菜单坏了。
+                            disabledMenuIndices = buildSet {
+                                if (scheme.id == data.defaultId) add(0)
+                                if (index == 0) add(1)
+                                if (index == data.schemes.size - 1) add(2)
+                                if (data.schemes.size <= 1) add(3)
+                            },
+                            onClick = { onEdit(scheme.id) },
+                            onMenu = { which ->
+                                when (which) {
+                                    0 -> {
+                                        // 记下被顶替的那个默认方案：「设为默认」开关关掉时要交还给它
+                                        lastDefaultId = data.defaultId.takeIf { it != scheme.id }
+                                        val updated =
+                                            data.schemes.map { it.copy(isDefault = it.id == scheme.id) }
+                                        writeSchemes(data.copy(defaultId = scheme.id, schemes = updated))
+                                    }
+                                    // 上移 / 下移：把这一项从列表里**取出来再插到新位置**。
+                                    // 3.1.x 写的是 `list[index-1] = data.schemes[index].also { list[index] = it }`
+                                    // —— `also` 收到的是同一个对象，于是两个位置都变成「第二个方案」，
+                                    // 第一个方案被覆盖掉（用户看到的就是「上移后第一个方案变成了第二个」）。
+                                    1 -> if (index > 0) {
+                                        val list = data.schemes.toMutableList()
+                                        list.add(index - 1, list.removeAt(index))
+                                        writeSchemes(data.copy(schemes = list))
+                                    }
+                                    2 -> if (index < data.schemes.size - 1) {
+                                        val list = data.schemes.toMutableList()
+                                        list.add(index + 1, list.removeAt(index))
+                                        writeSchemes(data.copy(schemes = list))
+                                    }
+                                    // 删除：先让这一行收起来（动画），播完再写配置
+                                    3 -> removing = scheme.id
+                                }
+                            },
+                        )
                     }
-                }
-                AnimatedVisibility(
-                    visible = appeared && !isRemoving,
-                    enter = expandVertically(tween(SchemeAppearMillis)) + fadeIn(tween(180)),
-                    exit = shrinkVertically(tween(SchemeRemoveMillis)) + fadeOut(tween(140)),
-                ) {
-                    row()
+                    // 每一行**都常驻一个 AnimatedVisibility**，出现 / 删除两种动画都由它播。
+                    //
+                    // 为什么不能按状态分三种分支各画一次：`AnimatedVisibility(visible = false)`
+                    // 在**首次**挂载时是「直接不可见」，不会播退出动画 —— 分成
+                    // 「normal / appearing / removing」三条分支的话，删除那一刻节点是新建的，
+                    // 收缩动画根本不会跑（看着还是凭空消失）。常驻一个节点、只翻可见性
+                    // 才有 true → false 这个过渡。
+                    //
+                    // 可见性用 [MutableTransitionState] 而不是 `visible =`：只有它能回答
+                    // 「动画播完了没有」（`currentState` 在收尾那一帧翻到目标值）。删除的
+                    // 时机就挂在 `currentState` 上，不再靠「睡 SchemeRemoveMillis 毫秒」——
+                    // 那种对齐差一帧就会把节点提前移出组合，收缩动画被截断成「凭空消失」。
+                    val visibleState = remember(scheme.id) {
+                        MutableTransitionState(scheme.id != justAdded)
+                    }
+                    // 新建：false → true，播一次展开
+                    LaunchedEffect(scheme.id) {
+                        if (scheme.id == justAdded) {
+                            visibleState.targetState = true
+                            delay(SchemeAppearMillis.toLong())
+                            if (justAdded == scheme.id) justAdded = null
+                        }
+                    }
+                    // 删除：等这一行收完再写配置。
+                    //
+                    // 这个 effect 的 key 是 `Unit`（生命周期跟着行，跟着 `key(scheme.id)` 走），
+                    // **不跟 `removing` 翻动** —— 否则连着删两行时，后一次请求会把前一次那个
+                    // 还在等动画的协程取消掉，前一行就永远停在「已经收起来了，但还留在配置里」
+                    // 的半死状态。
+                    LaunchedEffect(Unit) {
+                        snapshotFlow { removing == scheme.id }.first { it }
+                        visibleState.targetState = false
+                        // 上限兜底：动画被系统关掉 / 状态没推进时也要把方案删掉，
+                        // 不能变成「点了删除没反应」
+                        withTimeoutOrNull(SchemeRemoveMillis.toLong() + 300) {
+                            snapshotFlow { visibleState.currentState }.first { !it }
+                        }
+                        deleteScheme(scheme.id)
+                        removing = null
+                    }
+                    AnimatedVisibility(
+                        visibleState = visibleState,
+                        enter = expandVertically(tween(SchemeAppearMillis)) + fadeIn(tween(180)),
+                        exit = shrinkVertically(tween(SchemeRemoveMillis)) + fadeOut(tween(140)),
+                    ) {
+                        row()
+                    }
                 }
             }
             // 新建方案：与方案行同组，主色 + 加号图标说明「这是动作」

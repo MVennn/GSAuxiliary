@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -27,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,11 +49,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigCatalog
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
-import kotlinx.coroutines.flow.drop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -62,7 +66,7 @@ import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 取值项增删动画时长（也是「动画播完再写配置」的等待时长） */
+/** 取值项增删动画时长（删除时以动画收完为准再写配置，不靠这个时长对齐） */
 private const val TermAnimMillis = 200
 
 /** 数字输入框的圆角：描边与 `TextField` 的 `cornerRadius` 必须用同一个值 */
@@ -347,27 +351,33 @@ private fun SlotEditor(
         )
 
         slot.terms.forEachIndexed { index, term ->
-            TermRow(
-                key = keyOf(index, term),
-                term = term,
-                name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source },
-                // 一个槽至少留一个取值项：空槽写进 JSON 之后会被
-                // `QuickConfigStore.decodeSlot` 当成坏数据丢弃（连带整条方案），
-                // 于是三级页会「自己变空 / 跳走」—— 用户看到的就是删一下就崩了。
-                // 只剩一项时**整颗 ✕ 都不画**（不留灰按钮占位）。
-                deletable = slot.terms.size > 1,
-                justAdded = keyOf(index, term) == justAddedKey,
-                onParam = { newParam ->
-                    onChanged(
-                        slot.copy(
-                            terms = slot.terms.mapIndexed { i, t ->
-                                if (i == index) t.copy(param = newParam) else t
-                            },
-                        ),
-                    )
-                },
-                onDelete = { onChanged(slot.copy(terms = slot.terms.filterIndexed { i, _ -> i != index })) },
-            )
+            // 每一行按**行标识**记身份（`key`），别让下一行接替被删那行的节点 ——
+            // 位置复用会让下面那行住进正在收起的那个 `AnimatedVisibility` 里，可见性
+            // 一翻回 true 就把过渡反着播一遍（用户看到的「删一项，下面那项跳一下」）。
+            // 与方案列表同一个根因，改法也一样。
+            key(keyOf(index, term)) {
+                TermRow(
+                    rowKey = keyOf(index, term),
+                    term = term,
+                    name = termNames.getOrElse(QuickConfigCatalog.index(term.source)) { term.source },
+                    // 一个槽至少留一个取值项：空槽写进 JSON 之后会被
+                    // `QuickConfigStore.decodeSlot` 当成坏数据丢弃（连带整条方案），
+                    // 于是三级页会「自己变空 / 跳走」—— 用户看到的就是删一下就崩了。
+                    // 只剩一项时**整颗 ✕ 都不画**（不留灰按钮占位）。
+                    deletable = slot.terms.size > 1,
+                    justAdded = keyOf(index, term) == justAddedKey,
+                    onParam = { newParam ->
+                        onChanged(
+                            slot.copy(
+                                terms = slot.terms.mapIndexed { i, t ->
+                                    if (i == index) t.copy(param = newParam) else t
+                                },
+                            ),
+                        )
+                    },
+                    onDelete = { onChanged(slot.copy(terms = slot.terms.filterIndexed { i, _ -> i != index })) },
+                )
+            }
         }
 
         // 添加取值项（目录平铺，顺序 = 分组顺序）
@@ -440,7 +450,7 @@ private fun AggregateRow(
  */
 @Composable
 private fun TermRow(
-    key: String,
+    rowKey: String,
     term: QuickConfigStore.Term,
     name: String,
     deletable: Boolean,
@@ -450,23 +460,30 @@ private fun TermRow(
 ) {
     val param = QuickConfigCatalog.byId(term.source)?.params?.firstOrNull()
 
-    // 删除动画：点了 ✕ **先收起来再写配置**（直接删是「凭空消失」，看不见过渡）
-    var removing by remember(key) { mutableStateOf(false) }
-    LaunchedEffect(removing) {
-        if (removing) {
-            delay(TermAnimMillis.toLong())
-            onDelete()
-        }
-    }
+    // 出现 / 消失共用一条可见性状态机。用 [MutableTransitionState] 而不是 `visible =`：
+    // 删除要「收完再写配置」，而「收完了没有」只有 `currentState` 说得准 —— 靠
+    // `delay(TermAnimMillis)` 对齐差一帧就会把节点提前移出组合，收起动画被截断。
+    val visibleState = remember(rowKey) { MutableTransitionState(!justAdded) }
     // 新增动画：只有刚添加的那一行从 0 高度展开
-    var shown by remember(key) { mutableStateOf(!justAdded) }
-    LaunchedEffect(key) { if (justAdded) shown = true }
+    LaunchedEffect(rowKey) { if (justAdded) visibleState.targetState = true }
+
+    // 删除动画：点了 ✕ **先收起来再写配置**（直接删是「凭空消失」，看不见过渡）
+    var removing by remember(rowKey) { mutableStateOf(false) }
+    LaunchedEffect(removing) {
+        if (!removing) return@LaunchedEffect
+        visibleState.targetState = false
+        // 上限兜底：动画被系统关掉 / 状态没推进时也要把这一项删掉，别成「点了没反应」
+        withTimeoutOrNull(TermAnimMillis.toLong() + 300) {
+            snapshotFlow { visibleState.currentState }.first { !it }
+        }
+        onDelete()
+    }
 
     val dialogs = LocalDialogController.current
     var anchor by remember { mutableStateOf<Rect?>(null) }
 
     AnimatedVisibility(
-        visible = shown && !removing,
+        visibleState = visibleState,
         enter = expandVertically(tween(TermAnimMillis)) + fadeIn(tween(160)),
         exit = shrinkVertically(tween(TermAnimMillis)) + fadeOut(tween(140)),
     ) {
@@ -516,7 +533,7 @@ private fun TermRow(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             NumberField(
-                                key = key,
+                                key = rowKey,
                                 param = param,
                                 initial = term.param[param.key] ?: "",
                                 onChanged = { text -> onParam(term.param + (param.key to text)) },
