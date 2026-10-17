@@ -59,7 +59,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 internal fun FeatureTab(
     searchState: TextFieldState,
-    onOpenDetail: (FeatureSpec) -> Unit,
+    onOpenDetail: (FeatureSpec, Boolean) -> Unit,
 ) {
     val scrollState = rememberScrollState()
     val query = searchState.text.toString()
@@ -171,7 +171,7 @@ private fun FeatureSearchField(state: TextFieldState) {
 @Composable
 private fun FeatureEntry(
     feature: ResolvedFeature,
-    onOpenDetail: (FeatureSpec) -> Unit,
+    onOpenDetail: (FeatureSpec, Boolean) -> Unit,
 ) {
     val spec = feature.spec
     val enabled by rememberBoolPref(spec.enableKey, spec.defaultEnabled)
@@ -191,12 +191,24 @@ private fun FeatureEntry(
         enter = expandVertically(tween(220)) + fadeIn(tween(180)),
         exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
     ) {
-        BasicComponent(
-            title = stringResource(spec.detailEntryRes!!),
-            summary = spec.detailEntrySummaryRes?.let { stringResource(it) },
-            endActions = { ArrowRightIcon() },
-            onClick = { onOpenDetail(spec) },
-        )
+        // 必须显式竖排：`AnimatedVisibility` 的 content 是**叠放**的，
+        // 两个入口直接并列会糊在同一行（3.1.1 踩过）
+        Column {
+            BasicComponent(
+                title = stringResource(spec.detailEntryRes!!),
+                summary = spec.detailEntrySummaryRes?.let { stringResource(it) },
+                endActions = { ArrowRightIcon() },
+                onClick = { onOpenDetail(spec, false) },
+            )
+            // 第二个二级入口（目前只有「增加 配置 按钮」有）：同一个功能挂两个设置页
+            spec.detailEntry2Res?.let { entry2 ->
+                BasicComponent(
+                    title = stringResource(entry2),
+                    endActions = { ArrowRightIcon() },
+                    onClick = { onOpenDetail(spec, true) },
+                )
+            }
+        }
     }
 }
 

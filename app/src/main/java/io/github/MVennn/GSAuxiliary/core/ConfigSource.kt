@@ -101,6 +101,15 @@ class ConfigSource(private val xposed: XposedInterface) {
                 aiStareQuickConfig = p.getString(
                     ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
                 ) ?: ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
+                aiStareSkipSaveConfirm = p.getBoolean(
+                    ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM, ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+                ),
+                aiStareSaveBackToStock = p.getBoolean(
+                    ConfigKeys.AISTARE_SAVE_BACK_TO_STOCK, ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
+                ),
+                aiStarePickScheme = p.getBoolean(
+                    ConfigKeys.AISTARE_PICK_SCHEME, ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME,
+                ),
             )
         } catch (t: Throwable) {
             GLog.w("读取配置失败，使用默认值", t)

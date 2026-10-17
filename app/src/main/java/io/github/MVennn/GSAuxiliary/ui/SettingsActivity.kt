@@ -273,6 +273,10 @@ private sealed interface Route {
     data object QuickConfig : Route
     /** 方案编辑页（三级）：带方案 id（方案被删时页面自己回落空态） */
     data class QuickConfigEdit(val schemeId: String) : Route
+    /** 配置按钮设置：多方案时是否弹选择层 */
+    data object QuickConfigButton : Route
+    /** 保存后设置：保存成功退到哪一层 */
+    data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
 }
 
@@ -443,6 +447,10 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                     route = when (id) {
                         "stg_direct_quote" -> Route.StgDirectQuoteDetail
                         "aistare_quick_config" -> Route.QuickConfig
+                        // 第二个入口：配置按钮自己的设置（多方案时是否弹选择层）
+                        "aistare_quick_config#2" -> Route.QuickConfigButton
+                        // 保存成功后：是否直接退回个股详情页
+                        "aistare_skip_save_confirm" -> Route.AiStareSaveBehavior
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -505,6 +513,20 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                             QuickConfigScreen(
                                 onEdit = { schemeId -> route = Route.QuickConfigEdit(schemeId) },
                             )
+                        }
+
+                        Route.QuickConfigButton -> SubScreen(
+                            title = stringResource(R.string.feature_quick_config_button_entry),
+                            onBack = { route = Route.Home },
+                        ) {
+                            QuickConfigButtonScreen()
+                        }
+
+                        Route.AiStareSaveBehavior -> SubScreen(
+                            title = stringResource(R.string.feature_skip_save_detail_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            AiStareSaveBehaviorScreen()
                         }
 
                         Route.Disclaimer -> SubScreen(
@@ -757,7 +779,9 @@ private fun HomeScaffold(
                                 Tab.MODULE -> ModuleTab()
                                 Tab.FEATURE -> FeatureTab(
                                     searchState = featureSearch,
-                                    onOpenDetail = { spec -> onOpenFeatureDetail(spec.id) },
+                                    onOpenDetail = { spec, second ->
+                                        onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
+                                    },
                                 )
                                 Tab.SETTINGS -> SettingsTab()
                                 Tab.ABOUT -> AboutTab(onOpenDisclaimer = onOpenDisclaimer)

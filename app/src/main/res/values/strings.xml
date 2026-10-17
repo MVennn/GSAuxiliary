@@ -120,6 +120,21 @@
     <string name="feature_quick_config_detail_entry">方案设置</string>
     <string name="feature_quick_config_detail_entry_summary">为 价格 配置 增加自定义方案</string>
 
+    <!-- 配置按钮的二级设置（第二个入口）：多方案时是否还弹选择层 -->
+    <string name="feature_quick_config_button_entry">配置按钮设置</string>
+
+    <!-- ============================ 保存后免确认（智能盯盘价格页） ============================ -->
+    <string name="feature_skip_save_title">保存后免确认</string>
+    <string name="feature_skip_save_summary">智能盯盘价格页保存成功后，不再弹需要手动确认的弹窗</string>
+    <string name="feature_skip_save_switch">无需确定保存</string>
+    <string name="feature_skip_save_switch_summary">改为轻提示并自动返回</string>
+    <string name="feature_skip_save_detail_title">保存后设置</string>
+    <string name="feature_skip_save_detail_entry">返回位置</string>
+    <string name="switch_save_back_to_stock">保存成功后直接返回个股详情页</string>
+
+    <!-- ============================ 配置按钮设置（二级菜单） ============================ -->
+    <string name="switch_pick_scheme">在多配置下弹出选择方案弹窗</string>
+
     <!-- ============================ 一键配置 · 方案设置（二级菜单） ============================ -->
     <string name="detail_quick_config_title">方案设置</string>
     <string name="detail_quick_edit_title">编辑方案</string>

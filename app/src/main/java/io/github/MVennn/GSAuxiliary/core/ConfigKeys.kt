@@ -172,6 +172,31 @@ object ConfigKeys {
     const val AISTARE_QUICK_ENABLED = "aistare_quick_enabled"
 
     /**
+     * 「无需确定保存」：保存成功不再弹「保存成功！」那种需要手动确认的弹窗，
+     * 改成一条轻提示 + 自动返回。**默认关闭** —— 默认保持宿主原有交互。
+     *
+     * 生效范围：点「配置并保存」与宿主自己的「保存」都算（见 AiStareJs 的 `armSkip`）。
+     */
+    const val AISTARE_SKIP_SAVE_CONFIRM = "aistare_skip_save_confirm"
+    const val DEFAULT_AISTARE_SKIP_SAVE_CONFIRM = false
+
+    /**
+     * 保存成功后退回哪一层：`true` = 直接回个股详情页（把叠在上面的智能盯盘系列页面
+     * 一起收掉），`false` = 只回上一页（策略列表）。
+     *
+     * 只在 [AISTARE_SKIP_SAVE_CONFIRM] 打开时有意义。
+     */
+    const val AISTARE_SAVE_BACK_TO_STOCK = "aistare_save_back_to_stock"
+    const val DEFAULT_AISTARE_SAVE_BACK_TO_STOCK = true
+
+    /**
+     * 多套方案时是否弹「选择方案」层。关闭 = 点「配置并保存」直接用默认方案，
+     * 不再多点一步。**默认开启**（保持原有交互）。
+     */
+    const val AISTARE_PICK_SCHEME = "aistare_pick_scheme"
+    const val DEFAULT_AISTARE_PICK_SCHEME = true
+
+    /**
      * 登录后不再弹出「今日新股申购提醒」弹窗。
      *
      * 该弹窗是宿主的 `com.guosen.commonui.dialog.IpoAlertDialog`，由
@@ -369,6 +394,7 @@ object ConfigKeys {
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
         IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
+        AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
         LOG_LEVEL,
     )
@@ -387,7 +413,7 @@ object ConfigKeys {
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
             IPO_DIALOG_CLEAN,
-            AISTARE_QUICK_ENABLED,
+            AISTARE_QUICK_ENABLED, AISTARE_SKIP_SAVE_CONFIRM,
         )
 
     /**
@@ -399,7 +425,10 @@ object ConfigKeys {
      * [AISTARE_QUICK_CONFIG] 也归这里：它是方案**数据**，重置 = 恢复出厂方案
      * （「30 日高低」），不能被一键清空。
      */
-    val FEATURE_PARAM_KEYS = arrayOf(COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, AISTARE_QUICK_CONFIG)
+    val FEATURE_PARAM_KEYS = arrayOf(
+        COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, AISTARE_QUICK_CONFIG,
+        AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
+    )
 
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
     val DEFAULTS: Map<String, Any> = mapOf(
@@ -420,6 +449,9 @@ object ConfigKeys {
         IPO_DIALOG_CLEAN to DEFAULT_IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED to DEFAULT_AISTARE_QUICK_ENABLED,
         AISTARE_QUICK_CONFIG to DEFAULT_AISTARE_QUICK_CONFIG,
+        AISTARE_SKIP_SAVE_CONFIRM to DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+        AISTARE_SAVE_BACK_TO_STOCK to DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
+        AISTARE_PICK_SCHEME to DEFAULT_AISTARE_PICK_SCHEME,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,
         GLASS_EFFECT to DEFAULT_GLASS_EFFECT,

@@ -109,6 +109,11 @@ internal data class FeatureSpec(
     @StringRes val detailTitleRes: Int? = null,
     @StringRes val detailEntryRes: Int? = null,
     @StringRes val detailEntrySummaryRes: Int? = null,
+    /**
+     * **第二个**二级入口（可空）。目前只有「增加 配置 按钮」用到：
+     * 一个功能下同时挂「方案设置」与「配置按钮设置」两个页面。
+     */
+    @StringRes val detailEntry2Res: Int? = null,
 ) {
     /** 是否有可调节的具体设置（决定是否出现「开启后展开的二级入口」） */
     val hasDetail: Boolean get() = detailTitleRes != null && detailEntryRes != null
@@ -200,6 +205,21 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         detailTitleRes = R.string.detail_quick_config_title,
         detailEntryRes = R.string.feature_quick_config_detail_entry,
         detailEntrySummaryRes = R.string.feature_quick_config_detail_entry_summary,
+        detailEntry2Res = R.string.feature_quick_config_button_entry,
+    ),
+
+    // 保存成功之后的行为：免确认 + 返回位置（默认关闭，保持宿主原有交互）
+    FeatureSpec(
+        id = "aistare_skip_save_confirm",
+        categoryRes = R.string.category_aistare,
+        titleRes = R.string.feature_skip_save_title,
+        summaryRes = R.string.feature_skip_save_summary,
+        switchTitleRes = R.string.feature_skip_save_switch,
+        switchSummaryRes = R.string.feature_skip_save_switch_summary,
+        enableKey = ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM,
+        defaultEnabled = ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+        detailTitleRes = R.string.feature_skip_save_detail_title,
+        detailEntryRes = R.string.feature_skip_save_detail_entry,
     ),
 
     // ---- 底栏：只改主界面底栏的结构 ----

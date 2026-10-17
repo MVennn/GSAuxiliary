@@ -42,6 +42,12 @@ data class ConfigSnapshot(
     val aistareQuickEnabled: Boolean,
     /** 「一键配置」的方案数据（JSON 字符串，结构见 QuickConfigStore） */
     val aiStareQuickConfig: String,
+    /** 保存成功不弹确认弹窗（轻提示 + 自动返回） */
+    val aiStareSkipSaveConfirm: Boolean,
+    /** 保存成功后退到个股详情页（false = 只回上一页） */
+    val aiStareSaveBackToStock: Boolean,
+    /** 多方案时弹「选择方案」层（false = 直接套默认方案） */
+    val aiStarePickScheme: Boolean,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -65,6 +71,9 @@ data class ConfigSnapshot(
                 + (if (navBarBlend) 1 else 0) * 2671
                 + (if (ipoDialogClean) 1 else 0) * 2741
                 + (if (aistareQuickEnabled) 1 else 0) * 2851
+                + (if (aiStareSkipSaveConfirm) 1 else 0) * 2887
+                + (if (aiStareSaveBackToStock) 1 else 0) * 2897
+                + (if (aiStarePickScheme) 1 else 0) * 2903
                 + aiStareQuickConfig.hashCode() * 2879)
 
     companion object {
@@ -87,6 +96,9 @@ data class ConfigSnapshot(
             ipoDialogClean = ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN,
             aistareQuickEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
             aiStareQuickConfig = ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
+            aiStareSkipSaveConfirm = ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+            aiStareSaveBackToStock = ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
+            aiStarePickScheme = ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME,
         )
     }
 }

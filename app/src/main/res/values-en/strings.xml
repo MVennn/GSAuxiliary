@@ -90,6 +90,20 @@
     <string name="feature_quick_config_detail_entry">Schemes</string>
     <string name="feature_quick_config_detail_entry_summary">Add custom schemes to the price page config button</string>
 
+    <string name="feature_quick_config_button_entry">Config button</string>
+
+    <!-- ============================ Skip save confirmation ============================ -->
+    <string name="feature_skip_save_title">No save confirmation</string>
+    <string name="feature_skip_save_summary">After a successful save on the watch price page, skip the dialog that needs a manual confirm</string>
+    <string name="feature_skip_save_switch">Save without confirming</string>
+    <string name="feature_skip_save_switch_summary">Show a toast and go back automatically</string>
+    <string name="feature_skip_save_detail_title">After saving</string>
+    <string name="feature_skip_save_detail_entry">Where to go back</string>
+    <string name="switch_save_back_to_stock">Return straight to the stock detail page</string>
+
+    <!-- ============================ Config button (sub screen) ============================ -->
+    <string name="switch_pick_scheme">Ask which scheme when there are several</string>
+
     <!-- ============================ One-tap config · schemes (sub screen) ============================ -->
     <string name="detail_quick_config_title">Schemes</string>
     <string name="detail_quick_edit_title">Edit scheme</string>

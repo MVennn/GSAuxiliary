@@ -51,9 +51,10 @@ import java.util.concurrent.Executors
  *
  * ## 刻意不做（方案文档 §3.2）
  *
- * - **套用后不自动点「保存」**：落库是宿主的动作，算错价格直接写进盯盘策略
- *   代价比多点一下大得多（§10-6 实测保存不跳页，用户改完自己点）；
- * - 取数失败**不写值**，页面顶部轻提示「取数失败」—— 绝不写半截或 0。
+ * - **算完立刻写值，随后自动点一次宿主的「保存」**（2026-10-17 用户要求「配置并保存」）：
+ *   保存是宿主自己的按钮、走它自己的校验与提交，我们只是替用户按一下
+ *   （`element.click()`，轮询到 `disable` 放开再点，1.5 秒不放开就放弃）；
+ * - 取数失败**不写值也不点保存**，页面顶部轻提示「取数失败」—— 绝不写半截或 0。
  */
 class AiStareQuickConfigFeature : Feature {
 
@@ -124,6 +125,20 @@ class AiStareQuickConfigFeature : Feature {
                         .intercept { chain ->
                             val r = chain.proceed()
                             runCatching {
+                                // 桥必须在**页面开始加载之前**挂上（4-项实测）：
+                                // `addJavascriptInterface` 对「已经加载完的文档」不生效 ——
+                                // 在 onPageFinished 里补挂，页面里 `typeof window.gsaux`
+                                // 仍是 undefined，点按钮只会提示「暂时不可用」。
+                                // HybirdWebView 在构造函数里就调 setWebViewClient，
+                                // 这是整条链路上最早能拿到 WebView 实例的时刻。
+                                (chain.thisObject as? WebView)?.let { wv ->
+                                    runCatching {
+                                        wv.addJavascriptInterface(
+                                            Bridge(env),
+                                            AiStareQuickConfigTargets.JS_BRIDGE_NAME,
+                                        )
+                                    }.onFailure { GLog.w("一键配置：构造期挂桥失败", it) }
+                                }
                                 val client = chain.args.firstOrNull() ?: return@runCatching
                                 hookClientOnPageFinished(env, bag, client.javaClass)
                             }.onFailure { GLog.w("一键配置：抓 WebViewClient 子类失败", it) }
@@ -183,11 +198,33 @@ class AiStareQuickConfigFeature : Feature {
             val bridge = Bridge(env)
             webView.addJavascriptInterface(bridge, AiStareQuickConfigTargets.JS_BRIDGE_NAME)
             webView.evaluateJavascript(injectedJs, null)
+            val sj = schemesJson(env)
+            GLog.i("一键配置：注入方案 ${sj.take(160)}（开关=${env.config.aistareQuickEnabled}）")
             webView.evaluateJavascript(
-                AiStareJs.initCall(schemesJson(env), true),
+                // 必须过 safeJson：initCall 拼的是 `init("...", true)`，
+                // 直接把原始 JSON 塞进去会变成数组字面量 —— JS 收到的是对象，
+                // `String()` 出来是 `[object Object]`（15 个字符），JSON.parse 必然失败，
+                // 方案列表恒为空（3.1.0 起就带着这个 bug，2026-10-17 实测抓到）。
+                AiStareJs.initCall(
+                    AiStareJs.safeJson(sj),
+                    true,
+                    env.config.aiStarePickScheme,
+                    env.config.aiStareSkipSaveConfirm,
+                ),
                 null,
             )
             GLog.i("一键配置：已注入价格页（${Uri.parse(url).getQueryParameter("stockCode")}）")
+            // 诊断放到 2.2 秒后：`onPageFinished` 那一刻底部操作条还没渲染，
+            // 当场 dump 只会得到 chain:null（v1 踩过）
+            mainHandler.postDelayed({
+                runCatching {
+                    webView.evaluateJavascript(AiStareJs.DIAG) { raw ->
+                        val text = runCatching { JSONTokener(raw).nextValue() as? String }
+                            .getOrNull().orEmpty()
+                        GLog.i("一键配置：DOM ${text.take(1500)}")
+                    }
+                }
+            }, 2200)
         }.onFailure { GLog.w("一键配置：JS 注入失败", it) }
     }
 
@@ -200,7 +237,9 @@ class AiStareQuickConfigFeature : Feature {
             sb.append("{\"id\":\"").append(jsonEscape(s.id))
                 .append("\",\"name\":\"").append(jsonEscape(s.name))
                 .append("\",\"preview\":\"").append(jsonEscape(s.preview))
-                .append("\"}")
+                // `def`：JS 端在「不弹选择层」时要直接套默认方案
+                .append("\",\"def\":").append(s.id == data.defaultId)
+                .append("}")
         }
         return sb.append(']').toString()
     }
@@ -216,7 +255,12 @@ class AiStareQuickConfigFeature : Feature {
             runCatching {
                 // 不分开关状态统一重发 init：开 = 补注入 / 更新方案摘要；关 = JS 端摘按钮
                 wv.evaluateJavascript(
-                    AiStareJs.initCall(schemesJson(env), isEnabled(cfg)),
+                    AiStareJs.initCall(
+                        AiStareJs.safeJson(schemesJson(env)),
+                        isEnabled(cfg),
+                        cfg.aiStarePickScheme,
+                        cfg.aiStareSkipSaveConfirm,
+                    ),
                     null,
                 )
             }
@@ -232,39 +276,102 @@ class AiStareQuickConfigFeature : Feature {
      */
     private inner class Bridge(private val env: FeatureEnv) {
 
-        /** JS 调 `gsaux.apply("s1")`：套用方案（JavaBridge 线程） */
+        /**
+         * JS → 日志（排查用）。H5 里没有 console 可看，点一次按钮到底走到哪一步
+         * 只能靠这条通道打回 LSPosed 日志。
+         */
+        @JavascriptInterface
+        fun diag(msg: String) {
+            GLog.i("一键配置JS：$msg")
+        }
+
+        /**
+         * JS 调 `gsaux.apply("s1")`：套用方案。
+         *
+         * **整个流程都丢到主线程**：这个回调本身跑在 JavaBridge 线程上，而
+         * `WebView.getUrl()` / `evaluateJavascript()` 都是主线程 API —— 在桥上直接取
+         * `wv.url` 拿到的是空串（8-项实测，被 URL 守卫静默挡掉，表现就是「点了没反应」）。
+         */
         @JavascriptInterface
         fun apply(schemeId: String) {
             val cfg = env.config
+            GLog.i("一键配置：apply $schemeId（开关=${cfg.aistareQuickEnabled}）")
             if (!cfg.aistareQuickEnabled) return
-            val wv = currentWebView?.get() ?: return
-
-            val scheme = QuickConfigStore.decode(cfg.aiStareQuickConfig)
-                .schemes.firstOrNull { it.id == schemeId } ?: return
-            val url = runCatching { wv.url }.getOrNull() ?: return
-            val parsed = parseStockCode(url) ?: run {
-                GLog.w("一键配置：URL 里解不出 stockCode（$url）")
-                postToast(wv, "取数失败")
-                return
-            }
-
-            // 先抓页面全文（③ DOM 通道的原料；必须在主线程调 WebView）
             mainHandler.post {
                 runCatching {
-                    wv.evaluateJavascript("(document.body ? (document.body.innerText || '') : '')") { raw ->
-                        val pageText = runCatching {
-                            JSONTokener(raw).nextValue() as? String
-                        }.getOrNull().orEmpty()
+                    val wv = currentWebView?.get()
+                    if (wv == null) { GLog.w("一键配置：apply 时没有 currentWebView"); return@runCatching }
+                    // 桥现在挂在每个 HybirdWebView 上（必须赶在页面加载前挂），别的 H5
+                    // 也看得见它：当前不是价格页就沉默返回，不要在别的页面弹「取数失败」。
+                    val curUrl = wv.url.orEmpty()
+                    if (AiStareQuickConfigTargets.PAGE_URL_MARKS.none { curUrl.contains(it) }) {
+                        GLog.w("一键配置：apply 时 URL 不是价格页（$curUrl）")
+                        return@runCatching
+                    }
+                    val scheme = QuickConfigStore.decode(cfg.aiStareQuickConfig)
+                        .schemes.firstOrNull { it.id == schemeId }
+                    if (scheme == null) {
+                        GLog.w("一键配置：apply 找不到方案 $schemeId")
+                        return@runCatching
+                    }
+                    val parsed = parseStockCode(curUrl)
+                    if (parsed == null) {
+                        GLog.w("一键配置：URL 里解不出 stockCode（$curUrl）")
+                        postToast(wv, "取数失败")
+                        return@runCatching
+                    }
+                    GLog.i("一键配置：开始取数 ${parsed.first}.${parsed.second}")
+
+                    // 先抓页面全文（③ DOM 通道的原料；必须在主线程调 WebView）
+                    runCatching {
+                        wv.evaluateJavascript("(document.body ? (document.body.innerText || '') : '')") { raw ->
+                            val pageText = runCatching {
+                                JSONTokener(raw).nextValue() as? String
+                            }.getOrNull().orEmpty()
+                            executor.execute {
+                                applyOnWorker(env, wv, scheme, parsed.first, parsed.second, pageText)
+                            }
+                        }
+                    }.onFailure {
+                        GLog.w("一键配置：抓取页面文本失败", it)
                         executor.execute {
-                            applyOnWorker(env, wv, scheme, parsed.first, parsed.second, pageText)
+                            applyOnWorker(env, wv, scheme, parsed.first, parsed.second, "")
                         }
                     }
-                }.onFailure {
-                    GLog.w("一键配置：抓取页面文本失败", it)
-                    executor.execute {
-                        applyOnWorker(env, wv, scheme, parsed.first, parsed.second, "")
+                }.onFailure { GLog.w("一键配置：apply 流程异常", it) }
+            }
+        }
+
+        /**
+         * JS 调 `gsaux.saved()`：保存成功且「无需确定保存」打开时，
+         * 替用户把页面收掉（宿主那个「保存成功！」弹窗已经被 JS 藏了）。
+         *
+         * 退几层由 [ConfigSnapshot.aiStareSaveBackToStock] 决定：
+         *  - `false`：只关当前这一页（价格页）→ 回到上一页（策略列表）；
+         *  - `true` ：继续把叠在上面的「智能盯盘」系列页面逐个收掉，直到个股详情页。
+         */
+        @JavascriptInterface
+        fun saved() {
+            val backToStock = env.config.aiStareSaveBackToStock
+            GLog.i("一键配置：保存完成，收页面（回个股详情页=$backToStock）")
+            mainHandler.post {
+                runCatching {
+                    topActivity()?.finish()
+                    if (!backToStock) return@runCatching
+                    var steps = 0
+                    val step = object : Runnable {
+                        override fun run() {
+                            if (steps >= 5) return
+                            val top = topActivity() ?: return
+                            // 只收「智能盯盘」这一族页面，别把别的 Activity 一起关掉
+                            if (!top.javaClass.name.startsWith(AISTARE_PACKAGE)) return
+                            steps++
+                            top.finish()
+                            mainHandler.postDelayed(this, 450)
+                        }
                     }
-                }
+                    mainHandler.postDelayed(step, 450)
+                }.onFailure { GLog.w("一键配置：保存后返回失败", it) }
             }
         }
 
@@ -310,6 +417,9 @@ class AiStareQuickConfigFeature : Feature {
         val result = runCatching { QuickConfigEngine.evaluate(scheme, input) }
             .onFailure { GLog.w("一键配置：计算异常（整体放弃）", it) }
             .getOrNull()
+        if (result == null) {
+            GLog.w("一键配置：算价放弃（取数通道=${session.usedSource}）")
+        }
 
         mainHandler.post {
             runCatching {
@@ -352,6 +462,33 @@ class AiStareQuickConfigFeature : Feature {
         m.isAccessible = true
         m.invoke(null) as? android.content.Context
     }.getOrNull()
+
+    /**
+     * 当前处于前台的 Activity（反射 `ActivityThread.mActivities`）。
+     *
+     * 为什么不用 `webView.context`：它只给到当前这个 WebView 所在的那一个页面，
+     * 「退到个股详情页」要连续收掉好几个页面，必须能拿到实时的栈顶。
+     */
+    private fun topActivity(): android.app.Activity? = runCatching {
+        val at = Class.forName("android.app.ActivityThread")
+        val thread = at.getDeclaredMethod("currentActivityThread").apply { isAccessible = true }.invoke(null)
+        val f = at.getDeclaredField("mActivities").apply { isAccessible = true }
+        val map = f.get(thread) as? Map<*, *> ?: return@runCatching null
+        map.values.asSequence().mapNotNull { rec ->
+            if (rec == null) return@mapNotNull null
+            val cls = rec.javaClass
+            val paused = runCatching {
+                cls.getDeclaredField("paused").apply { isAccessible = true }.getBoolean(rec)
+            }.getOrDefault(true)
+            val act = runCatching {
+                cls.getDeclaredField("activity").apply { isAccessible = true }.get(rec) as? android.app.Activity
+            }.getOrNull()
+            if (!paused && act != null && !act.isFinishing) act else null
+        }.lastOrNull()
+    }.getOrNull()
+
+    /** 智能盯盘那一族页面的类名前缀（`saved()` 只收这些） */
+    private val AISTARE_PACKAGE = "com.guosen.quotation.aistare"
 
     /** BigDecimal → JS（两位小数字符串，不科学计数） */
     private fun toPlain(v: BigDecimal): String = v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
