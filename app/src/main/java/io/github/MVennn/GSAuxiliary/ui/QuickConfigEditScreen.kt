@@ -479,7 +479,7 @@ private fun TermRow(
                     title = name,
                     endActions = {
                         // 整簇显式垂直居中：`endActions` 的 Row 默认 **Top** 对齐，不这样做
-                        // 40dp 触控区的 ✕ 会比 12.5dp 高的箭头低半格（用户看到的「× 与箭头
+                        // 40dp 触控区的 ✕ 会比那颗细箭头低半格（用户看到的「× 与箭头
                         // 没对齐」）。居中后两者共用同一条中线。
                         Row(
                             modifier = Modifier.align(Alignment.CenterVertically),
@@ -616,8 +616,8 @@ private fun PeriodPill(period: String) {
             fontWeight = FontWeight.Medium,
         )
         Spacer(Modifier.width(4.dp))
-        // 尺寸交给图标自己（20×12.5dp）。**不要**用 Modifier.size 缩它 —— 一缩笔画
-        // 跟着变细，就和其它行那颗箭头不是一套了（3.1.1 踩过的坑）。
+        // 尺寸交给图标自己（10×6dp、1dp 笔画）。**不要**用 Modifier.size 缩它 ——
+        // 一缩笔画跟着变细，就和其它行那颗 › 不是一套了（3.1.1 踩过的坑）。
         TintedIcon(
             imageVector = AppIcons.ArrowDown,
             tint = MiuixTheme.colorScheme.primary.copy(alpha = 0.8f),

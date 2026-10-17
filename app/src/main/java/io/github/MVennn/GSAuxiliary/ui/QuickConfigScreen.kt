@@ -240,8 +240,8 @@ private fun SchemeRow(
         summary = preview.ifEmpty { null },
         endActions = {
             // 整簇显式垂直居中（4-项）。`endActions` 的 Row 默认 **Top** 对齐：
-            // ⋮ 在自己的 IconButton 里居中、箭头（12.5dp 高）却贴在顶边，两者中心
-            // 差 12.5dp —— 上机就是「箭头对不上三个点」（实测 ⋮ 511.5 / › 477.0）。
+            // ⋮ 在自己的 IconButton 里居中、箭头却贴在顶边，两者中心
+            // 差出十几 dp —— 上机就是「箭头对不上三个点」（实测 ⋮ 511.5 / › 477.0）。
             // 收进一个 `align(CenterVertically)` 的 Row，三者共用同一条中线。
             Row(
                 modifier = Modifier.align(Alignment.CenterVertically),

@@ -274,6 +274,12 @@ class AiStareQuickConfigFeature : Feature {
             GLog.i("一键配置JS：$msg")
         }
 
+        /** JS 要一条提示 —— 走**安卓原生 Toast**（页面关了它还在） */
+        @JavascriptInterface
+        fun toast(msg: String) {
+            nativeToast(msg)
+        }
+
         /**
          * JS 调 `gsaux.apply("s1")`：套用方案。
          *
@@ -306,7 +312,7 @@ class AiStareQuickConfigFeature : Feature {
                     val parsed = parseStockCode(curUrl)
                     if (parsed == null) {
                         GLog.w("一键配置：URL 里解不出 stockCode（$curUrl）")
-                        postToast(wv, "取数失败")
+                        nativeToast("取数失败")
                         return@runCatching
                     }
                     GLog.i("一键配置：开始取数 ${parsed.first}.${parsed.second}")
@@ -345,21 +351,16 @@ class AiStareQuickConfigFeature : Feature {
             GLog.i("一键配置：保存完成，收页面（回个股详情页=$backToStock）")
             mainHandler.post {
                 runCatching {
-                    topActivity()?.finish()
-                    if (!backToStock) return@runCatching
-                    var steps = 0
-                    val step = object : Runnable {
-                        override fun run() {
-                            if (steps >= 5) return
-                            val top = topActivity() ?: return
-                            // 只收「智能盯盘」这一族页面，别把别的 Activity 一起关掉
-                            if (!top.javaClass.name.startsWith(AISTARE_PACKAGE)) return
-                            steps++
-                            top.finish()
-                            mainHandler.postDelayed(this, 450)
-                        }
+                    // 提示先弹：原生 Toast 是系统浮层，页面立刻关掉也不影响它
+                    nativeToast("保存成功")
+                    if (backToStock) {
+                        // **一次性**把智能盯盘这一族页面全收掉：逐个 finish（每层等 450ms）
+                        // 会让用户看见「先回智能盯盘、再回详情页」两跳
+                        val pages = aistareActivities()
+                        if (pages.isEmpty()) topActivity()?.finish() else pages.forEach { it.finish() }
+                    } else {
+                        topActivity()?.finish()
                     }
-                    mainHandler.postDelayed(step, 450)
                 }.onFailure { GLog.w("一键配置：保存后返回失败", it) }
             }
         }
@@ -414,8 +415,8 @@ class AiStareQuickConfigFeature : Feature {
             runCatching {
                 val (up, down) = result
                     ?: run {
-                        // 整体放弃：不写值，顶部轻提示（§3.2「取数失败不写值」）
-                        wv.evaluateJavascript(AiStareJs.toastCall("取数失败"), null)
+                        // 整体放弃：不写值，弹一条原生 Toast（§3.2「取数失败不写值」）
+                        nativeToast("取数失败")
                         return@post
                     }
                 wv.evaluateJavascript(AiStareJs.fillCall(toPlain(up), toPlain(down)), null)
@@ -424,11 +425,40 @@ class AiStareQuickConfigFeature : Feature {
         }
     }
 
-    private fun postToast(wv: WebView, text: String) {
+    /**
+     * 原生 Toast（系统浮层，页面关掉后仍在屏上）。
+     *
+     * Context 优先取 **WebView 自己的**（它就是宿主 Activity 的 context，能保证
+     * Toast 在这个应用名下显示）；拿不到再退回 `ActivityThread.currentApplication()`。
+     * 注意页面已经 finish 时 Activity 失效 —— 所以要 unwrap 到 Application。
+     */
+    private fun nativeToast(text: String) {
         mainHandler.post {
-            runCatching { wv.evaluateJavascript(AiStareJs.toastCall(text), null) }
+            runCatching {
+                val wvCtx = currentWebView?.get()?.context
+                val ctx = wvCtx?.applicationContext ?: hostApplicationContext()
+                if (ctx == null) { GLog.w("一键配置：Toast 拿不到 Context，跳过"); return@runCatching }
+                android.widget.Toast.makeText(ctx, text, android.widget.Toast.LENGTH_SHORT).show()
+                GLog.i("一键配置：已弹原生 Toast「$text」")
+            }.onFailure { GLog.w("一键配置：Toast 失败", it) }
         }
     }
+
+    /** 当前栈里所有「智能盯盘」页（价格页 / 策略列表 / 盯盘首页 …） */
+    private fun aistareActivities(): List<android.app.Activity> = runCatching {
+        val at = Class.forName("android.app.ActivityThread")
+        val thread = at.getDeclaredMethod("currentActivityThread").apply { isAccessible = true }.invoke(null)
+        val f = at.getDeclaredField("mActivities").apply { isAccessible = true }
+        val map = f.get(thread) as? Map<*, *> ?: return@runCatching emptyList()
+        map.values.mapNotNull { rec ->
+            if (rec == null) return@mapNotNull null
+            val act = runCatching {
+                rec.javaClass.getDeclaredField("activity").apply { isAccessible = true }
+                    .get(rec) as? android.app.Activity
+            }.getOrNull()
+            act?.takeIf { !it.isFinishing && it.javaClass.name.startsWith(AISTARE_PACKAGE) }
+        }
+    }.getOrDefault(emptyList())
 
     // ------------------------------------------------------------ 工具
 

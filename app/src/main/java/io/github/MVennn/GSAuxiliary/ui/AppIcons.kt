@@ -102,12 +102,23 @@ internal object AppIcons {
         pathData: String,
         viewport: Float,
         strokeWidth: Float,
+    ): ImageVector = strokedIconOf(name, size, size, pathData, viewport, viewport, strokeWidth)
+
+    /** 同上，宽高分开（非正方视口的描边图标用） */
+    private fun strokedIconOf(
+        name: String,
+        width: Dp,
+        height: Dp,
+        pathData: String,
+        viewportWidth: Float,
+        viewportHeight: Float,
+        strokeWidth: Float,
     ): ImageVector = ImageVector.Builder(
         name = name,
-        defaultWidth = size,
-        defaultHeight = size,
-        viewportWidth = viewport,
-        viewportHeight = viewport,
+        defaultWidth = width,
+        defaultHeight = height,
+        viewportWidth = viewportWidth,
+        viewportHeight = viewportHeight,
     ).addPath(
         pathData = PathParser().parsePathString(pathData).toNodes(),
         stroke = SolidColor(Color.Black),
@@ -248,26 +259,24 @@ internal object AppIcons {
      * 粗细、颜色（同样由调用方给 `onSurfaceVariantActions`）、右缘留白都对得上。
      */
     val ArrowDown: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        iconOf(
+        // 自己画一条 **1.0dp 描边**的浅「⌄」，宽 10dp（与右箭头同宽）：
+        //
+        // | | 右箭头 | 旧（放大 1.25） | 缩小到 11dp | **现在（自绘）** |
+        // |---|---|---|---|---|
+        // | 宽 | 10dp | 20dp | 11dp | **10dp** |
+        // | 笔画 | 1.0dp | 1.56dp | 0.69dp | **1.0dp** |
+        // | 与 › 的中心差 | — | 3.3dp | ~0.5dp | **~0.25dp** |
+        //
+        // 前两版都在「缩放旋转路径」上打转：放大 → 太宽太粗，缩小 → 变细（笔画跟着缩）。
+        // 既然目标是「同宽、同粗、同列」，就不要再缩放别人的路径 —— 直接按目标尺寸画。
+        strokedIconOf(
             name = "ArrowDown",
-            // 画的是 16×10 的路径（右箭头转过来），但**声明尺寸放大 1.25 倍**：
-            // 屏幕上一颗朝下的「V」比朝右的「>」显小（同样面积，视觉高度只有 10:16），
-            // 上机后反馈「有点小」就是它。视口仍是 16×10，笔画按 1.25 倍缩放（1.25dp），
-            // 与旁边那颗 10×16 的右箭头粗细相当。
-            width = 20.dp,
-            height = 12.5.dp,
-            viewportWidth = 16f,
-            viewportHeight = 10f,
-            pathData = "M14.531,1.65 " +
-                "C14.81,1.929 14.81,2.381 14.531,2.66 " +
-                "L8.47,8.721 " +
-                "C8.191,9.0 7.739,9.0 7.46,8.721 " +
-                "L1.399,2.66 " +
-                "C1.12,2.381 1.12,1.929 1.399,1.65 " +
-                "C1.678,1.371 2.13,1.371 2.409,1.65 " +
-                "L7.965,7.205 " +
-                "L13.521,1.65 " +
-                "C13.8,1.371 14.252,1.371 14.531,1.65 Z",
+            width = 10.dp,
+            height = 6.dp,
+            pathData = "M1,1.6 L5,4.6 L9,1.6",
+            viewportWidth = 10f,
+            viewportHeight = 6f,
+            strokeWidth = 1.0f,
         )
     }
 

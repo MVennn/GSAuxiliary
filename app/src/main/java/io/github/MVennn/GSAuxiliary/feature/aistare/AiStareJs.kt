@@ -381,13 +381,10 @@ internal object AiStareJs {
       }
       box.style.display = 'none';
       NS.disarmSkip();
-      NS.toast('__MSG_SAVED_OK__');
       D('skip: saved');
-      // 延后 1.2 秒再收页面：提示是画在**页面里**的，立刻关掉就跟着页面一起没了，
-      // 用户根本看不见（要求是「弹一条提示并自动返回」，先看见再回去）。
-      setTimeout(function() {
-        try { window.gsaux.saved(); } catch (e) { D('saved err ' + e); }
-      }, 1200);
+      // 立刻收页面：提示由 `gsaux.saved()` 里弹**原生 Toast**（系统浮层），
+      // 页面关掉之后它还在 —— 不需要像 HTML 提示那样等一会儿再走。
+      try { window.gsaux.saved(); } catch (e) { D('saved err ' + e); }
     });
     NS.saveObs.observe(document.body, { childList: true, subtree: true });
     // 兜底：10 秒还没等到（比如保存失败）就撤掉观察，免得一直挂着
@@ -399,6 +396,10 @@ internal object AiStareJs {
 
   // ---------- 轻提示（页面顶部，2 秒淡出） ----------
   NS.toast = function(text) {
+    // 优先用**安卓原生 Toast**：它是系统浮层，页面立刻关掉也不会跟着消失
+    try {
+      if (window.gsaux && window.gsaux.toast) { window.gsaux.toast(String(text)); return; }
+    } catch (e) {}
     var t = document.createElement('div');
     t.textContent = text;
     t.style.cssText = 'position:fixed;left:50%;top:64px;transform:translateX(-50%);' +

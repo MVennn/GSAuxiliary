@@ -1662,7 +1662,9 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
     用 `Widgets.DownArrowIcon()`（朝下 = 就地弹窗，朝右 = 进入下一级）；
   - 进入下一级 / 动作行保持朝右，禁用态传 `ArrowRightIcon(enabled = false)`。
   两颗箭头的路径都取自 Miuix `ArrowRight`（10×16、1dp 细笔画），下箭头是它的 90° 版，
-  声明尺寸 20×12.5dp ——「V」比「>」显小，放大一档才和右箭头同份量；两者右缘对齐
+  声明尺寸 10×6dp、笔画 1dp —— **不要通过缩放旋转路径来调大小**：放大到 20dp 会比 ›
+  宽出一倍（右缘对齐后中心偏左 3.3dp）、缩小到 11dp 笔画又只剩 0.69dp。要和 ›
+  同宽同粗同列，只能按目标尺寸单独画（`strokedIconOf`，1dp 描边）
 - **主题过渡遮罩要靠 `try/finally` 收尾**（3.1.1）：那层「旧配色遮罩」是
   `Animatable.animateTo` 淡出的，过渡途中被重启就停在半透明处 —— 表现是「切完主题
   整个界面被压暗，重启才恢复」。用 `withContext(NonCancellable) { snapTo(0f) }` 兜底
