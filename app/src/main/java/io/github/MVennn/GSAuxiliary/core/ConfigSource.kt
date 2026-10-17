@@ -35,7 +35,9 @@ class ConfigSource(private val xposed: XposedInterface) {
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             val fresh = read()
-            if (fresh.fingerprint != snapshot.fingerprint) {
+            // 指纹只取一次，避免比对两侧各算一遍
+            val freshFingerprint = fresh.fingerprint
+            if (freshFingerprint != snapshot.fingerprint) {
                 snapshot = fresh
                 GLog.i("配置已更新 -> $fresh")
                 runCatching { onChanged?.invoke(fresh) }

@@ -231,6 +231,14 @@ class StockDetailBarFeature : PageSyncFeature() {
     private val injected =
         Collections.synchronizedMap(WeakHashMap<ViewGroup, Injected>())
 
+    /**
+     * 本实例见过的页面 `decorView`（弱引用）。
+     *
+     * 热重载兜底清理（[restore] 里的按 tag 扫描）需要一个扫描起点，而走到那条路时
+     * 基类 [PageSyncFeature] 的 decorView 表已先被 detach 清空 —— 这里自己留一份。
+     */
+    private val seenDecors = Collections.synchronizedMap(WeakHashMap<View, Boolean>())
+
     /** 每轮只打一条「拦住宿主调暗」的日志，避免刷屏 */
     private val guardLogged = AtomicBoolean(false)
 
@@ -362,6 +370,7 @@ class StockDetailBarFeature : PageSyncFeature() {
      */
     override fun sync(env: FeatureEnv, activity: Activity): Boolean {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
+        seenDecors[root] = true   // 留个扫描起点给热重载兜底清理（弱引用，页面销毁自动失效）
         val barId = resolveId(root.context, IdKey.BOTTOM_BAR)
         if (barId == 0) return true                       // App 里没这个资源，再同步也没用
         val bars = findBars(root, barId)
@@ -425,10 +434,17 @@ class StockDetailBarFeature : PageSyncFeature() {
             return true
         }
         // 硬红线：**绝不把我们的容器套进另一个我们的容器里**。
-        // 正常路径不会走到这里（盒子 + 现场都判过了），但万一记账表与现场对不上，
-        // 宁可什么都不做，也不能再套一层 —— 实测套 5 层就把整条底栏撑爆了。
-        if (holderAncestorOf(more) != null) {
-            GLog.w("底栏入口：「更多」已经在我们的容器里，但现场与记账对不上 —— 本次不重复注入")
+        // 正常路径不会走到这里（盒子 + 现场都判过了）；走到只能说明「更多」外面套的
+        // 是**旧实例 / 丢记账后留下的孤儿容器**（审查 2026-10-17 中-9：热重载残留）——
+        // 按 tag 兜底还原掉它，本次先不注入，等下一次布局回调重新对齐。
+        // 绝不能再套一层 —— 实测套 5 层就把整条底栏撑爆了。
+        val orphanHolder = holderAncestorOf(more)
+        if (orphanHolder != null) {
+            val ok = runCatching { detachOrphan(orphanHolder) }
+                .onSuccess { GLog.w("底栏入口：发现并清理了一处无记账的注入容器（热重载残留），等下次布局重新注入") }
+                .onFailure { GLog.w("底栏入口：清理无记账的注入容器失败", it) }
+                .isSuccess
+            if (ok) noteChange()
             return true
         }
         val entry = buildEntry(more) ?: return false
@@ -567,6 +583,9 @@ class StockDetailBarFeature : PageSyncFeature() {
             gravity = Gravity.CENTER_VERTICAL
             // tag 是「找盒子」的关键：注入后「更多」的父级就是我们，见 boxOf
             tag = StockDetailBarTargets.ENTRY_HOLDER_TAG
+            // 盒子原宽再记一份在我们自己身上：热重载兜底清理（detachOrphan）没有
+            // 旧实例的记账表可查，只能从视图本身找回原宽（审查 2026-10-17 中-9）
+            setTag(KEY_ORIG_BOX_WIDTH, originalWidth)
         }
         entry.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -679,9 +698,78 @@ class StockDetailBarFeature : PageSyncFeature() {
             injected.clear()
             list
         }
-        if (entries.isEmpty()) return
         for (e in entries) runCatching { detach(e) }
-        noteChange()
+        // 审查 2026-10-17 中-9：遍历自己的记账表之后再加一道兜底 —— 热重载后跑到这里
+        // 的实例可能账上没几笔（甚至一笔都没有），旧实例留下的按钮和加宽的盒子却还在
+        // 树上。不依赖记账，直接按 [StockDetailBarTargets.ENTRY_HOLDER_TAG] 在本实例
+        // 见过的页面上扫，认出来就按 [detach] 同样的方式还原。正常路径表已清空、
+        // 扫不到东西，多花的只是一次浅层遍历。
+        var swept = 0
+        val roots = synchronized(seenDecors) { seenDecors.keys.toList() }
+        for (r in roots) swept += runCatching { sweepOrphans(r) }.getOrDefault(0)
+        if (entries.isNotEmpty() || swept > 0) noteChange()
+    }
+
+    /** 在 [root] 子树里按 tag 找**任意实例**注入的容器并逐个还原，返回还原了几处 */
+    private fun sweepOrphans(root: View?): Int {
+        if (root == null) return 0
+        val holders = ArrayList<ViewGroup>(4)
+        collectHolders(root, holders)
+        var n = 0
+        for (h in holders) {
+            val ok = runCatching { detachOrphan(h) }
+                .onFailure { GLog.w("底栏入口：兜底清理注入残留失败", it) }
+                .isSuccess
+            if (ok) {
+                n++
+                GLog.i("底栏入口：兜底清理了一处注入残留（热重载 / 记账丢失）")
+            }
+        }
+        return n
+    }
+
+    /** 深度优先收集带 [StockDetailBarTargets.ENTRY_HOLDER_TAG] 的容器（容器不会嵌套，命中即止） */
+    private fun collectHolders(v: View, out: MutableList<ViewGroup>) {
+        if (v is ViewGroup && v.tag == StockDetailBarTargets.ENTRY_HOLDER_TAG) {
+            out.add(v)
+            return
+        }
+        if (v !is ViewGroup) return
+        for (i in 0 until v.childCount) collectHolders(v.getChildAt(i), out)
+    }
+
+    /**
+     * 还原一个「没有记账」的注入容器 —— 与 [detach] 同构，但现场数据全部从视图本身取：
+     *
+     *  - 「更多」= 容器里不带 [StockDetailBarTargets.ENTRY_TAG] 的那个 `TextView`
+     *    （注入结构固定为 [我们的按钮, 更多]）；
+     *  - 放回位置 = 容器在盒子里的下标（注入时就是用它顶替「更多」的）；
+     *  - 盒子原宽 = 注入时记在容器 keyed tag 上的那份（[KEY_ORIG_BOX_WIDTH]）。
+     *
+     * 旧版本注入的容器没有 keyed tag，那种情况下盒宽保持现状（`wrap_content`，
+     * 视觉上仍是对的）；彻底复原交给宿主重建底栏或重启。
+     */
+    private fun detachOrphan(holder: ViewGroup) {
+        val box = holder.parent as? ViewGroup ?: return
+        val index = box.indexOfChild(holder)
+        var more: TextView? = null
+        for (i in 0 until holder.childCount) {
+            val c = holder.getChildAt(i) as? TextView ?: continue
+            if (c.tag != StockDetailBarTargets.ENTRY_TAG) more = c
+        }
+        runCatching { box.removeView(holder) }
+        more?.let { m ->
+            runCatching {
+                if (index in 0..box.childCount) box.addView(m, index) else box.addView(m)
+            }
+        }
+        val orig = holder.getTag(KEY_ORIG_BOX_WIDTH) as? Int
+        val lp = box.layoutParams
+        if (lp != null && orig != null && orig != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.width = orig
+            runCatching { box.layoutParams = lp }
+        }
+        runCatching { box.requestLayout() }
     }
 
     /** 还有注入在现场时才值得在关开关时打日志（`detach` 自己有逐项日志） */
@@ -1184,5 +1272,13 @@ class StockDetailBarFeature : PageSyncFeature() {
 
         /** 量不到「更多」图标尺寸时的兜底边长（dp） */
         const val FALLBACK_ICON_DP = 22f
+
+        /**
+         * 注入时把「更多」盒子的**原宽**记在我们自己的 holder 上（keyed tag）。
+         *
+         * holder 是我们 new 出来的私有视图，宿主不会碰它，用一个固定字符串的哈希当
+         * key 不会与任何人撞。热重载兜底清理（[detachOrphan]）靠它找回原宽。
+         */
+        val KEY_ORIG_BOX_WIDTH = "gsaux.stockbar.orig_box_width".hashCode()
     }
 }

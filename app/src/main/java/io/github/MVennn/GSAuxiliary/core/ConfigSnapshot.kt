@@ -56,9 +56,13 @@ data class ConfigSnapshot(
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
      * 只在内容变化时改变，与对象身份无关。
+     *
+     * 用属性初始化器在构造期算好并缓存 —— 快照本身不可变，指纹永远不变。
+     * `getView` 每行都会读一次它，绝不能做成计算型 getter
+     * （[aiStareQuickConfig] 的 JSON 可达几十 KB，`String.hashCode` 是 O(n) 全扫）。
      */
-    val fingerprint: Int
-        get() = ((if (enabled) 1 else 0) * 31
+    val fingerprint: Int =
+        ((if (enabled) 1 else 0) * 31
                 + color * 7
                 + (if (scopeStrategy) 1 else 0) * 131
                 + logLevel * 17

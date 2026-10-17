@@ -35,7 +35,10 @@ internal object HttpTransport {
     /** 腾讯 `qt.gtimg.cn` 是 GBK（名称字段会乱码 → ST 判定失效）；日 K 与东财是 UTF-8 */
     val GBK: Charset = runCatching { Charset.forName("GBK") }.getOrDefault(Charsets.UTF_8)
 
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android) GSAuxiliary"
+    // 行情接口（腾讯/东财）对非浏览器 UA 风控很严，自报 "GSAuxiliary" 既容易被拦
+    // 又暴露模块身份；伪装成常见移动浏览器 UA 通过率最高，且不与任何模块关联。
+    private const val USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     private const val MAX_BODY_BYTES = 4 * 1024 * 1024
     private const val RETRY_DELAY_MS = 220L
 
@@ -99,7 +102,10 @@ internal object HttpTransport {
             if (attempt < tries) runCatching { Thread.sleep(RETRY_DELAY_MS * attempt) }
         }
 
-        GLog.w("一键配置取数：HTTP 失败${if (tag.isEmpty()) "" else "（$tag）"} $url", lastError)
+        // 失败事实保留在 INFO（方便排查），但不带完整 URL —— URL 里的股票代码
+        // 属于用户持仓信息，不能明文进全局日志；含代码的细节降级到 DEBUG。
+        GLog.i("一键配置取数：HTTP 失败${if (tag.isEmpty()) "" else "（$tag）"} $lastError")
+        GLog.d("一键配置取数：失败请求 URL = $url${lastError?.let { "（$it）" } ?: ""}")
         return null
     }
 

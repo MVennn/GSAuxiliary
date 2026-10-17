@@ -12,6 +12,8 @@ import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.reflect.Field
+import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -46,6 +48,14 @@ class WatchlistFeature : Feature {
 
     /** 上一次已应用的配置指纹；[Int.MIN_VALUE] 表示还没应用过 */
     @Volatile private var appliedFingerprint = Int.MIN_VALUE
+
+    /** 适配器类 -> 解析出的条目访问路径（弱引用键，随类卸载自动清理） */
+    private val adapterAccessors =
+        Collections.synchronizedMap(WeakHashMap<Class<*>, ItemAccess>())
+
+    /** 条目类 -> 解析出的 code/market 字段访问路径（同样弱引用键） */
+    private val itemAccessors =
+        Collections.synchronizedMap(WeakHashMap<Class<*>, CamAccess>())
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
@@ -332,20 +342,66 @@ class WatchlistFeature : Feature {
         return id
     }
 
+    /** 适配器的条目访问路径：按适配器类解析一次、终身复用（宿主类不会换，无需失效） */
+    private class ItemAccess(
+        val getItem: Method?,
+        val listMethods: List<Method>,
+        val listFields: List<Field>,
+    )
+
+    /** 条目的 code/market 字段访问路径：按条目类解析一次、终身复用 */
+    private class CamAccess(
+        val camFields: List<Field>,
+        val codeFields: List<Field>,
+        val marketFields: List<Field>,
+    )
+
+    /**
+     * 取适配器的条目访问路径。全候选都解析失败也照样缓存空访问器，
+     * 避免 getView 每行都对整条继承链重扫一遍（与 [ZxWatchlist] 的失败标记同思路）。
+     */
+    private fun itemAccessOf(cls: Class<*>): ItemAccess {
+        synchronized(adapterAccessors) {
+            adapterAccessors[cls]?.let { return it }
+            val acc = ItemAccess(
+                getItem = Reflect.findMethod(cls, "getItem", Int::class.javaPrimitiveType!!),
+                listMethods =
+                    listOf("getData", "getItems", "getList").mapNotNull { Reflect.findMethod(cls, it) },
+                listFields =
+                    listOf("mData", "mDataList", "mItems", "data", "mList").mapNotNull { Reflect.findField(cls, it) },
+            )
+            adapterAccessors[cls] = acc
+            return acc
+        }
+    }
+
+    /** 取条目的 code/market 字段访问路径，失败也缓存（同上） */
+    private fun camAccessOf(cls: Class<*>): CamAccess {
+        synchronized(itemAccessors) {
+            itemAccessors[cls]?.let { return it }
+            val acc = CamAccess(
+                camFields = WatchlistTargets.CAM_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+                codeFields = WatchlistTargets.CODE_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+                marketFields = WatchlistTargets.MARKET_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+            )
+            itemAccessors[cls] = acc
+            return acc
+        }
+    }
+
     private fun itemAt(adapter: Any, position: Int): Any? {
+        val acc = itemAccessOf(adapter.javaClass)
         // 1) getItem(int)
-        Reflect.findMethod(adapter.javaClass, "getItem", Int::class.javaPrimitiveType!!)?.let { m ->
+        acc.getItem?.let { m ->
             runCatching { m.invoke(adapter, position) }.getOrNull()?.let { return it }
         }
         // 2) getData() / getItems() / getList()
-        for (mn in arrayOf("getData", "getItems", "getList")) {
-            Reflect.findMethod(adapter.javaClass, mn)?.let { m ->
-                pick(runCatching { m.invoke(adapter) }.getOrNull(), position)?.let { return it }
-            }
+        for (m in acc.listMethods) {
+            pick(runCatching { m.invoke(adapter) }.getOrNull(), position)?.let { return it }
         }
         // 3) 常见字段名
-        for (fn in arrayOf("mData", "mDataList", "mItems", "data", "mList")) {
-            pick(Reflect.readField(adapter, fn), position)?.let { return it }
+        for (f in acc.listFields) {
+            pick(runCatching { f.get(adapter) }.getOrNull(), position)?.let { return it }
         }
         return null
     }
@@ -359,15 +415,16 @@ class WatchlistFeature : Feature {
 
     private fun codeAndMarket(item: Any?): String? {
         if (item == null) return null
+        val acc = camAccessOf(item.javaClass)
 
-        for (f in WatchlistTargets.CAM_FIELDS) {
-            val v = Reflect.readField(item, f) as? String
+        for (f in acc.camFields) {
+            val v = runCatching { f.get(item) }.getOrNull() as? String
             if (!v.isNullOrEmpty()) return v
         }
 
         var code: String? = null
-        for (f in WatchlistTargets.CODE_FIELDS) {
-            val v = Reflect.readField(item, f) as? String
+        for (f in acc.codeFields) {
+            val v = runCatching { f.get(item) }.getOrNull() as? String
             if (!v.isNullOrEmpty()) {
                 code = v
                 break
@@ -375,8 +432,8 @@ class WatchlistFeature : Feature {
         }
         if (code == null) return null
 
-        for (f in WatchlistTargets.MARKET_FIELDS) {
-            val v = Reflect.readField(item, f) ?: continue
+        for (f in acc.marketFields) {
+            val v = runCatching { f.get(item) }.getOrNull() ?: continue
             val s = v.toString()
             if (s.isNotEmpty()) return "$code.$s"
         }

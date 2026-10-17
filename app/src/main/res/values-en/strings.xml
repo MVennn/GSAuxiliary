@@ -119,7 +119,7 @@
     <string name="quick_section_schemes">Schemes</string>
     <string name="quick_section_actions">Actions</string>
     <string name="quick_new_scheme">New scheme</string>
-    <string name="quick_new_scheme_name_prefix">New scheme </string>
+    <string name="quick_new_scheme_name_prefix">New scheme\u0020</string>
     <string name="quick_default_badge">Default</string>
     <string name="quick_menu_set_default">Set as default</string>
     <string name="quick_menu_move_up">Move up</string>

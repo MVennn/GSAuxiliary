@@ -2,6 +2,7 @@ package io.github.MVennn.GSAuxiliary.feature
 
 import android.os.Handler
 import android.os.Looper
+import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
@@ -87,9 +88,64 @@ class FeatureManager(private val env: FeatureEnv) {
         }
     }
 
-    /** 卸载全部钩子（热重载 / 进程结束前） */
+    /**
+     * 卸载全部钩子（热重载 / 进程结束前）。
+     *
+     * 审查 2026-10-17 高-1：**只卸钩子不够**。挂在宿主 `decorView` 上的
+     * `OnGlobalLayoutListener` / `OnPreDrawListener`（PageSync 系）、写进窗口的
+     * 导航条颜色、留在 ListView 上的过滤代理、注入到底栏里的按钮 —— 这些都不是
+     * Xposed 钩子，`unhook` 摘不掉；而旧实例的 `env.config` 冻结在「开启」态，
+     * 永远等不到 `onConfigChanged(false)`，变成关不掉的僵尸。
+     *
+     * 修法：构造一份「全部功能关闭」的快照，让每个功能先走一遍自己的
+     * 关闭还原路径（[Feature.onConfigChanged] —— PageSync 系 detach+restore、
+     * 导航条还原窗口属性、筛选股票拆代理），把视图现场清干净，再卸钩子。
+     * 还原涉及视图操作，必须在主线程；热重载回调不保证在主线程，故按需投递。
+     */
     fun uninstallAll() {
+        val off = allOffSnapshot()
+        env.config = off   // 旧实例自此只读得到「全关」：钩子里的开关判断也立即失效
+        val features = this.features
+        val teardown = Runnable {
+            for (f in features) {
+                runCatching { f.onConfigChanged(env, off) }
+                    .onFailure { GLog.w("热重载清理：功能 [${f.id}] 关闭还原失败", it) }
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) teardown.run()
+        else mainHandler.post(teardown)
+
         GLog.i("卸载全部钩子（共 ${bag.size} 个）")
         bag.unhookAll()
     }
+
+    /**
+     * 「所有功能全关」的配置快照：boolean 全 false，数值 / 字符串取
+     * [ConfigKeys] 的默认值。只用于热重载清理，不落任何持久化。
+     */
+    private fun allOffSnapshot(): ConfigSnapshot = ConfigSnapshot(
+        enabled = false,
+        color = ConfigKeys.DEFAULT_COLOR,
+        scopeStrategy = false,
+        logLevel = ConfigKeys.DEFAULT_LOG_LEVEL,
+        stgDirectQuote = false,
+        stgQuoteSwipe = false,
+        stgSelectAll = false,
+        stgStockFilter = false,
+        stockBarEntry = false,
+        dockClean = false,
+        homeBannerHide = false,
+        marketBannerHide = false,
+        marketSectorCompact = false,
+        marketOverviewCompact = false,
+        navBarBlend = false,
+        ipoDialogClean = false,
+        aistareQuickEnabled = false,
+        aiStareQuickConfig = ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
+        aiStareSkipSaveConfirm = false,
+        aiStareEmptySave = false,
+        aiStareCardDetail = false,
+        aiStareSaveBackToStock = false,
+        aiStarePickScheme = false,
+    )
 }

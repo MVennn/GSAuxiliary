@@ -84,6 +84,16 @@ class AiStareQuickConfigFeature : Feature {
         Executors.newSingleThreadExecutor { r -> Thread(r, "gsaux-quickcfg").apply { isDaemon = true } }
     }
 
+    /** [Bridge.diag] 限频：上次放行的时间戳（JavaBridge 线程访问，volatile 保证可见） */
+    @Volatile
+    private var lastDiagAtMs = 0L
+
+    /** [Bridge.diag] 单条日志最大长度（页面 JS 可无限刷，防日志爆量） */
+    private val DIAG_MAX_LEN = 200
+
+    /** [Bridge.diag] 限频间隔：1 秒最多放行 1 条 */
+    private val DIAG_MIN_INTERVAL_MS = 1000L
+
     /**
      * 取数编排（通道顺序 / 降级 / 缓存都在里面）。
      *
@@ -225,7 +235,8 @@ class AiStareQuickConfigFeature : Feature {
             webView.addJavascriptInterface(bridge, AiStareQuickConfigTargets.JS_BRIDGE_NAME)
             webView.evaluateJavascript(injectedJs, null)
             val sj = schemesJson(env)
-            GLog.i("一键配置：注入方案 ${sj.take(160)}（开关=${env.config.aistareQuickEnabled}）")
+            // 方案 JSON 含用户自建方案明细，降 DEBUG，避免 INFO 日志直接暴露配置内容
+            GLog.d("一键配置：注入方案 ${sj.take(160)}（开关=${env.config.aistareQuickEnabled}）")
             webView.evaluateJavascript(
                 // 必须过 safeJson：initCall 拼的是 `init("...", true)`，
                 // 直接把原始 JSON 塞进去会变成数组字面量 —— JS 收到的是对象，
@@ -241,8 +252,9 @@ class AiStareQuickConfigFeature : Feature {
                 ),
                 null,
             )
+            // 股票代码脱敏后才允许进 INFO 日志（防关注列表泄漏）
             GLog.i(
-                "一键配置：已注入价格页（${Uri.parse(url).getQueryParameter("stockCode")}）" +
+                "一键配置：已注入价格页（${maskStockCode(Uri.parse(url).getQueryParameter("stockCode"))}）" +
                     " 空数据保存=${env.config.aiStareEmptySave}",
             )
         }.onFailure { GLog.w("一键配置：JS 注入失败", it) }
@@ -301,10 +313,16 @@ class AiStareQuickConfigFeature : Feature {
         /**
          * JS → 日志（排查用）。H5 里没有 console 可看，点一次按钮到底走到哪一步
          * 只能靠这条通道打回 LSPosed 日志。
+         *
+         * 桥挂在宿主**全部** HybirdWebView 上，页面里的第三方脚本也能无限刷它 ——
+         * 加两道闸：单条截断 200 字符 + 限频 1 秒 1 条（放行即刷新时间戳）。
          */
         @JavascriptInterface
         fun diag(msg: String) {
-            GLog.i("一键配置JS：$msg")
+            val now = System.currentTimeMillis()
+            if (now - lastDiagAtMs < DIAG_MIN_INTERVAL_MS) return
+            lastDiagAtMs = now
+            GLog.i("一键配置JS：${msg.take(DIAG_MAX_LEN)}")
         }
 
         /** JS 要一条提示 —— 走**安卓原生 Toast**（页面关了它还在） */
@@ -333,7 +351,8 @@ class AiStareQuickConfigFeature : Feature {
                     // 也看得见它：当前不是价格页就沉默返回，不要在别的页面弹「取数失败」。
                     val curUrl = wv.url.orEmpty()
                     if (!AiStareQuickConfigTargets.isPricePage(curUrl)) {
-                        GLog.w("一键配置：apply 时 URL 不是价格页（$curUrl）")
+                        // URL 可能带 stockCode，降 DEBUG（INFO 及以上不得出现完整代码）
+                        GLog.d("一键配置：apply 时 URL 不是价格页（$curUrl）")
                         return@runCatching
                     }
                     val scheme = QuickConfigStore.decode(cfg.aiStareQuickConfig)
@@ -344,11 +363,13 @@ class AiStareQuickConfigFeature : Feature {
                     }
                     val parsed = parseStockCode(curUrl)
                     if (parsed == null) {
-                        GLog.w("一键配置：URL 里解不出 stockCode（$curUrl）")
+                        // 同上：URL 含 stockCode，降 DEBUG
+                        GLog.d("一键配置：URL 里解不出 stockCode（$curUrl）")
                         nativeToast("取数失败")
                         return@runCatching
                     }
-                    GLog.i("一键配置：开始取数 ${parsed.first}.${parsed.second}")
+                    // 状态行保留 INFO，但代码要打码（防关注列表泄漏）
+                    GLog.i("一键配置：开始取数 ${maskStockCode("${parsed.first}.${parsed.second}")}")
 
                     // 先抓页面全文（④ DOM 通道的原料；必须在主线程调 WebView）。
                     //
@@ -395,9 +416,12 @@ class AiStareQuickConfigFeature : Feature {
         @JavascriptInterface
         fun saved() {
             val backToStock = env.config.aiStareSaveBackToStock
-            GLog.i("一键配置：保存完成，收页面（回个股详情页=$backToStock）")
             mainHandler.post {
                 runCatching {
+                    // 与 apply() 同款 URL 守卫：桥挂在全部 HybirdWebView 上，任意 H5 的
+                    // 第三方脚本都能调到 saved()，不能让它触发原生 Toast / 收 Activity 栈。
+                    if (!pricePageGuarded("saved")) return@post
+                    GLog.i("一键配置：保存完成，收页面（回个股详情页=$backToStock）")
                     // 提示先弹：原生 Toast 是系统浮层，页面立刻关掉也不影响它
                     nativeToast("保存成功")
                     if (!backToStock) {
@@ -444,6 +468,9 @@ class AiStareQuickConfigFeature : Feature {
         fun manage() {
             mainHandler.post {
                 runCatching {
+                    // 与 apply() 同款 URL 守卫：任意 H5 都调得到 manage()，
+                    // 不能让第三方页面随意拉起模块设置页。
+                    if (!pricePageGuarded("manage")) return@post
                     val ctx = hostApplicationContext() ?: run {
                         GLog.w("一键配置：拿不到宿主 Context，拉起模块 App 失败")
                         return@post
@@ -551,7 +578,7 @@ class AiStareQuickConfigFeature : Feature {
             .putExtra(KEY_ADAPTER, bundle)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         ctx.startActivity(intent)
-        GLog.i("一键配置：已拉起个股详情页（$code.$market）")
+        GLog.i("一键配置：已拉起个股详情页（${maskStockCode("$code.$market")}）")
         true
     }.getOrDefault(false)
 
@@ -572,6 +599,33 @@ class AiStareQuickConfigFeature : Feature {
     }.getOrDefault(emptyList())
 
     // ------------------------------------------------------------ 工具
+
+    /** 个股代码脱敏（INFO 级日志专用）：6 位代码保留前 2 位，如 300045.1 → 30****.1 */
+    private fun maskStockCode(codeDotMarket: String?): String {
+        if (codeDotMarket.isNullOrBlank()) return "代码已略"
+        val dot = codeDotMarket.lastIndexOf('.')
+        if (dot <= 0) return "代码已略"
+        return codeDotMarket.take(2) + "****" + codeDotMarket.substring(dot)
+    }
+
+    /**
+     * 桥方法的 URL 守卫（[Bridge.apply] 同款）：桥挂在宿主**全部** HybirdWebView 上
+     * （必须赶在页面加载前挂），任意 H5 的第三方脚本都调得到 gsaux.* ——
+     * 当前 WebView 不是价格页就沉默拒绝，防其它页面触发原生副作用。
+     * **必须主线程调**（`WebView.getUrl()` 是主线程 API，Bridge 各方法已 post 进主线程）。
+     */
+    private fun pricePageGuarded(action: String): Boolean {
+        val wv = currentWebView?.get() ?: run {
+            GLog.d("一键配置：$action 时没有 currentWebView")
+            return false
+        }
+        val url = wv.url.orEmpty()
+        if (!AiStareQuickConfigTargets.isPricePage(url)) {
+            GLog.d("一键配置：$action 时 URL 不是价格页，忽略")
+            return false
+        }
+        return true
+    }
 
     /** URL → (code, market)；实测参数名 `stockCode=300045.1`（§1.4） */
     private fun parseStockCode(url: String): Pair<String, String>? {

@@ -80,15 +80,35 @@ object ModulePreferences {
         initialized = true
     }
 
-    /** 框架刚连上、远端还空着时，把本地暂存的值搬过去 */
+    /**
+     * 框架连上后，把本地暂存的配置同步进远端。
+     *
+     * ## 合并方向（逐 key）
+     *
+     *  - **远端已有的键一律不动**：远端是权威数据源。旧实现「远端非空即整体
+     *    return」虽然也守住了这一点，但会把框架断连期间用户在本地改的开关
+     *    整体丢掉 —— 重连后远端非空就直接 return，本地的新值永远迁不过去，
+     *    还没有任何提示。现在改成逐 key 合并：只补写「远端没有的键」，
+     *    远端已有的键保持原值，避免用本地旧值覆盖远端新值。
+     *  - **首次连接（远端为空）时全部键都是缺失键**，效果等同旧版的整体迁移，
+     *    「本地兜底值在首次连接时搬进远端」的语义不变。
+     *
+     * 本方法在 [FrameworkBridge] 的 service listener 回调里被调，写远端必须兜异常，
+     * 不能让迁移失败把连接回调炸掉。
+     */
     private fun migrateLocalToRemote(lp: SharedPreferences, rp: SharedPreferences) {
         val localAll = lp.all
         if (localAll.isEmpty()) return
-        if (rp.all.isNotEmpty()) return
-
+        val remoteAll = runCatching { rp.all }.getOrNull() ?: return
+        val missing = localAll.filterKeys { it !in remoteAll }
+        if (missing.isEmpty()) return
+        GLog.i(
+            "框架重连：远端已有 ${remoteAll.size} 个键，" +
+                "本地暂存的 ${missing.size} 个缺失键已补写（远端已有键保持不动）"
+        )
         runCatching {
             val e = rp.edit()
-            for ((k, v) in localAll) {
+            for ((k, v) in missing) {
                 when (v) {
                     is Boolean -> e.putBoolean(k, v)
                     is Int -> e.putInt(k, v)
@@ -101,7 +121,7 @@ object ModulePreferences {
                     }
                 }
             }
-            if (e.commit()) GLog.i("已把本地暂存的 ${localAll.size} 项配置迁移到 remote preferences")
+            if (e.commit()) GLog.i("已把本地暂存的 ${missing.size} 项配置迁移到 remote preferences")
         }.onFailure { GLog.w("迁移本地配置失败", it) }
     }
 

@@ -125,8 +125,17 @@ class StgStockFilterFeature : Feature {
     /** 筛选状态缓存：避免每次通知都读一遍 SharedPreferences */
     @Volatile private var cachedFilters: StgFilters? = null
 
-    /** 当前停在策略详情页的 Activity */
-    @Volatile private var trackedActivity: Activity? = null
+    /**
+     * 当前停在策略详情页的 Activity。
+     *
+     * 审查 2026-10-17 高-3：原来是 `@Volatile` 强引用且从不置空 —— 热重载后旧实例
+     * 被整体替换、没人再读它，却把离开已久的 Activity（连同整棵视图树）钉在内存里。
+     * 改成弱引用（与 [trackedList] 同款写法），页面销毁 / 实例废弃后自然释放。
+     */
+    private val trackedActivityRef =
+        java.util.concurrent.atomic.AtomicReference<java.lang.ref.WeakReference<Activity>>()
+
+    private fun trackedActivity(): Activity? = trackedActivityRef.get()?.get()
 
     /** 三点菜单窗口被我们改过的原始高度，撤销时还原 */
     private val popupOriginalHeight = Collections.synchronizedMap(WeakHashMap<PopupWindow, Int>())
@@ -262,6 +271,31 @@ class StgStockFilterFeature : Feature {
     }
 
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgStockFilter
+
+    // ------------------------------------------------------------------ 跨实例识别
+
+    /**
+     * 是不是我们（**任意热重载实例**）装的过滤代理。
+     *
+     * 审查 2026-10-17 高-3：热重载后新旧实例的 [FilteredAdapter] 分属**不同
+     * ClassLoader 下的同名类**，`is FilteredAdapter` 只认得自己这一份，旧实例留在
+     * ListView 上的代理就成了「无主」的 —— 还原逻辑全部走不到。这里按类名判断，
+     * 跨实例、跨 ClassLoader 都有效。
+     */
+    private fun isFilteredAdapter(a: Any?): Boolean =
+        a != null && "FilteredAdapter" in a.javaClass.name
+
+    /**
+     * 取出过滤代理包着的原适配器；不是代理就原样返回。
+     *
+     * 兼容旧实例的代理：那种代理不是当前 ClassLoader 里的 [FilteredAdapter]，
+     * 只能反射调 `getTarget()`（Kotlin 属性生成的公开方法，热重载前后签名一致）。
+     * 反射失败返回 null，调用方按「现场认不出来」安全退避。
+     */
+    private fun unwrapProxy(a: Any): Any? {
+        if (!isFilteredAdapter(a)) return a
+        return runCatching { a.javaClass.getMethod("getTarget").invoke(a) }.getOrNull()
+    }
 
     // ------------------------------------------------------------------ 安装
 
@@ -556,8 +590,8 @@ class StgStockFilterFeature : Feature {
         //    两种情况都得在下一次绑定时把代理装回去。
         if (!isFilterActive(env, adapter)) return
         val st = stateOf(adapter)
-        val ctx = row?.context ?: trackedActivity ?: return
-        val act = findActivity(ctx) ?: trackedActivity ?: return
+        val ctx = row?.context ?: trackedActivity() ?: return
+        val act = findActivity(ctx) ?: trackedActivity() ?: return
         val lv = trackedList.get()?.get() ?: findListView(act) ?: return
         if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) return
         val handler = act.window?.decorView?.handler ?: return
@@ -575,7 +609,7 @@ class StgStockFilterFeature : Feature {
     /** 条件生效（功能开 + 至少勾了一个）且数据不是我们装的 → 需要补筛 */
     private fun isFilterActive(env: FeatureEnv, adapter: Any): Boolean {
         if (!env.config.stgStockFilter) return false
-        val ctx = trackedActivity ?: return false
+        val ctx = trackedActivity() ?: return false
         return filtersBy(ctx).active
     }
 
@@ -613,7 +647,7 @@ class StgStockFilterFeature : Feature {
      *               原方法马上会通知，不用也不要重复通知。
      */
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
-        val ctx = trackedActivity ?: return
+        val ctx = trackedActivity() ?: return
         val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return
         val base = adapter as? android.widget.ListAdapter ?: return
 
@@ -621,8 +655,9 @@ class StgStockFilterFeature : Feature {
         // 宿主换过适配器 / 页面重建之后，旧实例的 notify 与 getView 回调仍会打到我们身上，
         // 照着旧实例装代理会把列表的数据源换成过期内容（见 [liveAdapter]）。
         // 列表还没有适配器时（live == null）放行 —— 那是首次安装的场景。
+        // 列表上挂着的是我们的过滤代理就先拆包（热重载后可能是旧实例的，按类名认）。
         unwrapHeaderAdapter(lv.adapter)?.let { live ->
-            val liveBase = if (live is FilteredAdapter) live.target else live
+            val liveBase = unwrapProxy(live) ?: return
             if (liveBase !== adapter) return
         }
 
@@ -640,7 +675,13 @@ class StgStockFilterFeature : Feature {
                 updateResNum(ctx, full.size, full.size, active = false)
                 updateEmptyView(ctx, empty = false)
             }
-            if (st.proxy != null) {
+            // 审查 2026-10-17 高-3：还原判据不能只看本实例的记账表（`st.proxy`）——
+            // 热重载后 ListView 上可能还挂着**旧实例**装的 FilteredAdapter，新实例的
+            // 记账表是空的，只查表就永远走不到 `lv.adapter = base`，筛选残留不清。
+            // 这里补一个「现场」判据：列表上（拆掉 header 包装后）只要还挂着我们的
+            // 过滤代理（任意实例的，按类名认），就还原成全量适配器。
+            val liveOnList = unwrapHeaderAdapter(lv.adapter)
+            if (st.proxy != null || isFilteredAdapter(liveOnList)) {
                 runCatching { lv.adapter = base }
                     .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
                 st.proxy = null
@@ -1071,11 +1112,12 @@ class StgStockFilterFeature : Feature {
      * 是隐藏 API，得反射取）包一层。没装筛选时下标表为空，等价于原样透传。
      */
     private fun ensureClickRemap() {
-        val act = trackedActivity ?: return noteSkip("没有 trackedActivity")
+        val act = trackedActivity() ?: return noteSkip("没有 trackedActivity")
         val lv = findListView(act) ?: return noteSkip("找不到列表控件")
         var adapter = unwrapHeaderAdapter(lv.adapter) ?: return noteSkip("列表还没有 adapter")
         // 列表上可能是我们的过滤代理 —— 认它包着的那个原适配器
-        if (adapter is FilteredAdapter) adapter = adapter.target
+        // （热重载后可能是旧实例的代理，`is FilteredAdapter` 认不出，按类名拆包）
+        adapter = unwrapProxy(adapter) ?: return noteSkip("过滤代理取不到原适配器")
         if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) {
             return noteSkip("adapter 不是目标：${adapter.javaClass.name}")
         }
@@ -1232,12 +1274,13 @@ class StgStockFilterFeature : Feature {
     private fun liveAdapter(act: Activity): Any? {
         val lv = findListView(act) ?: return null
         val a = unwrapHeaderAdapter(lv.adapter) ?: return null
-        return if (a is FilteredAdapter) a.target else a
+        // 列表上可能是我们的过滤代理（热重载后也可能是旧实例的）—— 拆包取原适配器
+        return unwrapProxy(a)
     }
 
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
         if (!StgStockFilterTargets.isWatchActivity(activity.javaClass.name)) return
-        trackedActivity = activity
+        trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         cachedFilters = null                       // 回到本页重新读一次筛选状态
         ensureClickRemap()
         // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
@@ -1260,7 +1303,7 @@ class StgStockFilterFeature : Feature {
     }
 
     private fun onFilterApplied(env: FeatureEnv, activity: Activity, applied: StgFilters) {
-        trackedActivity = activity
+        trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         cachedFilters = applied
         lastSummary = null
         ensureClickRemap()
@@ -1272,7 +1315,7 @@ class StgStockFilterFeature : Feature {
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         cachedFilters = null
-        val act = trackedActivity ?: return
+        val act = trackedActivity() ?: return
         val a = liveAdapter(act) ?: return
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
