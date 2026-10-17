@@ -76,7 +76,13 @@ class HostQuoteSource : QuoteSource {
         val cam = Reflect.readField(info, *AiStareQuickConfigTargets.HOST_FIELD_CODE_MARKET)
             as? String
         val expected = "$code.$market"
-        if (cam != null && cam != expected) {
+        if (cam == null) {
+            // 代码字段读不到 = 没法证明缓存是当前这一只：宿主改版字段名时
+            // 静默放行会把上一只股票的价格当成当前页（审查 2026-10-17），同「对不上」处理
+            GLog.d("一键配置取数：宿主 StockInfo 代码字段读不到，无法校验归属，降级")
+            return null
+        }
+        if (cam != expected) {
             GLog.d("一键配置取数：宿主缓存的股票（$cam）不是当前页（$expected），降级")
             return null
         }

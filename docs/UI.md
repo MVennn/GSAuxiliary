@@ -52,7 +52,7 @@ Scaffold
 ### 1.0 三层布局（2.3.1 重写，2.5.0 去掉自绘覆盖层，2.7.0 加底色层，2.8.0 换底色 token）
 
 `MainScreen` 不再是「用 `AnimatedContent` 整体替换页面」，而是叠放
-（3.1.1 起二级之上还有一层三级页）：
+（3.1.0 起二级之上还有一层三级页）：
 
 ```
 Box(根容器，铺 MiuixTheme.colorScheme.surface)
@@ -105,7 +105,7 @@ Box(根容器，铺 MiuixTheme.colorScheme.surface)
 - **可预测返回时一级菜单就在二级页下方**（第 1 层常驻），不再是黑底
 - 两层各自铺背景，切换过程**不会闪白**（原先 `SizeTransform(clip = false)` 会露窗口底色）
 
-### 1.0.0 三级页为什么单独一层（3.1.1）
+### 1.0.0 三级页为什么单独一层（3.1.0）
 
 3.1.0 只有一条进度，三级页（方案编辑）直接顶掉二级页的内容，于是：
 
@@ -251,7 +251,7 @@ ArrowPreference(
 #### 1.3.1 为什么必须自己画（Miuix 弹层的两条崩溃路径）
 
 用户反馈「主题设置 / 语言这两个控件**还是会闪退**」（当时还有第三个「日志输出等级」，
-已随 3.2.0 移除）。定位到两条**独立**根因：
+已随 3.1.0 移除）。定位到两条**独立**根因：
 
 1. **弹层在自己的 `onClick` 里同步开始收起动画** —— 此时任何一次配置写入
    （`commit()` → `OnSharedPreferenceChangeListener` **同步**回调 → 改写 Compose 状态）
@@ -834,7 +834,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 > 「左右滑动」的 `enabled` 仍跟随 `stg_direct_quote`：正常路径下恒为 `true`，
 > 留着是兜住非常规路径（进程重建后路由被恢复、而配置已被重置）。
 
-#### 4.4 「一键配置」的方案列表页与编辑页（3.1.1 重排）
+#### 4.4 「一键配置」的方案列表页与编辑页（3.1.0 重排）
 
 | 页面 | 层级 | 结构 |
 |---|---|---|
@@ -870,7 +870,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 日志 | 日志等级 | 右侧显示当前值（`R.array.log_level_labels`），点开**自绘单选弹窗**：关闭 / 错误 / 信息 / 调试 |
 | 日志 | 导出日志 | 把两个进程的日志拼成一份 txt（SAF `CreateDocument`），文件名 `gsauxiliary-log-yyyyMMdd-HHmmss.txt`；结果走 Toast |
 
-> 「日志」分组在 3.2.0 一度整体删除，同版本后期按用户要求以新形态装回：
+> 「日志」分组在 3.1.0 一度整体删除，同版本后期按用户要求以新形态装回：
 > **不再在模块里看日志，只保留「等级」与「导出」**，见 §5.7。
 
 > 「框架操作 → 热重载目标进程」已于 2.18.0 移除：模块 APK 升级时框架会自动热重载
@@ -1072,7 +1072,7 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 **导出 / 恢复的整段 IO 都跑在 `Dispatchers.IO`**（跨进程读 remote preferences + 写文件），
 期间两个入口置灰并显示「正在导出… / 正在恢复…」—— 这是 2.3.0 修掉的卡顿。
 
-### 5.7 日志：等级可调 + 一键导出（3.2.0）
+### 5.7 日志：等级可调 + 一键导出（3.1.0）
 
 设置页的「日志」分组只有两行 —— **「日志等级」与「导出日志」**。这一组的定位是
 「排障开关」：用户不需要读懂日志，只要能在出问题时把日志交出来。
@@ -1111,16 +1111,16 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 
 #### 为什么不再有「查看日志」页
 
-3.2.0 之前这里是「日志输出等级 + 查看日志二级页」（`ui/LogViewer.kt`，带级别筛选 /
+3.1.0 里这里曾是「日志输出等级 + 查看日志二级页」（`ui/LogViewer.kt`，带级别筛选 /
 复制 / 保存 / 清空），页面读的是 `GLog` 的内存环形缓冲 —— 而那个缓冲只装模块 App
-进程自己的日志，**真正要看的钩子日志在目标进程里**，页面反而给不出。这一版整体换成
+进程自己的日志，**真正要看的钩子日志在目标进程里**，页面反而给不出。同版本后期整体换成
 「导出」：把两个进程都拿到，交给用户自己去用（发给开发者、存下来慢慢看）。
 
 代价是**模块里读不到日志内容了**：想看内容得先导出，或者照旧走 adb（见
 `docs/TROUBLESHOOTING.md` §0 的三条通道）。
 
-> 历史：查看页 2.3.0 按 Miuix 风格重做、2.6.0 加「保存到任意位置」、3.1.1 重排过一版，
-> 3.2.0 连同 `TabRow` / `TextButton` 两个只为它存在的组件一起删除。
+> 历史：查看页 2.3.0 按 Miuix 风格重做、2.6.0 加「保存到任意位置」、3.1.0 重排过一版，
+> 3.1.0 连同 `TabRow` / `TextButton` 两个只为它存在的组件一起删除。
 
 ---
 
@@ -1549,7 +1549,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `Surface` | Miuix | 长按气泡的底板 |
 | `IconButton` / `Icon` | Miuix | 返回按钮、行内图标（⋮ 动作菜单、删除取值项） |
 
-> `TabRow` / `TextButton` 曾只服务于「查看日志」页，随该页在 3.2.0 删除后已不再使用。
+> `TabRow` / `TextButton` 曾只服务于「查看日志」页，随该页在 3.1.0 删除后已不再使用。
 | `MiuixTheme` + `lightColorScheme()` / `darkColorScheme()` | Miuix | 主题设置（跟随系统 / 亮色 / 暗色） |
 | `drawBackdrop` / `rememberLayerBackdrop` / `layerBackdrop` / `Highlight` / `InnerShadow` / `Shadow` | backdrop | 液态玻璃（顶栏 + 底栏 + 弹窗）、光效与外投影 |
 | `GlassTopBar` | 自绘（`Glass.kt`） | 液态玻璃顶栏（`drawBackdrop` + 透明 `SmallTopAppBar` + `extra()` 插槽，**无边框**） |
@@ -1625,28 +1625,28 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   `rememberLayerBackdrop` 的底衬。色值表见 §1.0
 - **可预测返回要有一层不参与变换的底色层**：一级页缩放后露出的那一圈，必须由
   一个**最底层、不挂任何 `graphicsLayer` 变换**的 `Box` 铺 `surface` 兜住（见 §1.0）
-- **三级页要单独一层、单独一条进度**（3.1.1，见 §1.0.0）：只有一条进度时，
+- **三级页要单独一层、单独一条进度**（3.1.0，见 §1.0.0）：只有一条进度时，
   三级页的可预测返回会把整层二级页推走、露出首页，看着像要回一级页
 - **锚定菜单的锚点必须每个触发控件一份**：共享一个 `Rect` 状态的写法是错的 ——
-  `onGloballyPositioned` 谁最后回调谁就是锚点，菜单会贴在别的行上（3.1.1 修）
+  `onGloballyPositioned` 谁最后回调谁就是锚点，菜单会贴在别的行上（3.1.0 修）
 - **自绘弹窗关闭后要立刻落配置**：`DialogHost` 没有「库的收起动画」，但关闭瞬间
   仍是一次状态翻转；配置写入统一走 `ModulePreferences.editDeferred { }`
   （延迟 360ms + `AtomicReference` 只保留最后一次）作为第二层防御；
   `notifyChanged()` 一律 post 到主线程（2.7.0 / 2.8.0 两轮修）
-- **弹层里的动作要排在「关闭动画播完」之后**（3.1.1）：`DialogController.dismiss { 动作 }`
+- **弹层里的动作要排在「关闭动画播完」之后**（3.1.0）：`DialogController.dismiss { 动作 }`
   把动作交给 `finishDismiss()` 执行。`dismiss()` 与写配置**挨着**调用时，`commit()`
   会同步回调订阅方当场重组，而收起动画还在跑 —— 就是上一条那类崩溃。
   （菜单 / 确认 / 同意三种弹窗的动作都走这条。）
-- **图标染色要走 GraphicsLayer，别用 `Icon(imageVector, tint = ...)`**（3.1.1）：
+- **图标染色要走 GraphicsLayer，别用 `Icon(imageVector, tint = ...)`**（3.1.0）：
   `Icon(imageVector, tint)` 与 `Image(colorFilter = ColorFilter.tint(...))` 这条
   **画笔记账层**的染色在魅族 20 / Android 16 上整体不生效（debug 与 release 都复现，
   换成 `Color.Red` 也照旧画成占位黑），图标一律是黑的。统一改用 `Widgets.TintedIcon`
   （miuix `Icon(painter, tint = ColorProducer, ...)` → `layer.colorFilter`，
   与 Miuix 底栏图标同一条路）
-- **锚定菜单要有最大高度**（3.1.1）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
+- **锚定菜单要有最大高度**（3.1.0）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
   超出的选项由列表自己 `verticalScroll`（右侧是一条**常驻**指示条，内容超出才画）——
   取值项目录 18 项，不封顶时菜单几乎铺满整屏
-- **画在卡片里的东西别参与测量**（3.1.1 踩过）：那条常驻指示条一开始写成
+- **画在卡片里的东西别参与测量**（3.1.0 踩过）：那条常驻指示条一开始写成
   `Modifier.width(3.dp).fillMaxHeight()`，`fillMaxHeight` 会参与测量，把整张卡片顶到
   高度上限 —— 7 个周期的菜单只有 329dp 内容，却被撑成 390dp、底部白出一大截
   （用户报的「弹窗过长」）。改成 `matchParentSize()`（只取父盒量好的尺寸、不反过来
@@ -1654,11 +1654,11 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   顺带两个上机结论：① 开头 8dp 会压在 28dp 圆角的弧线上，16dp 才落在直边里；
   ② Miuix 亮色主题的 `onSurfaceVariantSummary` 几乎是纯黑，不透明度给到 0.7 就是
   一条硬黑线，**0.18** 才是不抢眼的浅轨（真机取色：卡片 245 → 条子 200）
-- **`AnimatedVisibility(visible = false)` 首次挂载不播退出动画**（3.1.1 踩过）：
+- **`AnimatedVisibility(visible = false)` 首次挂载不播退出动画**（3.1.0 踩过）：
   想给列表行的「删除」补收起动画，不能按状态分成「普通 / 进入 / 移除」三条分支 ——
   删除那一刻节点是新建的，`visible` 直接就是 false，动画不会跑。正确写法是
   **每一行常驻一个 `AnimatedVisibility`**，出现与移除都只翻 `visible`
-- **App 里的箭头一律自绘，不用 `ArrowPreference`**（3.1.1）：Miuix 自带那颗箭头走
+- **App 里的箭头一律自绘，不用 `ArrowPreference`**（3.1.0）：Miuix 自带那颗箭头走
   `Image(colorFilter = ColorFilter.tint(...))` —— **画笔记账层**染色，在本机不生效，
   库里所有箭头**永远是黑的**、不跟亮暗色走（和自绘图标摆一起明显不是一套）。
   现在 14 处 `ArrowPreference` 全换成 `BasicComponent` + `Widgets.ArrowRightIcon()`：
@@ -1674,7 +1674,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
     臂长 9.65dp，而下箭头那版只有 5.87dp —— 差 1.6 倍，摆同一页就是「右箭头比下箭头
     大一圈」。同臂长 + 同斜率 + 同描边，才是一套（旋转不变）。
   - 列对齐靠**两个图标的声明宽度一致**（都 10dp），墨迹在框内居中，中心自然对齐。
-- **主题过渡遮罩要靠 `try/finally` 收尾**（3.1.1）：那层「旧配色遮罩」是
+- **主题过渡遮罩要靠 `try/finally` 收尾**（3.1.0）：那层「旧配色遮罩」是
   `Animatable.animateTo` 淡出的，过渡途中被重启就停在半透明处 —— 表现是「切完主题
   整个界面被压暗，重启才恢复」。用 `withContext(NonCancellable) { snapTo(0f) }` 兜底
 - **`values-en/strings.xml` 里的撇号必须写成 `\'`，引号写成 `\"`**。

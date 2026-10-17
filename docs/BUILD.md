@@ -137,7 +137,7 @@ buildTypes {
 ```
 
 裁剪效果（2.4.0 首次开启 R8 时实测）：dex 类数 26 553 → 2 987，APK 11.45 MB → 1.34 MB。
-**2.12.1 当前实测**：类数 3 068、`classes.dex` 2.57 MB、release APK 1.43 MB
+**2.12.1 时期实测**（历史参考）：类数 3 068、`classes.dex` 2.57 MB、release APK 1.43 MB
 （比 2.4.0 略涨是因为此后新增了两个功能与自绘弹层 / 液态玻璃组件，属正常增长）。
 
 **keep 规则的底线**（`app/proguard-rules.pro`）：凡是「R8 从代码里看不出、
@@ -161,7 +161,7 @@ buildTypes {
 ```bash
 APK=app/build/outputs/apk/release/app-release.apk
 
-# 版本号（当前应为 2.12.1 / versionCode 32）
+# 版本号（以 VERSIONING 记录的当前版本为准，如 3.1.0 / 46）
 aapt2 dump badging "$APK" | head -2
 
 # 类总数与入口类

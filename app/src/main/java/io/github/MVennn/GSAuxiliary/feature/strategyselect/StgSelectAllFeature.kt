@@ -71,8 +71,9 @@ class StgSelectAllFeature : Feature {
         Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<TextView, Boolean>()))
 
     /** 已包裹过行点击监听的 ListView */
+    /** 已包过行点击监听的 ListView → 我们装的 wrapper（弱引用，防泄漏） */
     private val wrappedLists =
-        Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<ListView, Boolean>()))
+        Collections.synchronizedMap(WeakHashMap<ListView, AdapterView.OnItemClickListener>())
 
     /** 「取消」按钮 → 我们注入的「全选 / 反选」按钮（弱引用） */
     private val injected =
@@ -278,8 +279,9 @@ class StgSelectAllFeature : Feature {
         val cur = selectedCount(v)
         val allChecked = cur == total
         val wantChecked = !allChecked
-        // 计数明确（一个没选 / 全选）时无需逐行探状态，直接全量点击，省掉屏外行的 getView 开销
-        val needProbe = cur > 0 && cur < total
+        // 计数明确（一个没选 / 全选）时无需逐行探状态，直接全量点击，省掉屏外行的 getView 开销。
+        // 计数读不到（cur == -1，状态未知）必须逐行探：盲目全量点击会把「已全选」点成「全部取消」。
+        val needProbe = cur != 0 && cur != total
         val button = v as? TextView
 
         GLog.i("策略全选：${if (allChecked) "反选" else "全选"} 开始（共 $total 只，当前 $cur，needProbe=$needProbe）")
@@ -350,10 +352,18 @@ class StgSelectAllFeature : Feature {
         return runCatching { tv.text?.toString()?.trim()?.toIntOrNull() ?: -1 }.getOrDefault(-1)
     }
 
-    /** 包裹宿主 ListView 的行点击监听：手动点行后也刷新「全选 / 反选」文案 */
+    /**
+     * 包裹宿主 ListView 的行点击监听：手动点行后也刷新「全选 / 反选」文案。
+     * 每次都比对面上的监听是不是我们上次装的 wrapper：宿主若在生命周期里
+     * 重新 setOnItemClickListener，旧 wrapper 会把点击转发给过期的监听器
+     * （审查 2026-10-17），照 StgStockFilterFeature.ensureClickRemap 的
+     * 「比对 - 重包」模式处理。
+     */
     private fun ensureRowClickWatcher(env: FeatureEnv, lv: ListView) {
-        if (!wrappedLists.add(lv)) return
-        val original = itemClickListener(lv)
+        val existing = itemClickListener(lv)
+        if (existing != null && wrappedLists[lv] === existing) return   // 已经包过且没被换掉
+        // 走到这里：要么原来没有监听，要么宿主换了新的 —— 都直接包现挂的这个
+        val original = existing
         val wrapper = AdapterView.OnItemClickListener { parent, view, position, id ->
             runCatching { original?.onItemClick(parent, view, position, id) }
             runCatching {
@@ -362,6 +372,7 @@ class StgSelectAllFeature : Feature {
             }
         }
         runCatching { lv.onItemClickListener = wrapper }
+            .onSuccess { wrappedLists[lv] = wrapper }
             .onFailure { GLog.w("全选：包裹行点击监听失败", it) }
     }
 

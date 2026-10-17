@@ -228,12 +228,19 @@ class StgStockFilterFeature : Feature {
 
         override fun getCount(): Int = indices.size
 
-        override fun getItem(position: Int): Any? = base.getItem(indices[position])
+        /**
+         * update() 与宿主下一次 notifyDataSetChanged 之间，ListView 可能仍按旧 count
+         * 发起 getView/getItem，position 越界会直接把宿主打崩（审查 2026-10-17）。
+         * 越界时回退用原始 position 转调 base：base 是全量列表，position 必在其范围内。
+         */
+        private fun mapped(position: Int): Int = indices.getOrNull(position) ?: position
 
-        override fun getItemId(position: Int): Long = base.getItemId(indices[position])
+        override fun getItem(position: Int): Any? = base.getItem(mapped(position))
+
+        override fun getItemId(position: Int): Long = base.getItemId(mapped(position))
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
-            base.getView(indices[position], convertView, parent)
+            base.getView(mapped(position), convertView, parent)
 
         // 观察者注册一律转发给原适配器 —— ListView 的 observer 是注册在我们身上的，
         // 只有转发过去，宿主 `base.notifyDataSetChanged()` 才能刷到列表。
@@ -249,7 +256,7 @@ class StgStockFilterFeature : Feature {
 
         override fun areAllItemsEnabled(): Boolean = base.areAllItemsEnabled()
 
-        override fun isEnabled(position: Int): Boolean = base.isEnabled(indices[position])
+        override fun isEnabled(position: Int): Boolean = base.isEnabled(mapped(position))
 
         override fun isEmpty(): Boolean = indices.isEmpty()
     }

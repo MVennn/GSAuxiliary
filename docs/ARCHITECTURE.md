@@ -89,13 +89,17 @@
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
 | `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（三点菜单注入 + 换适配器数据） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
-| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs） | 目标进程 |
+| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` · `StgFilterBridge.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs）+ 模块 App 侧读取桥 | 目标进程 / 模块进程 |
 | `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（视图注入） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
 | `feature/aistare/AiStareQuickConfigFeature.kt` | **智能盯盘价格页「一键配置」**功能本体（H5 注入 + 自建 `gsaux` JS 桥 + 取数调度） | 目标进程 |
 | `feature/aistare/AiStareQuickConfigTargets.kt` | 该功能的页面 URL / 桥名 / 配色 / 宿主行情字段候选常量（全部真机实测） | 目标进程 |
 | `feature/aistare/AiStareJs.kt` | 注入价格页 H5 的脚本常量（找保存按钮 / 三等分 / 弹方案层 / 回填输入框） | 目标进程 |
-| `feature/aistare/quote/QuoteRepository.kt` · `HostQuoteSource.kt` · `PublicQuoteSource.kt` · `DomQuoteSource.kt` | 取数层：接口 + 会话内通道锁定（① 宿主反射 → ② 腾讯公开行情 → ③ 页面 DOM） | 目标进程 |
+| `feature/aistare/AiStareCardDetailFeature.kt` · `AiStareCardDetailTargets.kt` | **我的盯盘卡片跳个股详情页**功能本体（挂卡片点击 + 跳转契约）+ 定位常量 | 目标进程 |
+| `feature/aistare/quote/QuoteRepository.kt` · `QuoteFetcher.kt` | 取数源接口 + 会话（按各通道**声明的能力**逐级降级，非全局锁定）+ 取数编排（持久实例，日 K 缓存） | 目标进程 |
+| `feature/aistare/quote/HostQuoteSource.kt` · `PublicQuoteSource.kt` · `EastmoneyQuoteSource.kt` · `DomQuoteSource.kt` | 四条取数通道：① 宿主反射（只快照）→ ② 腾讯 → ③ 东财 → ④ 页面 DOM（只最新价） | 目标进程 |
+| `feature/aistare/quote/HttpTransport.kt` | 公开行情 HTTP 统一出口（状态码判定、可恢复错误重试一次、响应体封顶） | 目标进程 |
+| `feature/ipoclean/IpoDialogCleanFeature.kt` · `IpoCleanTargets.kt` | **新股申购提醒弹窗净化**功能本体 + 弹窗类名候选常量 | 目标进程 |
 | `core/QuickConfigStore.kt` | 「一键配置」方案的数据模型 + JSON 编解码（**两处共用**：目标进程算价、模块进程的方案设置页读写） | 两处共用 |
 | `core/QuickConfigCatalog.kt` | 取值项目录（§4.2 那张表）：id / 分类 / 参数约束；解析时「认不认识」的唯一权威 | 两处共用 |
 | `core/QuickConfigEngine.kt` | 取值项计算（纯函数）：BigDecimal、涨停表、区间校验，不碰网络 | 两处共用 |
@@ -137,6 +141,7 @@
 | `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
 | `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` | 二级页（高亮颜色设置 / 滑动设置） | 模块进程 |
 | `ui/QuickConfigScreen.kt` · `ui/QuickConfigEditScreen.kt` | 二级页「一键配置方案列表」+ 三级页「方案编辑」 | 模块进程 |
+| `ui/AiStareSettingsScreens.kt` | 智能盯盘类功能（卡详情 / 保存行为）的二级设置页 | 模块进程 |
 | `ui/PrefState.kt` · `ui/FeatureCatalog.kt` · `ui/Widgets.kt` | 配置读取、功能展示元数据、共用部件 | 模块进程 |
 
 ### 2.1 分层规则
@@ -198,7 +203,7 @@ onHotReloaded(param)
 功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
 没有一个功能依赖另一个功能的运行结果。
 
-**挂钩子改行为 / 注入视图**（共 7 个）：
+**挂钩子改行为 / 注入视图**（共 9 个）：
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
@@ -209,7 +214,8 @@ onHotReloaded(param)
 | **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
 | **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
 | **新股申购提醒弹窗净化** | `IpoDialogCleanFeature` | `MainAct#showSgbDialog`（申购专用入口）+ `android.app.Dialog#show`（按类名兜底） | 两道都拦下弹窗**显示**：拦展示不拦构造，对象建了只是不 `show`，宿主后续流程照旧 | **判据收紧** —— `Dialog#show` 对**所有**弹窗生效，类全名或简名任一命中才拦，宁可漏也不能误伤宿主其它对话框（见 [FEATURE-IPO-DIALOG](FEATURE-IPO-DIALOG.md)） |
-| **智能盯盘价格页一键配置** | `AiStareQuickConfigFeature` | `WebView#setWebViewClient`（动态抓实际子类 `HybirdWebView$4`）→ 其 `onPageFinished` + `StockInfo` 构造器（宿主行情缓存） | URL 命中价格页 → 注入 JS（`addJavascriptInterface("gsaux")` 自建桥，不进宿主命令漏斗）→ 在「保存」右侧插「配置」按钮；点按钮 → 子线程取数（① 宿主 → ② 公开行情 → ③ 页面 DOM，会话内锁通道）→ `QuickConfigEngine` 算价 → `evaluateJavascript` 回填两个输入框并派发 input/change | **H5 页走脚本注入**（分界约定，见 [FEATURE-AISTARE-QUICK-CONFIG](FEATURE-AISTARE-QUICK-CONFIG.md) 附记）；取数失败**不写值**；套用后**不自动点保存**；关开关即时摘按钮（`init(enabled=false)`） |
+| **智能盯盘价格页一键配置** | `AiStareQuickConfigFeature` | `WebView#setWebViewClient`（动态抓实际子类 `HybirdWebView$4`）→ 其 `onPageFinished` + `StockInfo` 构造器（宿主行情缓存） | URL 命中价格页 → 注入 JS（`addJavascriptInterface("gsaux")` 自建桥，不进宿主命令漏斗）→ 在「保存」右侧插「配置」按钮；点按钮 → 子线程取数（① 宿主 → ② 腾讯 → ③ 东财 → ④ 页面 DOM，按通道能力降级）→ `QuickConfigEngine` 算价 → `evaluateJavascript` 回填两个输入框并派发 input/change | **H5 页走脚本注入**（分界约定，见 [FEATURE-AISTARE-QUICK-CONFIG](FEATURE-AISTARE-QUICK-CONFIG.md) 附记）；取数失败**不写值**；套用后**不自动点保存**；关开关即时摘按钮（`init(enabled=false)`）。功能目录里的「跳过保存确认」「空数据保存」两个开关也由本功能实现（注入脚本的两个能力位），不单列功能行 |
+| **我的盯盘卡片跳个股详情页** | `AiStareCardDetailFeature` | `ListView#setAdapter`（命中 `#listMyStare` / `AIStareIndexAct`）→ 动态挂 adapter `getView` + `Activity.onResume` | 给「我的盯盘」卡片（`#layoutContent`）挂点击：从 adapter item 取 `codeAndMarket`，拿不到才退回「6 位代码 + 沪/深前缀猜市场」，`startActivity(quotes.stockDetail + IntentStockInfo)` 进详情页 | **不用 position 存股票**（复用会张冠李戴），用「卡片视图 → 代码.市场」弱表；编辑 / 删除是子视图自消费点击，不碰；只认沪 / 深，其余宁可不跳（见 [FEATURE-AISTARE-CARD-DETAIL](FEATURE-AISTARE-CARD-DETAIL.md)） |
 
 **界面精简**（其余 5 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
@@ -228,12 +234,13 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（共 14 个功能）**：上面两张表就是全部功能的现行挂载方式。
-> 2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、`stock_bar_entry`
-> （底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
+> **当前状态（共 16 个功能）**：上面两张表就是全部功能的现行挂载方式 —— 挂钩子 9 个
+> + 界面精简 5 个，另有「跳过保存确认」「空数据保存」两个开关由一键配置功能一并实现
+> （不单列功能行）。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
+> `stock_bar_entry`（底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`
-> （智能盯盘价格页一键配置），3.2.0 补上了 `aistare_card_detail`
+> （智能盯盘价格页一键配置）与 `aistare_card_detail`
 > （我的盯盘卡片跳个股详情页）—— 它们都已在上表，不再是「前瞻」。
 
 ### 3.3 染色主流程（自选高亮）
@@ -336,6 +343,11 @@ data class ConfigSnapshot(
     val ipoDialogClean: Boolean,         // 新股申购提醒弹窗净化
     val aistareQuickEnabled: Boolean,    // 智能盯盘价格页「一键配置」开关
     val aiStareQuickConfig: String,      // 「一键配置」方案 JSON（结构见 QuickConfigStore）
+    val aiStareSkipSaveConfirm: Boolean, // 保存成功不弹确认弹窗（轻提示 + 自动返回）
+    val aiStareEmptySave: Boolean,       // 两个价都空时「保存」仍可点（= 取消盯盘）
+    val aiStareCardDetail: Boolean,      // 「我的盯盘」卡片点一下直达个股详情页
+    val aiStareSaveBackToStock: Boolean, // 保存成功后退到个股详情页（false = 只回上一页）
+    val aiStarePickScheme: Boolean,      // 多方案时弹「选择方案」层（false = 直接套默认方案）
 ) {
     val fingerprint: Int get() = …   // 稳定指纹，只在内容变化时改变
 }
@@ -383,8 +395,8 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
-| **功能总开关** | `FEATURE_KEYS` 全表（13 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` | 目标进程 | ✅ | **一律 `false`** |
-| **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `AISTARE_QUICK_CONFIG`（方案 JSON） | 目标进程 | ✅ | 开启 / 默认值 |
+| **功能总开关** | `FEATURE_KEYS` 全表（16 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` | 目标进程 | ✅ | **一律 `false`** |
+| **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 
 判定标准很简单：**目标进程需不需要它**。
@@ -418,6 +430,8 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 | 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |
+| 我的盯盘卡片跳个股详情页 | `feature/aistare/AiStareCardDetailTargets.kt` |
+| 新股申购提醒弹窗净化 | `feature/ipoclean/IpoCleanTargets.kt` |
 | 底栏隐藏理财入口 | `feature/dock/DockCleanTargets.kt` |
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场（滚动横幅 / 板块 / 概览，三功能共用） | `feature/market/MarketTargets.kt` |
