@@ -78,10 +78,10 @@ Make GoldenSun Great Again！
 | [**Jetpack Compose**](https://developer.android.com/jetpack/compose) · [**AndroidX**](https://developer.android.com/jetpack/androidx) | 全部界面实现的基础设施                         |
 | [**Kotlin**](https://github.com/JetBrains/kotlin)                                                                                     | 模块与设置界面的实现语言                        |
 | [**Material Icons**](https://github.com/google/material-design-icons)                                                                 | 界面图标的矢量路径数据来源（按 path 自绘，不引入图标库）     |
+| [**HyperIsland**](https://github.com/1812z/HyperIsland)                                                                               | 关于页的布局与动效来源（MIT，非代码依赖，实现为本项目自写） |
 
 ## 许可证
 
 本项目以 [Apache License 2.0](https://github.com/MVennn/GSAuxiliary/blob/main/LICENSE) 发布。第三方组件的版权与许可证声明见 [NOTICE](https://github.com/MVennn/GSAuxiliary/blob/main/NOTICE)；目标应用的参考数据（类名、键名、目录结构等事实性描述，不含目标应用代码）不随公开仓库分发，仅维护者本地保留。
 
 模块不收集、不上传任何数据；完整数据流说明见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md) 第六条。
-| [**HyperIsland**](https://github.com/1812z/HyperIsland)                                                                               | 关于页的布局与动效来源（MIT，非代码依赖，实现为本项目自写） |
