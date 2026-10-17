@@ -2,7 +2,6 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -405,6 +404,12 @@ private val MenuWidth = 200.dp
  */
 private const val MenuMaxHeightFraction = 0.45f
 
+/** 选项列表的滚动指示条：宽 3dp、距卡片右缘 5dp、上下各留 16dp（几何在 drawBehind 里算） */
+private val MenuThumbWidth = 3.dp
+private val MenuThumbRightInset = 5.dp
+/** 上下留白 16dp：卡片圆角 28dp，留 8dp 时条头会压在圆角的弧线上；16dp 起就落在直边里 */
+private val MenuThumbVerticalInset = 16.dp
+
 /** 卡片与屏幕边缘的最小距离；同时也是底部弹窗的左右留白（= 主页卡片的 `cardPadding`） */
 private val ScreenMargin = 12.dp
 
@@ -696,14 +701,6 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
         // 由列表自己滚动，而不是把卡片撑满整屏。
         is ChoiceDialogSpec -> {
             val scrollState = rememberScrollState()
-            val scrolling = scrollState.isScrollInProgress
-            // 滚动时才出现的小指示条：内容没超出（maxValue == 0）时连画都不画
-            val thumbAlpha by animateFloatAsState(
-                targetValue = if (scrolling && scrollState.maxValue > 0) 1f else 0f,
-                // 出现要快（跟手）、消失慢一点（停手后还能看到它在哪）
-                animationSpec = tween(if (scrolling) 90 else 420),
-                label = "menu-scroll-thumb",
-            )
             Box {
                 Column(
                     modifier = Modifier
@@ -722,18 +719,17 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
                         )
                     }
                 }
-                if (thumbAlpha > 0.01f) {
-                    MenuScrollThumb(
-                        scrollState = scrollState,
-                        alpha = thumbAlpha,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 6.dp)
-                            .width(3.dp)
-                            .fillMaxHeight()
-                            .padding(vertical = 8.dp),
-                    )
-                }
+                // 指示条**常驻**（3.1.1）：内容一旦超出就一直在，不再「拖一下才淡入」。
+                // 不超出时 `maxValue == 0`，它自己什么也不画。
+                //
+                // `matchParentSize()` 而不是 `fillMaxHeight()`：后者会**参与测量**，
+                // 把卡片顶到最大高度 —— 7 个周期的菜单本该 329dp，却被撑成 390dp、
+                // 底下白出 60dp（用户报的「弹窗过长」）。matchParentSize 只取父盒
+                // 已经量好的尺寸、不反过来影响它，卡片才会贴合内容。
+                MenuScrollThumb(
+                    scrollState = scrollState,
+                    modifier = Modifier.matchParentSize(),
+                )
             }
         }
 
@@ -855,17 +851,31 @@ private fun DialogBody(controller: DialogController, spec: DialogSpec) {
 }
 
 /**
- * 选项列表右侧的滚动指示条 —— **只在滚动时出现**（淡入淡出由调用方给的 [alpha] 驱动）。
+ * 选项列表右侧的滚动指示条 —— **常驻显示**（3.1.1 起）。
  *
  * 为什么自己画：Miuix 0.9.3 没有给「任意可滚动容器」用的指示条（它的滚动条是 Lazy 列表
  * 内部实现），而这里是一个 `verticalScroll` 的 Column。几何按「视口 / 内容总高」算、
  * 位置按当前 value 算，与系统滚动条语义一致：条越短说明内容越长，条到底等于滚到底。
  * 状态值都在 `drawBehind` 里读 —— 滚动只触发重绘，不触发重组。
+ *
+ * ## 为什么自带几何（而不是一条 `fillMaxHeight` 的窄 Box）
+ *
+ * 指示条一旦承度**测量**，就会把外面的卡片顶到最大高度：7 个周期的菜单只有 329dp 内容，
+ * 却因为条子 `fillMaxHeight` 被撑到 45% 上限（390dp），底下白出一大截 —— 用户报的
+ * 「弹窗过长」就是它。所以调用方传 `matchParentSize()`（只读父盒量好的尺寸、不参与
+ * 测量），宽度 / 右缘留白 / 上下留白都在 `drawBehind` 里自己算。
+ *
+ * ## 两个上机反馈的修正
+ *
+ * 1. **常驻**：原来只有 `isScrollInProgress` 时才淡入、停手 420ms 淡出，用户根本不知道
+ *    这列表还能滚（得先试着拖一下才看见）。现在内容超出就一直在。
+ * 2. **颜色压淡到 30%**：原来 `onSurfaceVariantSummary` 上再叠 70% 不透明度 —— 深色主题
+ *    下接近纯白、浅色下接近纯黑，一条 3dp 的细线比身后的卡片还跳（「对比生硬」）。
+ *    现在是一条浅色轨道，只负责提示「还有内容」，不跟正文抢注意力。
  */
 @Composable
 private fun MenuScrollThumb(
     scrollState: ScrollState,
-    alpha: Float,
     modifier: Modifier = Modifier,
 ) {
     val color = MiuixTheme.colorScheme.onSurfaceVariantSummary
@@ -874,15 +884,21 @@ private fun MenuScrollThumb(
             val max = scrollState.maxValue
             val viewport = scrollState.viewportSize
             if (max <= 0 || viewport <= 0) return@drawBehind
+            val w = MenuThumbWidth.toPx()
+            val inset = MenuThumbVerticalInset.toPx()
+            // 条子的活动范围（去掉上下留白），最短不低于自身宽度的两倍
+            val track = (size.height - inset * 2).coerceAtLeast(w)
             val total = (max + viewport).toFloat()
-            // 最短不低于自身宽度的两倍，免得内容极长时细到看不见
-            val h = (size.height * viewport / total).coerceAtLeast(size.width * 2f)
-            val y = (size.height - h) * (scrollState.value.toFloat() / max)
+            val h = (track * viewport / total).coerceAtLeast(w * 2f)
+            val y = inset + (track - h) * (scrollState.value.toFloat() / max)
             drawRoundRect(
-                color = color.copy(alpha = 0.7f * alpha),
-                topLeft = Offset(0f, y),
-                size = Size(size.width, h),
-                cornerRadius = CornerRadius(size.width / 2f),
+                // 18%：Miuix 的 `onSurfaceVariantSummary` 在亮色主题下几乎是纯黑
+                // （真机取色 = 卡片 245 上叠出 170），所以不透明度得比直觉更低。
+                // 这一档实测落点约 201（卡片 245），是一条「看得见但不抢眼」的浅轨。
+                color = color.copy(alpha = 0.18f),
+                topLeft = Offset(size.width - w - MenuThumbRightInset.toPx(), y),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(w / 2f),
             )
         },
     )

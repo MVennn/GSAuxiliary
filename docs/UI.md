@@ -1640,8 +1640,16 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
   （miuix `Icon(painter, tint = ColorProducer, ...)` → `layer.colorFilter`，
   与 Miuix 底栏图标同一条路）
 - **锚定菜单要有最大高度**（3.1.1）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
-  超出的选项由列表自己 `verticalScroll`（右侧还有一条**只在滚动时出现**的指示条）——
+  超出的选项由列表自己 `verticalScroll`（右侧是一条**常驻**指示条，内容超出才画）——
   取值项目录 18 项，不封顶时菜单几乎铺满整屏
+- **画在卡片里的东西别参与测量**（3.1.1 踩过）：那条常驻指示条一开始写成
+  `Modifier.width(3.dp).fillMaxHeight()`，`fillMaxHeight` 会参与测量，把整张卡片顶到
+  高度上限 —— 7 个周期的菜单只有 329dp 内容，却被撑成 390dp、底部白出一大截
+  （用户报的「弹窗过长」）。改成 `matchParentSize()`（只取父盒量好的尺寸、不反过来
+  影响它），宽度 / 右缘 5dp / 上下 16dp 的几何全在 `drawBehind` 里自己算。
+  顺带两个上机结论：① 开头 8dp 会压在 28dp 圆角的弧线上，16dp 才落在直边里；
+  ② Miuix 亮色主题的 `onSurfaceVariantSummary` 几乎是纯黑，不透明度给到 0.7 就是
+  一条硬黑线，**0.18** 才是不抢眼的浅轨（真机取色：卡片 245 → 条子 200）
 - **`AnimatedVisibility(visible = false)` 首次挂载不播退出动画**（3.1.1 踩过）：
   想给列表行的「删除」补收起动画，不能按状态分成「普通 / 进入 / 移除」三条分支 ——
   删除那一刻节点是新建的，`visible` 直接就是 false，动画不会跑。正确写法是

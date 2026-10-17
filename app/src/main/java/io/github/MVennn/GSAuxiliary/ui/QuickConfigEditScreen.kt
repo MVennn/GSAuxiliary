@@ -6,8 +6,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,16 +31,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.delay
 import io.github.MVennn.GSAuxiliary.R
@@ -47,8 +55,6 @@ import kotlinx.coroutines.flow.drop
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
@@ -76,10 +82,10 @@ private val NumberFieldCorner = 10.dp
  * | 内容 | 组件 | 为什么 |
  * |---|---|---|
  * | 名称 | `TextField`（`useLabelAsPlaceholder`） | 唯一需要输入的一行，单独成卡 |
- * | 聚合 / 提醒时效 | `ArrowPreference`（当前值进 `summary`） | 可点开选，箭头与设置页其它选择项一致 |
- * | 带周期的取值项 | `ArrowPreference`（周期进 `summary`） | 同上，点整行选周期 |
+ * | 聚合 / 提醒时效 | `BasicComponent`（当前值进 `summary` + 朝下箭头） | 可点开选，朝下表示原地弹窗 |
+ * | 带周期的取值项 | `BasicComponent` + 行尾 `PeriodPill`（「30 日 ▾」胶囊） | 形态上就是个下拉选择，点整行弹周期目录 |
  * | 带数值的取值项 | `BasicComponent` + 行内 `TextField` | 行本身不跳转，行内只有一个输入框 |
- * | 删除一个取值项 | `IconButton`（`AppIcons.Close`） | 触控目标够大，不再是一颗裸字符 ✕ |
+ * | 删除一个取值项 | 40dp 触控区 + `AppIcons.Close`（14dp 细描边） | 视觉轻、目标够大；整簇垂直居中才与箭头齐 |
  * | 添加取值项 | `BasicComponent`（主色 + 加号） | 「这是动作」由颜色与图标示意 |
  *
  * ## 弹层锚点为什么每行一份
@@ -94,7 +100,16 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
 
     val json by rememberStringPref(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG)
     val data = remember(json) { QuickConfigStore.decode(json) }
-    val scheme = remember(json, schemeId) { data.schemes.firstOrNull { it.id == schemeId } }
+    val liveScheme = remember(json, schemeId) { data.schemes.firstOrNull { it.id == schemeId } }
+    // 删掉方案之后这一层还要再滑走 300ms，而那段时间 `liveScheme` 已经是 null ——
+    // 直接渲染空内容会让整页先空掉（深色主题下就是一片纯黑）再滑出去，用户看到的是
+    // 「黑屏闪一下，才退回二级页」。留一份**最后非空**的快照：退出动画期间照常画原来
+    // 那一页，滑走的是一张完整页面，二级页在下面等着。
+    var lastScheme by remember(schemeId) { mutableStateOf(liveScheme) }
+    if (liveScheme != null) lastScheme = liveScheme
+    val scheme = liveScheme ?: lastScheme
+    /** 这一页对应的方案还在不在 —— 不在时只许看，不许再写配置 */
+    val alive = liveScheme != null
 
     val termNames = stringArrayResource(R.array.quick_term_names)
     val aggTexts = listOf(
@@ -111,8 +126,8 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
     val downLabel = stringResource(R.string.quick_slot_down_short)
 
     if (scheme == null) {
-        // 方案没了（刚被本页删掉、或另一处界面 / adb 通道删掉）：直接回方案列表，
-        // 不要停在一张空白的三级页上（用户得自己按返回才发现「这个方案不在了」）。
+        // 从来没有过这个方案（例如在别处删掉后才进来）：安静回方案列表，
+        // 不要停在一张空白的三级页上。
         LaunchedEffect(schemeId) { onDeleted() }
         Column(Modifier.fillMaxSize()) { Spacer(Modifier.height(24.dp)) }
         return
@@ -120,6 +135,9 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
 
     /** 在整份数据上改当前方案并写回（保持 isDefault 唯一） */
     fun update(transform: (QuickConfigStore.Scheme) -> QuickConfigStore.Scheme) {
+        // 方案已经删了、页面正在滑走：这一帧的任何编辑都不该落库
+        // （否则会根据一份已经没有它的数据重算默认方案）
+        if (!alive) return
         val updated = data.schemes.map { if (it.id == schemeId) transform(it) else it }
         val newDefaultId = data.defaultId.takeIf { id -> updated.any { it.id == id } }
             ?: updated.firstOrNull { it.isDefault }?.id
@@ -214,7 +232,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             // 只剩一套方案时它就是默认、也没有别的可交，开关**置灰不可点**。
             SwitchPreference(
                 checked = scheme.isDefault,
-                enabled = data.schemes.size > 1,
+                enabled = alive && data.schemes.size > 1,
                 onCheckedChange = { v ->
                     val target = if (v) {
                         lastDefaultId = data.defaultId.takeIf { it != schemeId }
@@ -230,7 +248,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
                 },
                 title = stringResource(R.string.quick_set_default),
             )
-            val deletable = data.schemes.size > 1
+            val canDelete = data.schemes.size > 1
             // 弹窗文案在 composable 作用域先解析（lambda 里调不了 stringResource）
             val deleteTitle = stringResource(R.string.quick_delete_scheme)
             val deleteConfirm = stringResource(R.string.quick_delete_confirm)
@@ -239,9 +257,9 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             val dialogs = LocalDialogController.current
             BasicComponent(
                 title = deleteTitle,
-                summary = if (deletable) null else stringResource(R.string.quick_delete_last_hint),
-                enabled = deletable,
-                endActions = { ArrowRightIcon(deletable) },
+                summary = if (canDelete) null else stringResource(R.string.quick_delete_last_hint),
+                enabled = canDelete && alive,
+                endActions = { ArrowRightIcon(canDelete && alive) },
                 onClick = {
                     dialogs?.showConfirm(
                         ConfirmDialogSpec(
@@ -453,21 +471,23 @@ private fun TermRow(
         exit = shrinkVertically(tween(TermAnimMillis)) + fadeOut(tween(140)),
     ) {
         when {
-            // 周期：整行可点，右端是「当前周期 + 朝下小箭头」
+            // 周期：整行可点，右端是「30 日 ▾」胶囊（点开就地选周期）
             param != null && param.periodChoices.isNotEmpty() -> {
                 val current = term.param[param.key] ?: param.periodChoices.first()
                 val choices = param.periodChoices.map { stringResource(R.string.quick_param_period_fmt, it) }
                 BasicComponent(
                     title = name,
                     endActions = {
-                        Text(
-                            text = stringResource(R.string.quick_param_period_fmt, current),
-                            color = MiuixTheme.colorScheme.primary,
-                            fontSize = 14.sp,
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        DownArrowIcon()
-                        if (deletable) RemoveTermButton { removing = true }
+                        // 整簇显式垂直居中：`endActions` 的 Row 默认 **Top** 对齐，不这样做
+                        // 40dp 触控区的 ✕ 会比 12.5dp 高的箭头低半格（用户看到的「× 与箭头
+                        // 没对齐」）。居中后两者共用同一条中线。
+                        Row(
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PeriodPill(current)
+                            if (deletable) RemoveTermButton { removing = true }
+                        }
                     },
                     modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
                     onClick = {
@@ -491,13 +511,18 @@ private fun TermRow(
                 BasicComponent(
                     title = name,
                     endActions = {
-                        NumberField(
-                            key = key,
-                            param = param,
-                            initial = term.param[param.key] ?: "",
-                            onChanged = { text -> onParam(term.param + (param.key to text)) },
-                        )
-                        if (deletable) RemoveTermButton { removing = true }
+                        Row(
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            NumberField(
+                                key = key,
+                                param = param,
+                                initial = term.param[param.key] ?: "",
+                                onChanged = { text -> onParam(term.param + (param.key to text)) },
+                            )
+                            if (deletable) RemoveTermButton { removing = true }
+                        }
                     },
                 )
             }
@@ -505,7 +530,11 @@ private fun TermRow(
             // 无参数项（也兜住以后新增的参数类型：至少名字和删除还在）
             else -> BasicComponent(
                 title = name,
-                endActions = { if (deletable) RemoveTermButton { removing = true } },
+                endActions = {
+                    if (deletable) {
+                        RemoveTermButton(Modifier.align(Alignment.CenterVertically)) { removing = true }
+                    }
+                },
             )
         }
     }
@@ -559,13 +588,69 @@ private fun NumberField(
     )
 }
 
-/** 删掉一个取值项（一个槽只剩一项时**整颗都不画**，见 [SlotEditor]） */
+/**
+ * 周期选择器 —— 行尾那颗「30 日 ▾」胶囊。
+ *
+ * 3.1.1 上机反馈「看着不像能选的东西」：原来是主色纯文字 + 一颗细箭头直接摆在行尾，
+ * 跟一行普通说明没区别，「点哪里能弹目录」全靠猜。现在包成一颗**胶囊**（主色淡底、
+ * 圆角、主色文字与箭头）：
+ *
+ *  - 形态上就是个下拉选择，与「点它会弹出一份目录」这件事对得上；
+ *  - 箭头进胶囊、与文字同一条中线，不再是孤零零挂在右边的细箭头；
+ *  - 取值仍是那 7 个周期、弹的还是同一个锚定菜单 —— **交互与数据一个没动**
+ *    （热区仍是整行，点胶囊本身也在行内）。
+ */
 @Composable
-private fun RemoveTermButton(onDelete: () -> Unit) {
-    IconButton(onClick = onDelete) {
+private fun PeriodPill(period: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.10f))
+            .padding(start = 10.dp, end = 6.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.quick_param_period_fmt, period),
+            color = MiuixTheme.colorScheme.primary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(Modifier.width(4.dp))
+        // 尺寸交给图标自己（20×12.5dp）。**不要**用 Modifier.size 缩它 —— 一缩笔画
+        // 跟着变细，就和其它行那颗箭头不是一套了（3.1.1 踩过的坑）。
+        TintedIcon(
+            imageVector = AppIcons.ArrowDown,
+            tint = MiuixTheme.colorScheme.primary.copy(alpha = 0.8f),
+        )
+    }
+}
+
+/**
+ * 删掉一个取值项（一个槽只剩一项时**整颗都不画**，见 [SlotEditor]）。
+ *
+ * 40dp 触控区里放一颗 14dp 的细描边叉（图标本身见 [AppIcons.Close]）：视觉上是一颗
+ * 更轻的 ✕，手上仍是够大的目标。`modifier` 由调用方传 —— 单独成行时用它
+ * `align(Alignment.CenterVertically)` 与相邻控件对齐。
+ */
+@Composable
+private fun RemoveTermButton(
+    modifier: Modifier = Modifier,
+    onDelete: () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onDelete),
+        // 图标贴着右缘、再让出 2dp：16dp 的 ✕ 中心落在「距行右缘 10dp」这一列 ——
+        // 与 20dp 宽、齐右缘的箭头**同一条中线**（用户反馈「✕ 对齐的是箭头左侧」：
+        // 原来居中在 40dp 盒子里，中心比箭头左 10dp）。
+        contentAlignment = Alignment.CenterEnd,
+    ) {
         TintedIcon(
             imageVector = AppIcons.Close,
             tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            modifier = Modifier.padding(end = 2.dp),
         )
     }
 }

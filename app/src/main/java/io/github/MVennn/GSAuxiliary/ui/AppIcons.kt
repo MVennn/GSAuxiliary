@@ -90,6 +90,32 @@ internal object AppIcons {
         strokeLineJoin = StrokeJoin.Round,
     ).build()
 
+    /**
+     * 描边风格、视口自定的图标（给「不是 24×24 网格、笔画要跟箭头同一量级」的图标用）。
+     *
+     * 与 [strokedIcon] 的区别只有视口：那个固定 24×24，这个按 `size` 与 `viewport` 传。
+     * 声明尺寸 = 视口时缩放为 1，`strokeWidth` 就是屏幕上的实际粗细（dp）。
+     */
+    private fun strokedIconOf(
+        name: String,
+        size: Dp,
+        pathData: String,
+        viewport: Float,
+        strokeWidth: Float,
+    ): ImageVector = ImageVector.Builder(
+        name = name,
+        defaultWidth = size,
+        defaultHeight = size,
+        viewportWidth = viewport,
+        viewportHeight = viewport,
+    ).addPath(
+        pathData = PathParser().parsePathString(pathData).toNodes(),
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = strokeWidth,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round,
+    ).build()
+
     /** 返回箭头（RTL 布局下自动镜像）。 */
     val ArrowBack: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
         icon(
@@ -253,12 +279,28 @@ internal object AppIcons {
         )
     }
 
-    /** 叉号（删除一个取值项）。 */
+    /**
+     * 叉号（删除一个取值项）。
+     *
+     * 3.1.1 上机反馈「太粗太厚，跟旁边的箭头不像一套」：原来用的是 Material 的**填充**
+     * `Close`（24dp 网格、笔画约 2dp），而同一行那颗细箭头只有 1.25dp，摆在一起 ×
+     * 明显压秤。现在改成**描边**画的叉：
+     *
+     * | | 旧 | 新 |
+     * |---|---|---|
+     * | 声明尺寸 | 24dp | **16dp** |
+     * | 笔画 | 约 2dp（填充外轮廓） | **1.4dp 圆头**（与箭头的 1.25dp 同一量级） |
+     * | 视口 | 24×24 | 16×16（声明 = 视口，缩放 1，笔画粗细即所见） |
+     */
     val Close: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        icon(
+        strokedIconOf(
             name = "Close",
-            pathData = "M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 " +
-                "6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z",
+            size = 16.dp,
+            // 笔画落在 2.8~13.2（叉本身 10.4dp 见方）：上一版只画到 4.9~11.1，
+            // 16dp 盒子里实际只有 6.2dp 的叉 —— 上机看着「太小」就是它。
+            pathData = "M2.8,2.8 L13.2,13.2 M13.2,2.8 L2.8,13.2",
+            viewport = 16f,
+            strokeWidth = 1.4f,
         )
     }
 
