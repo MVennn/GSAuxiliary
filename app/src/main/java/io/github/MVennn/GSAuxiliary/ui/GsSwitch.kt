@@ -89,6 +89,9 @@ private const val DragRange = 21f
 /** 按压 / 拖住滑块时的放大倍率（Miuix 同款） */
 private const val PressedThumbScale = 1.127f
 
+/** 液态滑块按住时的放大倍率 —— 比 Miuix 大一档，配合折射加深出「跃出轨道」的感觉 */
+private const val LiquidPressedThumbScale = 1.35f
+
 @Composable
 internal fun GsSwitch(
     checked: Boolean,
@@ -121,7 +124,13 @@ internal fun GsSwitch(
         label = "gs-switch-thumb-offset",
     )
     val thumbScale by animateFloatAsState(
-        targetValue = if (!enabled) 1f else if (isPressed || isDragged) PressedThumbScale else 1f,
+        targetValue = if (!enabled) {
+            1f
+        } else if (isPressed || isDragged) {
+            if (useLiquid) LiquidPressedThumbScale else PressedThumbScale
+        } else {
+            1f
+        },
         animationSpec = SwitchThumbScaleSpring,
         label = "gs-switch-thumb-scale",
     )
@@ -173,6 +182,9 @@ internal fun GsSwitch(
                 enabled = enabled,
                 role = Role.Switch,
                 interactionSource = interactionSource,
+                // 自绘开关自带按压反馈（放大 + 玻璃变透），不吃 LocalIndication 的 ripple，
+                // 否则按住时轨道上会浮出和其他组件一样的高亮块
+                indication = null,
             )
         }
     } else {
@@ -219,16 +231,25 @@ internal fun GsSwitch(
                             effects = {
                                 val p = pressProgress
                                 if (p < 1f) blur(6f.dp.toPx() * (1f - p))
-                                if (p > 0f) lens(4f.dp.toPx() * p, 8f.dp.toPx() * p)
+                                // 折射量给到 dock 滑块同档（14dp），色差打开，
+                                // 按住时轨道色被明显「吸进」滑块 —— 跃出感主要来自这里
+                                if (p > 0f) {
+                                    lens(
+                                        5f.dp.toPx() * p,
+                                        14f.dp.toPx() * p,
+                                        chromaticAberration = true,
+                                    )
+                                }
                             },
                             highlight = { Highlight.Default.copy(alpha = pressProgress) },
-                            shadow = { Shadow(radius = 3.dp, alpha = pressProgress) },
+                            shadow = { Shadow(radius = 6.dp, alpha = pressProgress) },
                             innerShadow = {
                                 InnerShadow(radius = 3.dp * pressProgress, alpha = pressProgress)
                             },
                             onDrawSurface = {
+                                // 按住时几乎全透，把折射完整露出来
                                 drawRect(
-                                    thumbColor.copy(alpha = lerp(0.85f, 0.15f, pressProgress)),
+                                    thumbColor.copy(alpha = lerp(0.85f, 0.05f, pressProgress)),
                                 )
                             },
                         )
