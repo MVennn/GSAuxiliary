@@ -62,7 +62,7 @@ Miuix 的版本门槛是逐级递进的：
 |---|---|
 | 0.9.0 / 0.9.1 | 兼容 compileSdk 35 |
 | **0.9.2 / 0.9.3** | 要求 **compileSdk 37** |
-| 0.9.4+ | 要求 compileSdk 37 **且 AGP ≥ 9.1.0** |
+| 0.9.4+ | 要求 compileSdk 37 **且 AGP ≥ 9.1.0**（2026-10-17 实测，见下） |
 
 Miuix 0.9.4 会带进 `androidx.compose.ui:ui-android:1.12.0`，
 它的 AAR 元数据里硬性声明了：
@@ -77,6 +77,22 @@ Gradle 在依赖解析阶段就会拒绝，报：
 ```
 Dependency 'androidx.compose.ui:ui-android:1.12.0' requires AGP 9.1.0 or higher
 ```
+
+> **2026-10-17 实测补充（0.9.4 跟过一轮）**：把 `miuixVersion` 改成 `0.9.4` 后
+> `:app:dependencies` 能解析通过，卡在 `:app:checkDebugAarMetadata` —— 共 9 个
+> Compose 构件（ui-android / ui-text-android / runtime-saveable-android 等 1.12.0）
+> 全部要求 AGP ≥ 9.1.0，`BUILD FAILED in 7s`。上游自述的平台要求也印证了：
+> Miuix 0.9.4 基于 Compose Multiplatform 1.12.0 / Kotlin 2.4.20 / AGP 9.4.1 /
+> Gradle 9.7.1 构建。
+>
+> 除平台门槛外，0.9.4 相对 0.9.3 的变更对本模块没有直接收益（新增的 miuix-nav、
+> 渐进模糊、BreadcrumbBar 都没用上，导航仍是自研 Route 体系），且带三条会打到
+> 现有 UI 的破坏性变更：居中对话框不再继承屏幕圆角（默认固定 32dp，模块弹窗
+> 视觉会变）、`RadioButtonPreference` 文本参数合并为 `colors` 且 `summary`
+> 位置前移、`InputField` 插入 `color` 参数影响位置传参调用。
+>
+> 结论：**升级 0.9.4 = 强制捆绑 AGP 9 构建脚本迁移**，单独为它不值得；
+> 合适的时机是哪天顺路做 AGP 9 迁移时一起做。
 
 ### 为什么不能直接升 AGP 9.x
 
