@@ -48,9 +48,9 @@ object ModulePreferences {
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> notifyChanged() }
 
+    @Synchronized
     fun init(context: Context) {
         if (initialized) return
-        initialized = true
 
         val ctx = context.applicationContext
         val lp = ctx.getSharedPreferences(ConfigKeys.GROUP, Context.MODE_PRIVATE)
@@ -75,6 +75,9 @@ object ModulePreferences {
             }
             notifyChanged()
         }
+
+        // 全部就绪后再置位：先置位后赋值的话，并发 init 会读到 null local
+        initialized = true
     }
 
     /** 框架刚连上、远端还空着时，把本地暂存的值搬过去 */

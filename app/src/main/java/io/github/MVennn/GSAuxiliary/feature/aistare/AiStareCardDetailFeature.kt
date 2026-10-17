@@ -85,7 +85,6 @@ class AiStareCardDetailFeature : Feature {
     /** 资源 id 缓存（0 = 还没解析） */
     @Volatile private var listIdCache = -1
     @Volatile private var cardIdCache = -1
-    @Volatile private var nameIdCache = -1
     @Volatile private var codeIdCache = -1
 
     /** 卡片点击 → 进详情页（监听器本身无状态，视图查表拿代码） */

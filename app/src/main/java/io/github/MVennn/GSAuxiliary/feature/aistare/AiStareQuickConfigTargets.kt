@@ -55,9 +55,6 @@ object AiStareQuickConfigTargets {
     const val WEBVIEW_CLIENT_PREFIX = "com.guosen.commonui.webview.HybirdWebView$"
     const val WEBVIEW_CLIENT_FALLBACK = "com.guosen.commonui.webview.HybirdWebView$4"
 
-    /** 宿主命令桥（仅日志对照用；我们自建 `gsaux` 桥，不往宿主漏斗里发命令） */
-    const val HYBRID_WEBVIEW = "com.guosen.commonui.webview.HybirdWebView"
-
     // ------------------------------------------------------------ 自建 JS 桥
 
     /**
@@ -65,12 +62,9 @@ object AiStareQuickConfigTargets {
      * （只 add 分析 SDK 的两个桥、只 remove `searchBoxJavaBridge_`，见 §10-3），
      * 自挂 `gsaux` 与宿主零冲突、不会被清理。宿主的命令走 `guosen://` scheme +
      * `onJsPrompt` 双通道，与我们无关 —— 我们不进宿主漏斗，`showCommandError`
-     * 那条红线天然满足。
+     * 那条红线天然满足。注入 JS 挂在 `window.__gsaux`（见 [AiStareJs]）。
      */
     const val JS_BRIDGE_NAME = "gsaux"
-
-    /** 注入 JS 的全局命名空间（`window.__gsaux`） */
-    const val JS_NAMESPACE = "__gsaux"
 
     // ------------------------------------------------------------ 注入样式
 
@@ -79,13 +73,6 @@ object AiStareQuickConfigTargets {
      * 纯色无渐变；「卖」是 `#2BAF95`）。文字白色。
      */
     const val BUTTON_COLOR = "#FF3A3B"
-
-    /**
-     * 底部操作条三个子节点的 flex 基准。注入前「重置」「保存」各 540px，
-     * 插第三个后必须三个都改 `flex:1 1 0`（各 360px），否则新按钮被挤出去
-     * 或叠在「保存」上（方案文档 §3.1）。
-     */
-    const val FLEX_RULE = "flex:1 1 0"
 
     /**
      * 注入按钮上的文字。
@@ -103,7 +90,6 @@ object AiStareQuickConfigTargets {
      * 找不到只记 warn 不注入（H5 改版时不打扰用户）。
      */
     const val SAVE_BUTTON_TEXT = "保存"
-    const val RESET_BUTTON_TEXT = "重置"
 
     // ------------------------------------------------------------ 取数
 

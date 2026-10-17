@@ -7,7 +7,7 @@ import io.github.MVennn.GSAuxiliary.core.HookBag
  * 一个可独立开关的功能模块。
  *
  * **扩展新功能的唯一入口**：新建一个类实现本接口，然后登记到
- * [FeatureManager.FEATURES] 即可，不需要动入口类、配置层或 UI 之外的任何代码。
+ * [FeatureManager.features] 即可，不需要动入口类、配置层或 UI 之外的任何代码。
  *
  * 约定：
  *  - [install] 里只做「挂钩子」，不做重活；所有钩子句柄都要塞进 [bag]，

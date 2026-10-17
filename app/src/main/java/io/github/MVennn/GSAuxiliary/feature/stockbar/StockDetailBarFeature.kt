@@ -168,6 +168,8 @@ class StockDetailBarFeature : PageSyncFeature() {
         val moreText: TextView,
         val button: TextView,
         val originalBoxWidth: Int,
+        /** 「更多」摘出前在盒子里的下标 —— detach 时按原位放回，别再现场查（那时它已不在盒子里，恒 -1） */
+        val originalMoreIndex: Int,
         /** 「更多」那个图标的目标尺寸 —— 面板里采到的图标比它大，不缩会顶破底栏 */
         val iconW: Int,
         val iconH: Int,
@@ -542,8 +544,6 @@ class StockDetailBarFeature : PageSyncFeature() {
         if (runCatching { e.button.compoundDrawables.getOrNull(1) }.getOrNull() == null) applyIcon(e)
     }
 
-    /** 尝试注入一次；返回 true = 已注入 / 无需再试 */
-
     /**
      * 真正动手：把「更多」搬进一个横向容器，前面并排我们的按钮，再把容器塞回盒子，
      * 最后把盒子宽度改成 `wrap_content`（这一步才是「买卖让位」的来源）。
@@ -603,7 +603,7 @@ class StockDetailBarFeature : PageSyncFeature() {
         }
         runCatching { box.requestLayout() }
 
-        return Injected(box, holder, moreText, entry, originalWidth, iconW, iconH)
+        return Injected(box, holder, moreText, entry, originalWidth, index, iconW, iconH)
     }
 
     /** 「更多」自己那个图标的尺寸 —— 我们的图标按它缩放，才能和同排按钮一样高 */
@@ -692,7 +692,7 @@ class StockDetailBarFeature : PageSyncFeature() {
         runCatching { holder.removeView(e.button) }
         runCatching { holder.removeView(e.moreText) }
         runCatching { (holder.parent as? ViewGroup)?.removeView(holder) }
-        val index = runCatching { e.box.indexOfChild(e.moreText) }.getOrDefault(-1)
+        val index = e.originalMoreIndex
         runCatching {
             if (index < 0) e.box.addView(e.moreText) else e.box.addView(e.moreText, index)
         }

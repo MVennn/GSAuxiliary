@@ -513,6 +513,7 @@ internal object AiStareJs {
     NS.closeLayer();
     if (NS.btn) { NS.btn.remove(); NS.btn = null; }
     NS.restoreEmptySave();
+    NS.disarmSkip();
     if (NS.observer) { NS.observer.disconnect(); NS.observer = null; }
     if (NS.interval) { clearInterval(NS.interval); NS.interval = null; }
   };
@@ -583,13 +584,6 @@ internal object AiStareJs {
     /** 原生 → JS：回填两个价 */
     fun fillCall(up: String, down: String): String =
         "window.__gsaux && window.__gsaux.fill('$up', '$down');"
-
-    /** 原生 → JS：轻提示 */
-    fun toastCall(text: String): String =
-        "window.__gsaux && window.__gsaux.toast('${escape(text)}');"
-
-    /** 原生 → JS：移除按钮与自绘层（关开关时） */
-    const val REMOVE_CALL: String = "window.__gsaux && window.__gsaux.remove();"
 
     /** 把字符串包成可安全内联进 JS 的字面量（双引号 + 反斜杠转义） */
     fun safeJson(json: String): String = "\"" + escape(json) + "\""

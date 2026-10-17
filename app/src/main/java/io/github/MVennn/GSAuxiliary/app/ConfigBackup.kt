@@ -33,8 +33,10 @@ object ConfigBackup {
         root.put("exportedAt", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
 
         val config = JSONObject()
+        // 循环外取一次全量快照；循环内逐键 snapshotConfig() 是 28 次全表重建，纯冗余
+        val snapshot = ModulePreferences.snapshotConfig()
         for (key in ConfigKeys.ALL_KEYS) {
-            val v = ModulePreferences.snapshotConfig()[key] ?: continue
+            val v = snapshot[key] ?: continue
             config.put(key, v)
         }
         root.put("config", config)

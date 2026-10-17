@@ -183,7 +183,11 @@ object LogExporter {
             val finished = process.waitFor(RootTimeoutMs, TimeUnit.MILLISECONDS)
             if (!finished) {
                 runCatching { process.destroy() }
-                reader.join(500)
+                if (!process.waitFor(500, TimeUnit.MILLISECONDS)) {
+                    // 个别机型的 su 不响应 destroy()，再补一次强杀，免得子进程残留
+                    runCatching { process.destroyForcibly() }
+                }
+                reader.join(1000)
                 return ShellResult(-1, out.toString(), timedOut = true)
             }
             reader.join(1000)

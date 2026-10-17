@@ -185,10 +185,12 @@ class AiStareQuickConfigFeature : Feature {
         val name = clientClass.name
         // 只认宿主的 HybirdWebView$N 匿名子类，别的页面（登录等）的 client 不碰
         if (!name.startsWith(AiStareQuickConfigTargets.WEBVIEW_CLIENT_PREFIX)) return
+        val methods = Reflect.methodsNamed(clientClass, "onPageFinished")
+        // 该类没覆写 onPageFinished 时**不标记已挂**：下次遇到（宿主混淆名变化等）还有机会再试
         synchronized(hookedClients) {
-            if (!hookedClients.add(name)) return
+            if (methods.isEmpty() || !hookedClients.add(name)) return
         }
-        for (m in Reflect.methodsNamed(clientClass, "onPageFinished")) {
+        for (m in methods) {
             bag.add(
                 env.xposed.hook(m)
                     .setId("$id:onPageFinished:$name")

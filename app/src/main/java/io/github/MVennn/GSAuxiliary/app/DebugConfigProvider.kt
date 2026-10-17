@@ -118,56 +118,24 @@ class DebugConfigProvider : ContentProvider() {
         ensurePrivileged()
         if (values == null) return 0
 
+        // getAsInteger 可能返回 null（值缺失/类型不对），直接 unboxing 会 NPE；
+        // 计数只在实际发生写入时增加，异常时返回值才不会虚报
+        fun intOf(col: String): Int? = if (values.containsKey(col)) values.getAsInteger(col) else null
+
         var n = 0
         ModulePreferences.edit {
-            if (values.containsKey(COL_ENABLED)) {
-                putBoolean(ConfigKeys.ENABLED, values.getAsInteger(COL_ENABLED) != 0)
-                n++
-            }
-            if (values.containsKey(COL_COLOR)) {
-                putInt(ConfigKeys.COLOR, values.getAsInteger(COL_COLOR))
-                n++
-            }
-            if (values.containsKey(COL_SCOPE_STRATEGY)) {
-                putBoolean(ConfigKeys.SCOPE_STRATEGY, values.getAsInteger(COL_SCOPE_STRATEGY) != 0)
-                n++
-            }
-            if (values.containsKey(COL_LOG_LEVEL)) {
-                putInt(ConfigKeys.LOG_LEVEL, values.getAsInteger(COL_LOG_LEVEL))
-                n++
-            }
-            if (values.containsKey(COL_STG_DIRECT)) {
-                putBoolean(ConfigKeys.STG_DIRECT_QUOTE, values.getAsInteger(COL_STG_DIRECT) != 0)
-                n++
-            }
-            if (values.containsKey(COL_STG_SWIPE)) {
-                putBoolean(ConfigKeys.STG_QUOTE_SWIPE, values.getAsInteger(COL_STG_SWIPE) != 0)
-                n++
-            }
-            if (values.containsKey(COL_STG_SELECT_ALL)) {
-                putBoolean(ConfigKeys.STG_SELECT_ALL, values.getAsInteger(COL_STG_SELECT_ALL) != 0)
-                n++
-            }
-            if (values.containsKey(COL_STG_STOCK_FILTER)) {
-                putBoolean(ConfigKeys.STG_STOCK_FILTER, values.getAsInteger(COL_STG_STOCK_FILTER) != 0)
-                n++
-            }
-            if (values.containsKey(COL_STOCK_BAR_ENTRY)) {
-                putBoolean(ConfigKeys.STOCK_BAR_ENTRY, values.getAsInteger(COL_STOCK_BAR_ENTRY) != 0)
-                n++
-            }
-            if (values.containsKey(COL_IPO_DIALOG_CLEAN)) {
-                putBoolean(ConfigKeys.IPO_DIALOG_CLEAN, values.getAsInteger(COL_IPO_DIALOG_CLEAN) != 0)
-                n++
-            }
-            if (values.containsKey(COL_AISTARE_QUICK)) {
-                putBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, values.getAsInteger(COL_AISTARE_QUICK) != 0)
-                n++
-            }
-            if (values.containsKey(COL_AISTARE_EMPTY_SAVE)) {
-                putBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, values.getAsInteger(COL_AISTARE_EMPTY_SAVE) != 0)
-                n++
-            }
+            intOf(COL_ENABLED)?.let { putBoolean(ConfigKeys.ENABLED, it != 0); n++ }
+            intOf(COL_COLOR)?.let { putInt(ConfigKeys.COLOR, it); n++ }
+            intOf(COL_SCOPE_STRATEGY)?.let { putBoolean(ConfigKeys.SCOPE_STRATEGY, it != 0); n++ }
+            intOf(COL_LOG_LEVEL)?.let { putInt(ConfigKeys.LOG_LEVEL, it); n++ }
+            intOf(COL_STG_DIRECT)?.let { putBoolean(ConfigKeys.STG_DIRECT_QUOTE, it != 0); n++ }
+            intOf(COL_STG_SWIPE)?.let { putBoolean(ConfigKeys.STG_QUOTE_SWIPE, it != 0); n++ }
+            intOf(COL_STG_SELECT_ALL)?.let { putBoolean(ConfigKeys.STG_SELECT_ALL, it != 0); n++ }
+            intOf(COL_STG_STOCK_FILTER)?.let { putBoolean(ConfigKeys.STG_STOCK_FILTER, it != 0); n++ }
+            intOf(COL_STOCK_BAR_ENTRY)?.let { putBoolean(ConfigKeys.STOCK_BAR_ENTRY, it != 0); n++ }
+            intOf(COL_IPO_DIALOG_CLEAN)?.let { putBoolean(ConfigKeys.IPO_DIALOG_CLEAN, it != 0); n++ }
+            intOf(COL_AISTARE_QUICK)?.let { putBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, it != 0); n++ }
+            intOf(COL_AISTARE_EMPTY_SAVE)?.let { putBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, it != 0); n++ }
             if (values.containsKey(COL_AISTARE_SCHEMES)) {
                 putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
                 n++

@@ -490,13 +490,13 @@ class StgStockFilterFeature : Feature {
                     "（-1=MATCH_PARENT, -2=WRAP_CONTENT）")
             pop.height = ViewGroup.LayoutParams.WRAP_CONTENT
         }.onFailure { GLog.w("筛选股票：调整菜单窗口高度失败", it) }
-        runCatching { normalizeMenuItemHeights(parent, MENU_BASE_ITEM_COUNT + 1) }
+        runCatching { normalizeMenuItemHeights(parent) }
 
         GLog.i("筛选股票：已在三点菜单「修改名称」下方注入「$MENU_ITEM_TEXT」")
     }
 
     /** 把菜单里每个文字项的权重去掉、高度固定成 `原设计总高 / 原项数` */
-    private fun normalizeMenuItemHeights(parent: ViewGroup, itemCount: Int) {
+    private fun normalizeMenuItemHeights(parent: ViewGroup) {
         val density = parent.resources.displayMetrics.density
         val itemPx = ((MENU_DESIGN_HEIGHT_DP / MENU_BASE_ITEM_COUNT) * density + 0.5f).toInt()
         for (i in 0 until parent.childCount) {
@@ -509,7 +509,7 @@ class StgStockFilterFeature : Feature {
         val lp = parent.layoutParams ?: return
         lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         parent.layoutParams = lp
-        GLog.i("筛选股票：菜单项高度已归一（${itemCount} 项 × ${itemPx}px）")
+        GLog.i("筛选股票：菜单项高度已归一（${parent.childCount} 项 × ${itemPx}px）")
     }
 
     private fun restoreMenuItemHeights(parent: ViewGroup) {
