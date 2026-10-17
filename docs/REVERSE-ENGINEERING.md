@@ -665,6 +665,15 @@ adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -20"
    `IPO_DIALOG_CLASSES` / `IPO_DIALOG_SIMPLE_NAMES` / `SHOW_METHODS`。
    弹窗类名或宿主展示方法改名时加候选即可；完整手册见
    [新股弹窗净化说明](FEATURE-IPO-DIALOG.md#3-认不出来时真机校准手册)
+9. **智能盯盘价格页一键配置** → 改 `feature/aistare/AiStareQuickConfigTargets.kt`
+   （页面类名 / WebView 容器 / H5 桥候选）。这一层挂在宿主 H5 上，失效表现与
+   原生功能不同（按钮不出现或点了没反应），排查按
+   [一键配置方案](FEATURE-AISTARE-QUICK-CONFIG.md#11-复现侦察的步骤app-升级后照做)
+   §11 的五步重新侦察：进价格页 → dump 结构 → 拿 WebView URL → 验 H5 桥 → 采按钮色。
+10. **盯盘数据卡片拓展** → 改 `feature/aistare/AiStareCardDetailTargets.kt`
+    （列表适配器与卡片控件候选）。适配器类名 / 控件 id 变了加候选即可，
+    跳转契约（`quotes.stockDetail` + `IntentStockInfo`）见
+    [卡片拓展说明](FEATURE-AISTARE-CARD-DETAIL.md)。
 
 设计上所有关键名字都是**常量数组 + 多级兜底**（每个功能一个 `XxxTargets.kt`），
 就是为了这种时候改一行就能修好。
