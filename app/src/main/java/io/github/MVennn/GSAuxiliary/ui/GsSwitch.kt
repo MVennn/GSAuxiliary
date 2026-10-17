@@ -105,10 +105,17 @@ internal fun GsSwitch(
     val isDragged by interactionSource.collectIsDraggedAsState()
     val hasCallback = onCheckedChange != null
 
-    // 液态玻璃滑块：受「液态玻璃」总开关控制，关闭 / 禁用 / 无回调时回落经典实底画法。
-    // 拖动翻转与震动逻辑两版完全共用，换的只是滑块这一层「面」怎么画。
+    // 液态玻璃滑块：受「液态玻璃」总开关 + 「玻璃光效」开关共同裁决档位
+    // （正本 docs/LIQUID-GLASS.md §3）：完整 = 真玻璃、简约 = 磨砂、
+    // 总开关关 / 禁用 / 无回调 / API 过低 = 纯色兜底（经典实底画法）。
+    // 拖动翻转与震动逻辑各档共用，换的只是滑块这一层「面」怎么画。
     val liquidGlassPref by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
-    val useLiquid = liquidGlassPref && enabled && hasCallback
+    val glassEffectPref by rememberBoolPref(ConfigKeys.GLASS_EFFECT, ConfigKeys.DEFAULT_GLASS_EFFECT)
+    val tier = when {
+        !liquidGlassPref || !enabled || !hasCallback -> GlassTier.Plain
+        else -> glassTier(glassEffectPref)
+    }
+    val useLiquid = tier != GlassTier.Plain
 
     val hapticFeedback = LocalHapticFeedback.current
     val currentHapticFeedback by rememberUpdatedState(hapticFeedback)
@@ -127,7 +134,8 @@ internal fun GsSwitch(
         targetValue = if (!enabled) {
             1f
         } else if (isPressed || isDragged) {
-            if (useLiquid) LiquidPressedThumbScale else PressedThumbScale
+            // 完整版跃出轨道（1.35），磨砂版 / 经典版退 Miuix 同款档
+            if (tier == GlassTier.Full) LiquidPressedThumbScale else PressedThumbScale
         } else {
             1f
         },
@@ -222,35 +230,60 @@ internal fun GsSwitch(
                 }
                 .then(
                     if (useLiquid) {
-                        // 液态玻璃滑块：常态是原色玻璃（近乎实底），按压时变透，
-                        // 露出 blur → lens 放大折射的轨道色；高光 / 投影随按压浮现。
+                        // 液态玻璃滑块：完整版按压时变透、折射轨道色；磨砂版只模糊。
                         // 参数风格对齐 Dock 滑块与 catalog LiquidToggle。
                         Modifier.drawBackdrop(
                             backdrop = trackBackdrop,
                             shape = { CircleShape },
                             effects = {
-                                val p = pressProgress
-                                if (p < 1f) blur(6f.dp.toPx() * (1f - p))
-                                // 折射量给到 dock 滑块同档（14dp），色差打开，
-                                // 按住时轨道色被明显「吸进」滑块 —— 跃出感主要来自这里
-                                if (p > 0f) {
-                                    lens(
-                                        5f.dp.toPx() * p,
-                                        14f.dp.toPx() * p,
-                                        chromaticAberration = true,
-                                    )
+                                if (tier == GlassTier.Full) {
+                                    val p = pressProgress
+                                    if (p < 1f) blur(6f.dp.toPx() * (1f - p))
+                                    // 折射量给到 dock 滑块同档（14dp），色差打开，
+                                    // 按住时轨道色被明显「吸进」滑块 —— 跃出感主要来自这里
+                                    if (p > 0f) {
+                                        lens(
+                                            5f.dp.toPx() * p,
+                                            14f.dp.toPx() * p,
+                                            chromaticAberration = true,
+                                        )
+                                    }
+                                } else {
+                                    // 磨砂版：只模糊不折射，按压不改变玻璃本身
+                                    blur(6f.dp.toPx())
                                 }
                             },
-                            highlight = { Highlight.Default.copy(alpha = pressProgress) },
-                            shadow = { Shadow(radius = 6.dp, alpha = pressProgress) },
+                            highlight = {
+                                if (tier == GlassTier.Full) {
+                                    Highlight.Default.copy(alpha = pressProgress)
+                                } else {
+                                    null
+                                }
+                            },
+                            shadow = {
+                                if (tier == GlassTier.Full) {
+                                    Shadow(radius = 6.dp, alpha = pressProgress)
+                                } else {
+                                    null
+                                }
+                            },
                             innerShadow = {
-                                InnerShadow(radius = 3.dp * pressProgress, alpha = pressProgress)
+                                if (tier == GlassTier.Full) {
+                                    InnerShadow(radius = 3.dp * pressProgress, alpha = pressProgress)
+                                } else {
+                                    null
+                                }
                             },
                             onDrawSurface = {
-                                // 按住时几乎全透，把折射完整露出来
-                                drawRect(
-                                    thumbColor.copy(alpha = lerp(0.85f, 0.05f, pressProgress)),
-                                )
+                                if (tier == GlassTier.Full) {
+                                    // 按住时几乎全透，把折射完整露出来
+                                    drawRect(
+                                        thumbColor.copy(alpha = lerp(0.85f, 0.05f, pressProgress)),
+                                    )
+                                } else {
+                                    // 磨砂版：面色恒定，按压只缩放
+                                    drawRect(thumbColor.copy(alpha = 0.85f))
+                                }
                             },
                         )
                     } else {

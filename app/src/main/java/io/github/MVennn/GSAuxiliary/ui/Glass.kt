@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -46,32 +47,66 @@ internal val LocalTopInset = compositionLocalOf { 0.dp }
 internal val LocalDarkTheme = compositionLocalOf { false }
 
 /**
+ * 玻璃档位 —— 正本定义见 docs/LIQUID-GLASS.md §3。
+ *
+ * 对齐 Apple Liquid Glass 的三档体系：完整版 = Clear（真玻璃）、
+ * 简约版 = Regular（磨砂）、纯色 = Opaque（兜底）。
+ */
+internal enum class GlassTier {
+    /** 完整版：折射 / rim light / 投影 / 内阴影 / 交互物理全开 */
+    Full,
+
+    /** 简约版：vibrancy + blur 与面色保留，「光」的部分（折射 / 描边 / 投影）全关 */
+    Frost,
+
+    /** 纯色兜底：不是档位，是系统能力不足（无 RenderEffect）时的降级 */
+    Plain,
+}
+
+/**
+ * 由用户开关 + 系统能力裁决档位：
+ * 「玻璃光效」开 → [GlassTier.Full]；关 → [GlassTier.Frost]；
+ * API < 31 没有 RenderEffect → [GlassTier.Plain]（效果链会被库静默跳过，面色必须不透明）。
+ */
+internal fun glassTier(effect: Boolean): GlassTier =
+    if (Build.VERSION.SDK_INT < 31) GlassTier.Plain
+    else if (effect) GlassTier.Full
+    else GlassTier.Frost
+
+/**
  * 玻璃的「面色」—— 决定这块玻璃偏黑还是偏白。
  *
  * 需求是「黑色模式下是黑色液态玻璃，白色模式下是带白色的液态玻璃」，
  * 所以直接用**纯黑 / 纯白 + 透明度**，而不是主题里的 `surfaceContainerHigh`：
  * 后者本身偏灰，叠在模糊后的内容上会显得发脏，出不来干净通透的观感。
  *
- * @param effect **玻璃光效**开关。
- *   - `true`（完整版）：有模糊兜底，面色给 [GlassAlphaFull] 的薄薄一层，
- *     通透感靠模糊；面色只负责补一点颜色倾向。
- *   - `false`（简约版）：**没有模糊兜底，所以一律给不透明的纯色**。
- *     以前这里用 0.70 的半透明，结果底下的文字、图标直接透上来跟当前内容糊在一起，
- *     字都看不清 —— 既然不做模糊，就不该再叫「玻璃」，老老实实当纯色栏。
+ * @param tier 玻璃档位（[glassTier]），三档面色逐档加深 —— 规范 docs/LIQUID-GLASS.md §5：
+ *   - [GlassTier.Full]：[GlassAlphaFull] 薄薄一层，通透感靠模糊与折射；
+ *   - [GlassTier.Frost]：[GlassAlphaFrost] 深一档，磨砂没有折射帮忙分离前景，
+ *     面色要多承担可读性 —— 但必须保持半透明，不透明就退化成了 plain；
+ *   - [GlassTier.Plain]：不透明纯色。没有模糊兜底就不该再叫「玻璃」
+ *     （以前 0.70 的半透明会让底下文字透上来糊成一团，字都看不清）。
  */
-internal fun glassSurfaceTint(dark: Boolean, effect: Boolean): Color {
-    if (!effect) return if (dark) Color.Black else Color.White
-    return (if (dark) Color.Black else Color.White).copy(alpha = GlassAlphaFull)
+internal fun glassSurfaceTint(dark: Boolean, tier: GlassTier): Color {
+    val base = if (dark) Color.Black else Color.White
+    return when (tier) {
+        GlassTier.Full -> base.copy(alpha = GlassAlphaFull)
+        GlassTier.Frost -> base.copy(alpha = GlassAlphaFrost)
+        GlassTier.Plain -> base
+    }
 }
 
 /**
- * 完整版（有模糊）的面色透明度。
+ * 完整版（有模糊 + 折射）的面色透明度。
  *
  * 2.9.0 从 0.52 降到 0.30：用户反馈「玻璃不够通透」。面色只是给模糊结果**补一点颜色倾向**，
  * 通透感主要由它决定 —— alpha 越高越像磨砂塑料，越低越像真玻璃。
  * 0.30 在深色下仍然能保证顶栏文字可读（底下还有一层模糊兜底）。
  */
 private const val GlassAlphaFull = 0.30f
+
+/** 磨砂版（简约版）面色：比完整版深一档，起始值 0.45，真机校准后回填 */
+private const val GlassAlphaFrost = 0.45f
 
 /** 顶栏玻璃的模糊半径 */
 private val TopBarBlur = 24.dp
@@ -179,7 +214,8 @@ internal fun GlassTopBar(
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = LocalDarkTheme.current
-    val tint = glassSurfaceTint(dark, effect)
+    val tier = glassTier(effect)
+    val tint = glassSurfaceTint(dark, tier)
 
     Box(modifier = modifier) {
         Box(
@@ -189,17 +225,18 @@ internal fun GlassTopBar(
                     backdrop = backdrop,
                     shape = { RectangleShape },
                     effects = {
-                        if (effect) {
+                        if (tier != GlassTier.Plain) {
                             vibrancy()
                             blur(TopBarBlur.toPx())
                         }
                     },
                     // 不要描边 / 高光：顶栏是贴边的一整块，任何描边都会变成横线
                     highlight = null,
-                    // 投影也是「玻璃光效」的一部分（ConfigKeys：模糊/折射/投影/内阴影），
-                    // 简约版是纯色栏，投影一并关掉 —— 与弹窗、Dock 的简约版同一口径。
+                    // 投影属于「光」的部分：完整版才有，磨砂版与纯色兜底一律无。
                     // 再乘 shadowAlpha：顶栏收起时投影跟随淡出（见参数注释）
-                    shadow = { Shadow.Default.copy(alpha = (if (effect) 1f else 0f) * shadowAlpha) },
+                    shadow = {
+                        Shadow.Default.copy(alpha = (if (tier == GlassTier.Full) 1f else 0f) * shadowAlpha)
+                    },
                     onDrawSurface = { drawRect(tint) },
                 ),
         )

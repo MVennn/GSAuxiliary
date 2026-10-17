@@ -107,10 +107,11 @@ import kotlin.math.sign
  * 同样来自该 demo：按压缩放 78/56、拖动时按速度做**甩动形变**（快甩变扁再回弹）、
  * 高光斑跟随手指、松手阻尼弹簧吸附。
  *
- * ## 完整版 vs 简约版（「玻璃光效」开关）
+ * ## 完整版 vs 简约版（「玻璃光效」开关，正本 docs/LIQUID-GLASS.md §3）
  *
- * 简约版（关）去掉模糊 / 折射 / 投影 / 染色层 / 光斑，滑块退化为实底色块；
- * 白边（高光描边）保留，底色加实（见 [glassSurfaceTint]）。
+ * 简约版是**磨砂玻璃**（Regular）：vibrancy + blur 保留，去掉折射 / 染色层 /
+ * 光斑 / 投影，滑块退化为实底色块，面板面色走 glassSurfaceTint 的磨砂档；
+ * API < 31 无 RenderEffect 时整体纯色兜底（tier = Plain）。
  *
  * ## 交互
  *
@@ -181,8 +182,9 @@ internal fun LiquidGlassDock(
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalDarkTheme.current
+    val tier = glassTier(effect)
     // 面色取官方 demo 的玻璃面板配方：#FAFAFA / #121212 @ 0.4，靠模糊兜底保持通透。
-    // 简约版没有模糊，面色退回 glassSurfaceTint 的实底。
+    // 磨砂版 / 纯色兜底的面色走 glassSurfaceTint 分档（磨砂半透明加深、兜底不透明）。
     val containerColor =
         if (dark) Color(0xFF121212).copy(alpha = 0.4f)
         else Color(0xFFFAFAFA).copy(alpha = 0.4f)
@@ -300,24 +302,30 @@ internal fun LiquidGlassDock(
                     backdrop = backdrop,
                     shape = { DockCapsuleShape },
                     effects = {
-                        if (effect) {
+                        if (tier != GlassTier.Plain) {
                             vibrancy()
                             blur(8.dp.toPx())
-                            lens(24f.dp.toPx(), 24f.dp.toPx())
+                            // 折射是「光」的部分，磨砂版不出（API 31-32 库内自动 no-op）
+                            if (tier == GlassTier.Full) {
+                                lens(24f.dp.toPx(), 24f.dp.toPx())
+                            }
                         }
                     },
                     layerBlock = {
-                        // 按住滑块时整条面板微微「鼓起来」
+                        // 按住滑块时整条面板微微「鼓起来」（按压缩放，磨砂版保留）
                         val progress = dampedDragAnimation.pressProgress
                         val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
                         scaleX = scale
                         scaleY = scale
                     },
                     onDrawSurface = {
-                        drawRect(if (effect) containerColor else glassSurfaceTint(dark, false))
+                        drawRect(
+                            if (tier == GlassTier.Full) containerColor
+                            else glassSurfaceTint(dark, tier),
+                        )
                     },
                 )
-                .then(interactiveHighlight.modifier)
+                .then(if (tier == GlassTier.Full) interactiveHighlight.modifier else Modifier)
                 .height(DockHeight)
                 .fillMaxWidth()
                 .padding(DockInnerPadding),
@@ -341,8 +349,8 @@ internal fun LiquidGlassDock(
         //
         // alpha(0) 只是不显示；layerBackdrop 记录的是它里面的完整画面，
         // 整层再被 ColorFilter.tint 染成主色 —— 滑块里看到的就是「主色玻璃 + 图标」。
-        // 简约版滑块是实底色块，不采样，这一层整个省掉。
-        if (effect) {
+        // 简约版滑块是实底色块，不采样，这一层整个省掉（磨砂版只有面板，滑块仍实底）。
+        if (tier == GlassTier.Full) {
             CompositionLocalProvider(
                 LocalDockTabScale provides {
                     lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
@@ -397,10 +405,10 @@ internal fun LiquidGlassDock(
                 .graphicsLayer {
                     translationX = dampedDragAnimation.value * tabWidth + panelOffset
                 }
-                .then(interactiveHighlight.gestureModifier)
+                .then(if (tier == GlassTier.Full) interactiveHighlight.gestureModifier else Modifier)
                 .then(dampedDragAnimation.modifier)
                 .then(
-                    if (effect) {
+                    if (tier == GlassTier.Full) {
                         Modifier.drawBackdrop(
                             backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
                             shape = { DockCapsuleShape },
@@ -444,7 +452,7 @@ internal fun LiquidGlassDock(
                             },
                         )
                     } else {
-                        // 简约版滑块：实底色块（无折射 / 投影），保留按压缩放
+                        // 磨砂版 / 纯色兜底滑块：实底色块（无折射 / 投影 / 光斑），保留按压缩放
                         Modifier
                             .graphicsLayer {
                                 scaleX = dampedDragAnimation.scaleX

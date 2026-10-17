@@ -432,6 +432,10 @@ private fun DialogCard(
         },
     ) {
         // --- 卡片背景 ---
+        // 档位裁决（正本 docs/LIQUID-GLASS.md §3）：完整版 = 真玻璃，
+        // 磨砂版保留 vibrancy + blur 与加深面色、光的部分（rim / 投影）全关，
+        // 纯色兜底（API < 31）无效果链、不透明面色。
+        val tier = glassTier(effect)
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -441,23 +445,24 @@ private fun DialogCard(
                             backdrop = backdrop,
                             shape = { cardShape },
                             effects = {
-                                if (effect) {
+                                if (tier != GlassTier.Plain) {
                                     vibrancy()
                                     blur(24.dp.toPx())
                                 }
                             },
-                            // 描边与投影都算「玻璃光效」（ConfigKeys：模糊/折射/投影/内阴影），
-                            // 随光效开关一起走：简约版是纯色面，不吃玻璃高光也不投影 ——
+                            // 描边与投影都算「光」的部分，只属于完整版：
+                            // 磨砂版是纯磨砂面，不吃玻璃高光也不投影 ——
                             // 和液态玻璃整个关掉的纯色分支（无 shadow）同一副面孔。
                             // 完整版的描边用 Default（浮在内容上的卡片要有一圈 rim light，
                             // 这点与贴边的顶栏不同：顶栏描边会变成横线，所以是 null）。
                             highlight = {
-                                Highlight.Default.copy(alpha = if (effect) 1f else 0f)
+                                if (tier == GlassTier.Full) Highlight.Default else null
                             },
                             shadow = {
-                                Shadow(radius = 24.dp, alpha = if (effect) 0.30f else 0f)
+                                if (tier == GlassTier.Full) Shadow(radius = 24.dp, alpha = 0.30f)
+                                else null
                             },
-                            onDrawSurface = { drawRect(glassSurfaceTint(dark, effect)) },
+                            onDrawSurface = { drawRect(glassSurfaceTint(dark, tier)) },
                         )
                     } else {
                         Modifier.background(plainColor, cardShape)

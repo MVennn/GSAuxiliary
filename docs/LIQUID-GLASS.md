@@ -108,13 +108,16 @@ rim / 投影 / 内阴影 / lens 全部 alpha = 0 或不调用。
 5. 交互面必须给出简约版表现：pressProgress 仍驱动缩放，但不驱动折射；
 6. 真机门槛自查：API 31–32 机型上完整版交互面应退磨砂而非崩、API ≤ 30 应全纯色。
 
-## 8. 与 3.1.0 现状的差距（待实施）
+## 8. 实施记录（3.1.0 之后）
 
-| # | 差距 | 归属 |
-|---|---|---|
-| 1 | 简约版从「纯色」改为「磨砂」：效果链留 vibrancy+blur，面色加深 | `glassSurfaceTint` 三分档 + 各表面 effect 分支 |
-| 2 | 简约版的滑块 / 弹窗 / 顶栏不再走不透明面色（滑块从实底色块改磨砂底） | 同上 |
-| 3 | API ≤ 30 的纯色兜底由「档位」改为「降级」：面色函数吃 `Build.VERSION` 判 tier | `glassSurfaceTint` / 各调用点 |
-| 4 | 文案：`item_glass_effect_summary_off`「简约版本」不改，语义仍成立；`liquid_glass_off` 口径不变 | 无需改 |
+§3–§6 已落地（`GlassTier` / `glassTier()` / `glassSurfaceTint(dark, tier)`）：
 
-实施后本表删除，正文即现状。
+| 表面 | 磨砂版表现 |
+|---|---|
+| 顶栏 | vibrancy + blur(24dp) + frost 面色，无投影 |
+| 底栏面板 | vibrancy + blur(8dp) + frost 面色，无折射，按压保留鼓起 |
+| 底栏滑块 | 实底色块（不变） |
+| 弹窗 | vibrancy + blur(24dp) + frost 面色，无 rim 无投影 |
+| 开关滑块 | blur 采样轨道色 + 原色面色恒定，按压退 Miuix 档 1.127 |
+
+frost 面色 0.45 为起始值，真机校准后回填本行。

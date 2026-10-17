@@ -24,7 +24,7 @@
 | `FeatureTab.kt` | Tab 2 功能（搜索框在**列表顶部**随列表滚动 + 按 `query` 过滤 + 功能卡片 + 二级入口） |
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
 | `AboutTab.kt` | Tab 4 关于：Hero + 作者卡 + 开源鸣谢 + 免责声明二级页正文 `DisclaimerContent` |
-| `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 玻璃 mark / 滚动淡出），切到该页时顶栏上滑收起 |
+| `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 负空间 mark / 滚动淡出），切到该页时顶栏上滑收起 |
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
@@ -267,7 +267,7 @@ ArrowPreference(
 #### 1.3.2 弹窗也吃「液态玻璃」开关
 
 `DialogHost` 收 `liquidGlass` / `effect` 两个参数，与顶栏 / 底栏同一套
-（两档光效的正本定义见 [LIQUID-GLASS.md](LIQUID-GLASS.md)，下表是 3.1.0 现状）：
+（两档光效的正本定义见 [LIQUID-GLASS.md](LIQUID-GLASS.md)，下表是当前现状）：
 
 | 开关 | 卡片材质 |
 |---|---|
@@ -791,7 +791,6 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
-| 登录 | 隐藏 新股申购 弹窗 | `ipo_dialog_clean` | 无 |
 | 策略页 | 策略直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
 | 策略页 | 策略多选全选 | `stg_select_all` | 无 |
 | 策略页 | 策略筛选股票 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
