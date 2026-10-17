@@ -106,13 +106,20 @@ internal fun AboutTab(
     }
 
 
-    // 动画时间：只在绘制阶段被读取（见文件头注释），这里只负责推进
+    // 动画时间：只在绘制阶段被读取（见文件头注释），这里只负责推进。
+    //
+    // 滚过淡出距离后背景已经看不见（alpha = 0），渐变再怎么变也不会被画进
+    // 任何一帧 —— 此时必须停掉 heroTime 的推进：时间不变，Canvas 读到的
+    // snapshot 值不变，就不会再触发每帧重绘（以及随之而来的两层 backdrop
+    // 重录与顶栏 / 底栏玻璃的重新采样）。不然手指往下滚完一屏，这个
+    // 逐帧动画还在后台空转烧 GPU。
     val heroTime = remember { mutableFloatStateOf(0f) }
+    val backgroundFadePx = remember(density) { with(density) { AboutBackgroundFadeDistance.toPx() } }
     LaunchedEffect(Unit) {
         var previousFrame = 0L
         while (true) {
             withFrameNanos { frameTime ->
-                if (previousFrame != 0L) {
+                if (previousFrame != 0L && scrollState.value < backgroundFadePx) {
                     heroTime.floatValue += (frameTime - previousFrame) / 1_000_000_000f
                 }
                 previousFrame = frameTime
@@ -129,7 +136,8 @@ internal fun AboutTab(
     //   - 背景在 389dp 的滚动距离内淡到看不见（固定值，不随屏高走）；
     //   - logo 从 Hero 的 25% 处开始退，用掉 35% 的行程 —— 等背景还很亮的时候
     //     它就已经走了大半，所以不会出现「一片黑里挂着一个图标」的过渡。
-    val backgroundFadePx = remember(density) { with(density) { AboutBackgroundFadeDistance.toPx() } }
+    // （backgroundFadePx 已上移到 heroTime 循环之前 —— 动画推进要用它做「背景
+    //   是否还可见」的判定，见上方注释。）
     val logoFadeStartPx = remember(heroHeightPx) { heroHeightPx * 0.25f }
     val logoFadeDistancePx = remember(heroHeightPx) { heroHeightPx * 0.35f }
     val backdropAlpha = remember(backgroundFadePx) {

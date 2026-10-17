@@ -111,6 +111,10 @@ internal fun AboutHeroBackground(
                 compositingStrategy = CompositingStrategy.Offscreen
             },
     ) {
+        // 背景完全淡出后（滚过 AboutBackgroundFadeDistance）跳过整块绘制：
+        // 渐变场 + 离屏合成 + DstIn 渐隐都不便宜，画了也是全透明的，
+        // 这里直接 return 掉，滚远之后不再为这块光场花任何绘制开销。
+        if (alpha() <= 0f) return@Canvas
         val t = time()
         val colors = animatedGradientColors(t, darkTheme)
         drawAboutGradientField(
