@@ -19,6 +19,7 @@
 | `recon-watchlist-keys.txt` | shared_prefs 中含自选关键字的文件 / 键 | 同上 |
 | `recon-databases.txt` | App 自有数据库清单（含 `gs_zxstock_db` 自选库） | 同上 |
 | `recon-yellow-log.txt` | 黄系颜色探针日志：`TextView.setTextColor` 抓到的 `#fff5a623` 染色调用 + 页面链路 | 探针 `GSRecon` TAG |
+| `router-contracts.md` | **Router 跳转契约表**：宿主 router action → 落点页面 + extras 契约，真机测试 `am start -a` 直达；活文档，做新功能时用 `parse_launch.py` 边做边补 | 探针 LAUNCH 钩子（`tools/probe/parse_launch.py` 生成） |
 
 ---
 
@@ -34,6 +35,7 @@
 | 自选数据来源 | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（难点与解法 §3） | `recon-databases.txt`：自选股确实存在 SQLite（`gs_zxstock_db`），但**实际染色不读 DB、走内存的 `ZXManager` 单例**，DB 只是持久层 |
 | 染色证据（为什么不能只看颜色） | [`../REVERSE-ENGINEERING.md`](../REVERSE-ENGINEERING.md)（难点与解法 §3） | `recon-yellow-log.txt`：行情页「技术指标」也是黄系 `#fff5a623`，与自选黄 `#fff58000` 不同 —— 所以**判自选要看 `isZx` / `ZXWorkflow`，不能只看颜色** |
 | 探针怎么跑、挂了哪些点 | [`../../tools/probe/README.md`](../../tools/probe/README.md) | —（探针只负责产出上面的 `recon-*.txt`） |
+| 页面直达（免导航铺垫） | [`router-contracts.md`](router-contracts.md)（含 `am start -a` 用法与更新流程） | `router-contracts.md`（探针 LAUNCH 钩子采集的跳转真值） |
 
 ### App 升级后怎么核对
 
