@@ -39,6 +39,7 @@ import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -445,7 +446,17 @@ private fun DialogCard(
                                     blur(24.dp.toPx())
                                 }
                             },
-                            shadow = { Shadow(radius = 24.dp, alpha = 0.30f) },
+                            // 描边与投影都算「玻璃光效」（ConfigKeys：模糊/折射/投影/内阴影），
+                            // 随光效开关一起走：简约版是纯色面，不吃玻璃高光也不投影 ——
+                            // 和液态玻璃整个关掉的纯色分支（无 shadow）同一副面孔。
+                            // 完整版的描边用 Default（浮在内容上的卡片要有一圈 rim light，
+                            // 这点与贴边的顶栏不同：顶栏描边会变成横线，所以是 null）。
+                            highlight = {
+                                Highlight.Default.copy(alpha = if (effect) 1f else 0f)
+                            },
+                            shadow = {
+                                Shadow(radius = 24.dp, alpha = if (effect) 0.30f else 0f)
+                            },
                             onDrawSurface = { drawRect(glassSurfaceTint(dark, effect)) },
                         )
                     } else {

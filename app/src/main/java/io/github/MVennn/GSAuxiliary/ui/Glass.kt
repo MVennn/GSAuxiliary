@@ -20,6 +20,7 @@ import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.shadow.Shadow
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import kotlin.math.abs
 
@@ -191,6 +192,9 @@ internal fun GlassTopBar(
                     },
                     // 不要描边 / 高光：顶栏是贴边的一整块，任何描边都会变成横线
                     highlight = null,
+                    // 投影也是「玻璃光效」的一部分（ConfigKeys：模糊/折射/投影/内阴影），
+                    // 简约版是纯色栏，投影一并关掉 —— 与弹窗、Dock 的简约版同一口径
+                    shadow = { Shadow.Default.copy(alpha = if (effect) 1f else 0f) },
                     onDrawSurface = { drawRect(tint) },
                 ),
         )
