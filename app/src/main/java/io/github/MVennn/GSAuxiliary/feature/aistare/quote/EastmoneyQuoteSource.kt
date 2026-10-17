@@ -20,7 +20,7 @@ import java.math.RoundingMode
  *
  * - 实时：`https://push2.eastmoney.com/api/qt/stock/get?secid=<0|1>.<code>&fltt=2`
  *   字段 `f43` 最新 / `f44` 最高 / `f45` 最低 / `f46` 今开 / `f60` 昨收 /
- *   `f57` 代码 / `f58` 名称。
+ *   `f51` 涨停 / `f52` 跌停（无涨跌停时 -1）/ `f57` 代码 / `f58` 名称。
  *   **`fltt=2` 必须带**：不带的话价格是放大 100 倍的整数（茅台 132900），
  *   自己换算容易在低价股上出错；带上它服务端直接给元。
  * - 日 K：`https://push2his.eastmoney.com/api/qt/stock/kline/get?...&klt=101&fqt=0`
@@ -85,10 +85,11 @@ class EastmoneyQuoteSource : QuoteSource {
 
     /**
      * `{"data":{"f43":12.70,"f44":13.05,"f45":12.31,"f46":12.40,"f57":"300045",
-     * "f58":"华力创通","f60":10.58}}` → 快照。
+     * "f58":"华力创通","f60":10.58,"f51":12.70,"f52":8.46}}` → 快照。
      *
      * 两条安全线：**代码必须对得上**（防止 secid 映射错误拿到别的股票）、
      * **价格必须落在合理区间**（防止接口换成放大 100 倍的口径后写进错误价位）。
+     * `f51`/`f52` 是官方涨跌停价（-1 = 无涨跌停）；与腾讯同一套合理性检查。
      */
     internal fun parseSnapshot(text: String, expectCode: String): QuoteSnapshot? = runCatching {
         val data = JSONObject(text).optJSONObject("data") ?: return null
@@ -107,6 +108,25 @@ class EastmoneyQuoteSource : QuoteSource {
             GLog.w("一键配置取数：东财价格不合理（latest=$latest prevClose=$prevClose），丢弃")
             return null
         }
+
+        // 官方涨跌停：与腾讯同规则 —— 有值且合理就用，明确 -1 记「无涨跌停」，
+        // 不合理当没给（引擎走兜底表）
+        val rawUp = num(data, "f51")
+        val rawDown = num(data, "f52")
+        var limitUp: java.math.BigDecimal? = null
+        var limitDown: java.math.BigDecimal? = null
+        var noPriceLimit = false
+        if (rawUp != null && rawDown != null) {
+            when {
+                rawUp.signum() <= 0 || rawDown.signum() <= 0 -> noPriceLimit = true
+                rawUp > prevClose && rawDown < prevClose -> {
+                    limitUp = rawUp.setScale(2, java.math.RoundingMode.HALF_UP)
+                    limitDown = rawDown.setScale(2, java.math.RoundingMode.HALF_UP)
+                }
+                else -> GLog.w("一键配置取数：东财涨跌停字段不合理（up=$rawUp down=$rawDown prev=$prevClose），忽略")
+            }
+        }
+
         QuoteSnapshot(
             latest = latest,
             prevClose = prevClose,
@@ -114,6 +134,9 @@ class EastmoneyQuoteSource : QuoteSource {
             dayHigh = price(data, "f44"),
             dayLow = price(data, "f45"),
             name = data.optString("f58").takeIf { it.isNotEmpty() && it != "null" },
+            limitUp = limitUp,
+            limitDown = limitDown,
+            noPriceLimit = noPriceLimit,
         )
     }.getOrNull()
 
@@ -142,6 +165,16 @@ class EastmoneyQuoteSource : QuoteSource {
         return BigDecimal.valueOf(raw).setScale(2, RoundingMode.HALF_UP)
     }
 
+    /** 宽容取数：数字 / 数字串都收，`"-"`（东财的「无值」写法）与缺失返回 null */
+    private fun num(o: JSONObject, key: String): BigDecimal? {
+        val raw = o.opt(key) ?: return null
+        return when (raw) {
+            is Number -> BigDecimal.valueOf(raw.toDouble())
+            is String -> raw.trim().toBigDecimalOrNull()
+            else -> null
+        }
+    }
+
     private fun plausible(latest: BigDecimal, prevClose: BigDecimal): Boolean {
         if (prevClose.signum() <= 0) return false
         val ratio = latest.divide(prevClose, 4, RoundingMode.HALF_UP)
@@ -157,7 +190,7 @@ class EastmoneyQuoteSource : QuoteSource {
 
     companion object {
         private const val SNAPSHOT_URL =
-            "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&fields=f43,f44,f45,f46,f57,f58,f60&secid="
+            "https://push2.eastmoney.com/api/qt/stock/get?fltt=2&fields=f43,f44,f45,f46,f51,f52,f57,f58,f60&secid="
         private const val KLINE_URL =
             "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid="
 

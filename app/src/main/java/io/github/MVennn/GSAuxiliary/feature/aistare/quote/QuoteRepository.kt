@@ -84,6 +84,14 @@ class QuoteSession(
 
     private val lock = Any()
 
+    companion object {
+        /**
+         * 日 K 「可用」的最少根数：低于它视同该通道没给出有效数据（换下一家），
+         * 高于它就按实有返回（历史项要的是有多少算多少）。
+         */
+        private const val MIN_USABLE_BARS = 20
+    }
+
     /** 上一次成功给出快照的通道（下次优先，不排它） */
     @Volatile
     private var preferredSnapshot: QuoteSource? = null
@@ -109,12 +117,27 @@ class QuoteSession(
     fun dailyKline(code: String, market: String, n: Int): List<QuoteBar>? {
         if (!needsKline) return null
         val candidates = klineCandidates()
+        var best: Pair<QuoteSource, List<QuoteBar>>? = null
         for (s in candidates) {
             val r = attempt(s) { it.dailyKline(code, market, n) } ?: continue
-            synchronized(lock) { if (preferredKline == null) preferredKline = s }
-            klineSource = s.name
-            GLog.d("一键配置取数：日 K 来自 ${s.name}（$code.$market，n=$n，${r.size} 根）")
-            return r
+            // 「够算」才直接用：>= n，或至少 [MIN_USABLE_BARS] 根（历史项要的是
+            // 有多少算多少）。只回个位数的直接换下一家 —— 北交所在腾讯的 fqkline
+            // 只回 1 根，别让这种残缺数据占住「本次通道」的位置。
+            if (r.size >= n || r.size >= MIN_USABLE_BARS) {
+                synchronized(lock) { if (preferredKline == null) preferredKline = s }
+                klineSource = s.name
+                GLog.d("一键配置取数：日 K 来自 ${s.name}（$code.$market，n=$n，${r.size} 根）")
+                return r
+            }
+            if (best == null || r.size > best.second.size) best = s to r
+        }
+        // 全部通道都不够：把最长的那份交出去（次新股本来就只有几根，引擎自己判够不够）
+        if (best != null) {
+            klineSource = best.first.name
+            GLog.w(
+                "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，要 $n，$code.$market），按实有返回",
+            )
+            return best.second
         }
         GLog.w("一键配置取数：全部通道的日 K 都失败（$code.$market，n=$n，候选=${candidates.joinToString { it.name }}）")
         return null

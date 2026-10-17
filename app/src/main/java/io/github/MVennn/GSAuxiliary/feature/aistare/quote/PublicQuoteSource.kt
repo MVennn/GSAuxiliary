@@ -11,7 +11,8 @@ import org.json.JSONObject
  *
  * 接口（腾讯）：
  *  - 实时：`https://qt.gtimg.cn/q=<mkt><code>`，`~` 分隔文本（**GBK**），
- *    字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 1=名称 2=代码；
+ *    字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 47=涨停 48=跌停（无则 -1）
+ *    1=名称 2=代码；
  *  - 日 K：`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=<mkt><code>,day,,,320,`
  *    （末段留空 = **不复权**，与 §5.3 的口径一致；响应 `data.<mkt><code>.day`
  *    是 `[日期, 开, 收, 高, 低, 量]` 数组，升序，含今日盘中未完成的一根）。
@@ -129,6 +130,27 @@ class PublicQuoteSource : QuoteSource {
         // 昨收是这一类取值的根（涨停 / 昨收 ±p% / 区间校验都要它），必须有
         val prevClose = dec(4) ?: return null
         if (prevClose.signum() <= 0) return null
+
+        // 官方涨跌停价（字段 47/48，实测确认：正常股票给价，指数/新股/退市整理给 -1）。
+        // 有值且过合理性检查就直接用 —— ST 幅度调整这类规则变化不用跟着改表；
+        // -1 是「明确没有涨跌停」，与「字段不在」分开传给引擎（前者判失败，后者兜底表算）。
+        var limitUp: java.math.BigDecimal? = null
+        var limitDown: java.math.BigDecimal? = null
+        var noPriceLimit = false
+        val ru = parts.getOrNull(47)?.trim()?.toBigDecimalOrNull()
+        val rd = parts.getOrNull(48)?.trim()?.toBigDecimalOrNull()
+        if (ru != null && rd != null) {
+            when {
+                ru.signum() <= 0 || rd.signum() <= 0 -> noPriceLimit = true
+                ru > prevClose && rd < prevClose -> {
+                    limitUp = ru.setScale(2, java.math.RoundingMode.HALF_UP)
+                    limitDown = rd.setScale(2, java.math.RoundingMode.HALF_UP)
+                }
+                // 数值不合理（字段挪位 / 串包）→ 当没给，引擎走兜底表
+                else -> GLog.w("一键配置取数：腾讯涨跌停字段不合理（up=$ru down=$rd prev=$prevClose），忽略")
+            }
+        }
+
         return QuoteSnapshot(
             latest = dec(3),
             prevClose = prevClose,
@@ -137,6 +159,9 @@ class PublicQuoteSource : QuoteSource {
             dayHigh = dec(33),
             dayLow = dec(34),
             name = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() },
+            limitUp = limitUp,
+            limitDown = limitDown,
+            noPriceLimit = noPriceLimit,
         )
     }
 

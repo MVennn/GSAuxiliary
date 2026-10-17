@@ -15,7 +15,21 @@ data class QuoteSnapshot(
     val open: BigDecimal?,
     val dayHigh: BigDecimal?,
     val dayLow: BigDecimal?,
+    /** 用于 ST 判定（涨跌停兜底表已不依赖它，留作日志与未来口径用） */
     val name: String?,
+    /**
+     * 行情接口给的**官方涨跌停价**（腾讯字段 47/48、东财 f51/f52）。
+     * 有值时引擎直接用 —— ST 幅度调整、新股规则这类变化不用跟着改表。
+     * null = 本通道没给（降级到兜底表算）。
+     */
+    val limitUp: BigDecimal? = null,
+    val limitDown: BigDecimal? = null,
+    /**
+     * 接口**明确**说该标的当前没有涨跌停（-1：新股上市首日、退市整理期、停牌）。
+     * 与「没给」（[limitUp] 为 null 但可兜底表算）是两回事：明确没有就该判失败，
+     * 而不是编一个名义涨停价出来。
+     */
+    val noPriceLimit: Boolean = false,
 )
 
 /** 一根日 K（不复权口径）；数值保持字符串原样，计算时再转 [BigDecimal] */
@@ -38,7 +52,9 @@ data class QuoteBar(
  *  - `historyHigh`/`historyLow` 是**现价上方最近 / 下方最近的波段高点 / 低点**（最近前高 / 前低）；
  *  - `maN` 是简单算术平均，N 含今日；
  *  - 不复权；
- *  - 涨停/跌停 = `round(昨收 × (1±幅度), 2)`，幅度按代码前缀 + ST 判定；
+ *  - 涨停/跌停：**优先用行情接口给的官方价**；接口没给时才用兜底表
+ *    `round(昨收 × (1±幅度), 2)`（幅度只按板块前缀 —— 2026-07-06 起主板 ST
+ *    已与普通股同为 10%，创业板/科创板 ST 同为 20%，ST 不再单列一档）；
  *  - 全程 [BigDecimal]，输出统一 `setScale(2, HALF_UP)`，绝不用 Double 乘。
  */
 object QuickConfigEngine {
@@ -265,7 +281,11 @@ object QuickConfigEngine {
         base ?: return null
         val pct = p[QuickConfigCatalog.PARAM_PCT]?.toDoubleOrNull() ?: return null
         if (pct < 0.1 || pct > 30.0) return null
-        val factor = BigDecimal(if (up) 1.0 + pct / 100.0 else 1.0 - pct / 100.0)
+        // ⚠️ 必须 valueOf 而不是 BigDecimal(double)：0.95 的 double 是
+        // 0.9499999…，11.50 × 它 = 10.9249… → HALF_UP 进成 10.92，比正确值
+        // 10.93 少一分（对拍实测踩中）。valueOf 走 Double.toString 的最短表示，
+        // "0.95" → 精确的 0.95。文档红线「绝不用 Double 乘」说的就是这个。
+        val factor = BigDecimal.valueOf(if (up) 1.0 + pct / 100.0 else 1.0 - pct / 100.0)
         return base.multiply(factor)
     }
 
@@ -290,24 +310,41 @@ object QuickConfigEngine {
         val snapshot = input.snapshot ?: return null
         val prevClose = snapshot.prevClose ?: return null
         if (prevClose.signum() <= 0) return null
+        if (snapshot.noPriceLimit) return null
+        (if (up) snapshot.limitUp else snapshot.limitDown)?.let { return it }
         val factor = limitFactor(input.code, input.market, snapshot.name) ?: return null
         val signed = if (up) BigDecimal.ONE.add(factor) else BigDecimal.ONE.subtract(factor)
         return prevClose.multiply(signed)
     }
 
-    /** 返回涨跌幅幅度（如 0.10 = 10%）；指数 / 认不出返回 null */
+    /**
+     * 返回涨跌幅幅度（如 0.10 = 10%）；指数 / 认不出返回 null。
+     *
+     * ## ST 已经不是一条独立的幅度档（2026-10-17 真机对拍修正）
+     *
+     * 旧表写「主板 ST 5%、创业板/科创板 ST 12%」，与实盘全对不上：
+     *  - **主板 ST 早已不是 5%**：沪深交易所 2026-07-06 起把主板风险警示股票
+     *    涨跌幅由 5% 调整为 10%（与主板普通股一致，深交所官网有正式公告）；
+     *  - **12% 从来不是涨跌幅** —— 那是「ST 股连续三日偏离 ±12%」的**异常波动**
+     *    监控指标，当年写表时抄串了；创业板/科创板 ST 的涨跌幅一直是 20%
+     *    （实测 *ST开元 300338：昨收 2.68，涨停 3.22 = +20%）。
+     *
+     * 所以这张兜底表不再按名称区分 ST（[name] 仅为签名兼容保留）。
+     * 主路径的涨跌停价来自行情接口的官方字段（见 [limitPrice]），这张表只在
+     * DOM 兜底通道才被用到。
+     */
     fun limitFactor(code: String, market: String, name: String?): BigDecimal? {
         // 指数：沪市 000 开头全是指数（沪市股票是 6 开头）；深市 399；板块 880
         if (market == "2" && code.startsWith("000")) return null
         if (code.startsWith("399") || code.startsWith("880")) return null
 
-        val isSt = name?.contains("ST") == true
         val pct = when {
-            code.startsWith("688") -> if (isSt) 12.0 else 20.0   // 科创板
-            code.startsWith("30") -> if (isSt) 12.0 else 20.0    // 创业板
-            code.startsWith("60") -> if (isSt) 5.0 else 10.0     // 沪市主板
-            code.startsWith("00") -> if (isSt) 5.0 else 10.0     // 深市主板
-            code.startsWith("4") || code.startsWith("8") -> 30.0 // 北交所（不细分 ST）
+            code.startsWith("68") -> 20.0                          // 科创板（688 / 689 CDR）
+            code.startsWith("30") -> 20.0                          // 创业板
+            code.startsWith("60") -> 10.0                          // 沪市主板
+            code.startsWith("00") -> 10.0                          // 深市主板
+            code.startsWith("920") || code.startsWith("4") ||
+                code.startsWith("8") -> 30.0                       // 北交所
             else -> return null
         }
         return BigDecimal(pct).divide(BigDecimal(100), 4, RoundingMode.HALF_UP)
