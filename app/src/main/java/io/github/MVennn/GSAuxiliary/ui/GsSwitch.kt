@@ -12,7 +12,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -57,7 +56,6 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * 自绘开关 —— 替换 Miuix 的 `Switch` / `SwitchPreference`。

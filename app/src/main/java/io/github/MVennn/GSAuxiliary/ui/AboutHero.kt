@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
@@ -376,29 +375,6 @@ private fun strengthenGradientColor(color: Color): Color {
         green = (average + (color.green - average) * saturation - brightnessOffset).coerceIn(0f, 1f),
         blue = (average + (color.blue - average) * saturation - brightnessOffset).coerceIn(0f, 1f),
         alpha = color.alpha,
-    )
-}
-
-/**
- * 会缓慢移动的线性渐变（mark 的染色用）。
- *
- * 中心与方向都随时间走一个小圆，所以同一块图形上的高光位置一直在变 ——
- * 静态渐变会让 mark 像一张贴纸。
- */
-private fun animatedGradientBrush(
-    animationTime: Float,
-    colors: List<Color>,
-): Brush {
-    val center = Offset(310f, 90f)
-    val vector = Offset(
-        x = cos(animationTime * BackgroundSpeed) * 620f,
-        y = sin(animationTime * BackgroundSpeed) * 180f,
-    )
-    val opaqueColors = colors.map { it.copy(alpha = 1f) }
-    return Brush.linearGradient(
-        colors = opaqueColors + opaqueColors.first(),
-        start = center - vector,
-        end = center + vector,
     )
 }
 
