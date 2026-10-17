@@ -214,17 +214,6 @@ class AiStareQuickConfigFeature : Feature {
                 null,
             )
             GLog.i("一键配置：已注入价格页（${Uri.parse(url).getQueryParameter("stockCode")}）")
-            // 诊断放到 2.2 秒后：`onPageFinished` 那一刻底部操作条还没渲染，
-            // 当场 dump 只会得到 chain:null（v1 踩过）
-            mainHandler.postDelayed({
-                runCatching {
-                    webView.evaluateJavascript(AiStareJs.DIAG) { raw ->
-                        val text = runCatching { JSONTokener(raw).nextValue() as? String }
-                            .getOrNull().orEmpty()
-                        GLog.i("一键配置：DOM ${text.take(1500)}")
-                    }
-                }
-            }, 2200)
         }.onFailure { GLog.w("一键配置：JS 注入失败", it) }
     }
 

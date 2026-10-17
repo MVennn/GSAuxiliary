@@ -455,68 +455,6 @@ internal object AiStareJs {
 })();"""
 
     /**
-     * 临时诊断脚本 v2：把底部操作条的真实结构 + 桥状态吐回原生。
-     *
-     * v1 在 `onPageFinished` 当场跑，那时操作条还没渲染（`chain:null`）——
-     * 现在由原生在注入后 2.2 秒再调一次，此时按钮已经插进去了。
-     * 排查完即删。
-     */
-    const val DIAG: String = """(function(){
-  function r(el) {
-    if (!el) return null;
-    var b = el.getBoundingClientRect(), cs = getComputedStyle(el);
-    return {
-      tag: el.tagName,
-      cls: (typeof el.className === 'string' ? el.className : '').slice(0, 90),
-      txt: (el.textContent || '').trim().slice(0, 12),
-      rect: [Math.round(b.x), Math.round(b.y), Math.round(b.width), Math.round(b.height)],
-      display: cs.display, flex: cs.flex, position: cs.position,
-      bg: cs.backgroundColor, z: cs.zIndex
-    };
-  }
-  var out = { bridge: typeof window.gsaux, vw: window.innerWidth, vh: window.innerHeight };
-
-  // 底部 40% 区域内所有「有文字」的叶子节点（找真实按钮文字用）
-  var leaves = [], all = document.querySelectorAll('div,span,button,a,label,p');
-  for (var i = 0; i < all.length; i++) {
-    var e = all[i];
-    if (e.childElementCount !== 0) continue;
-    var t = (e.textContent || '').trim();
-    if (!t) continue;
-    var b = e.getBoundingClientRect();
-    if (b.top > window.innerHeight * 0.6 && b.width > 0 && b.height > 0) {
-      leaves.push([t.slice(0, 8), Math.round(b.x), Math.round(b.y),
-                   Math.round(b.width), Math.round(b.height)]);
-    }
-  }
-  out.leaves = leaves.slice(0, 30);
-
-  // 「保存 / 确认」任一命中就给它的祖先链
-  var key = null;
-  for (var k = 0; k < leaves.length; k++) {
-    if (leaves[k][0] === '__SAVE_TEXT__' || leaves[k][0] === '确认') { key = leaves[k][0]; break; }
-  }
-  out.keyText = key;
-  if (key) {
-    for (var j = 0; j < all.length; j++) {
-      var el = all[j];
-      if (el.childElementCount === 0 && (el.textContent || '').trim() === key) {
-        var bb = el.getBoundingClientRect();
-        if (bb.top > window.innerHeight * 0.6) {
-          var n = el, chain = [];
-          for (var m = 0; m < 4 && n; m++) { chain.push(r(n)); n = n.parentElement; }
-          out.chain = chain;
-          break;
-        }
-      }
-    }
-  }
-  var ns = window.__gsaux;
-  out.btn = ns && ns.btn ? r(ns.btn) : null;
-  return JSON.stringify(out);
-})()"""
-
-    /**
      * 「原生调 JS」的片段：初始化（注入方案摘要 + 开关状态）。
      * [schemesJson] 必须是已转义的安全 JSON 字符串字面量（由 [safeJson] 生成）。
      */
