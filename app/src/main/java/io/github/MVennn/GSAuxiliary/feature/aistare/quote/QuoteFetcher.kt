@@ -55,11 +55,12 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
     )
 
     /**
-     * 2026-10-17 口径改为「全部历史的最高 / 最低价」（不含今日）之后，
-     * 前高 / 前低不再需要现价参与，这两项不再顺带要快照 —— 见
-     * [QuickConfigEngine.historyTerm]。
+     * 前高 / 前低要用「现价」判断这个波段点站在现价上方还是下方
+     * （[QuickConfigEngine.evaluateSlot] 的 swingTerm），所以这两项**顺带要快照** ——
+     * 旧实现没算这一条，方案里只放「最近前高」时取到的会是「最近的一个波段高点」，
+     * 而不是「现价上方最近的前高」。
      */
-    private val KLINE_TERMS_NEED_SNAPSHOT: Set<String> = emptySet()
+    private val KLINE_TERMS_NEED_SNAPSHOT = setOf("historyHigh", "historyLow")
 
     /**
      * 取数并算价；任一必需项失败返回 null（调用方**不写值**，§3.2）。
