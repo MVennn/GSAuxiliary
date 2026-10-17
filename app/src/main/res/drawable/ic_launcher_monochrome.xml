@@ -3,7 +3,7 @@
     自适应图标的单色层（Android 13+ 主题图标用）。
 
     系统会忽略这里的填充色、只取 alpha 做剪影，所以整层统一用一个颜色。
-    几何与 `ic_launcher_foreground.xml` **完全一致**，只是把渐变描边换成纯白描边 ——
+    几何与 `ic_launcher_foreground.xml` **完全一致**，只是把渐变换成纯白 ——
     主题图标下底由系统上色，图形本身必须是无色剪影。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -15,8 +15,15 @@
     <path
         android:fillColor="#00000000"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="6.5"
+        android:strokeWidth="8.46"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M31,70.5 L44,55.5 L55.5,62 L77,37.5 M67.5,37.5 L77,37.5 L77,47" />
+        android:pathData="M33.08,75.39 Q67.4,75.39 67.4,50.94" />
+
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.82"
+        android:strokeLineJoin="round"
+        android:pathData="M67.4,29.79 L57.06,50.94 L77.74,50.94 Z" />
 </vector>

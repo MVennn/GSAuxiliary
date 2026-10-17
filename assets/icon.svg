@@ -4,12 +4,12 @@
       <stop offset="0" stop-color="#2B3242"/>
       <stop offset="1" stop-color="#161A22"/>
     </linearGradient>
-    <linearGradient id="line" gradientUnits="userSpaceOnUse" x1="31" y1="70.5" x2="77" y2="37.5">
+    <linearGradient id="line" gradientUnits="userSpaceOnUse" x1="33.08" y1="75.39" x2="67.4" y2="29.79">
       <stop offset="0" stop-color="#FFC24A"/>
       <stop offset="1" stop-color="#FF7A00"/>
     </linearGradient>
   </defs>
   <rect x="0" y="0" width="108" height="108" rx="24" ry="24" fill="url(#bg)"/>
-  <path d="M31,70.5 L44,55.5 L55.5,62 L77,37.5 M67.5,37.5 L77,37.5 L77,47" fill="none" stroke="url(#line)" stroke-width="6.5"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M33.08,75.39 Q67.4,75.39 67.4,50.94" fill="none" stroke="url(#line)" stroke-width="8.46" stroke-linecap="round"/>
+  <path d="M67.4,29.79 L57.06,50.94 L77.74,50.94 Z" fill="url(#line)" stroke="url(#line)" stroke-width="2.82" stroke-linejoin="round"/>
 </svg>

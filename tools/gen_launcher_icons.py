@@ -10,20 +10,25 @@
 
 ## 图案
 
-简约苹果风格：圆角方形底 + 竖向渐变 + 一条金色上升折线 + 右上箭头。
-几何与配色必须和下面两个矢量文件**逐项一致**：
+3.2.0 起的 logo：圆角方形底 + 竖向渐变，上面一道**上扬的弧线**，弧线末端顶着一个
+**实心三角箭镞**。几何取自设计源图 `rise-1x1.svg`（240×240，mask 负空间），
+这里换算到 108×108 的设计网格。
+
+几何必须和下面两个矢量文件**逐项一致**：
 
     app/src/main/res/drawable/ic_launcher_background.xml   （渐变底）
-    app/src/main/res/drawable/ic_launcher_foreground.xml   （折线 + 箭头）
+    app/src/main/res/drawable/ic_launcher_foreground.xml   （弧线 + 箭镞）
+
+以及 `ui/AboutHero.kt` 里关于页那颗 mark 的负空间挖空（同一套坐标）。
 
 ## 实现
 
 纯标准库（math / struct / zlib），不依赖 Pillow：
 
 1. 背景：逐行算圆角矩形的 x 区间，填竖向渐变色；
-2. 前景：用**距离场**描边 —— 对每个像素求到折线各段的最短距离，
-   `距离 <= 线宽/2` 即上色。圆头笔帽与圆角拐点由距离场天然产生，
-   不需要单独处理 line cap / line join；
+2. 前景：弧线按二次贝塞尔采样成密折线，再用**距离场**描边 —— 对每个像素求到
+   各段的最短距离，`距离 <= 线宽/2` 即上色（圆头笔帽天然成立）；箭镞用
+   「点在三角形内 || 到三边距离 <= 描边/2」判定，圆角接头同样由距离场产生；
 3. 圆形遮罩（`ic_launcher_round.png`）；
 4. 4× 超采样降采样做抗锯齿。
 
@@ -44,19 +49,33 @@ BG_BOTTOM = (0x16, 0x1A, 0x22)   # ic_launcher_background.xml endColor   #FF161A
 LINE_TOP = (0xFF, 0xC2, 0x4A)    # ic_launcher_foreground.xml startColor #FFFFC24A
 LINE_BOTTOM = (0xFF, 0x7A, 0x00)  # ic_launcher_foreground.xml endColor   #FFFF7A00
 
-# 108×108 设计网格（与矢量 viewport 相同）
-# 2.9.0：整体收紧 —— 相对安全区（18..90）的留白由「左右 4.5」放宽到「左右 9.75 /
-# 上下 16.25」，箭头臂长由 13 缩到 9.5，四周留出呼吸空间。
-POLYLINE = [(31.0, 70.5), (44.0, 55.5), (55.5, 62.0), (77.0, 37.5)]
-ARROW = [(67.5, 37.5), (77.0, 37.5), (77.0, 47.0)]
-STROKE = 6.5        # strokeWidth
-CORNER = 24.0       # 圆角半径（苹果 squircle ≈ 边长 22%，108 × 0.222 ≈ 24）
+# 108×108 设计网格（与矢量 viewport 相同）。
+#
+# 坐标来自源图 rise-1x1.svg 的 240 网格，经两层变换落到这里：
+#
+#   ① 源图自身的 mask 分组： translate(120 120) scale(0.595) translate(-129 -113)
+#   ② 装进 108 网格：       (p - 120) × 0.395 + 54
+#
+# ② 的 0.395 是「安全区拟合」系数：源图图形在自己的画布里偏满，直接搬过来外接圆
+# 半径 86.4（240 网格）/ 38.9（108 网格），超过自适应图标圆形遮罩的 36，圆角桌面
+# 会把弧线起笔那一头切掉。0.395 让它刚好收到 34.2 —— 留 1.8 的余量。
+CURVE_START = (33.08, 75.39)     # 弧线起笔（左下）
+CURVE_CTRL = (67.40, 75.39)      # 二次贝塞尔控制点（与起点同高 = 起笔水平）
+CURVE_END = (67.40, 50.94)       # 弧线收笔（箭镞底边中点）
+CURVE_STROKE = 8.46              # 弧线粗细（源图 36）
+TRI = ((67.40, 29.79),           # 箭镞：顶端 / 底边左 / 底边右
+       (57.06, 50.94),
+       (77.74, 50.94))
+TRI_STROKE = 2.82                # 箭镞描边（源图 12）—— 只用来把三个角磨圆
+CORNER = 24.0                    # 圆角半径（苹果 squircle ≈ 边长 22%，108 × 0.222 ≈ 24）
 
 # 描边渐变轴 —— 必须与 ic_launcher_foreground.xml 里 <gradient> 的
-# startX/startY/endX/endY 完全一致：从折线起点指向终点，是**斜向**渐变，
+# startX/startY/endX/endY 完全一致：从弧线起笔指向箭镞顶端，是**斜向**渐变，
 # 不是竖向渐变。位图这边按「投影到渐变轴」求 t，两边结果才一致。
-LINE_GRAD_FROM = (31.0, 70.5)
-LINE_GRAD_TO = (77.0, 37.5)
+GRAD_FROM = CURVE_START
+GRAD_TO = TRI[0]
+
+CURVE_SEGMENTS = 48  # 弧线采样段数：够密，距离场误差远小于一个像素
 
 SS = 4              # 超采样倍率，用于抗锯齿
 
@@ -86,6 +105,41 @@ def _dist_point_seg(px, py, a, b):
     elif t > 1.0:
         t = 1.0
     return math.hypot(wx - t * vx, wy - t * vy)
+
+
+def curve_points(segments=CURVE_SEGMENTS):
+    """弧线采样成折线（108 网格坐标，含起点）。"""
+    pts = [CURVE_START]
+    for i in range(1, segments + 1):
+        t = i / segments
+        u = 1.0 - t
+        pts.append((
+            u * u * CURVE_START[0] + 2 * u * t * CURVE_CTRL[0] + t * t * CURVE_END[0],
+            u * u * CURVE_START[1] + 2 * u * t * CURVE_CTRL[1] + t * t * CURVE_END[1],
+        ))
+    return pts
+
+
+def accent_at(x, y):
+    """108 网格坐标 (x,y) 处的描边颜色（沿 GRAD_FROM → GRAD_TO 投影）。"""
+    gvx = GRAD_TO[0] - GRAD_FROM[0]
+    gvy = GRAD_TO[1] - GRAD_FROM[1]
+    glen2 = gvx * gvx + gvy * gvy
+    if glen2 <= 0.0:
+        return LINE_TOP
+    t = ((x - GRAD_FROM[0]) * gvx + (y - GRAD_FROM[1]) * gvy) / glen2
+    t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+    return _lerp(LINE_TOP, LINE_BOTTOM, t)
+
+
+def _inside_tri(px, py, tri):
+    """点 (px,py) 在三角形 tri 内（含边界）。"""
+    signs = []
+    for i in range(3):
+        ax, ay = tri[i]
+        bx, by = tri[(i + 1) % 3]
+        signs.append((px - bx) * (ay - by) - (ax - bx) * (py - by))
+    return all(s >= 0.0 for s in signs) or all(s <= 0.0 for s in signs)
 
 
 def render(size, round_mask):
@@ -118,36 +172,44 @@ def render(size, round_mask):
         for x in range(x_lo, x_hi):
             put(x, y, bg)
 
-    # --- 2. 前景：折线 + 箭头，距离场描边（圆头圆角天然成立）---
-    segs = []
-    for pts in (POLYLINE, ARROW):
-        for a, b in zip(pts, pts[1:]):
-            segs.append(((a[0] * scale, a[1] * scale), (b[0] * scale, b[1] * scale)))
-    half = STROKE * scale / 2.0
+    # --- 2. 前景：弧线 + 箭镞，距离场上色（圆头圆角天然成立）---
+    curve = [(p[0] * scale, p[1] * scale) for p in curve_points()]
+    segs = list(zip(curve, curve[1:]))
+    tri = [(p[0] * scale, p[1] * scale) for p in TRI]
+    tri_segs = [(tri[i], tri[(i + 1) % 3]) for i in range(3)]
 
-    xs = [p[0] for s in segs for p in s]
-    ys = [p[1] for s in segs for p in s]
+    half = CURVE_STROKE * scale / 2.0
+    tri_half = TRI_STROKE * scale / 2.0
+
+    xs = [p[0] for s in segs for p in s] + [p[0] for p in tri]
+    ys = [p[1] for s in segs for p in s] + [p[1] for p in tri]
     x0 = max(0, int(min(xs) - half - 1))
     x1 = min(big, int(max(xs) + half + 2))
     y0 = max(0, int(min(ys) - half - 1))
     y1 = min(big, int(max(ys) + half + 2))
 
-    # 渐变轴（缩放到位图坐标），用于求每个像素在渐变上的位置 t
-    ga = (LINE_GRAD_FROM[0] * scale, LINE_GRAD_FROM[1] * scale)
-    gb = (LINE_GRAD_TO[0] * scale, LINE_GRAD_TO[1] * scale)
-    gvx, gvy = gb[0] - ga[0], gb[1] - ga[1]
+    # 渐变轴（缩放到像素坐标），用于求每个像素在渐变上的位置 t
+    gax, gay = GRAD_FROM[0] * scale, GRAD_FROM[1] * scale
+    gvx = (GRAD_TO[0] - GRAD_FROM[0]) * scale
+    gvy = (GRAD_TO[1] - GRAD_FROM[1]) * scale
     glen2 = gvx * gvx + gvy * gvy
 
     for y in range(y0, y1):
         cy = y + 0.5
         for x in range(x0, x1):
             cx = x + 0.5
-            d = min(_dist_point_seg(cx, cy, a, b) for a, b in segs)
-            if d <= half:
-                # 投影到渐变轴，超出端点就夹住（SVG 线性渐变的默认 spreadMethod=pad）
-                t = 0.0 if glen2 <= 0.0 else ((cx - ga[0]) * gvx + (cy - ga[1]) * gvy) / glen2
-                t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
-                put(x, y, _lerp(LINE_TOP, LINE_BOTTOM, t))
+            if min(_dist_point_seg(cx, cy, a, b) for a, b in segs) <= half:
+                hit = True
+            elif _inside_tri(cx, cy, tri):
+                hit = True
+            else:
+                hit = min(_dist_point_seg(cx, cy, a, b) for a, b in tri_segs) <= tri_half
+            if not hit:
+                continue
+            # 投影到渐变轴，超出端点就夹住（SVG 线性渐变的默认 spreadMethod=pad）
+            t = 0.0 if glen2 <= 0.0 else ((cx - gax) * gvx + (cy - gay) * gvy) / glen2
+            t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+            put(x, y, _lerp(LINE_TOP, LINE_BOTTOM, t))
 
     # --- 3. 圆形遮罩（round 变体）---
     if round_mask:
@@ -209,19 +271,22 @@ def svg_text():
         '    </linearGradient>\n'
         '  </defs>\n'
         '  <rect x="0" y="0" width="108" height="108" rx="%g" ry="%g" fill="url(#bg)"/>\n'
-        '  <path d="%s M%s" fill="none" stroke="url(#line)" stroke-width="%g"\n'
-        '        stroke-linecap="round" stroke-linejoin="round"/>\n'
+        '  <path d="M%g,%g Q%g,%g %g,%g" fill="none" stroke="url(#line)" '
+        'stroke-width="%g" stroke-linecap="round"/>\n'
+        '  <path d="M%g,%g L%g,%g L%g,%g Z" fill="url(#line)" stroke="url(#line)" '
+        'stroke-width="%g" stroke-linejoin="round"/>\n'
         '</svg>\n'
     ) % (
         BG_TOP[0], BG_TOP[1], BG_TOP[2],
         BG_BOTTOM[0], BG_BOTTOM[1], BG_BOTTOM[2],
-        LINE_GRAD_FROM[0], LINE_GRAD_FROM[1], LINE_GRAD_TO[0], LINE_GRAD_TO[1],
+        GRAD_FROM[0], GRAD_FROM[1], GRAD_TO[0], GRAD_TO[1],
         LINE_TOP[0], LINE_TOP[1], LINE_TOP[2],
         LINE_BOTTOM[0], LINE_BOTTOM[1], LINE_BOTTOM[2],
         CORNER, CORNER,
-        "M" + " L".join("%g,%g" % p for p in POLYLINE),
-        " L".join("%g,%g" % p for p in ARROW),
-        STROKE,
+        CURVE_START[0], CURVE_START[1], CURVE_CTRL[0], CURVE_CTRL[1],
+        CURVE_END[0], CURVE_END[1], CURVE_STROKE,
+        TRI[0][0], TRI[0][1], TRI[1][0], TRI[1][1], TRI[2][0], TRI[2][1],
+        TRI_STROKE,
     )
 
 

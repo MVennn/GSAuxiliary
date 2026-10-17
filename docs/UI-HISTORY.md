@@ -152,33 +152,34 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 
 ---
 
-## 12. Launcher 图标（2.6.0 重绘，2.9.1 收紧留白）
+## 12. Launcher 图标（2.6.0 重绘，2.9.1 收紧留白，3.2.0 换图形）
 
 简约苹果风格：**圆角方形底 + 竖向渐变 + 单一符号 + 大量留白**。
-符号选「上升行情线 + 右上箭头」—— 行情 / 收益最普适的图形语言，
-也与模块用途直接对应。
+符号在 3.2.0 换成「一道上扬的弧线 + 顶端箭镞」—— 见 §12.1.2；
+2.6.0 到 3.1.0 用的是「上升行情折线 + 右上直角箭头」。
 
 ### 12.1 三个矢量层 + 五档位图
 
 | 文件 | 作用 |
 |---|---|
 | `drawable/ic_launcher_background.xml` | 自适应图标背景层：铺满 108×108 的矩形 + 竖向渐变 |
-| `drawable/ic_launcher_foreground.xml` | 前景层：折线 + 箭头，描边带渐变 |
-| `drawable/ic_launcher_monochrome.xml` | Android 13+ 主题图标剪影（纯白描边，几何与前景完全一致） |
+| `drawable/ic_launcher_foreground.xml` | 前景层：弧线 + 箭镞，描边与填充带渐变 |
+| `drawable/ic_launcher_monochrome.xml` | Android 13+ 主题图标剪影（纯白，几何与前景完全一致） |
 | `mipmap-anydpi-v26/ic_launcher{,_round}.xml` | 自适应图标，`<background>` 指向上面那个 drawable |
 | `mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher{,_round}.png` | 位图回退，由脚本生成 |
 
 设计常量（108 网格，与矢量 viewport 同坐标系）：
 
 ```
-折线  M31,70.5 L44,55.5 L55.5,62 L77,37.5    先扬 → 小幅回踩 → 冲高
-箭头  M67.5,37.5 L77,37.5 L77,47             尖端在折线终点，向左 + 向下的直角箭头（臂长 9.5）
-描边  strokeWidth 6.5，round cap / round join
+弧线  M33.08,75.39 Q67.4,75.39 67.4,50.94      起笔水平、收笔竖直的二次贝塞尔
+箭镞  M67.4,29.79 L57.06,50.94 L77.74,50.94 Z  底边中点正是弧线收笔点
+线宽  strokeWidth 8.46（round cap）；箭镞描边 2.82（只用来把三个角磨圆）
 底色  #FF2B3242 → #FF161A22（竖向）
-线色  #FFFFC24A → #FFFF7A00（沿折线方向，起点浅金 → 终点深橙）
+线色  #FFFFC24A → #FFFF7A00（沿弧线方向，起点浅金 → 箭镞顶端深橙）
 ```
 
-折线与箭头合并成**同一条 path**，这样描边渐变是连续的。
+弧线与箭镞是两条独立 path：弧线只描边，箭镞填充 + 同色描边。渐变轴共用
+（从弧线起笔到箭镞顶端），两段颜色因此接得上。
 
 #### 12.1.1 2.9.1：箭头缩小 + 四周留白
 
@@ -204,6 +205,35 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 > `python tools/gen_launcher_icons.py`。
 图形外接框（含描边半径 3.5）约 x 22.5..85.5、y 30.5..77.5，居中且不出 72×72 安全区。
 
+#### 12.1.2 3.2.0：换成一笔弧线 + 箭镞
+
+「涨—跌—涨」的折线有两个拐点，缩到 48dp 以下那个 V 形回踩会糊成一团；
+换成**一次转向**的弧线，任何尺寸都读得出「往上走」。设计源图是
+`rise-1x1.svg`（240×240，图形是 mask 里的负空间）。
+
+坐标从源图到 108 网格经过两次变换：
+
+```
+① 源图自身的 mask 分组   translate(120 120) scale(0.595) translate(-129 -113)
+② 装进 108 网格          (p - 120) × 0.395 + 54
+```
+
+② 的 **0.395** 是安全区拟合系数。源图图形在自己的画布里偏满，直接搬过来外接圆
+半径 38.9，超过自适应图标圆形遮罩的 36 —— 圆形桌面会把弧线起笔那一头切掉。
+0.395 收到 **34.2**，留 1.8 的余量；代价是图形比源图略瘦，
+换来的是圆角 / 圆形遮罩下都不被裁。
+
+配套改动：
+
+- 关于页 mark（`ui/AboutHero.kt`）的负空间挖空换成同一套坐标，线宽也用同一份
+  常量；圆角从写死的 24dp 改成 `RoundedCornerShape(22)`（百分比），
+  这样 88dp 的 mark 与 108 网格里 24/108 = 22.2% 的图标圆角比例一致
+- `tools/make_social_preview.py` 不再照着 SVG 重画一遍：tile 直接取
+  `gen_launcher_icons.render()` 的像素，social preview 与图标位图逐像素同源；
+  右侧巨型水印跟着换成弧线 + 实心箭镞
+- 位图侧的箭镞用「点在三角形内 || 到三边距离 <= 描边/2」判定，
+  圆角接头仍是距离场副产品，没引入新的几何特判
+
 ### 12.2 背景层为什么必须是 drawable
 
 `<background>` 只接受 **drawable**，纯色资源做不出渐变。
@@ -226,13 +256,16 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 `tools/gen_launcher_icons.py` 是纯标准库实现（`math` / `struct` / `zlib`，不依赖 Pillow）：
 
 1. 逐行算圆角矩形的 x 区间，填竖向渐变色（圆角半径 24 / 108 ≈ 苹果 squircle 的 22%）
-2. 前景用**距离场**：对每个像素求到折线各段的最短距离，`距离 <= 线宽/2` 即上色。
+2. 前景用**距离场**：弧线先按二次贝塞尔采样成密折线，对每个像素求到各段的最短距离，
+   `距离 <= 线宽/2` 即上色；箭镞另算「点在三角形内 || 到三边距离 <= 描边/2」。
    圆头笔帽与圆角拐点由距离场**天然产生**，不需要单独处理 line cap / line join
 3. 圆形遮罩（`ic_launcher_round.png`）
 4. 4× 超采样降采样做抗锯齿
 
-脚本顶部的 `BG_TOP` / `BG_BOTTOM` / `LINE_TOP` / `LINE_BOTTOM` / `POLYLINE` / `ARROW` /
-`STROKE` / `CORNER` 必须与两个矢量文件**逐项对齐** —— 改了一边就要改另一边。
+脚本顶部的 `BG_TOP` / `BG_BOTTOM` / `LINE_TOP` / `LINE_BOTTOM` / `CURVE_START` /
+`CURVE_CTRL` / `CURVE_END` / `CURVE_STROKE` / `TRI` / `TRI_STROKE` / `CORNER`
+必须与两个矢量文件**逐项对齐** —— 改了一边就要改另一边。
+`make_social_preview.py` 的 tile 与右侧水印也读这份常量，所以是「改一处，四处跟」。
 
 ```bash
 python tools/gen_launcher_icons.py

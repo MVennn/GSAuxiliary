@@ -192,7 +192,7 @@ internal fun AboutHeroContent(
 }
 
 /**
- * mark：实心圆角方块，用负空间挖出上升折线。
+ * mark：实心圆角方块，用负空间挖出一道上升的弧线和顶端的箭镞。
  *
  * ## 为什么它是玻璃，而不是一块纯色
  *
@@ -206,10 +206,10 @@ internal fun AboutHeroContent(
  *
  * 绘制顺序（同一离屏图层内）：
  *   1. 玻璃：`drawBackdrop` 采样 + 模糊 + 染色
- *   2. 折线：`BlendMode.Clear` 抠出负空间
+ *   2. 图形：`BlendMode.Clear` 抠出负空间
  *
- * 折线坐标与启动器前景同一套（见 ic_launcher_foreground.xml 的注释），
- * 再按 [MarkScale] 放大 —— 原尺寸在 96dp 的方块里留白过多，看着像小一号的图标。
+ * 图形坐标与启动器前景同一套（见 ic_launcher_foreground.xml 的注释），
+ * 连线宽都是同一份常量 —— 这样关于页的 mark 和桌面上的图标是同一颗标。
  */
 @Composable
 private fun AboutMark(
@@ -218,7 +218,8 @@ private fun AboutMark(
     backdrop: LayerBackdrop?,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(24.dp)
+    // 圆角按启动器图标同一比例（24/108 = 22.2%），mark 才和桌面那颗图标是一颗标
+    val shape = RoundedCornerShape(22)
     val tint = if (darkTheme) MarkTintDark else MarkTintLight
     Box(
         modifier = modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
@@ -248,24 +249,31 @@ private fun AboutMark(
         )
         Canvas(modifier = Modifier.matchParentSize()) {
             val unit = size.minDimension / MarkCanvasUnits
-            // 一条 37° 上扬的主线 + 直角箭头。启动器那颗「涨—跌—涨」的行情折线
-            // 在挖空形态下会多出一个 V 形回踩，放大后看着像个歪勾；
-            // 负空间越简单越像「标识」，所以这里只留最干净的一笔 ↗
-            val cutout = Path().apply {
-                moveTo(26f * unit, 76f * unit)
-                lineTo(84f * unit, 32f * unit)
-                moveTo(68f * unit, 32f * unit)
-                lineTo(84f * unit, 32f * unit)
-                lineTo(84f * unit, 48f * unit)
+            // 一笔从右下扫上去的弧线 + 顶端的实心箭镞。早期的「涨—跌—涨」折线在
+            // 挖空形态下会多出一个 V 形回踩，放大后看着像个歪勾；一根弧线只有一次
+            // 转向，负空间越简单越像「标识」，所以换成了这一笔。
+            val curve = Path().apply {
+                moveTo(33.08f * unit, 75.39f * unit)
+                quadraticTo(67.4f * unit, 75.39f * unit, 67.4f * unit, 50.94f * unit)
             }
             drawPath(
-                path = cutout,
+                path = curve,
                 color = Color.Transparent,
-                style = Stroke(
-                    width = MarkStrokeUnits * unit,
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
-                ),
+                style = Stroke(width = MarkCurveStroke * unit, cap = StrokeCap.Round),
+                blendMode = BlendMode.Clear,
+            )
+            val head = Path().apply {
+                moveTo(67.4f * unit, 29.79f * unit)
+                lineTo(57.06f * unit, 50.94f * unit)
+                lineTo(77.74f * unit, 50.94f * unit)
+                close()
+            }
+            drawPath(head, color = Color.Transparent, blendMode = BlendMode.Clear)
+            // 描边把三个尖角磨圆，尺度与弧线的圆头一致
+            drawPath(
+                path = head,
+                color = Color.Transparent,
+                style = Stroke(width = MarkTriStroke * unit, join = StrokeJoin.Round),
                 blendMode = BlendMode.Clear,
             )
         }
@@ -428,11 +436,14 @@ private fun animatedGradientColors(
 // mark 的几何与颜色
 // ---------------------------------------------------------------------------
 
-/** 折线坐标所在的画布边长（与启动器前景一致，便于直接抄坐标） */
+/** 图形坐标所在的画布边长（与启动器前景一致，便于直接抄坐标） */
 private const val MarkCanvasUnits = 108f
 
-/** 负空间线条宽度（108 画布单位）：9.5 时线条与留白的比例最接近参考实现 */
-private const val MarkStrokeUnits = 9.5f
+/** 弧线宽度（108 画布单位），与 ic_launcher_foreground.xml 的 strokeWidth 同值 */
+private const val MarkCurveStroke = 8.46f
+
+/** 箭镞描边宽度（108 画布单位）—— 只用来把三个尖角磨圆 */
+private const val MarkTriStroke = 2.82f
 
 /** 玻璃 mark 的模糊半径：够糊掉背景的色斑，又不至于糊成一块纯色 */
 private val MarkBlur = 16.dp

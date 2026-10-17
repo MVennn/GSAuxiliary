@@ -296,24 +296,30 @@ python tools/gen_launcher_icons.py
 自适应图标（`mipmap-anydpi-v26`）只在 API 26+ 生效，低版本和部分第三方桌面
 仍会读 `mipmap-*dpi` 的 PNG，所以这些位图必须存在。
 
-图案是「圆角方形 + 竖向渐变底 + 金色上升折线 + 右上箭头」（简约苹果风格），
+图案是「圆角方形 + 竖向渐变底 + 一道上扬的弧线 + 顶端实心箭镞」（简约苹果风格），
 **必须与下面两个矢量文件逐项一致**：
 
 - `app/src/main/res/drawable/ic_launcher_background.xml`（渐变底）
-- `app/src/main/res/drawable/ic_launcher_foreground.xml`（折线 + 箭头）
+- `app/src/main/res/drawable/ic_launcher_foreground.xml`（弧线 + 箭镞）
 
 脚本顶部的 `BG_TOP` / `BG_BOTTOM` / `LINE_TOP` / `LINE_BOTTOM` /
-`POLYLINE` / `ARROW` / `STROKE` / `CORNER` 就是这份对照表，
-**改了一边就要改另一边**。`assets/icon.svg` 由 `svg_text()` 用同一批常量生成，
-所以四种产物不会各走各的。
+`CURVE_START` / `CURVE_CTRL` / `CURVE_END` / `CURVE_STROKE` / `TRI` /
+`TRI_STROKE` / `CORNER` 就是这份对照表，**改了一边就要改另一边**。
+`assets/icon.svg` 由 `svg_text()` 用同一批常量生成，
+`make_social_preview.py` 直接 import 它取几何与像素（连 tile 都是 `render()` 出的），
+所以四种产物不会各走各的。关于页那颗 mark（`ui/AboutHero.kt`）的挖空也是同一套坐标。
 
 实现要点：
 
 - **零第三方依赖**（`math` / `struct` / `zlib`），PNG 自己编码（走 `_png.py`），不依赖 Pillow
-- 前景用**距离场**描边：逐像素求到折线各段的最短距离，`距离 <= 线宽/2` 即上色 ——
+- 前景用**距离场**上色：弧线按二次贝塞尔采样成密折线，逐像素求到各段的最短距离，
+  `距离 <= 线宽/2` 即上色；箭镞另算「点在三角形内 || 到三边距离 <= 描边/2」。
   圆头笔帽与圆角拐点由距离场天然产生，不需要单独处理 line cap / line join
 - 背景逐行算圆角矩形的 x 区间再填竖向渐变
 - 4× 超采样降采样做抗锯齿；`ic_launcher_round.png` 额外套一层圆形遮罩
+
+图形坐标从设计源图（240 网格）换算到 108 网格时乘了 0.395，把外接圆收到 34.2 ——
+自适应图标圆形遮罩的半径是 36，留 1.8 的余量。改几何时这个约束别忘。
 
 设计说明见 `docs/UI-HISTORY.md` §12。
 
@@ -357,6 +363,9 @@ python tools/make_social_preview.py out.png    # 指定输出文件
 
 配色与 `assets/icon.svg` 同一套（底色 `#2B3242 → #161A22`，主色 `#FFC24A → #FF7A00`），
 内部 2x 超采样后缩放，避免斜线毛边。目前**仅支持 Windows**（字体走 `C:\Windows\Fonts`）。
+
+图标 tile 与右侧巨型水印都读 `gen_launcher_icons.py` 的常量，tile 甚至是直接调
+`render()` 拿像素 —— 换 logo 只改那边一处，这张图跟着变。
 
 > **需要 Pillow**（`pip install pillow`）—— 这是 `tools/` 下唯一一个非标准库依赖的脚本。
 > 传完后那张图要在 GitHub 仓库 **Settings → Social preview** 里手动上传，脚本不管上传。

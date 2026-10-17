@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    自适应图标的前景层 —— 简约苹果风格：一条金色上升折线 + 右上箭头。
+    自适应图标的前景层 —— 一道上扬的弧线，顶端一个实心三角箭镞。
 
     设计说明
-    苹果风格的图标 = 圆角方形底 + 单一符号 + 大量留白。这里选「上升行情线」
-    作为唯一符号：它是「行情 / 收益」最普适的图形语言，也和模块的用途直接对应。
+    logo 从「涨—跌—涨」的行情折线换成一笔向右上的弧线 + 箭镞。折线在图标尺寸下
+    会多出一个 V 形回踩，缩到任务栏大小就糊成一团；一根弧线只有一次转向，任何尺寸
+    都读得出「往上走」。配色沿用旧的方案：深炭灰底 + 浅金到深橙的斜向渐变。
 
-    几何（2.9.0 收紧版）
-    108×108 画布，可见安全区是居中的 72×72（约 18..90）。
-    图形外接框（含描边半径 3.25）约 x 27.75..80.25、y 34.25..73.75，居中于 (54,54)。
-    相对安全区的留白：左右各约 9.75、上下各约 16.25 —— 比 2.6.0 版（左右仅 4.5）
-    明显宽松，箭头也一并缩小（臂长 13 → 9.5），四周有了呼吸空间。
+    几何（108×108 画布）
+      弧线：M33.08,75.39 Q67.4,75.39 67.4,50.94   二次贝塞尔，起笔水平、收笔竖直
+      箭镞：M67.4,29.79 L57.06,50.94 L77.74,50.94 Z  底边中点正是弧线收笔点
+      线宽 8.46、箭镞描边 2.82（只用来把三个角磨圆）
 
-      折线：M31,70.5 L44,55.5 L55.5,62 L77,37.5   （先扬、小幅回踩、再冲高）
-      箭头：M67.5,37.5 L77,37.5 L77,47            （尖端在折线终点，向左 + 向下的直角箭头，臂长 9.5）
-
-    折线与箭头合并成同一条 path，这样描边渐变是连续的：
-    从起点（左下，浅金 #FFC24A）到终点（右上，深橙 #FF7A00）。
+    坐标来自设计源图 rise-1x1.svg 的 240 网格，经源图自身的 mask 分组
+    （translate(120 120) scale(0.595) translate(-129 -113)）后再乘 0.395 收到 108 网格。
+    0.395 是安全区拟合系数：图形外接圆半径落在 34.2，低于自适应图标圆形遮罩的 36，
+    圆角桌面不会把起笔那一头切掉。
 
     与 tools/gen_launcher_icons.py 的一致性
-    位图回退（mipmap-*dpi）由该脚本用距离场描边生成，
-    POLYLINE / ARROW / STROKE / LINE_TOP / LINE_BOTTOM 必须与这里逐项对齐。
+    位图回退（mipmap-*dpi）由该脚本用距离场生成，
+    CURVE_START / CURVE_CTRL / CURVE_END / CURVE_STROKE / TRI / TRI_STROKE
+    必须与这里逐项对齐；ui/AboutHero.kt 里关于页 mark 的挖空也用同一套坐标。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -29,19 +29,47 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- 弧线：渐变的两个端点就是弧线起笔与箭镞顶端，斜向 -->
     <path
         android:fillColor="#00000000"
-        android:strokeWidth="6.5"
+        android:strokeWidth="8.46"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M31,70.5 L44,55.5 L55.5,62 L77,37.5 M67.5,37.5 L77,37.5 L77,47">
+        android:pathData="M33.08,75.39 Q67.4,75.39 67.4,50.94">
         <aapt:attr name="android:strokeColor">
             <gradient
                 android:type="linear"
-                android:startX="31"
-                android:startY="70.5"
-                android:endX="77"
-                android:endY="37.5"
+                android:startX="33.08"
+                android:startY="75.39"
+                android:endX="67.4"
+                android:endY="29.79"
+                android:startColor="#FFFFC24A"
+                android:endColor="#FFFF7A00" />
+        </aapt:attr>
+    </path>
+
+    <!-- 箭镞：填充 + 同色描边，描边把三个尖角磨圆，和弧线的圆头对得上 -->
+    <path
+        android:strokeWidth="2.82"
+        android:strokeLineJoin="round"
+        android:pathData="M67.4,29.79 L57.06,50.94 L77.74,50.94 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="33.08"
+                android:startY="75.39"
+                android:endX="67.4"
+                android:endY="29.79"
+                android:startColor="#FFFFC24A"
+                android:endColor="#FFFF7A00" />
+        </aapt:attr>
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="33.08"
+                android:startY="75.39"
+                android:endX="67.4"
+                android:endY="29.79"
                 android:startColor="#FFFFC24A"
                 android:endColor="#FFFF7A00" />
         </aapt:attr>

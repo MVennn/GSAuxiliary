@@ -3,7 +3,11 @@
 
 Visual language follows assets/icon.svg:
   - background gradient  #2B3242 -> #161A22
-  - accent gradient      #FFC24A -> #FF7A00 (the rising-arrow stroke)
+  - accent gradient      #FFC24A -> #FF7A00 (the rising arc + arrowhead)
+
+图标本体不走「照着 SVG 再画一遍」的老路：那块 tile 直接调
+`gen_launcher_icons.render()`，所以 social preview 和 launcher 图标逐像素同源，
+换 logo 时只改一处几何。
 
 Usage:
   python tools/make_social_preview.py [output.png]
@@ -13,29 +17,29 @@ import math
 import os
 import sys
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gen_launcher_icons as icons  # noqa: E402
 
 # ---------------------------------------------------------------- constants
 W, H = 1280, 640
 SS = 2  # supersampling factor for crisp output
 
-BG_TOP = (0x2B, 0x32, 0x42)
-BG_BOT = (0x16, 0x1A, 0x22)
-ACCENT_A = (0xFF, 0xC2, 0x4A)  # warm gold
-ACCENT_B = (0xFF, 0x7A, 0x00)  # deep orange
+BG_TOP = icons.BG_TOP
+BG_BOT = icons.BG_BOTTOM
 
 FONT_DIR = r"C:\Windows\Fonts"
 F_TITLE = os.path.join(FONT_DIR, "segoeuib.ttf")
 F_REG = os.path.join(FONT_DIR, "segoeui.ttf")
 F_CN = os.path.join(FONT_DIR, "msyhbd.ttc")
 
-# icon.svg geometry (viewBox 0 0 108 108)
+# icon geometry (viewBox 0 0 108 108) —— 从 gen_launcher_icons 取，别在这里另抄一份
 ICON_VIEW = 108.0
-ARROW_PTS = [(31, 70.5), (44, 55.5), (55.5, 62), (77, 37.5)]
-ARROW_HEAD = [(67.5, 37.5), (77, 37.5), (77, 47)]
-ARROW_W = 6.5
-# the svg stroke gradient runs from (31,70.5) to (77,37.5) in user space
-GRAD_P1, GRAD_P2 = (31.0, 70.5), (77.0, 37.5)
+ICON_CORNER = icons.CORNER
+ARC_PTS = icons.curve_points()
+ARROW_HEAD = list(icons.TRI)
+ARROW_W = icons.CURVE_STROKE
 
 
 def lerp(a, b, t):
@@ -44,11 +48,7 @@ def lerp(a, b, t):
 
 def accent_at(ix, iy):
     """SVG userSpaceOnUse gradient: project icon-space point onto (P1 -> P2)."""
-    dx, dy = GRAD_P2[0] - GRAD_P1[0], GRAD_P2[1] - GRAD_P1[1]
-    dd = dx * dx + dy * dy
-    t = ((ix - GRAD_P1[0]) * dx + (iy - GRAD_P1[1]) * dy) / dd
-    t = max(0.0, min(1.0, t))
-    return lerp(ACCENT_A, ACCENT_B, t)
+    return icons.accent_at(ix, iy)
 
 
 def stroke_gradient_path(draw, pts, width, color_fn, alpha=255, steps_per_px=1.4):
@@ -75,12 +75,6 @@ def vertical_gradient(size, top, bot):
     return img
 
 
-def rounded_mask(size, radius):
-    m = Image.new("L", size, 0)
-    ImageDraw.Draw(m).rounded_rectangle([0, 0, size[0] - 1, size[1] - 1], radius=radius, fill=255)
-    return m
-
-
 def radial_mask(size, ease=2.6):
     """Circular falloff mask: 255 at centre -> 0 at corners."""
     w, h = size
@@ -105,29 +99,16 @@ def radial_glow(canvas, center, radius, color, max_alpha, ease=2.6):
 
 
 def draw_logo_tile(canvas, x, y, size):
-    """Reproduce assets/icon.svg at the given pixel size, top-left at (x, y)."""
-    s = size / ICON_VIEW
-    radius = int(24 * s)
-    mask = rounded_mask((size, size), radius)
+    """把 launcher 图标贴到 canvas 上，左上角在 (x, y)。
 
-    # tile background: same gradient as the icon
-    tile = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    tile.paste(vertical_gradient((size, size), BG_TOP, BG_BOT), (0, 0), mask)
+    图案不在这里重画 —— 直接要 gen_launcher_icons.render() 的像素，两边永远一致。
+    """
+    tile = Image.frombytes("RGBA", (size, size), bytes(icons.render(size, False)))
     canvas.alpha_composite(tile, (int(x), int(y)))
-
-    # accent stroke, drawn in tile-local coords, coloured via icon-space projection
-    stroke = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(stroke)
-    lw = ARROW_W * s
-    for path in (ARROW_PTS, ARROW_HEAD):
-        pts = [(p[0] * s, p[1] * s) for p in path]
-        stroke_gradient_path(sd, pts, lw, color_fn=lambda cx, cy: accent_at(cx / s, cy / s))
-    stroke.putalpha(ImageChops.multiply(stroke.getchannel("A"), mask))  # clip to tile
-    canvas.alpha_composite(stroke, (int(x), int(y)))
 
     # hairline border so the tile reads against the same-colour background
     ImageDraw.Draw(canvas).rounded_rectangle(
-        [x, y, x + size, y + size], radius=radius,
+        [x, y, x + size - 1, y + size - 1], radius=int(ICON_CORNER * size / ICON_VIEW),
         outline=(255, 255, 255, 28), width=2)
 
 
@@ -151,15 +132,20 @@ def main():
     radial_glow(img, (950 * SS, 260 * SS), 350 * SS, (255, 122, 30), 14)
 
     # ---- ghost arrow watermark (logo motif), far right ---------------------
-    ws = 10.0                                   # icon units -> 1x px
-    off = ((700 - 31 * ws) * SS, (112 - 37.5 * ws) * SS)
+    ws = 7.6                                    # icon units -> 1x px
+    # 箭镞顶端落在 (1225, 96)：图形贴到右边、箭头略微出画，弧线收尾正好避开右下 slogan
+    off = ((1225 - ARROW_HEAD[0][0] * ws) * SS, (96 - ARROW_HEAD[0][1] * ws) * SS)
     scale = ws * SS
     wm = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     wd = ImageDraw.Draw(wm)
     wm_color = lambda cx, cy: accent_at((cx - off[0]) / scale, (cy - off[1]) / scale)
-    for path in (ARROW_PTS, ARROW_HEAD):
-        pts = [(p[0] * scale + off[0], p[1] * scale + off[1]) for p in path]
-        stroke_gradient_path(wd, pts, ARROW_W * scale, wm_color, alpha=13)
+    arc = [(p[0] * scale + off[0], p[1] * scale + off[1]) for p in ARC_PTS]
+    stroke_gradient_path(wd, arc, ARROW_W * scale, wm_color, alpha=11)
+    head = [(p[0] * scale + off[0], p[1] * scale + off[1]) for p in ARROW_HEAD]
+    # 5% 透明度的箭镞上，渐变细节看不出来，取重心处的颜色就够了
+    hx = sum(p[0] for p in head) / 3.0
+    hy = sum(p[1] for p in head) / 3.0
+    wd.polygon(head, fill=wm_color(hx, hy) + (11,))
     img.alpha_composite(wm)
 
     # ---- logo tile ---------------------------------------------------------
