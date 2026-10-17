@@ -74,9 +74,9 @@ object QuickConfigCatalog {
         TermSpec("lowN", GROUP_RANGE, listOf(period(true))),
         TermSpec("highCloseN", GROUP_RANGE, listOf(period(true))),
         TermSpec("lowCloseN", GROUP_RANGE, listOf(period(true))),
-        // 最近前高 / 前低：从今天往回第一个没被后来超越的高点 / 低点 ——「N 日新高」的
-        // 通用形态（N 不设上限、优先取最近的，见 QuickConfigEngine.nearestTerm）；
-        // 只需要日 K，无参数
+        // 最近前高 / 前低：从最近一根**已收盘** K 线往回第一个「高于其后所有高点」的价位
+        // ——「N 日新高」的通用形态（N 不设上限、优先取最近的，见 QuickConfigEngine.nearestTerm）；
+        // 基准是现价（当天盘中的高点归「今日最高」），所以要日 K + 快照，无参数
         TermSpec("historyHigh", GROUP_RANGE, emptyList()),
         TermSpec("historyLow", GROUP_RANGE, emptyList()),
         TermSpec("maN", GROUP_MA, listOf(period(true))),

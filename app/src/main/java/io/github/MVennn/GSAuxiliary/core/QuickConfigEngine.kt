@@ -49,8 +49,9 @@ data class QuoteBar(
  *
  * 口径（§5.3，别改）：
  *  - `highN`/`lowN` 用最高/最低价列；`highCloseN`/`lowCloseN` 用收盘价列；
- *  - `historyHigh`/`historyLow` 是**从今天往回第一个没被后来超越的高点 / 低点**
- *    （「N 日新高 / 新低」的通用形态，N 不设上限、优先取最近的）；
+ *  - `historyHigh`/`historyLow` 是**从最近一根 K 线往回第一个「高于其后所有高点」
+ *    的价位**（「N 日新高 / 新低」的通用形态，N 不设上限、优先取最近的；
+ *    最后一根盘中冲高回落的那一下也算，基准是现价）；
  *  - `maN` 是简单算术平均，N 含今日；
  *  - 不复权；
  *  - 涨停/跌停：**优先用行情接口给的官方价**；接口没给时才用兜底表
@@ -213,12 +214,25 @@ object QuickConfigEngine {
      * | 贵州茅台 | 1338.86（09-04） | **1333.60** | 中间还有一根没被超越的高点 |
      * | 中芯国际 | 125.61 | **105.81** | 同上 |
      *
+     * ## 只统计**已收盘**的交易日，按日期判，不按「最后一根」（2026-10-17 用户指出后修正）
+     *
+     * 平安银行 10-16：盘中冲到 **11.63**（11:30 前后）又回落到 11.50 收盘。按「比它之后
+     * 所有高点都高」判，11.63 完全符合 —— 它确实是最近的、没被后来超越的新高。
+     * 上一版把「最后一根 K 线」当成「今天」排除了，周末（10-17）时那根是 10-16、
+     * 早就收盘了，却被误当成盘中未完成的一根 —— 于是只找到 10-14 的 11.72，
+     * 把更近的 11.63 跳过去了。
+     *
+     * 现在按**日期**判：`date < 今天（Asia/Shanghai）` 的才算候选；基准是**现价**
+     * （快照没给就用最后一根收盘），所以返回值一定在现价之上（前低反之）。
+     *
+     * 现价正好在某根的高点上（此刻就在新高上）时它自己不算 —— 否则「涨到」= 现价，
+     * 没有意义；这时会继续往前找没被突破的那个价位。
+     *
      * ## 边界
      *
-     * - 今天就是历史最高（往前找不到比它更高的）→ **判失败**，不编一个「前高」：
-     *   退回历史极值只会得到低于现价的数，写进「涨到」就是错的；
-     * - 数据不足 2 根（次新股 / 停牌）→ 失败；
-     * - **不需要现价参与判断**：返回值天然在今日高点之上（今日低点之下）。
+     * - 现价上方一个更高的高点都没有（正在创历史新高）→ **判失败**，不编一个
+     *   低于现价的数（写进「涨到」就是错的）；
+     * - 数据不足 2 根（次新股 / 停牌）→ 失败。
      */
     private fun nearestTerm(
         input: Input,
@@ -228,15 +242,25 @@ object QuickConfigEngine {
         val bars = input.klines.kline(HISTORY_BARS) ?: return null
         if (bars.size < 2) return null
         val values = bars.map { column(it).toBigDecimalOrNull() ?: return null }
-        // 今天那根是「1 日新高」的基准，本身不作为候选
-        var running = values.last()
-        for (i in values.size - 2 downTo 0) {
+        // 基准 = 现价（快照没给时退最后一根收盘）
+        var running = input.snapshot?.latest
+            ?: bars.last().close.toBigDecimalOrNull()
+            ?: return null
+        // 盘中那根（date == 今天）不算「前」，已收盘的才算
+        val today = todayInShanghai()
+        for (i in values.size - 1 downTo 0) {
             val v = values[i]
-            if (if (max) v > running else v < running) return v
+            val closed = bars[i].date < today
+            if (closed && (if (max) v > running else v < running)) return v
+            // 今天这根不参与候选，但它的高点仍要计入「已经越过的高度」
             running = if (max) maxOf(running, v) else minOf(running, v)
         }
         return null
     }
+
+    /** `yyyy-MM-dd`（Asia/Shanghai）；只用 java.time，不碰 Android 框架 */
+    private fun todayInShanghai(): String =
+        java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString()
 
     /** MA N：最近 N 根收盘价的简单算术平均（不是 EMA，§5.3） */
     private fun ma(input: Input, n: Int): BigDecimal? {
