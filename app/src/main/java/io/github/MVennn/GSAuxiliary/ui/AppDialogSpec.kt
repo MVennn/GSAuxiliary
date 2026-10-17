@@ -106,10 +106,11 @@ internal class DialogController {
      *
      * 弹层里的点击**不能**顺手把配置写掉：`commit()` 会同步回调
      * `OnSharedPreferenceChangeListener` → 订阅方改写 Compose 状态 →
-     * 正跑着收起动画的弹层被换掉入参 → 崩溃（`ModulePreferences.editDeferred`
-     * 的注释里记的就是这条根因，3.1.x 的 ⋮ 菜单「删除方案」踩的正是它：
-     * 删掉一行 → 列表当场重组，而弹窗的收起动画还没播完）。
-     * 现在统一排到这里，等 [finishDismiss] 播完动画再落配置。
+     * 正跑着收起动画的弹层被换掉入参 → 崩溃（3.1.x 的 ⋮ 菜单「删除方案」
+     * 踩的正是它：删掉一行 → 列表当场重组，而弹窗的收起动画还没播完）。
+     * 现在统一排到这里，等 [finishDismiss] 播完动画再落配置 ——
+     * 此刻弹窗已彻底关闭，同步写入是安全的（动作必须同步，不能走延迟写入：
+     * 那 360ms 正是「副标题顿一会才切换」的根因）。
      */
     private var afterDismiss: (() -> Unit)? = null
 

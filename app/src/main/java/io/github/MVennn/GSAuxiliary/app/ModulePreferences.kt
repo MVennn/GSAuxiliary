@@ -7,7 +7,6 @@ import android.os.Looper
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.GLog
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 模块 App 侧的配置仓库。
@@ -38,12 +37,6 @@ object ModulePreferences {
 
     /** 变更通知统一切到主线程，UI 订阅方不必自己 post */
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    /** 待执行的延迟写入（只保留最后一次，见 [editDeferred]） */
-    private val pendingEdit = AtomicReference<Runnable?>(null)
-
-    /** 延迟写入的默认延迟：必须盖过 Miuix 弹层的收起动画（约 250~300ms） */
-    private const val EditDeferredMillis = 360L
 
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> notifyChanged() }
@@ -228,18 +221,11 @@ object ModulePreferences {
      *
      * 不动模块级设置（桌面图标 / 液态玻璃 / 光效 / 语言 / 深色模式 / 可预测返回 / 日志等级），
      * 也不退出设置页。
+     *
+     * 调用方（重置确认弹窗的 onConfirm）由弹窗宿主排在收起动画播完之后，
+     * 这里可以同步执行。
      */
     fun resetAllFeatures(): Boolean = edit { writeFeatureDefaults() }
-
-    /**
-     * 与 [resetAllFeatures] 完全相同，但推迟到弹层收起动画之后再落盘。
-     *
-     * 「重置模块」的二次确认走的是 Miuix `OverlayDialog`，同步写配置会在它自己
-     * 的收起动画里触发重组 —— 和三个下拉是同一类崩溃，详见 [editDeferred]。
-     */
-    fun resetAllFeaturesDeferred() {
-        editDeferred { writeFeatureDefaults() }
-    }
 
     private fun SharedPreferences.Editor.writeFeatureDefaults() {
         for (k in ConfigKeys.FEATURE_KEYS) putBoolean(k, false)
@@ -252,7 +238,21 @@ object ModulePreferences {
         }
     }
 
-    /** 写入配置，返回是否成功 */
+    /**
+     * 写入配置，返回是否成功。
+     *
+     * ## 时序要求
+     *
+     * 历史上这里还有一层 `editDeferred`（固定延迟 360ms 再落盘），防的是
+     * Miuix `OverlayDropdownPreference` 的「一点就闪退」：库的弹层在自己的
+     * `onClick` 里同步开始收起动画，此刻 `commit()` 会同步回调改写 Compose
+     * 状态，动画与重组打架。弹层换成自绘（`AppDialog`）之后，所有写入都
+     * 通过 `DialogController.dismiss { }` 排到收起动画播完之后执行，执行时
+     * 弹窗已彻底关闭，同步写是安全的 —— 延迟层随之移除。
+     *
+     * 仍然不要在「弹窗动画进行中」的回调里调它（例如选项行的 onClick 本体），
+     * 那会把旧问题请回来。
+     */
     fun edit(block: SharedPreferences.Editor.() -> Unit): Boolean {
         val target = active() ?: return false
         return runCatching {
@@ -263,35 +263,6 @@ object ModulePreferences {
             GLog.w("写入配置失败", t)
             false
         }
-    }
-
-    /**
-     * **延迟写入 —— 专门给 Miuix 弹层（`OverlayDropdownPreference` / `OverlayDialog`）用。**
-     *
-     * ## 为什么必须延迟（这是「三个下拉一点就闪退」的根因）
-     *
-     * Miuix 的弹层在它**自己的 `onClick` 里同步开始收起动画**。此时如果立刻
-     * `commit()`，`OnSharedPreferenceChangeListener` 会同步回调 →
-     * [observe] 的订阅方（`rememberXxxPref`）当场改写 Compose 状态 →
-     * 弹层正在跑的收起动画里，它的入参（`selectedIndex` / `items`）被换掉，
-     * 动画与重组打架 → 直接崩。
-     *
-     * 2.3.0 已经定位过这个缺陷并用延迟写入规避；2.5.0 把弹层换回 Miuix 官方组件时
-     * 一并删掉了延迟，于是缺陷回归 —— 所以这里恢复它。
-     *
-     * ## 做法
-     *
-     * 推迟 [EditDeferredMillis]（盖过弹层的收起动画），期间连续选择**取消上一次**，
-     * 只落最后一次。回调（非 Composable）里也能安全调用。
-     */
-    fun editDeferred(
-        delayMillis: Long = EditDeferredMillis,
-        block: SharedPreferences.Editor.() -> Unit,
-    ) {
-        pendingEdit.getAndSet(null)?.let { mainHandler.removeCallbacks(it) }
-        val task = Runnable { edit(block) }
-        pendingEdit.set(task)
-        mainHandler.postDelayed(task, delayMillis)
     }
 
     fun observe(listener: () -> Unit) {

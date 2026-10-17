@@ -73,8 +73,12 @@ import java.util.Locale
  *     **同步开始收起动画**；此时立刻 `commit()` 会经由
  *     `OnSharedPreferenceChangeListener` 同步回调，把 Compose 状态在动画进行中改写，
  *     弹层入参（`selectedIndex`）中途变化 → 动画与重组打架 → 崩。
- *     治法：配置写入一律走 `ModulePreferences.editDeferred { }`
- *     （延迟到动画结束；连续选择只落最后一次），并且 `notifyChanged()` 一律 post。
+ *     治法：`ModulePreferences.editDeferred`（延迟到动画结束）+ `notifyChanged()`
+ *     一律 post。3.2.x 弹层换成自绘之后，第 1 条换了形态但本质还在 ——
+ *     所以所有写入都排在弹窗收起动画播完之后（`DialogController.dismiss { }`），
+ *     动作真正执行时弹窗已经彻底关闭，可以同步写。
+ *     （editDeferred 的 360ms 曾因此拖出「弹窗收回去了、副标题顿一会才切换」，
+ *     已随 Miuix 弹层一起移除。）
  *  2. **`LocaleHelper.wrap()` 返回的 Context 不是 `ContextWrapper`。**
  *     `createConfigurationContext()` 产出的是 `ContextImpl`，`baseContext` 链是断的，
  *     androidx 沿 `ContextWrapper` 链找宿主时抛 `ClassCastException`。
@@ -82,8 +86,8 @@ import java.util.Locale
  *
  * 现在改成自绘弹窗之后，连第 1 条的触发面都不存在了 ——
  * 弹窗只是普通 Composition，关闭就是一次状态翻转，没有「库的收起动画」这回事。
- * 但 [ModulePreferences.editDeferred] 仍然保留：它同时挡住了「主题/语言整树重组」
- * 与「弹窗关闭动画」重叠的情况。
+ * 但「写入排在关闭动画之后」仍然保留（`DialogController.dismiss { }`），
+ * 挡住「主题/语言整树重组」与弹窗关闭动画重叠的情况。
  */
 @Composable
 internal fun SettingsTab() {
@@ -295,7 +299,8 @@ internal fun SettingsTab() {
         SmallTitle(stringResource(R.string.section_general))
         Card(modifier = Modifier.cardPadding()) {
             // 主题设置：右侧直接显示当前值，点开弹窗选（弹窗贴在控件右下方）。
-            // 写入走 editDeferred —— 主题变化会整树重组，必须等弹窗关闭之后再落盘。
+            // 写入排在弹窗收起动画之后（dismiss { }），执行时弹窗已关闭，可同步落盘 ——
+            // 主题变化会整树重组，不能在动画进行中改写状态。
             BasicComponent(
                 title = stringResource(R.string.item_theme),
                 modifier = Modifier.onGloballyPositioned { themeAnchor = it.boundsInWindow() },
@@ -313,7 +318,7 @@ internal fun SettingsTab() {
                             onSelect = { idx ->
                                 ConfigKeys.THEME_VALUES.getOrNull(idx)
                                     ?.takeIf { it != theme }
-                                    ?.let { v -> ModulePreferences.editDeferred { putString(ConfigKeys.THEME, v) } }
+                                    ?.let { v -> ModulePreferences.edit { putString(ConfigKeys.THEME, v) } }
                             },
                         ),
                     )
@@ -335,7 +340,7 @@ internal fun SettingsTab() {
                             onSelect = { idx ->
                                 ConfigKeys.LANGUAGE_VALUES.getOrNull(idx)
                                     ?.takeIf { it != language }
-                                    ?.let { v -> ModulePreferences.editDeferred { putString(ConfigKeys.LANGUAGE, v) } }
+                                    ?.let { v -> ModulePreferences.edit { putString(ConfigKeys.LANGUAGE, v) } }
                             },
                         ),
                     )
@@ -391,9 +396,9 @@ internal fun SettingsTab() {
                                 // 关闭「全部」功能开关，并恢复功能参数。
                                 // 功能开关默认值虽已是 false（2.11.2），这里仍显式写 false，
                                 // 语义是「重置 = 关掉」，不依赖默认值。
-                                // 延迟落盘：主题 / 语言这类模块级设置不受影响，
-                                // 但功能开关变化会触发功能页重组，等弹窗关闭动画跑完更稳。
-                                ModulePreferences.resetAllFeaturesDeferred()
+                                // onConfirm 由弹窗宿主在收起动画播完后才执行（finishDismiss），
+                                // 此时同步写配置不会再与动画抢重组。
+                                ModulePreferences.resetAllFeatures()
                                 Toast.makeText(ctx, resetDone, Toast.LENGTH_SHORT).show()
                             },
                         ),
@@ -434,7 +439,7 @@ internal fun SettingsTab() {
                             onSelect = { idx ->
                                 val value = LogLevel.VALUES.getOrNull(idx) ?: LogLevel.INFO
                                 if (value != logLevel) {
-                                    ModulePreferences.editDeferred { putInt(ConfigKeys.LOG_LEVEL, value) }
+                                    ModulePreferences.edit { putInt(ConfigKeys.LOG_LEVEL, value) }
                                     // 界面这一侧立即生效，不必等配置回流；目标进程等框架推送
                                     GLog.level = value
                                     // 选「关闭」时顺带清掉落盘历史（2.17.3 的同一套语义）：
