@@ -3,7 +3,6 @@
 > 本文回答两个问题：**怎么加一个新功能**，以及**这套架构以后能长成什么样**。
 >
 > 阅读顺序建议：先看 [架构说明](ARCHITECTURE.md) 了解分层，再回到本文动手。
-> 动手前把 [编码纪律](CODE-RULES.md) 的 §8 自检清单过一遍 —— 每条都来自真实踩过的坑。
 
 ---
 
@@ -191,7 +190,7 @@ boldWatchlist = p.getBoolean(ConfigKeys.BOLD_WATCHLIST, ConfigKeys.DEFAULT_BOLD_
 
 ### 第 2 步：写功能类
 
-`feature/watchlist/BoldWatchlistFeature.kt`（**示例文件，代码中不存在**，仅作教学演示）：
+`feature/watchlist/BoldWatchlistFeature.kt`：
 
 ```kotlin
 class BoldWatchlistFeature : Feature {
