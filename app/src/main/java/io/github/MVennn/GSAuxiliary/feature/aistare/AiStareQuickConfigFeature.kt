@@ -413,6 +413,13 @@ class AiStareQuickConfigFeature : Feature {
                         // 先拉起详情页、再收页面：反过来做会让用户先看见首页闪一下
                         openStockDetail(env, parsed.first, parsed.second)
                         mainHandler.postDelayed({ pages.forEach { it.finish() } }, DETAIL_FINISH_DELAY_MS)
+                    } else if (hasDetail) {
+                        // 详情页在栈里、但不是栈底 —— 「我的盯盘」点卡片跳详情就是这条路：
+                        // 栈序是 …首页 / 我的盯盘 → 详情页 → 策略列表 → 价格页。
+                        // 这里只能收详情页**之上**的盯盘页面，详情页底下那几层（含「我的盯盘」）
+                        // 必须留着 —— 全收掉的话，用户从详情页按返回就直接掉回首页了
+                        //（2026-10-17 实测踩到）。
+                        finishAistareAboveTopmostDetail()
                     } else {
                         // **一次性**把智能盯盘这一族页面全收掉：逐个 finish（每层等 450ms）
                         // 会让用户看见「先回智能盯盘、再回详情页」两跳
@@ -602,6 +609,51 @@ class AiStareQuickConfigFeature : Feature {
 
     /** 个股详情页 */
     private val STOCK_FRAG_CLASS = "com.guosen.quotation.ui.StockFragAct"
+
+    /**
+     * 收掉**最上面一个详情页之上**的盯盘页面，详情页之下的原样保留。
+     *
+     * 为什么需要「栈序」：[aistareActivities] 只给「有哪些」，不给「谁在谁上面」。
+     * `ActivityThread.mActivities` 是 `android.util.ArrayMap`（插入有序），而 Activity
+     * 的插入时机就是它 onCreate attach 的时刻 —— 单个 task 里创建序≈栈序（自底向上），
+     * 拿它当栈序用足够可靠。跨 task 混入的 activity（比如别的任务里的详情页）不影响：
+     * 我们取「最后一个详情页」的索引，只 finish 它之后的盯盘页面。
+     */
+    private fun finishAistareAboveTopmostDetail() {
+        val acts = orderedActivities()
+        var lastDetail = -1
+        acts.forEachIndexed { i, a -> if (a.javaClass.name == STOCK_FRAG_CLASS) lastDetail = i }
+        if (lastDetail < 0) return
+        var finished = 0
+        for (i in lastDetail + 1 until acts.size) {
+            val a = acts[i]
+            if (!a.isFinishing && a.javaClass.name.startsWith(AISTARE_PACKAGE)) {
+                a.finish()
+                finished++
+            }
+        }
+        GLog.i("一键配置：详情页在栈中，只收其上 $finished 个盯盘页面（详情页之下的「我的盯盘」保留）")
+    }
+
+    /**
+     * 当前存活的 Activity，按**创建序**排列（即单 task 里的栈序）。
+     * 与 [aistareActivities] 的差别就一条：`mActivities` 的 values 顺序是插入序，
+     * 这里不排序号直接用；Activity 重建（旋转等）会重新插入，序依然正确。
+     */
+    private fun orderedActivities(): List<android.app.Activity> = runCatching {
+        val at = Class.forName("android.app.ActivityThread")
+        val thread = at.getDeclaredMethod("currentActivityThread").apply { isAccessible = true }.invoke(null)
+        val f = at.getDeclaredField("mActivities").apply { isAccessible = true }
+        val map = f.get(thread) as? Map<*, *> ?: return@runCatching emptyList()
+        map.values.mapNotNull { rec ->
+            if (rec == null) return@mapNotNull null
+            val act = runCatching {
+                rec.javaClass.getDeclaredField("activity").apply { isAccessible = true }
+                    .get(rec) as? android.app.Activity
+            }.getOrNull()
+            act?.takeIf { !it.isFinishing }
+        }
+    }.getOrDefault(emptyList())
 
     /** 详情页契约（见 openStockDetail 的注释） */
     private val CLS_INTENT_STOCK_INFO = "com.guosen.android.quotes.data.IntentStockInfo"
