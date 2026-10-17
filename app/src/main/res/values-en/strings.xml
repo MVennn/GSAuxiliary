@@ -220,7 +220,7 @@
     <string name="item_reset">Reset module</string>
     <string name="item_reset_summary">Turn off all features and restore defaults</string>
     <string name="dialog_reset_title">Reset module</string>
-    <string name="dialog_reset_message">All data will be deleted after the module configuration is reset!</string>
+    <string name="dialog_reset_message">All module settings will be deleted after the reset!</string>
     <string name="action_confirm">Confirm</string>
     <string name="action_cancel">Cancel</string>
     <string name="reset_done">All features disabled and defaults restored</string>

@@ -222,12 +222,12 @@
     <string name="item_predictive_back_summary_off">普通返回动画</string>
 
     <string name="section_data">数据管理</string>
-    <string name="item_backup">备份模块配置</string>
-    <string name="item_restore">恢复模块</string>
+    <string name="item_backup">备份配置</string>
+    <string name="item_restore">恢复配置</string>
     <string name="item_reset">重置模块</string>
     <string name="item_reset_summary">关闭全部功能并恢复默认参数</string>
     <string name="dialog_reset_title">重置模块</string>
-    <string name="dialog_reset_message">重置模块配置后所有数据将会删除！</string>
+    <string name="dialog_reset_message">重置后模块内的全部配置将被删除！</string>
     <string name="action_confirm">确定</string>
     <string name="action_cancel">取消</string>
     <string name="reset_done">已关闭全部功能并恢复默认参数</string>

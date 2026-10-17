@@ -864,8 +864,8 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 通用 | 主题设置 | 右侧显示当前值，点开**自绘单选弹窗**：跟随系统 / 亮色 / 暗色 |
 | 通用 | 语言 | 右侧显示当前值，点开**自绘单选弹窗**：跟随系统 / 简体中文 / English |
 | 通用 | 可预测返回 | 开关；二级页返回跟手预览（Android 13+），**默认开** |
-| 数据管理 | 备份模块配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gsauxiliary-backup-yyyyMMdd-HHmmss.json`（2.18.0 起前缀由 `gszx-` 更名） |
-| 数据管理 | 恢复模块 | 从 JSON 恢复（SAF `OpenDocument`），IO 在后台线程 |
+| 数据管理 | 备份配置 | 导出为 JSON（SAF `CreateDocument`），IO 在后台线程；文件名 `gsauxiliary-backup-yyyyMMdd-HHmmss.json`（2.18.0 起前缀由 `gszx-` 更名） |
+| 数据管理 | 恢复配置 | 从 JSON 恢复（SAF `OpenDocument`），IO 在后台线程 |
 | 数据管理 | 重置模块 | **自绘确认弹窗**二次确认后 `resetAllFeaturesDeferred()`：**关闭全部功能开关 + 恢复功能参数**，不退出页面 |
 | 日志 | 日志等级 | 右侧显示当前值（`R.array.log_level_labels`），点开**自绘单选弹窗**：关闭 / 错误 / 信息 / 调试 |
 | 日志 | 导出日志 | 把两个进程的日志拼成一份 txt（SAF `CreateDocument`），文件名 `gsauxiliary-log-yyyyMMdd-HHmmss.txt`；结果走 Toast |
