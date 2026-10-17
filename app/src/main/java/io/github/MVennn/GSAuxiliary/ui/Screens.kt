@@ -182,8 +182,12 @@ internal fun HomeScaffold(
 
     // 关于页整块 Hero 要吃到状态栏后面，顶栏留着会把渐变的头部齐齐截断 ——
     // 切到关于时顶栏向上滑出并淡出，切走时滑回来。
-    // 用 1 - 进度 去缩内容顶部留白，所以顶栏收起的同时内容会平滑地补上去，
-    // 而不是先留一条空白再突然跳。
+    //
+    // ⚠️ 这条进度**只驱动顶栏自己**（位移 + 透明度），不要再拿去缩内容的顶部留白：
+    // 留白是布局参数，一挂上动画，留白会在 220ms 里逐帧变化，于是切换板块时
+    // 离场那一页会被持续重排 —— 关于页退出时整块内容被往下推，叠上横向滑动就是
+    // 「从左上往左下消失」的斜向动作。内容的留白改成按板块取值（见下方
+    // AnimatedContent 里的 tabTopInset），两页各用各的定值，谁都不重排。
     val topBarHide by animateFloatAsState(
         targetValue = if (currentTab == Tab.ABOUT) 1f else 0f,
         animationSpec = tween(TopBarHideMillis),
@@ -247,22 +251,19 @@ internal fun HomeScaffold(
                 }
             },
         ) { padding ->
-            // 顶栏收起多少，顶部留白就少多少：两者用同一个 topBarHide 驱动，
-            // 内容才能跟着顶栏一起平滑上移，而不是等动画结束再跳一格
-            val contentTopPadding = padding.calculateTopPadding() * (1f - topBarHide)
+            // 顶栏（含状态栏）占的高度。它只是**一个尺寸**，不再是动画值：
+            // 哪个板块该让多少留白，由下方 AnimatedContent 按板块各取一份（见 tabTopInset）
+            val topBarSpace = padding.calculateTopPadding()
             CompositionLocalProvider(
                 // 设置页的选择项 / 重置确认都从自绘弹窗走，控制器在这里下发
                 LocalDialogController provides dialogs,
                 LocalDockInset provides if (liquidGlass) DockHeight + DockMargin else 0.dp,
-                // 玻璃模式下内容铺到屏幕顶边，首屏空白交给各 Tab 自己补（见上方注释）
-                LocalTopInset provides if (liquidGlass) contentTopPadding else 0.dp,
             ) {
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(
-                                top = if (liquidGlass) 0.dp else contentTopPadding,
                                 // 液态底栏时不留底部 inset，内容铺到屏幕最底边（导航条沉浸）
                                 bottom = if (liquidGlass) 0.dp else padding.calculateBottomPadding(),
                             )
@@ -278,6 +279,11 @@ internal fun HomeScaffold(
                             },
                     ) {
                         // 四个板块切换时淡入 + 轻微横移，避免生硬跳变
+                        //
+                        // 进场与离场**只做横向位移**，不动尺寸、不动布局参数：
+                        // AnimatedContent 在切换期间会同时挂着新旧两页，任何跟着
+                        // 全局动画走的东西（顶部留白、内边距）都会让离场那一页持续重排，
+                        // 横向滑动就被叠成一条斜线（关于页退出时的老问题）。
                         AnimatedContent(
                             targetState = currentTab,
                             transitionSpec = {
@@ -291,19 +297,36 @@ internal fun HomeScaffold(
                             modifier = Modifier.fillMaxSize(),
                             label = "tab",
                         ) { tab ->
-                            when (tab) {
-                                Tab.MODULE -> ModuleTab()
-                                Tab.FEATURE -> FeatureTab(
-                                    searchState = featureSearch,
-                                    onOpenDetail = { spec, second ->
-                                        onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
-                                    },
-                                )
-                                Tab.SETTINGS -> SettingsTab()
-                                Tab.ABOUT -> AboutTab(
-                                    onOpenDisclaimer = onOpenDisclaimer,
-                                    onOpenNotice = onOpenNotice,
-                                )
+                            // 顶部留白按**板块**取定值，不跟顶栏收起进度联动：
+                            //   - 关于页：0（Hero 整块铺到状态栏后面）
+                            //   - 其余：整条顶栏的高度
+                            // 两页各拿各的值，切换时谁都不会因为对页的状态而重排 ——
+                            // 顶栏该上滑还是下滑，由它自己的动画负责（见 topBarHide）。
+                            val tabTopInset = if (tab == Tab.ABOUT) 0.dp else topBarSpace
+                            CompositionLocalProvider(
+                                // 玻璃模式下内容铺到屏幕顶边，首屏空白交给各 Tab 自己补（见上方注释）
+                                LocalTopInset provides if (liquidGlass) tabTopInset else 0.dp,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(top = if (liquidGlass) 0.dp else tabTopInset),
+                                ) {
+                                    when (tab) {
+                                        Tab.MODULE -> ModuleTab()
+                                        Tab.FEATURE -> FeatureTab(
+                                            searchState = featureSearch,
+                                            onOpenDetail = { spec, second ->
+                                                onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
+                                            },
+                                        )
+                                        Tab.SETTINGS -> SettingsTab()
+                                        Tab.ABOUT -> AboutTab(
+                                            onOpenDisclaimer = onOpenDisclaimer,
+                                            onOpenNotice = onOpenNotice,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
