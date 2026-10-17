@@ -252,7 +252,7 @@ internal fun SettingsTab() {
 
         // --- Dock 设置 ---
         //
-        // 「液态玻璃」是**顶栏 + 悬浮底栏的总开关**，形态完全由它决定，所以单独成组，
+        // 「液态玻璃」是**顶栏 + 悬浮底栏 + 开关滑块的总开关**，形态完全由它决定，所以单独成组，
         // 不和桌面图标混在「界面」里（原来它叫「Dock 变换」，只描述底栏，语义已经过时）。
         SmallTitle(stringResource(R.string.section_dock))
         Card(modifier = Modifier.cardPadding()) {

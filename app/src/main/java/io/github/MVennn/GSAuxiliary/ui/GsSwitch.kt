@@ -3,6 +3,7 @@ package io.github.MVennn.GSAuxiliary.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -43,8 +44,18 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -89,6 +100,12 @@ internal fun GsSwitch(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val isDragged by interactionSource.collectIsDraggedAsState()
+    val hasCallback = onCheckedChange != null
+
+    // 液态玻璃滑块：受「液态玻璃」总开关控制，关闭 / 禁用 / 无回调时回落经典实底画法。
+    // 拖动翻转与震动逻辑两版完全共用，换的只是滑块这一层「面」怎么画。
+    val liquidGlassPref by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
+    val useLiquid = liquidGlassPref && enabled && hasCallback
 
     val hapticFeedback = LocalHapticFeedback.current
     val currentHapticFeedback by rememberUpdatedState(hapticFeedback)
@@ -108,6 +125,15 @@ internal fun GsSwitch(
         animationSpec = SwitchThumbScaleSpring,
         label = "gs-switch-thumb-scale",
     )
+    // 按压进度：驱动滑块的「玻璃变透」—— blur ↔ lens 交叉过渡、高光 / 阴影浮现。
+    // 参数对齐 LiquidPhysics.DampedDragAnimation 的 pressProgress 弹簧（1f, 1000f）。
+    val pressProgress by animateFloatAsState(
+        targetValue = if (isPressed || isDragged) 1f else 0f,
+        animationSpec = spring(dampingRatio = 1f, stiffness = 1000f, visibilityThreshold = 0.001f),
+        label = "gs-switch-press",
+    )
+
+    // 轨道采样层在 trackColor 声明之后创建（见下方）。
 
     // 颜色没有「过冲」可言，走 AppleExit 的 easeInOut，时长对齐弹层 220ms。
     // 禁用态取色与 Miuix SwitchDefaults 同源（disabled* 语义色）。
@@ -130,7 +156,10 @@ internal fun GsSwitch(
         label = "gs-switch-track-color",
     )
 
-    val hasCallback = onCheckedChange != null
+    // 轨道采样层：液态滑块从这里取「身后画面」——只录轨道色，不含滑块自己，
+    // 避免滑块折射到自身的自引用（与 Dock 染色层的兄弟节点套路同源）。
+    val trackBackdrop = rememberLayerBackdrop { drawRect(trackColor); drawContent() }
+
     val toggleableModifier = if (hasCallback) {
         remember(checked, enabled, interactionSource) {
             Modifier.toggleable(
@@ -162,6 +191,14 @@ internal fun GsSwitch(
             .drawBehind { drawRect(trackColor) }
             .then(toggleableModifier),
     ) {
+        // 轨道采样录制层：空盒子，只把轨道色录进 trackBackdrop（不含滑块）。
+        if (useLiquid) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .layerBackdrop(trackBackdrop)
+            )
+        }
         Box(
             modifier = Modifier
                 .size(ThumbSize.dp)
@@ -171,7 +208,34 @@ internal fun GsSwitch(
                     scaleX = thumbScale
                     scaleY = thumbScale
                 }
-                .drawBehind { drawCircle(thumbColor) }
+                .then(
+                    if (useLiquid) {
+                        // 液态玻璃滑块：常态是原色玻璃（近乎实底），按压时变透，
+                        // 露出 blur → lens 放大折射的轨道色；高光 / 投影随按压浮现。
+                        // 参数风格对齐 Dock 滑块与 catalog LiquidToggle。
+                        Modifier.drawBackdrop(
+                            backdrop = trackBackdrop,
+                            shape = { CircleShape },
+                            effects = {
+                                val p = pressProgress
+                                if (p < 1f) blur(6f.dp.toPx() * (1f - p))
+                                if (p > 0f) lens(4f.dp.toPx() * p, 8f.dp.toPx() * p)
+                            },
+                            highlight = { Highlight.Default.copy(alpha = pressProgress) },
+                            shadow = { Shadow(radius = 3.dp, alpha = pressProgress) },
+                            innerShadow = {
+                                InnerShadow(radius = 3.dp * pressProgress, alpha = pressProgress)
+                            },
+                            onDrawSurface = {
+                                drawRect(
+                                    thumbColor.copy(alpha = lerp(0.85f, 0.15f, pressProgress)),
+                                )
+                            },
+                        )
+                    } else {
+                        Modifier.drawBehind { drawCircle(thumbColor) }
+                    },
+                )
                 .then(
                     if (enabled) {
                         Modifier.draggable(
