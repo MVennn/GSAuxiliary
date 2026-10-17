@@ -13,10 +13,27 @@ object AiStareQuickConfigTargets {
     // ------------------------------------------------------------ 页面判定
 
     /**
-     * 价格页 URL 的判定片段（含路径，避免误注入同域的其它 H5 页）。
-     * 实测 URL：`https://goldsunsh.guosen.com.cn:1445/earlywarning/setStrategy/1?…`
+     * 价格页 URL 的判定片段 —— **必须带页签号**。
+     *
+     * 实测（2026-10-17）：盯盘策略下的各个页签是**不同的路径**，不是同一页里切 tab：
+     * `/earlywarning/setStrategy/1`（价格）、`/2`（涨跌幅）、`/12`（换手率）…
+     * 早先只匹配 `/earlywarning/setStrategy` 前缀，于是「配置并保存」被注入到了
+     * 涨跌幅 / 换手率这些还没适配取数的页面上。
      */
-    val PAGE_URL_MARKS = arrayOf("/earlywarning/setStrategy")
+    const val PAGE_URL_PATH = "/earlywarning/setStrategy/1"
+
+    /**
+     * 是不是价格页。
+     *
+     * 光 `contains` 不够：`/setStrategy/12` 也包含 `/setStrategy/1`，所以页签号后面
+     * 必须是 URL 结束 / `?` / `#` / `/` 之一。
+     */
+    fun isPricePage(url: String): Boolean {
+        val at = url.indexOf(PAGE_URL_PATH)
+        if (at < 0) return false
+        val next = url.getOrNull(at + PAGE_URL_PATH.length)
+        return next == null || next == '?' || next == '#' || next == '/'
+    }
 
     /**
      * 价格页 Activity（它自己就是 H5 容器，H5 在其 `mWbContent` 字段上）。

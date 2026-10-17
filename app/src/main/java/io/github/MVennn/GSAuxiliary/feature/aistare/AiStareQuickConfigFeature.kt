@@ -187,7 +187,8 @@ class AiStareQuickConfigFeature : Feature {
 
     private fun onPageFinished(env: FeatureEnv, webView: WebView, url: String) {
         if (!isEnabled(env.config)) return
-        if (AiStareQuickConfigTargets.PAGE_URL_MARKS.none { url.contains(it) }) return
+        // 只认价格页（`setStrategy/1`）：涨跌幅 / 换手率等页签还没适配取数，不注入
+        if (!AiStareQuickConfigTargets.isPricePage(url)) return
 
         currentWebView = WeakReference(webView)
         mainHandler.post { injectInto(env, webView, url) }
@@ -299,7 +300,7 @@ class AiStareQuickConfigFeature : Feature {
                     // 桥现在挂在每个 HybirdWebView 上（必须赶在页面加载前挂），别的 H5
                     // 也看得见它：当前不是价格页就沉默返回，不要在别的页面弹「取数失败」。
                     val curUrl = wv.url.orEmpty()
-                    if (AiStareQuickConfigTargets.PAGE_URL_MARKS.none { curUrl.contains(it) }) {
+                    if (!AiStareQuickConfigTargets.isPricePage(curUrl)) {
                         GLog.w("一键配置：apply 时 URL 不是价格页（$curUrl）")
                         return@runCatching
                     }
