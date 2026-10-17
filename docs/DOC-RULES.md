@@ -13,7 +13,7 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 |---|---|---|
 | 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、UI-HISTORY |
 | 功能专项 | 一个功能一篇（FEATURE-*） | 9 篇 FEATURE-*.md |
-| 流程与规范 | 构建、发版、版本、维护、排错、命名、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、DOC-RULES、TOOLS-DOC-RULES |
+| 流程与规范 | 构建、发版、版本、维护、排错、命名、编码纪律、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、CODE-RULES、DOC-RULES、TOOLS-DOC-RULES |
 | 参考资料 | Release 说明、免责全文 | release-notes/、DISCLAIMER（reference/ 已转本地留存，不随仓库分发） |
 
 每篇文档开头必须有一个 **「一句话」引言块**（`> **一句话**：…` 或一行定位语），
@@ -38,6 +38,7 @@ tools/ 目录下的文档规则单独见 [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md
 | Release 说明格式（含风险提示固定尾巴） | [release-notes/README.md](release-notes/README.md)；风险提示模板在 [RELEASE.md](RELEASE.md) §2 |
 | 逆向结论（类名 / 字段名 / Hook 点） | [REVERSE-ENGINEERING.md](REVERSE-ENGINEERING.md) 前半「过程与证据」 |
 | Hook 难点与解法 | [REVERSE-ENGINEERING.md](REVERSE-ENGINEERING.md) 后半「难点与解法」 |
+| 编码纪律（生命周期 / 热路径 / 日志隐私 / 缓存 / 仓库操作） | [CODE-RULES.md](CODE-RULES.md) |
 | 排错步骤 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 
 ### 禁止重复清单（本次审查发现的反例，勿重蹈）
