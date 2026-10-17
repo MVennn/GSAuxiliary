@@ -15,7 +15,7 @@ import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 
 /**
  * 智能盯盘的两个小设置页（3.1.1 新增，都只有一个开关）。
@@ -40,7 +40,7 @@ internal fun QuickConfigButtonScreen() {
     ) {
         Spacer(Modifier.height(8.dp))
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = pick,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.AISTARE_PICK_SCHEME, v) }
@@ -71,7 +71,7 @@ internal fun AiStareSaveBehaviorScreen() {
     ) {
         Spacer(Modifier.height(8.dp))
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = backToStock,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.AISTARE_SAVE_BACK_TO_STOCK, v) }

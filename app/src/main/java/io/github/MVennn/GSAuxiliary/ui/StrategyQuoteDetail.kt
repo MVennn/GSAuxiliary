@@ -16,7 +16,7 @@ import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 
 /**
  * 「策略直达标准行情」的二级菜单。
@@ -62,7 +62,7 @@ internal fun StrategyQuoteDetailScreen() {
         // 按 docs/NAMING.md §3 的同一把尺子，一律不写（2.17.2 清理）。
         SmallTitle(stringResource(R.string.section_stg_swipe))
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = swipe,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.STG_QUOTE_SWIPE, v) }

@@ -22,7 +22,7 @@ import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -55,7 +55,7 @@ internal fun WatchlistDetailScreen() {
         // 面向用户的界面不写这类信息，完整档案在 docs/ARCHITECTURE.md 与
         // docs/HOOK-NOTES.md。
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = scopeStrategy,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.SCOPE_STRATEGY, v) }

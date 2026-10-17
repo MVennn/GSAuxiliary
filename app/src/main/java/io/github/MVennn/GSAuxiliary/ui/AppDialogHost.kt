@@ -54,8 +54,9 @@ private const val DialogFadeMillis = 180
  * easeOutBack 族：前段快、后段带一点回弹过冲再收住。缩放的动画区间只有
  * `AppearScale(0.80) → 1` 这 0.2，曲线约 10% 的峰值过冲折算下来只是
  * ~2% 的轻微「弹一下」（峰值 ≈ 1.02），正好是 iOS 弹层那种落位手感。
+ * （正本在 AnimCurves.kt，这里保留语义别名）
  */
-private val AppleMenuEnterEasing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+private val AppleMenuEnterEasing = AppleEnterBouncy
 
 /**
  * 苹果风入场曲线 —— **贴底弹窗**（位移）用。
@@ -63,8 +64,9 @@ private val AppleMenuEnterEasing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
  * 与 [AppleMenuEnterEasing] 同族，但控制点从 1.56 压到 1.3：位移的动画区间
  * 是**整个卡片高度**，同样的过冲比例会放大成一大段肉眼可见的弹跳，所以把
  * 峰值过冲压到 ~3%（几 dp 的落位回坐），保留「滑到位再稳一下」的苹果味。
+ * （正本在 AnimCurves.kt，这里保留语义别名）
  */
-private val AppleSheetEnterEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
+private val AppleSheetEnterEasing = AppleEnterSoft
 
 /**
  * 苹果风出场曲线（两种形态共用）。
@@ -72,8 +74,9 @@ private val AppleSheetEnterEasing = CubicBezierEasing(0.34f, 1.3f, 0.64f, 1f)
  * `(0.42, 0, 0.58, 1)` 即 `UIView.animate` 的默认 easeInOut ——
  * 平滑起步、平滑离场。出场方向**不能**用带回弹的曲线：过冲会冲过 0，
  * 表现为卡片缩得比起始还小 / 滑出屏幕后又弹回来一点。
+ * （正本在 AnimCurves.kt，这里保留语义别名）
  */
-private val AppleExitEasing = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+private val AppleExitEasing = AppleExit
 
 /** [resolveAnchorPlacement] 的裁决结果：摆放 y（px）+ 配套的缩放原点 */
 private data class AnchorPlacement(val y: Float, val origin: TransformOrigin)

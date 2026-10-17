@@ -63,7 +63,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 取值项增删动画时长（删除时以动画收完为准再写配置，不靠这个时长对齐） */
@@ -234,7 +234,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             //  - 关掉：默认位置交回上一个默认方案；它已经不在了（被删/被改名）就取
             //    列表里第一个别的方案 —— 无论如何永远有一套默认（§6.3）。
             // 只剩一套方案时它就是默认、也没有别的可交，开关**置灰不可点**。
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = scheme.isDefault,
                 enabled = alive && data.schemes.size > 1,
                 onCheckedChange = { v ->

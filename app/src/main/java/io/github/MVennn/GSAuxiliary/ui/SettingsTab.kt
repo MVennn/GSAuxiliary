@@ -43,7 +43,7 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -230,7 +230,7 @@ internal fun SettingsTab() {
         // --- 界面 ---
         SmallTitle(stringResource(R.string.section_interface))
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = desktopIcon,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.DESKTOP_ICON, v) }
@@ -252,7 +252,7 @@ internal fun SettingsTab() {
         // 不和桌面图标混在「界面」里（原来它叫「Dock 变换」，只描述底栏，语义已经过时）。
         SmallTitle(stringResource(R.string.section_dock))
         Card(modifier = Modifier.cardPadding()) {
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = liquidGlass,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.LIQUID_GLASS, v) }
@@ -272,7 +272,7 @@ internal fun SettingsTab() {
                 enter = expandVertically(tween(220)) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(180)) + fadeOut(tween(120)),
             ) {
-                SwitchPreference(
+                GsSwitchPreference(
                     checked = glassEffect,
                     onCheckedChange = { v ->
                         ModulePreferences.edit { putBoolean(ConfigKeys.GLASS_EFFECT, v) }
@@ -341,7 +341,7 @@ internal fun SettingsTab() {
                     )
                 },
             )
-            SwitchPreference(
+            GsSwitchPreference(
                 checked = predictiveBack,
                 onCheckedChange = { v ->
                     ModulePreferences.edit { putBoolean(ConfigKeys.PREDICTIVE_BACK, v) }

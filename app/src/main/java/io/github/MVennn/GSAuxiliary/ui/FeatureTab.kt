@@ -28,7 +28,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextFieldDefaults
-import top.yukonga.miuix.kmp.preference.SwitchPreference
+import io.github.MVennn.GSAuxiliary.ui.GsSwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -176,7 +176,7 @@ private fun FeatureEntry(
     val spec = feature.spec
     val enabled by rememberBoolPref(spec.enableKey, spec.defaultEnabled)
 
-    SwitchPreference(
+    GsSwitchPreference(
         checked = enabled,
         onCheckedChange = { v -> ModulePreferences.edit { putBoolean(spec.enableKey, v) } },
         title = feature.switchTitle,
