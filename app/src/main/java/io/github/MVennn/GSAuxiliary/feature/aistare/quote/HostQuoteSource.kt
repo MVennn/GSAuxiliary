@@ -3,7 +3,6 @@ package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
-import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigTargets
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.ref.WeakReference
 import java.math.BigDecimal
@@ -73,7 +72,7 @@ class HostQuoteSource : QuoteSource {
 
     private fun readSnapshot(info: Any, code: String, market: String): QuoteSnapshot? {
         // 代码校验：缓存里的必须是当前这一只，否则宁降级也不给错数据
-        val cam = Reflect.readField(info, *AiStareQuickConfigTargets.HOST_FIELD_CODE_MARKET)
+        val cam = Reflect.readField(info, *HostFields.HOST_FIELD_CODE_MARKET)
             as? String
         val expected = "$code.$market"
         if (cam == null) {
@@ -86,8 +85,8 @@ class HostQuoteSource : QuoteSource {
             GLog.d("一键配置取数：宿主缓存的股票（$cam）不是当前页（$expected），降级")
             return null
         }
-        val latest = readDecimal(info, AiStareQuickConfigTargets.HOST_FIELD_LATEST)
-        val prevClose = readDecimal(info, AiStareQuickConfigTargets.HOST_FIELD_PREV_CLOSE)
+        val latest = readDecimal(info, HostFields.HOST_FIELD_LATEST)
+        val prevClose = readDecimal(info, HostFields.HOST_FIELD_PREV_CLOSE)
         if (latest == null || prevClose == null) {
             GLog.d("一键配置取数：宿主 StockInfo 关键字段缺失（未填充行情？）")
             return null
@@ -95,10 +94,10 @@ class HostQuoteSource : QuoteSource {
         return QuoteSnapshot(
             latest = latest,
             prevClose = prevClose,
-            open = readDecimal(info, AiStareQuickConfigTargets.HOST_FIELD_OPEN),
-            dayHigh = readDecimal(info, AiStareQuickConfigTargets.HOST_FIELD_DAY_HIGH),
-            dayLow = readDecimal(info, AiStareQuickConfigTargets.HOST_FIELD_DAY_LOW),
-            name = Reflect.readField(info, *AiStareQuickConfigTargets.HOST_FIELD_NAME) as? String,
+            open = readDecimal(info, HostFields.HOST_FIELD_OPEN),
+            dayHigh = readDecimal(info, HostFields.HOST_FIELD_DAY_HIGH),
+            dayLow = readDecimal(info, HostFields.HOST_FIELD_DAY_LOW),
+            name = Reflect.readField(info, *HostFields.HOST_FIELD_NAME) as? String,
         )
     }
 

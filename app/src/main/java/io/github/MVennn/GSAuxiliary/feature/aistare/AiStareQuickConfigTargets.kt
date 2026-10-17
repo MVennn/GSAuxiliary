@@ -1,12 +1,17 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare
 
 /**
- * 「智能盯盘 → 价格页一键配置」的全部目标常量。
+ * 「智能盯盘 → 价格页一键配置」的**注入侧**目标常量（页面判定 / WebView 挂载点 /
+ * JS 桥 / 按钮样式 / 「保存」定位）。
+ *
+ * 取数侧的常量不在这里：宿主反射候选在 `quote/HostFields.kt`、腾讯公开行情
+ * 接口在 `quote/PublicQuoteSource.kt` —— 它们只有取数通道用，留在本文件会
+ * 逼 quote 包向上 import 父包（2026-10-17 架构整理挪出）。
  *
  * **每一项都是真机实测**（2026-10-16，魅族 20 / Android 16 / 金太阳 8.6.0 vc271，
  * 依据 LSPosed 探针 `tools/probe` v33~v35 的运行时日志 + `uiautomator dump`，
  * 结论原文见 `docs/FEATURE-AISTARE-QUICK-CONFIG.md` §1 / §10）—— 不是推断。
- * App 升级后失效时：重跑探针，改这里的候选数组即可。
+ * App 升级后失效时：重跑探针，改对应的候选数组即可。
  */
 object AiStareQuickConfigTargets {
 
@@ -90,46 +95,4 @@ object AiStareQuickConfigTargets {
      * 找不到只记 warn 不注入（H5 改版时不打扰用户）。
      */
     const val SAVE_BUTTON_TEXT = "保存"
-
-    // ------------------------------------------------------------ 取数
-
-    /**
-     * 公开行情（兜底通道，§5.2 写死便于复核）：
-     * 实时 —— 腾讯 `qt.gtimg.cn`，`~` 分隔文本，字段 3=最新 4=昨收 5=今开 33=最高 34=最低 1=名称；
-     * 日 K —— 腾讯 `web.ifzq.gtimg.cn`，不复权口径（§5.3），`day` 数组 `[日期,开,收,高,低,量]`。
-     * `market` 换算：1 → sz，2 → sh。
-     */
-    const val QT_SNAPSHOT_URL = "https://qt.gtimg.cn/q="
-    const val QT_KLINE_URL =
-        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,320,"
-
-    fun marketToPrefix(market: String): String? = when (market) {
-        "1" -> "sz"
-        "2" -> "sh"
-        else -> null
-    }
-
-    // ------------------------------------------------------------ 宿主行情（反射候选，§10-4）
-
-    /**
-     * 宿主实时行情载体 `StockInfo` 的字段候选（实测确认，BigDecimal 类型）：
-     * 最新价 / 昨收 / 今开 / 当日高 / 当日低 / 名称。
-     */
-    val HOST_FIELD_LATEST = arrayOf("stockPrice", "zxj", "m_stockPrice")
-    val HOST_FIELD_PREV_CLOSE = arrayOf("zrsp", "m_zrsp")
-    val HOST_FIELD_OPEN = arrayOf("jrkp", "m_jrkp")
-    val HOST_FIELD_DAY_HIGH = arrayOf("highPrice", "m_highPrice")
-    val HOST_FIELD_DAY_LOW = arrayOf("lowPrice", "m_lowPrice")
-    val HOST_FIELD_NAME = arrayOf("stockName", "m_stkName")
-    val HOST_FIELD_CODE_MARKET = arrayOf("codeAndMarket", "m_codeAndMarket")
-
-    /**
-     * 日 K 载体链（实测）：`KXChartGroupView` → `m_kxChartInfo`
-     * （`com.guosen.android.quotes.data.kx.KXChartInfo`）→ `m_kxChartItems`
-     * （List，元素 `KXChartItem` 的 `m_date/m_openPrice/m_closePrice/m_highPrice/m_lowPrice`）。
-     */
-    const val HOST_KX_GROUP_VIEW = "com.guosen.quotation.logicview.KXChartGroupView"
-    const val HOST_KX_INFO_FIELD = "m_kxChartInfo"
-    const val HOST_KX_ITEMS_FIELD = "m_kxChartItems"
-    const val HOST_KX_ITEM = "com.guosen.android.quotes.data.kx.KXChartItem"
 }

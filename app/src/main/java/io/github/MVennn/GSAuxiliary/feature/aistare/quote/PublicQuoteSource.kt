@@ -3,7 +3,6 @@ package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
-import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigTargets
 import org.json.JSONObject
 
 /**
@@ -32,12 +31,12 @@ class PublicQuoteSource : QuoteSource {
     private val klineCache = HashMap<String, Triple<Long, Int, List<QuoteBar>>>()
 
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
-        val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
+        val mkt = marketToPrefix(market) ?: return null
         // ⚠️ 快照接口是 **GBK**：按 UTF-8 解会把「华力创通」解成一串问号，
         // 名称一废，引擎的 ST 判定就失效（→ 涨停价算错 5%/10%）。
         // 数字字段是 ASCII 所以旧实现没暴露，但这是实打实的错值。
         val text = HttpTransport.get(
-            AiStareQuickConfigTargets.QT_SNAPSHOT_URL + mkt + code,
+            QT_SNAPSHOT_URL + mkt + code,
             connectTimeoutMs = CONNECT_TIMEOUT_MS,
             readTimeoutMs = SNAPSHOT_TIMEOUT_MS,
             charset = HttpTransport.GBK,
@@ -54,7 +53,7 @@ class PublicQuoteSource : QuoteSource {
 
     override fun dailyKline(code: String, market: String, n: Int): List<QuoteBar>? {
         if (n <= 0) return null
-        val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
+        val mkt = marketToPrefix(market) ?: return null
         val key = "$code.$market"
         // 要多少根问多少根（下限 320）：「最近前高 / 前低」的回扫窗口要 2000 根（≈8 年），
         // 「30 日最高价」只要 320。腾讯单次上限就是 2000，超过会回 param error。
@@ -68,7 +67,7 @@ class PublicQuoteSource : QuoteSource {
             }
         }
 
-        val url = String.format(AiStareQuickConfigTargets.QT_KLINE_URL, mkt + code)
+        val url = String.format(QT_KLINE_URL, mkt + code)
             // 连逗号一起换：模板是 `…,day,,,320,`，只替数字会少一格 → 服务端 param error
             .replace(KLINE_COUNT_TOKEN, ",$want,")
         // 2000 根的响应 100 多 KB，快照那 5 秒容易读不完 —— 日 K 单独给更长
@@ -194,6 +193,28 @@ class PublicQuoteSource : QuoteSource {
     }
 
     companion object {
+        // ------------------------------------------------ 公开行情接口（写死便于复核）
+
+        /**
+         * 公开行情（兜底通道，§5.2 写死便于复核）：
+         * 实时 —— 腾讯 `qt.gtimg.cn`，`~` 分隔文本，字段 3=最新 4=昨收 5=今开 33=最高 34=最低 1=名称；
+         * 日 K —— 腾讯 `web.ifzq.gtimg.cn`，不复权口径（§5.3），`day` 数组 `[日期,开,收,高,低,量]`。
+         * `market` 换算：1 → sz，2 → sh。
+         *
+         * **为何放这里**：这几个常量 / 函数只有本类会用，原先挂在父包
+         * `AiStareQuickConfigTargets` 上导致 quote 包向上 import 父包
+         * （方向不佳），2026-10-17 架构整理时随注释挪入本类（父包那份已删）。
+         */
+        const val QT_SNAPSHOT_URL = "https://qt.gtimg.cn/q="
+        const val QT_KLINE_URL =
+            "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=%s,day,,,320,"
+
+        fun marketToPrefix(market: String): String? = when (market) {
+            "1" -> "sz"
+            "2" -> "sh"
+            else -> null
+        }
+
         /** 请求根数的下限（普通取值项够用） */
         private const val DEFAULT_BARS = 320
 
