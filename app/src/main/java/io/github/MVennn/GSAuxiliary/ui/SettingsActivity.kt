@@ -278,6 +278,7 @@ private sealed interface Route {
     /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
+    data object Notice : Route
 }
 
 /** 页面滑动动画时长 */
@@ -455,6 +456,7 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                     }
                 },
                 onOpenDisclaimer = { route = Route.Disclaimer },
+                onOpenNotice = { route = Route.Notice },
                 showAgreement = showAgreement,
                 onAgreeDisclaimer = {
                     ModulePreferences.setLocalBoolean(ConfigKeys.DISCLAIMER_ACCEPTED, true)
@@ -536,6 +538,13 @@ private fun MainScreen(initialRoute: Route = Route.Home) {
                             DisclaimerScreen()
                         }
 
+                        Route.Notice -> SubScreen(
+                            title = stringResource(R.string.notice_detail_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            NoticeScreen()
+                        }
+
                         is Route.QuickConfigEdit -> Unit
                         Route.Home -> Unit
                     }
@@ -610,6 +619,7 @@ private fun HomeScaffold(
     onSelectTab: (Tab) -> Unit,
     onOpenFeatureDetail: (String) -> Unit,
     onOpenDisclaimer: () -> Unit,
+    onOpenNotice: () -> Unit,
     /** 首次启动未同意免责声明时为 `true`：弹硬门槛弹窗 */
     showAgreement: Boolean,
     /** 用户点了「确定」（同意免责声明） */
@@ -802,7 +812,10 @@ private fun HomeScaffold(
                                     },
                                 )
                                 Tab.SETTINGS -> SettingsTab()
-                                Tab.ABOUT -> AboutTab(onOpenDisclaimer = onOpenDisclaimer)
+                                Tab.ABOUT -> AboutTab(
+                                    onOpenDisclaimer = onOpenDisclaimer,
+                                    onOpenNotice = onOpenNotice,
+                                )
                             }
                         }
                     }
@@ -963,6 +976,12 @@ private fun SubScreen(
 @Composable
 private fun DisclaimerScreen() {
     DisclaimerContent()
+}
+
+/** 第三方组件声明（二级页内容，读随 APK 分发的 NOTICE） */
+@Composable
+private fun NoticeScreen() {
+    NoticeContent()
 }
 
 // 悬浮底栏的尺寸常量：占位计算与 Dock 本体共用，避免两处写死对不上

@@ -9,6 +9,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -18,9 +23,12 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
 
-/** Tab 4 · 关于 —— 作者、开源鸣谢、免责声明。 */
+/** Tab 4 · 关于 —— 作者、开源鸣谢、第三方组件声明、免责声明。 */
 @Composable
-internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
+internal fun AboutTab(
+    onOpenDisclaimer: () -> Unit,
+    onOpenNotice: () -> Unit,
+) {
     val ctx = LocalContext.current
     val scrollState = rememberScrollState()
     val linkFailed = stringResource(R.string.oss_link_failed)
@@ -101,6 +109,13 @@ internal fun AboutTab(onOpenDisclaimer: () -> Unit) {
                 endActions = { ArrowRightIcon() },
                 onClick = { open("https://fonts.google.com/icons") },
             )
+            // 第三方组件声明（NOTICE 随 APK 分发，二级页展示；Apache-2.0 §4 的 attribution 载体）
+            BasicComponent(
+                title = stringResource(R.string.about_third_party),
+                summary = stringResource(R.string.about_third_party_desc),
+                endActions = { ArrowRightIcon() },
+                onClick = onOpenNotice,
+            )
         }
 
         // --- 免责声明：一行摘要，点进去看完整文本 ---
@@ -143,6 +158,42 @@ internal fun DisclaimerContent() {
         }
         // 二级页里 LocalDockInset 恒为 0（那口子是给一级页悬浮底栏的），
         // 这里让的是手势导航条的高度 —— 见 SubScreen 的注释。
+        Spacer(Modifier.height(24.dp + LocalNavBarInset.current))
+    }
+}
+
+/**
+ * 第三方组件声明（二级页内容）。
+ *
+ * 正文读的是随 APK 分发的 `assets/NOTICE.txt`（由根目录 [NOTICE] 复制进来，
+ * 改许可证信息时两处要同步）。与免责声明不同它是一份真文件而非 string 资源
+ * —— Apache-2.0 §4 要求分发包里带着 NOTICE，string 资源在编译期会并进
+ * resources.arsc，作为「文件随包分发」的载体不够直白。
+ */
+@Composable
+internal fun NoticeContent() {
+    val ctx = LocalContext.current
+    var notice by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        notice = runCatching {
+            ctx.assets.open("NOTICE.txt").bufferedReader().use { it.readText() }
+        }.getOrElse { "" }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        Spacer(Modifier.height(8.dp))
+        Card(modifier = Modifier.cardPadding()) {
+            if (notice.isNotEmpty()) {
+                MarkdownText(
+                    markdown = notice,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                )
+            }
+        }
+        // 同免责声明页：这里让的是手势导航条的高度 —— 见 SubScreen 的注释。
         Spacer(Modifier.height(24.dp + LocalNavBarInset.current))
     }
 }

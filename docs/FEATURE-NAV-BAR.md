@@ -23,7 +23,7 @@
 
 ### 1.2 根因：那块区域是**宿主的窗口自己画的**，不是系统画的
 
-宿主 targetSdk **30**（见 `docs/reference/apk-analysis-report.md`），全程非沉浸 ——
+宿主 targetSdk **30**（见本地参考数据 apk-analysis-report.md），全程非沉浸 ——
 
 - 没有 `setDecorFitsSystemWindows(false)`；
 - Android 15 的「targetSdk 35+ 强制沉浸」也轮不到它。

@@ -273,6 +273,9 @@
     <string name="oss_liquid_glass_desc">液态玻璃折射与模糊效果</string>
     <string name="oss_material_icons">Material Icons</string>
     <string name="oss_material_icons_desc">界面图标的矢量路径数据（自绘 ImageVector，不引入图标库）</string>
+    <string name="about_third_party">第三方组件声明</string>
+    <string name="about_third_party_desc">查看随 APK 分发的 NOTICE（各开源组件的版权与许可证）</string>
+    <string name="notice_detail_title">第三方组件声明</string>
     <string name="oss_link_failed">无法打开链接</string>
 
     <!-- ============================ 首次启动 · 免责声明同意弹窗 ============================ -->

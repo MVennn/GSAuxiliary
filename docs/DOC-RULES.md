@@ -14,7 +14,7 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 | 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、UI-HISTORY |
 | 功能专项 | 一个功能一篇（FEATURE-*） | 9 篇 FEATURE-*.md |
 | 流程与规范 | 构建、发版、版本、维护、排错、命名、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、DOC-RULES、TOOLS-DOC-RULES |
-| 参考资料 | 原始数据、Release 说明、免责全文 | reference/、release-notes/、DISCLAIMER |
+| 参考资料 | Release 说明、免责全文 | release-notes/、DISCLAIMER（reference/ 已转本地留存，不随仓库分发） |
 
 每篇文档开头必须有一个 **「一句话」引言块**（`> **一句话**：…` 或一行定位语），
 让读者不用往下翻就知道这篇管什么。新文档没有它不算写完。
@@ -54,7 +54,7 @@ tools/ 目录下的文档规则单独见 [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md
 
 ## 3. 红线内容保护：逆向结论逐字保留
 
-REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md、reference/ 里的
+REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md 里的
 **类名、方法名、字段名、Hook 点、资源 id、候选常量数组名**，在文档合并或修订时
 **必须逐字保留，一个不删** —— 哪怕当前代码里暂时没用到（那是下次 App 升级后的
 排查依据）。重复叙述可以压缩，事实与名字不行。此红线与 [MAINTENANCE.md](MAINTENANCE.md) §5 一致。
@@ -76,7 +76,7 @@ REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md、referen
 
 | 变更 | 必须同步 |
 |---|---|
-| 新增 / 删除功能 | [ARCHITECTURE.md](ARCHITECTURE.md) §7 功能表、[UI.md](UI.md) 功能页清单、[NAMING.md](NAMING.md) §5、[reference/README.md](reference/README.md) 候选常量表 |
+| 新增 / 删除功能 | [ARCHITECTURE.md](ARCHITECTURE.md) §7 功能表、[UI.md](UI.md) 功能页清单、[NAMING.md](NAMING.md) §5、候选常量表（reference/ 已转本地留存） |
 | 发版 | 根目录 CHANGELOG.md、`docs/release-notes/<版本>.md` |
 | 改免责全文 | `strings.xml` 的 `disclaimer_full` + [DISCLAIMER.md](DISCLAIMER.md) 双写（细则见 [MAINTENANCE.md](MAINTENANCE.md) §3 L3） |
 | 改构建 / 脚本 | [BUILD.md](BUILD.md) / [MAINTENANCE.md](MAINTENANCE.md) 对应段 |

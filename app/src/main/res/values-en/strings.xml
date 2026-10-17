@@ -266,6 +266,9 @@
     <string name="oss_liquid_glass_desc">Liquid glass refraction and blur effects</string>
     <string name="oss_material_icons">Material Icons</string>
     <string name="oss_material_icons_desc">Vector path data for UI icons (hand-built ImageVector, no icon library)</string>
+    <string name="about_third_party">Third-party notices</string>
+    <string name="about_third_party_desc">View the NOTICE bundled with the APK (copyright and licenses of components)</string>
+    <string name="notice_detail_title">Third-party notices</string>
     <string name="oss_link_failed">Cannot open the link</string>
 
     <!-- ==================== First launch · disclaimer agreement ==================== -->

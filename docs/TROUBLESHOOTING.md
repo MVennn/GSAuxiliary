@@ -250,7 +250,7 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 ## 6. App 升级后失效
 
 按这个顺序改，**大概率只需要改一个常量**。
-每个功能各自带一份候选常量文件（总表见 [`reference/README.md`](reference/README.md)），
+每个功能各自带一份候选常量文件（总表原在 reference/，已转本地留存，不再随仓库分发），
 哪一列出问题就改哪一份：
 
 | 步骤 | 检查什么 | 改哪里 |
