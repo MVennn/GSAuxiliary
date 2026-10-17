@@ -74,8 +74,9 @@ object QuickConfigCatalog {
         TermSpec("lowN", GROUP_RANGE, listOf(period(true))),
         TermSpec("highCloseN", GROUP_RANGE, listOf(period(true))),
         TermSpec("lowCloseN", GROUP_RANGE, listOf(period(true))),
-        // 最近前高 / 前低：现价上方 / 下方最近的波段点（引擎 QuickConfigEngine 的
-        // swingTerm，左右各 5 根确认）；要用现价判断站在哪一侧，所以要日 K + 快照，无参数
+        // 最近前高 / 前低：从今天往回第一个没被后来超越的高点 / 低点 ——「N 日新高」的
+        // 通用形态（N 不设上限、优先取最近的，见 QuickConfigEngine.nearestTerm）；
+        // 只需要日 K，无参数
         TermSpec("historyHigh", GROUP_RANGE, emptyList()),
         TermSpec("historyLow", GROUP_RANGE, emptyList()),
         TermSpec("maN", GROUP_MA, listOf(period(true))),

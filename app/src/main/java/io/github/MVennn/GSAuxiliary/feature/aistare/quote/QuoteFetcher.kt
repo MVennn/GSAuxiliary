@@ -55,14 +55,6 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
     )
 
     /**
-     * 前高 / 前低要用「现价」判断这个波段点站在现价上方还是下方
-     * （[QuickConfigEngine.evaluateSlot] 的 swingTerm），所以这两项**顺带要快照** ——
-     * 旧实现没算这一条，方案里只放「最近前高」时取到的会是「最近的一个波段高点」，
-     * 而不是「现价上方最近的前高」。
-     */
-    private val KLINE_TERMS_NEED_SNAPSHOT = setOf("historyHigh", "historyLow")
-
-    /**
      * 取数并算价；任一必需项失败返回 null（调用方**不写值**，§3.2）。
      *
      * 三段日志都能独立对着看：
@@ -130,7 +122,8 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
     fun needsOf(scheme: QuickConfigStore.Scheme): Needs {
         val used = (scheme.up.terms + scheme.down.terms).map { it.source }.toSet()
         return Needs(
-            snapshot = used.any { it in SNAPSHOT_TERMS || it in KLINE_TERMS_NEED_SNAPSHOT },
+            // 「最近前高 / 前低」只靠日 K 就能算（返回值天然在今日高低点之外），不额外要快照
+            snapshot = used.any { it in SNAPSHOT_TERMS },
             kline = used.any { it in KLINE_TERMS },
         )
     }

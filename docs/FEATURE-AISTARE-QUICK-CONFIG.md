@@ -315,8 +315,8 @@ Term（取值项）
 | `lowN` | N 日最低价 | 区间 | `period` | `min(最低价)` over 最近 N 个交易日 |
 | `highCloseN` | N 日最高收盘 | 区间 | `period` | `max(收盘价)` over 最近 N 个交易日 |
 | `lowCloseN` | N 日最低收盘 | 区间 | `period` | `min(收盘价)` over 最近 N 个交易日 |
-| `historyHigh` | 最近前高 | 区间 | — | **现价上方最近的一个波段高点**（见 §5.3） |
-| `historyLow` | 最近前低 | 区间 | — | **现价下方最近的一个波段低点**（见 §5.3） |
+| `historyHigh` | 最近前高 | 区间 | — | **从今天往回第一个没被后来超越的高点**（「N 日新高」通用形态，优先取最近的；见 §5.3） |
+| `historyLow` | 最近前低 | 区间 | — | **从今天往回第一个没被后来跌破的低点**（同上） |
 | `maN` | MA N | 均线 | `period` | `avg(收盘价)` over 最近 N 个交易日，保留 2 位 |
 | `upPct` | 最新价 +p% | 幅度 | `pct` | `round(最新价 × (1+pct/100), 2)` |
 | `downPct` | 最新价 −p% | 幅度 | `pct` | `round(最新价 × (1−pct/100), 2)` |
@@ -464,8 +464,8 @@ QuoteRepository
    都不行才退回只给快照的（①④）；
 2. **同通道优先、失败继续降级**：上一次成功的通道排最前，但它失败就试下一级，
    不再一锤定音；
-3. **按需取数**：方案里没有实时项就不打快照接口（`historyHigh/Low` 例外 ——
-   它们要用现价判断「现价上方 / 下方」）。
+3. **按需取数**：方案里没有实时项就不打快照接口；`historyHigh/Low` 只需要日 K
+   （返回值天然在今日高点之上 / 低点之下，不需要现价参与判断）。
 
 ### 5.3 各项的计算口径
 
@@ -474,7 +474,7 @@ QuoteRepository
 | `highN` / `lowN` | 用**最高价 / 最低价**列，不是收盘价列（这是行情软件「N 日最高」的通行口径） |
 | `highCloseN` / `lowCloseN` | 用**收盘价**列 |
 | `maN` | 简单算术平均（`avg`），**不是**指数移动平均 —— 与行情软件默认的 MA 一致 |
-| `historyHigh` / `historyLow` | **波段点，不是历史极值**：先找「左右各 5 根都不越过它」的确认峰/谷，再从最新一根往回扫，取**第一个站在现价上方（下方）**的。茅台现价 1329 → 前高 1338.86（2026-09-04）、前低 1228.10（2026-09-28）；历史最高 2627.88 不参与。找不到时退回「最近的那个波段点」，再退回全部历史极值（不含今日） |
+| `historyHigh` / `historyLow` | **「N 日新高 / 新低」的通用形态，N 不设上限、优先取最近的**：以今天的高点（低点）为基准往回扫，某一天的高点高于它之后（含今天）的所有高点，那天就是答案。**不是**历史极值（茅台 2627.88 不参与），也**不是**左右各 5 根确认的波段峰（那会跳过更近的高点）。实测：茅台现价 1329 → 前高 1333.60；中芯国际 → 105.81。今天就是历史最高（最低）时**判失败**，不编低于现价的数 |
 | 复权 | **不复权**。用户设「涨到」时脑子里是行情软件上那个价位，复权价会和显示对不上 |
 | `limitUp`/`limitDown` | `round(昨收 × 系数, 2)`；深沪都是四舍五入到分 |
 | 所有输出 | 统一 `BigDecimal`，`setScale(2, HALF_UP)`，**不要用 `Double` 直接乘** —— `1.1*14.29` 在浮点下会出 `15.718999…` |
@@ -595,7 +595,7 @@ QuoteRepository
 | `feature/aistare/AiStareQuickConfigFeature.kt`（新增） | 功能本体：`setWebViewClient` 动态抓子类 → 挂 `onPageFinished` → 注入 JS + 自建 `gsaux` 桥 → 取数调度（会话锁通道）→ 回填；`StockInfo` 构造器钩子喂宿主行情缓存 |
 | `feature/aistare/AiStareJs.kt`（新增） | 注入脚本常量：找「保存」（文本+底部 1/4 双判据）→ 三等分 → 克隆改「配置」→ 弹方案层 → `fill()` 派发 input/change/blur → 方向校验 → `MutationObserver`+500ms 自检 |
 | `feature/aistare/quote/QuoteRepository.kt`（新增） | `QuoteSource` 接口（含 `supportsSnapshot` / `supportsKline` 能力声明）+ `QuoteSession`（按能力挑通道、同通道优先但不锁定、失败逐级降级 —— 2026-10-17 修正了「全局锁定」那个致命缺陷） |
-| `feature/aistare/quote/QuoteFetcher.kt`（新增） | 取数编排：按方案需求决定取快照 / 日 K（`historyHigh/Low` 顺带要快照），跑 `QuoteSession` + `QuickConfigEngine`，失败时把「快照=… 日K=… 涨到槽=… 跌到槽=…」写进日志 |
+| `feature/aistare/quote/QuoteFetcher.kt`（新增） | 取数编排：按方案需求决定取快照 / 日 K，跑 `QuoteSession` + `QuickConfigEngine`，失败时把「快照=… 日K=… 涨到槽=… 跌到槽=…」写进日志 |
 | `feature/aistare/quote/HttpTransport.kt`（新增） | 取数专用 HTTP：状态码判定、可恢复错误重试一次、连接/读超时分离、GBK 解码、显式 `disconnect()`、响应体封顶 4 MB |
 | `feature/aistare/quote/HostQuoteSource.kt`（新增） | 宿主行情（反射）：挂 `StockInfo` 构造器缓存最近实例，代码对得上才用；**只给快照**（日 K 入口未确认，§10-4） |
 | `feature/aistare/quote/PublicQuoteSource.kt`（新增） | 腾讯公开行情：实时（`qt.gtimg.cn`，**GBK**）+ 日 K（`web.ifzq.gtimg.cn`，不复权，5 分钟缓存）；代码回显校验、停牌行过滤 |
