@@ -259,24 +259,23 @@ internal object AppIcons {
      * 粗细、颜色（同样由调用方给 `onSurfaceVariantActions`）、右缘留白都对得上。
      */
     val ArrowDown: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        // 自己画一条 **1.0dp 描边**的浅「⌄」，宽 10dp（与右箭头同宽）：
+        // 按**实测**参数画的一条 1.4dp 描边 chevron（宽 10dp，与 › 同宽同列）：
         //
-        // | | 右箭头 | 旧（放大 1.25） | 缩小到 11dp | **现在（自绘）** |
-        // |---|---|---|---|---|
-        // | 宽 | 10dp | 20dp | 11dp | **10dp** |
-        // | 笔画 | 1.0dp | 1.56dp | 0.69dp | **1.0dp** |
-        // | 与 › 的中心差 | — | 3.3dp | ~0.5dp | **~0.25dp** |
+        // 真机取色量过（魅族 20 / density 2.75，值 153 = 箭头色）：
+        //  - › 的臂：水平截面 ≈5.0px、斜率 43° → 垂直厚度 ≈3.4px；
+        //  - 旧的自绘 V：水平 ≈4.0px、斜率 37° → 只有 2.4px（细 30%，而且更平）。
+        // 所以这一版把斜率拉到 47°、描边加到 1.4dp，垂直厚度才和 › 对齐。
         //
-        // 前两版都在「缩放旋转路径」上打转：放大 → 太宽太粗，缩小 → 变细（笔画跟着缩）。
-        // 既然目标是「同宽、同粗、同列」，就不要再缩放别人的路径 —— 直接按目标尺寸画。
+        // 历史教训：不要用「缩放旋转路径」来调尺寸 —— 放大 → 太宽太粗，
+        // 缩小 → 笔画跟着变细，两轮都没对。要同宽同粗同列，只能按目标尺寸重画。
         strokedIconOf(
             name = "ArrowDown",
             width = 10.dp,
-            height = 6.dp,
-            pathData = "M1,1.6 L5,4.6 L9,1.6",
+            height = 7.dp,
+            pathData = "M1,1.35 L5,5.65 L9,1.35",
             viewportWidth = 10f,
-            viewportHeight = 6f,
-            strokeWidth = 1.0f,
+            viewportHeight = 7f,
+            strokeWidth = 1.4f,
         )
     }
 
