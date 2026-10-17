@@ -122,7 +122,8 @@ object QuickConfigEngine {
      * 低概率但严重，宁可整体放弃）。
      *
      * 校验：`0.01 < 价 < 昨收 × 1.5`（有昨收时）且 **涨到 > 跌到**；越界返回 null。
-     * 方案里含「历史前高 / 前低」时上限放宽到 `× 5` —— 历史价位本来就可能离现价很远。
+     * 方案里含「最近前高 / 前低」时上限放宽到 `× 5` —— 波段点可能在深度回撤之前，
+     * 离现价很远（这类标的本来就得给足空间）。
      */
     fun evaluate(scheme: QuickConfigStore.Scheme, input: Input): Pair<BigDecimal, BigDecimal>? {
         val up = evaluateSlot(scheme.up, input) ?: return null
@@ -130,8 +131,8 @@ object QuickConfigEngine {
         if (up <= down) return null
         val prevClose = input.snapshot?.prevClose
         if (prevClose != null && prevClose.signum() > 0) {
-            // 历史项可以离现价很远（茅台现价 1400、历史前高 2627 = 1.88 倍），
-            // 用 1.5 倍会把**合法**的「涨到历史前高」判成算错；这类方案把上限放宽到 5 倍。
+            // 「最近前高 / 前低」是回撤之前的波段点，可能远在现价另一侧（腰斩股尤其明显），
+            // 用 1.5 倍会把**合法**的「涨到前高」判成算错；含这类项的方案放宽到 5 倍。
             val factor = if (hasHistoryTerm(scheme.up) || hasHistoryTerm(scheme.down)) {
                 HISTORY_CEILING_FACTOR
             } else {

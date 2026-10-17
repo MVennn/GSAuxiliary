@@ -56,7 +56,7 @@ class PublicQuoteSource : QuoteSource {
         if (n <= 0) return null
         val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
         val key = "$code.$market"
-        // 要多少根问多少根（下限 320）：「历史前高 / 前低」要 2000 根（≈8 年），
+        // 要多少根问多少根（下限 320）：「最近前高 / 前低」的回扫窗口要 2000 根（≈8 年），
         // 「30 日最高价」只要 320。腾讯单次上限就是 2000，超过会回 param error。
         val want = maxOf(n, DEFAULT_BARS).coerceAtMost(MAX_BARS)
 
@@ -90,7 +90,7 @@ class PublicQuoteSource : QuoteSource {
             klineCache[key] = Triple(now, want, bars)
         }
         // **不再因为「不足 n 根」返回 null**：新股 / 次新股本来就凑不到 2000 根，
-        // 「历史前高」要的是「有多少算多少」。够不够由引擎按各项口径自己判
+        // 「最近前高」要的是「有多少算多少」。够不够由引擎按各项口径自己判
         // （highN/lowN/maN 仍要求 size >= N，历史项只要求 >= 2）。
         if (bars.size < n) {
             GLog.i("一键配置取数：日 K 只有 ${bars.size} 根（要 $n，$mkt$code），按实有数据返回")
