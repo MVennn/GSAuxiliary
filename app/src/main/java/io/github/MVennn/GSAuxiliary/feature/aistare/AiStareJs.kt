@@ -63,6 +63,8 @@ internal object AiStareJs {
   NS.saveEl = null;          // 被我们放开过的宿主「保存」节点
   NS.saveForced = false;     // 灰态是我们换掉的（关开关时要还回去）
   NS.saveObs = null;
+  NS.savedBox = null;        // 「保存成功」弹窗的缓存引用（armSkip 廉价判断用，审查 2026-10-17）
+  NS.period = 0;             // 自检轮询当前周期，0 = 未启动（审查 2026-10-17）
 
   var BTN_TEXT = '__BTN_TEXT__';
   var BTN_COLOR = '__BTN_COLOR__';
@@ -130,10 +132,12 @@ internal object AiStareJs {
   }
 
   // ---------- 注入：三等分 + 克隆「保存」改「配置」 ----------
-  NS.install = function() {
+  // found 可选：schedule 的单轮里已做过 findBar 时直接传入，省一次全文档扫描
+  // （审查 2026-10-17，与 applyEmptySave 共用同一次查找结果）
+  NS.install = function(found) {
     if (!NS.enabled) return false;
     if (NS.btn && document.contains(NS.btn)) return true;
-    var found = findBar();
+    if (!found) found = findBar();
     if (!found) return false;
     var bar = found.bar;
     var btn = found.save.cloneNode(true);
@@ -372,8 +376,9 @@ internal object AiStareJs {
    * 按当前状态把宿主的「保存」放开或还回去。幂等，靠 install 之后的自检反复调。
    * 注意 Vue 每次重渲染都会把 class 刷回 `disable`，所以这里不能只做一次。
    */
-  NS.applyEmptySave = function() {
-    var found = findBar();
+  NS.applyEmptySave = function(found) {
+    // found 可选：与 install 共用 schedule 单轮的 findBar 结果（审查 2026-10-17）
+    if (!found) found = findBar();
     if (!found) return;
     var el = found.save;
     var empty = inputsEmpty();
@@ -455,20 +460,31 @@ internal object AiStareJs {
     if (!NS.skipConfirm || NS.saveObs) return;
     NS.saveObs = new MutationObserver(function() {
       if (!NS.skipConfirm) { NS.disarmSkip(); return; }
-      var hit = null;
-      var all = document.querySelectorAll('div,span,p');
-      for (var i = 0; i < all.length; i++) {
-        var el = all[i];
-        if (el.childElementCount !== 0) continue;
-        if ((el.textContent || '').indexOf('__MSG_SAVED_OK__') >= 0) { hit = el; break; }
+      // 审查 2026-10-17：先走廉价判断再考虑全扫 —— 弹窗是 v-show，只会切
+      // style.display。已有缓存引用时只看它一处，不做全文档扫描；引用失效
+      // （首次或节点被换）才做一次全扫并重新缓存。
+      var box = null;
+      if (NS.savedBox && document.contains(NS.savedBox)) {
+        if (NS.savedBox.style.display !== 'none') box = NS.savedBox;
+      } else {
+        var hit = null;
+        var all = document.querySelectorAll('div,span,p');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (el.childElementCount !== 0) continue;
+          if ((el.textContent || '').indexOf('__MSG_SAVED_OK__') >= 0) { hit = el; break; }
+        }
+        if (hit) {
+          // 连遮罩一起藏（往上找到 fixed 定位的那一层）
+          box = hit;
+          for (var k = 0; k < 6 && box.parentElement; k++) {
+            box = box.parentElement;
+            if (window.getComputedStyle(box).position === 'fixed') break;
+          }
+          NS.savedBox = box;  // 缓存住，观察器存续期间后续回调走廉价路径
+        }
       }
-      if (!hit) return;
-      // 连遮罩一起藏（往上找到 fixed 定位的那一层）
-      var box = hit;
-      for (var k = 0; k < 6 && box.parentElement; k++) {
-        box = box.parentElement;
-        if (window.getComputedStyle(box).position === 'fixed') break;
-      }
+      if (!box) return;
       box.style.display = 'none';
       NS.disarmSkip();
       D('skip: saved');
@@ -514,8 +530,10 @@ internal object AiStareJs {
     if (NS.btn) { NS.btn.remove(); NS.btn = null; }
     NS.restoreEmptySave();
     NS.disarmSkip();
+    NS.savedBox = null;
     if (NS.observer) { NS.observer.disconnect(); NS.observer = null; }
     if (NS.interval) { clearInterval(NS.interval); NS.interval = null; }
+    NS.period = 0;
   };
   NS.init = function(schemesJson, enabled, pickScheme, skipConfirm, emptySave) {
     NS.enabled = !!enabled;
@@ -535,6 +553,7 @@ internal object AiStareJs {
       NS.restoreEmptySave();
       if (NS.observer) { NS.observer.disconnect(); NS.observer = null; }
       if (NS.interval) { clearInterval(NS.interval); NS.interval = null; }
+      NS.period = 0;
       return;
     }
     if (NS.enabled) NS.install();
@@ -545,15 +564,31 @@ internal object AiStareJs {
     if (NS.observer) return;
     NS.observer = new MutationObserver(function() { schedule(); });
     NS.observer.observe(document.documentElement, { childList: true, subtree: true });
-    NS.interval = setInterval(schedule, 500);
+    NS.period = 500;
+    NS.interval = setInterval(schedule, NS.period);
   };
+
+  // 审查 2026-10-17：自检周期自适应 —— 按钮不在树上时维持 500ms 快档找安装时机，
+  // 安装成功后放宽到 1500ms。降频后的删除检测由 MutationObserver 兜底：Vue 重渲染
+  // 触发 observer 时 schedule 的 300ms debounce 会立刻补一轮（走快档重装）。
+  function setIntervalMs(ms) {
+    if (NS.period === ms) return;
+    NS.period = ms;
+    if (NS.interval) clearInterval(NS.interval);
+    NS.interval = setInterval(schedule, ms);
+  }
 
   function schedule() {
     if (NS.checkTimer) return;
     NS.checkTimer = setTimeout(function() {
       NS.checkTimer = null;
-      if (NS.enabled) NS.install();
-      if (NS.emptySave || NS.saveEl) NS.applyEmptySave();
+      // 审查 2026-10-17：单轮只做一次 findBar，install 与 applyEmptySave 共用结果，
+      // 省掉原来一轮里 2-3 次的全文档扫描（按钮已在树上时无需重复查找）
+      var btnOnTree = !!(NS.btn && document.contains(NS.btn));
+      var found = (!btnOnTree && (NS.enabled || NS.emptySave || NS.saveEl)) ? findBar() : null;
+      var ok = NS.enabled && NS.install(found);
+      if (NS.emptySave || NS.saveEl) NS.applyEmptySave(found);
+      setIntervalMs(ok ? 1500 : 500);
     }, 300);
   }
 

@@ -37,7 +37,8 @@ import java.util.WeakHashMap
  * Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 decorView 只挂一次）
  *                    └─→ 立刻 sync()（从别的页面返回时不用等下一次布局）
  *
- * 全局布局回调 ──→ sync()（反复认不出来时按 layoutThrottleMs 限速，且只延迟不丢弃）
+ * 全局布局回调 ──→ sync()（反复认不出来时按 layoutThrottleMs 限速，只延迟不丢弃；
+ *                    上一轮有实际改动时按 actionCooldownMs 冷却，冷却期内直接跳过）
  *
  * 首帧屏障(OnPreDraw) ──→ 「自上一帧以来界面被动过」就 return false，这一帧不画
  * ```
@@ -147,6 +148,18 @@ abstract class PageSyncFeature : Feature {
     /** 布局回调的限速间隔（只在反复认不出来时生效，且只延迟不丢弃） */
     protected open val layoutThrottleMs: Long get() = 300L
 
+    /**
+     * 同步**有实际动作**后的冷却间隔（ms）。
+     *
+     * 审查 2026-10-17：布局回调在 RecyclerView 滚动、动画、Fragment 重建时是**高频**来源，
+     * 而认出目标页之后每一轮回调都会全量跑一遍所有启用功能的 sync —— 多数功能有
+     * alreadyHidden / stillAttached 快速通道，但快速通道失效（宿主重建视图后 id 直取失败）
+     * 时会落到全树遍历（如 HomeBannerFeature 的 UiClean.walk 整棵 decor），没有兜底。
+     * 所以「上一轮真的动过视图」就冷却 [actionCooldownMs]：冷却期内布局回调直接跳过；
+     * 空闲轮不冷却，宿主之后真改了视图（快速通道失效、需要重扫描），冷却一过下一次布局就能响应。
+     */
+    protected open val actionCooldownMs: Long get() = 1500L
+
     /** 连续多少次布局回调都认不出来，才报告一次 */
     protected open val missScanThreshold: Int get() = 3
 
@@ -220,6 +233,14 @@ abstract class PageSyncFeature : Feature {
 
     /** 页面 → 是否已有一次「延后同步」排队（限速时只延迟、不重复排队） */
     private val deferredScan = Collections.synchronizedMap(WeakHashMap<View, Boolean>())
+
+    /**
+     * 页面 → 上一次同步**真动了视图**的时刻（[actionCooldownMs] 冷却的起点，审查 2026-10-17）。
+     *
+     * 判据是现成的：一轮 [sync] 前后 [mutations] 涨了（[noteChange] 或记账工具的计数），
+     * 和首帧屏障「界面被动过」用的是同一个信号。只在有动作时写入 —— 空闲轮不冷却。
+     */
+    private val lastActionAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
 
     /** 页面 → 上次报告时间 / 已报告次数 */
     private val lastReportAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
@@ -362,15 +383,26 @@ abstract class PageSyncFeature : Feature {
     /**
      * 布局回调：页面刚布局完（**在这一帧画出来之前**），正是改树的最佳时机。
      *
-     * 只有在「连续认不出来」之后才限速，而且**只延后不丢弃** ——
-     * 布局回调是「页面变了」的唯一信号，直接丢掉就要白等下一次布局
-     * （宿主重建视图后可能再没有下一次布局，界面就永远停在原样）。
+     * 两道闸（审查 2026-10-17 起是两道）：
+     *
+     *  - **动作冷却**：上一轮 sync 真动了视图后 [actionCooldownMs] 内直接跳过 ——
+     *    滚动 / 动画期间的高频布局回调不值得每帧全量重扫；空闲轮不写冷却，
+     *    宿主之后真改了视图，冷却一过下一次布局就能响应；
+     *  - **认不出限速**：连续认不出来时按 [layoutThrottleMs] 限速，
+     *    而且**只延后不丢弃** —— 布局回调是「页面变了」的唯一信号，
+     *    直接丢掉就要白等下一次布局（宿主重建视图后可能再没有下一次布局，界面就永远停在原样）。
      */
     private fun onLayout(env: FeatureEnv, activity: Activity, root: View) {
         if (!switchedOn(env.config)) return
         if (activity.isFinishing || activity.isDestroyed) return
 
         val now = SystemClock.uptimeMillis()
+        // 审查 2026-10-17：动作冷却 —— 只在「上一轮有实际动作」时生效（lastActionAt 才有值）
+        val actedAt = synchronized(lastActionAt) { lastActionAt[root] ?: 0L }
+        if (now - actedAt < actionCooldownMs) {
+            GLog.d("$id：${activity.javaClass.simpleName} 刚同步过且有改动，冷却期内跳过本次布局回调")
+            return
+        }
         val last = synchronized(lastRunAt) { lastRunAt[root] ?: 0L }
         val miss = synchronized(missScans) { missScans[root] ?: 0 }
         val missing = synchronized(lastScanOk) { lastScanOk[root] == false }
@@ -405,9 +437,15 @@ abstract class PageSyncFeature : Feature {
     /** 跑一次 [sync]，记下结果 */
     private fun runSync(env: FeatureEnv, activity: Activity, root: View, fromLayout: Boolean) {
         synchronized(lastRunAt) { lastRunAt[root] = SystemClock.uptimeMillis() }
+        // 审查 2026-10-17：拿 sync 前后的改动计数差判断「这一轮有没有实际动作」——
+        // 与首帧屏障判「界面被动过」是同一个信号（noteChange / 记账工具的计数）
+        val mutBefore = mutations
         val done = runCatching { sync(env, activity) }.getOrElse {
             GLog.w("$id：同步失败", it)
             true
+        }
+        if (mutations != mutBefore) {
+            synchronized(lastActionAt) { lastActionAt[root] = SystemClock.uptimeMillis() }
         }
         synchronized(lastScanOk) { lastScanOk[root] = done }
         if (done) {
@@ -539,6 +577,7 @@ abstract class PageSyncFeature : Feature {
         synchronized(lastScanOk) { lastScanOk.clear() }
         synchronized(missScans) { missScans.clear() }
         synchronized(deferredScan) { deferredScan.clear() }
+        synchronized(lastActionAt) { lastActionAt.clear() }
         synchronized(lastReportAt) { lastReportAt.clear() }
         synchronized(reportCounts) { reportCounts.clear() }
         synchronized(enteredAt) { enteredAt.clear() }

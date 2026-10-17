@@ -698,12 +698,28 @@ private fun HomeScaffold(
         with(density) { (DockHeight + DockMargin + 56.dp).toPx() }
     }
 
+    // 底栏形态切换的淡入淡出（声明上提到 backdrop 之前，见下方 needsBackdrop 的注释）
+    val dockAlpha by animateFloatAsState(
+        targetValue = if (liquidGlass) 1f else 0f,
+        animationSpec = tween(220),
+        label = "dock-alpha",
+    )
+
     Box(Modifier.fillMaxSize()) {
         // 悬浮底栏与顶栏玻璃都要采样「内容」才能做出折射 / 模糊，所以把内容录进图层
         val backdrop = rememberLayerBackdrop {
             drawRect(background)
             drawContent()
         }
+
+        // 只有玻璃消费方在场时才需要录图层（审查 2026-10-17）。
+        // backdrop 的消费方只有玻璃形态的 GlassTopBar / LiquidGlassDock / 弹窗卡片，
+        // 全部跟着 liquidGlass 开关走；liquidGlass=false 时挂着等于每帧多录一张
+        // 全屏离屏图层却无人采样。写法与 SubScreen 的条件挂载（见下方）保持一致：
+        // backdrop 实例始终创建、各消费方引用同一实例，只是不挂 `.layerBackdrop` 修饰符。
+        // 条件额外包含 dockAlpha > 0.005f：关玻璃时底栏走淡出动画，动画期间
+        // LiquidGlassDock 仍在采样，此时不能把图层提前摘掉，否则淡出瞬间采到空图层。
+        val needsBackdrop = liquidGlass || dockAlpha > 0.005f
 
         Scaffold(
             // 显式指定容器色 = 页面底色。Miuix `Scaffold` 的默认值恰好就是 `surface`，
@@ -752,7 +768,9 @@ private fun HomeScaffold(
                                 // 液态底栏时不留底部 inset，内容铺到屏幕最底边（导航条沉浸）
                                 bottom = if (liquidGlass) 0.dp else padding.calculateBottomPadding(),
                             )
-                            .layerBackdrop(backdrop)
+                            // 只在玻璃消费方在场时录图层（见上方 needsBackdrop 的注释），
+                            // 条件挂载与 SubScreen 的写法保持一致
+                            .then(if (needsBackdrop) Modifier.layerBackdrop(backdrop) else Modifier)
                             // 只观测滚动方向，不消费增量（返回 Offset.Zero），滚动本身不受影响
                             .nestedScroll(scrollConnection)
                             // 点击空白处清掉输入框焦点（见上方 focusManager 处的注释）。
@@ -799,11 +817,7 @@ private fun HomeScaffold(
                     //
                     // 这里也刻意**不用** AnimatedContent：它的 SizeTransform 默认 clip = true，
                     // 会把长按气泡（画在胶囊上方 -38dp 处）切掉。用透明度过渡更稳。
-                    val dockAlpha by animateFloatAsState(
-                        targetValue = if (liquidGlass) 1f else 0f,
-                        animationSpec = tween(220),
-                        label = "dock-alpha",
-                    )
+                    // （dockAlpha 声明上提到了 needsBackdrop 之前，见其注释。）
                     if (dockAlpha > 0.005f) {
                         LiquidGlassDock(
                             backdrop = backdrop,

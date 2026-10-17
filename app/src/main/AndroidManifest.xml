@@ -62,13 +62,18 @@
             保留它只是为了让 tools/ 下的自动化脚本仍能读写配置，用法见
             docs/TROUBLESHOOTING.md（content query / content update）。
             只接受 root(0) / shell(2000) 写入，其它调用方一律拒绝。
+
+            有意不声明 android:permission：signature 级别的自定义 permission 会把
+            adb shell（uid 2000，无 signature 能力）也挡在门外，破坏现有调试通道；
+            访问控制完全交给运行时 UID 白名单（见 DebugConfigProvider）。
+            也不声明 grantUriPermissions：本 Provider 没有任何临时授权场景
+            （脚本直接 content query/update，不经 intent 转发 URI）。
         -->
         <provider
             android:name=".app.DebugConfigProvider"
             android:authorities="io.github.MVennn.GSAuxiliary.config"
             android:exported="true"
             android:enabled="true"
-            android:grantUriPermissions="true"
             tools:ignore="ExportedContentProvider" />
 
         <!--

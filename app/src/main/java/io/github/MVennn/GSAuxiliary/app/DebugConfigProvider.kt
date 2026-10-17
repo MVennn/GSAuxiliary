@@ -25,6 +25,8 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * 目标进程立刻可见 —— 等价于在设置界面里点了一下。
  *
  * 安全：只接受 root(0) / shell(2000) 调用，其它 UID 一律 [SecurityException]。
+ * 单层 UID 白名单是有意设计（不加 signature permission 的原因），详见
+ * [ensurePrivileged] 的 KDoc（审查 2026-10-17 中-3）。
  */
 class DebugConfigProvider : ContentProvider() {
 
@@ -54,6 +56,21 @@ class DebugConfigProvider : ContentProvider() {
         return true
     }
 
+    /**
+     * 访问控制：单层 UID 白名单（root=0 / shell=2000），是有意设计（审查 2026-10-17 中-3）。
+     *
+     * 防线模型：
+     *  - Provider 本身 exported=true 且**不声明** android:permission ——
+     *    自定义 permission（无论 normal/signature）都会把 adb shell（uid 2000，
+     *    不具备本应用 signature）也挡掉，破坏 `adb shell content query/update`
+     *    调试通道；manifest 层的攻击面由 lint 例外（tools:ignore）显式承认。
+     *  - 唯一的防线就是这里的运行时 UID 白名单：query / update 入口都先过本方法，
+     *    其它 UID（含普通应用）一律 SecurityException。
+     *  - 暴露面收敛为「root / shell 可读写本模块配置」—— 与 adb 本身的能力
+     *    等价（adb shell 本就能 run-as / 读写 debuggable 应用数据），不额外放大风险。
+     *  - 该 Provider 仅供开发期自动化，不参与运行期配置读取；不再需要 adb
+     *    调试时可直接整体下线。
+     */
     private fun ensurePrivileged() {
         val uid = Binder.getCallingUid()
         if (uid != 0 && uid != Process.SHELL_UID) {

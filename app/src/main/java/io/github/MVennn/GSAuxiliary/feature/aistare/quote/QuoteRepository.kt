@@ -57,8 +57,10 @@ interface QuoteSource {
  *  3. **按需取数**：方案里没有实时项就不打快照接口（少一次 3 秒的请求，
  *     也少一次被锁到 host 的机会）。
  *
- * 会话在每次「点配置」时新建，用完即弃 —— 无状态、无跨点击缓存
- * （日 K 的 5 分钟缓存由 [PublicQuoteSource] 自己持有，且该实例是**持久**的）。
+ * 会话在每次「点配置」时新建，用完即弃 —— 无跨点击缓存。会话内仅有的
+ * 两份临时状态：通道偏好（上一次成功的通道优先）与日 K memo（相同参数
+ * 只取一次网络，见 [klineMemo]）；日 K 的跨点击 5 分钟缓存由
+ * [PublicQuoteSource] 自己持有，且该实例是**持久**的。
  */
 class QuoteSession(
     private val sources: List<QuoteSource>,
@@ -100,6 +102,17 @@ class QuoteSession(
     @Volatile
     private var preferredKline: QuoteSource? = null
 
+    /**
+     * 日 K 会话内 memo：key = (code, market, n)，value = 本次成功取到的数据。
+     *
+     * 同一会话里相同参数的日 K 只走一次网络（重复点击 / 相邻取值项参数相同
+     * 时直接复用，审查 2026-10-17 中-7）；不同 n（如「30 日高低」n=320 与
+     * 「历史高低」n=2000）是不同的 key，允许各自再取一次 —— 通道层自己的
+     * 5 分钟缓存仍负责跨会话复用与升档场景的命中，这里只防「同会话内重复打」。
+     * 失败结果不进 memo（下次调用允许重试）。
+     */
+    private val klineMemo = HashMap<Triple<String, String, Int>, List<QuoteBar>>()
+
     fun snapshot(code: String, market: String): QuoteSnapshot? {
         if (!needsSnapshot) return null
         val candidates = snapshotCandidates()
@@ -116,6 +129,11 @@ class QuoteSession(
 
     fun dailyKline(code: String, market: String, n: Int): List<QuoteBar>? {
         if (!needsKline) return null
+        val memoKey = Triple(code, market, n)
+        synchronized(lock) { klineMemo[memoKey] }?.let { cached ->
+            GLog.d("一键配置取数：日 K 命中会话 memo（$code.$market，n=$n，${cached.size} 根，免网络）")
+            return cached
+        }
         val candidates = klineCandidates()
         var best: Pair<QuoteSource, List<QuoteBar>>? = null
         for (s in candidates) {
@@ -126,6 +144,7 @@ class QuoteSession(
             if (r.size >= n || r.size >= MIN_USABLE_BARS) {
                 synchronized(lock) { if (preferredKline == null) preferredKline = s }
                 klineSource = s.name
+                synchronized(lock) { klineMemo[memoKey] = r }
                 GLog.d("一键配置取数：日 K 来自 ${s.name}（$code.$market，n=$n，${r.size} 根）")
                 return r
             }
@@ -134,6 +153,7 @@ class QuoteSession(
         // 全部通道都不够：把最长的那份交出去（次新股本来就只有几根，引擎自己判够不够）
         if (best != null) {
             klineSource = best.first.name
+            synchronized(lock) { klineMemo[memoKey] = best.second }
             GLog.w(
                 "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，要 $n，$code.$market），按实有返回",
             )
