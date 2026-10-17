@@ -242,7 +242,7 @@ object ConfigKeys {
     const val DESKTOP_ICON = "desktop_icon"
 
     /**
-     * 液态玻璃总开关：true = 顶栏、悬浮底栏与开关滑块都是液态玻璃，false = 全部纯色。
+     * 液态玻璃总开关：true = 顶栏与悬浮底栏都是液态玻璃，false = 两处都是纯色。
      *
      * 2.7.0 之前这个开关只管底栏形态（叫「Dock 变换」），现在一并管顶栏材质，
      * 所以常量名跟着改了。**键值仍是 `dock_liquid`** —— 改键值会让老用户的

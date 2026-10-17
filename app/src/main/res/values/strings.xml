@@ -174,7 +174,7 @@
     <!-- 材质设置：液态玻璃是顶栏 + 悬浮底栏的总开关 -->
     <string name="section_dock">材质设置</string>
     <string name="item_liquid_glass">液态玻璃</string>
-    <string name="liquid_glass_off">已关闭，顶栏、底栏与开关为纯色</string>
+    <string name="liquid_glass_off">已关闭，顶栏与底栏为纯色</string>
     <string name="item_glass_effect">玻璃光效</string>
     <string name="item_glass_effect_summary_on">完整的玻璃光效</string>
     <string name="item_glass_effect_summary_off">简约版本</string>
