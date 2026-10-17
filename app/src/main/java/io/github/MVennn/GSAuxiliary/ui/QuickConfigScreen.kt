@@ -9,6 +9,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -238,39 +239,46 @@ private fun SchemeRow(
         title = name,
         summary = preview.ifEmpty { null },
         endActions = {
-            if (isDefault) {
-                // `align(CenterVertically)`：这一行的 Row 默认是 **Top** 对齐，
-                // 徽标比旁边的 IconButton 矮一大截，不显式居中的话会贴在行的上沿。
-                DefaultBadge(Modifier.align(Alignment.CenterVertically))
-                Spacer(Modifier.width(4.dp))
-            }
-            IconButton(
-                onClick = {
-                    dialogs?.showChoice(
-                        ChoiceDialogSpec(
-                            items = menuTexts,
-                            selectedIndex = -1, // 动作菜单，无选中态
-                            onSelect = onMenu,
-                            anchor = anchor,
-                            disabledIndices = disabledMenuIndices,
-                        ),
-                    )
-                },
-                modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
+            // 整簇显式垂直居中（4-项）。`endActions` 的 Row 默认 **Top** 对齐：
+            // ⋮ 在自己的 IconButton 里居中、箭头（12.5dp 高）却贴在顶边，两者中心
+            // 差 12.5dp —— 上机就是「箭头对不上三个点」（实测 ⋮ 511.5 / › 477.0）。
+            // 收进一个 `align(CenterVertically)` 的 Row，三者共用同一条中线。
+            Row(
+                modifier = Modifier.align(Alignment.CenterVertically),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TintedIcon(
-                    imageVector = AppIcons.MoreVert,
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                )
+                if (isDefault) {
+                    DefaultBadge()
+                    Spacer(Modifier.width(4.dp))
+                }
+                IconButton(
+                    onClick = {
+                        dialogs?.showChoice(
+                            ChoiceDialogSpec(
+                                items = menuTexts,
+                                selectedIndex = -1, // 动作菜单，无选中态
+                                onSelect = onMenu,
+                                anchor = anchor,
+                                disabledIndices = disabledMenuIndices,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
+                ) {
+                    TintedIcon(
+                        imageVector = AppIcons.MoreVert,
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                    )
+                }
+                // 右箭头放在最后：这一行点进去是**三级页**，朝右才是对的语义
+                ArrowRightIcon()
             }
-            // 右箭头放在最后：这一行点进去是**三级页**，朝右才是对的语义
-            ArrowRightIcon()
         },
         onClick = onClick,
     )
 }
 
-/** 「默认」小徽标（`modifier` 由调用方传，用它做行内垂直居中） */
+/** 「默认」小徽标（垂直居中由调用方那个 `align(CenterVertically)` 的 Row 统一负责） */
 @Composable
 private fun DefaultBadge(modifier: Modifier = Modifier) {
     Box(
