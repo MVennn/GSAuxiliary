@@ -26,7 +26,8 @@ import io.github.MVennn.GSAuxiliary.feature.watchlist.WatchlistFeature
  *
  * 生命周期：
  *   `onPackageReady` → [installAll]
- *   配置变化         → [onConfigChanged]（切到主线程后分发给各功能）
+ *   配置变化         → [onConfigChanged]（切到主线程后分发给各功能；
+ *                       宿主存活期间新打开的开关就地补装，见方法注释）
  *   热重载 / 退出     → [uninstallAll]
  */
 class FeatureManager(private val env: FeatureEnv) {
@@ -34,6 +35,9 @@ class FeatureManager(private val env: FeatureEnv) {
     private val bag = HookBag()
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    /** 已完成 [Feature.install] 的功能 id（installAll 与运行中补装共用） */
+    private val installedIds = HashSet<String>()
 
     /**
      * 全部已登记的功能。
@@ -68,6 +72,7 @@ class FeatureManager(private val env: FeatureEnv) {
             }
             try {
                 f.install(env, bag)
+                synchronized(installedIds) { installedIds.add(f.id) }
                 installed++
                 GLog.i("已安装功能 [${f.id}] ${f.title}")
             } catch (t: Throwable) {
@@ -77,10 +82,29 @@ class FeatureManager(private val env: FeatureEnv) {
         GLog.i("功能安装完成：$installed/${features.size}，共 ${bag.size} 个钩子")
     }
 
-    /** 配置变化：更新快照并分发给各功能（主线程） */
+    /**
+     * 配置变化：更新快照并分发给各功能（主线程）。
+     *
+     * 审查 2026-10-17 高-2：启动时未启用的功能连钩子都没装，此前宿主存活期间
+     * 新打开的开关永远不生效，只能重启宿主。现在分发前先补装——「没装过 &&
+     * 本轮已启用」的功能就地 [Feature.install]；失败则从已装表移除，
+     * 下次配置变化还有机会重试。
+     */
     fun onConfigChanged(cfg: ConfigSnapshot) {
         env.config = cfg
         mainHandler.post {
+            for (f in features) {
+                val newlyInstalled = f.isEnabled(cfg) &&
+                    synchronized(installedIds) { installedIds.add(f.id) }
+                if (!newlyInstalled) continue
+                try {
+                    f.install(env, bag)
+                    GLog.i("运行中补装功能 [${f.id}] ${f.title}")
+                } catch (t: Throwable) {
+                    synchronized(installedIds) { installedIds.remove(f.id) }
+                    GLog.e("运行中补装功能 [${f.id}] 失败", t)
+                }
+            }
             for (f in features) {
                 runCatching { f.onConfigChanged(env, cfg) }
                     .onFailure { GLog.w("功能 [${f.id}] 处理配置变化失败", it) }
