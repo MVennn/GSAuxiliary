@@ -165,6 +165,9 @@ class AiStareQuickConfigFeature : Feature {
                                 // 这是整条链路上最早能拿到 WebView 实例的时刻。
                                 (chain.thisObject as? WebView)?.let { wv ->
                                     runCatching {
+                                        // 审查 2026-10-17 低-2：顺手清死引用，
+                                        // 不等 reloadWatchlistPages 才清
+                                        trackedWebViews.removeAll { it.get() == null }
                                         trackedWebViews.add(WeakReference(wv))
                                         wv.addJavascriptInterface(
                                             Bridge(env),

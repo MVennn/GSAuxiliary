@@ -140,6 +140,9 @@ class StgStockFilterFeature : Feature {
     /** 三点菜单窗口被我们改过的原始高度，撤销时还原 */
     private val popupOriginalHeight = Collections.synchronizedMap(WeakHashMap<PopupWindow, Int>())
 
+    /** 菜单容器归一化前的 lp.height（多数场景容器无 lp，为 null 不还原） */
+    @Volatile private var parentOriginalHeight: Int? = null
+
     /** 已经包过行点击回映射的 ListView → 我们装的 wrapper（用来避免重复包裹） */
     private val wrappedLists = Collections.synchronizedMap(
         WeakHashMap<ListView, AdapterView.OnItemClickListener>()
@@ -540,6 +543,8 @@ class StgStockFilterFeature : Feature {
             p.height = itemPx
             c.layoutParams = p
         }
+        // 审查 2026-10-17 低-10：容器原 lp.height 非 null 时存档，还原时按原值放回
+        parentOriginalHeight = parent.layoutParams?.height?.takeIf { it > 0 }
         val lp = parent.layoutParams ?: return
         lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         parent.layoutParams = lp
@@ -553,6 +558,11 @@ class StgStockFilterFeature : Feature {
             p.weight = 1f
             p.height = 0
             c.layoutParams = p
+        }
+        // 审查 2026-10-17 低-10：归一化改过容器 lp.height 的，按存档原值还原
+        parentOriginalHeight?.let {
+            parent.layoutParams?.height = it
+            parentOriginalHeight = null
         }
     }
 

@@ -107,18 +107,21 @@ class GszxModule : XposedModule() {
         val env = FeatureEnv(xposed, classLoader)
 
         val configSource = ConfigSource(xposed)
+        val manager = FeatureManager(env)
+        // 审查 2026-10-17 低-7：先绑 onChanged 再 open()。open() 内部注册监听并读
+        // 首帧，若先 open 后赋值，「注册完成 → 赋值完成」之间推送到的变更会被
+        // onChanged 为 null 静默吞掉（ConfigSource.kt 的 `onChanged?.invoke`）。
+        configSource.onChanged = { cfg ->
+            GLog.level = cfg.logLevel
+            manager.onConfigChanged(cfg)
+        }
         configSource.open()
         // 目标进程的日志等级跟着模块设置走（3.2.0 起由用户在「设置 → 日志」里调）；
         // 与 sink 刚装上时的默认阈值之间只隔一次配置读取，启动期日志不会漏。
         GLog.level = configSource.snapshot.logLevel
         env.config = configSource.snapshot
 
-        val manager = FeatureManager(env)
         // 配置变化由框架在 Binder 线程推送，FeatureManager 负责切主线程
-        configSource.onChanged = { cfg ->
-            GLog.level = cfg.logLevel
-            manager.onConfigChanged(cfg)
-        }
 
         this.configSource = configSource
         this.featureManager = manager
