@@ -21,6 +21,9 @@ class DomQuoteSource(private val pageText: String) : QuoteSource {
 
     override val name = "dom"
 
+    /** 页面上只有最新价，没有 K 线 —— 日 K 请求直接排除它 */
+    override val supportsKline = false
+
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
         val m = REGEX.find(pageText) ?: run {
             GLog.w("一键配置取数：页面文本里找不到「最新价:…」")

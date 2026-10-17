@@ -178,8 +178,10 @@ code=601811.2,601811.2,002907.1,600519.2,300300.1,600585.2
                     │  QuoteRepository（可换实现）
                     ▼
 ┌─ ③ 取数层（目标进程）────────────────────────────────────────────────┐
-│  HostQuoteSource（首选）：宿主自己的行情数据                          │
-│  PublicQuoteSource（兜底）：公开行情 HTTP                             │
+│  QuoteFetcher（编排）：按方案需求决定取快照 / 日 K，逐级降级          │
+│  HostQuoteSource（首选，只给快照）：宿主自己的行情数据                 │
+│  PublicQuoteSource（主通道）：腾讯公开行情 HTTP                       │
+│  EastmoneyQuoteSource（第二家）：东财公开行情                         │
 │  DomQuoteSource（零成本兜底）：从页面上的「最新价:24.32」正则抠出来   │
 └──────────────────────────────────────────────────────────────────────┘
                     ▲
@@ -391,41 +393,69 @@ interface QuoteRepository {
 }
 ```
 
-### 5.2 三个取数通道与降级
+### 5.2 四个取数通道与降级
 
 ```
 QuoteRepository
- ├ ① HostQuoteSource     ★ 首选：宿主自己的行情数据
+ ├ ① HostQuoteSource     ★ 首选：宿主自己的行情数据（**只给实时快照**）
  │     优点：与 App 内显示的完全一致；不需要额外的网络权限；不引外部依赖
  │     缺点：类名/方法名要逆向（DEX 加密，只能运行时探针拿）
  │
- ├ ② PublicQuoteSource   ○ 兜底：公开行情 HTTP
+ ├ ② PublicQuoteSource   ★ 主通道：腾讯公开行情 HTTP（快照 + 日 K）
  │     优点：稳定、文档化、跟宿主版本无关
- │     缺点：多一次外部请求；口径（复权/时间戳）与宿主可能有细微差
+ │     缺点：口径（复权/时间戳）与宿主可能有细微差
  │
- └ ③ DomQuoteSource      ○ 零成本兜底：从页面上正则抠
+ ├ ③ EastmoneyQuoteSource ○ 第二家公开行情：东方财富（快照 + 日 K）
+ │     存在的理由：腾讯是唯一外部依赖，它限流/抽风时至少还有一家能给日 K
+ │
+ └ ④ DomQuoteSource      ○ 零成本兜底：从页面上正则抠（**只给最新价**）
        页面本来就写着「最新价:24.32 +9.45%」→ 只能救 `latest`，
-       昨收可以用 `latest / (1+涨跌幅)` 反推（有误差，仅当①②都挂时才用）
+       昨收可以用 `latest / (1+涨跌幅)` 反推（有误差，仅当①②③都挂时才用）
 ```
 
-降级顺序：**① → ② → ③**，每一级失败都记一条明确日志（`GLog.w`），
-并把「本次用的是哪一级」带回给 JS，让按钮上能显示一行极小的来源提示（可选）。
+降级顺序：**① → ② → ③ → ④**，每一级失败都记一条明确日志（`GLog.w`），
+并把「本次用的是哪几级」带回给 JS，让按钮上能显示一行极小的来源提示（可选）。
 
 **②的具体接口（写死在这里，便于复核）**：
 
 ```
-实时：https://qt.gtimg.cn/q=<mkt><code>              mkt = sh|sz
-      → 响应是按 ~ 分隔的文本，字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 1=名称
+实时：https://qt.gtimg.cn/q=<mkt><code>              mkt = sh|sz      （响应是 GBK！）
+      → 响应是按 ~ 分隔的文本，字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 1=名称 2=代码
 
-日K ：https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=<mkt><code>,day,,,320,qfq
+日K ：https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=<mkt><code>,day,,,320,
       → data.<mkt><code>.day / .qfqday 是 [[日期, 开, 收, 高, 低, 量], ...]
 ```
 
-`market` → `mkt` 的换算（呼应 §1.4）：**`1` → `sz`，`2` → `sh`**。
+**③的具体接口**（`fltt=2` 必须带，不带的话价格是放大 100 倍的整数）：
+
+```
+实时：https://push2.eastmoney.com/api/qt/stock/get?fltt=2&secid=<0|1>.<code>
+      → f43 最新 / f44 最高 / f45 最低 / f46 今开 / f57 代码 / f58 名称 / f60 昨收
+日K ：https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=<0|1>.<code>
+      &klt=101&fqt=0&lmt=<n>&end=20500101&fields1=f1,f2,f3,f4,f5,f6
+      &fields2=f51,f52,f53,f54,f55,f56,f57
+      → data.klines = ["日期,开,收,高,低,量,额", ...]，fqt=0 不复权
+```
+
+`market` → `mkt` 的换算（呼应 §1.4）：**`1` → `sz`，`2` → `sh`**；
+东财的 `secid` 前缀：**`1` → `0`，`2` → `1`**。认不出的市场号**不猜**
+（猜错会拿到另一只股票的价，比取不到更糟）。
 
 **关于「同一来源」**：如果同一个方案里既有实时项又有日K项，两者应尽量走**同一个通道**
-（都由 ① 或都由 ②），避免「最新价是宿主的、30 日高是腾讯的」这种口径混搭。
-实现上把 `QuoteRepository` 做成**一次会话内锁定通道**：第一个成功的通道，本次全程用它。
+（都由 ① 或都由 ③），避免「最新价是宿主的、30 日高是腾讯的」这种口径混搭。
+
+**2026-10-17 修正（原「一次会话内全局锁定通道」是错的）**：旧实现把「第一个给出
+数据的通道」锁死，之后别的一律不试。主路径（个股详情页 → 智能盯盘 → 价格）下
+宿主 `StockInfo` 缓存命中，快照把通道锁在 **① host**，而 host 按设计给不了日 K
+（§10-4）—— 默认方案「30 日高低」必然判「取数失败」；这也是「经常取不到数据」
+的主因。现行规则：
+
+1. **按能力挑通道**：方案要日 K 时，快照优先在「两样都能给」的通道里挑（②③），
+   都不行才退回只给快照的（①④）；
+2. **同通道优先、失败继续降级**：上一次成功的通道排最前，但它失败就试下一级，
+   不再一锤定音；
+3. **按需取数**：方案里没有实时项就不打快照接口（`historyHigh/Low` 例外 ——
+   它们要用现价判断「现价上方 / 下方」）。
 
 ### 5.3 各项的计算口径
 
@@ -554,9 +584,12 @@ QuoteRepository
 | `feature/aistare/AiStareQuickConfigTargets.kt`（新增） | 全部常量：页面 URL 片段、桥名/命名空间、配色 `#FF3A3B`、宿主行情字段候选 + 实测说明 |
 | `feature/aistare/AiStareQuickConfigFeature.kt`（新增） | 功能本体：`setWebViewClient` 动态抓子类 → 挂 `onPageFinished` → 注入 JS + 自建 `gsaux` 桥 → 取数调度（会话锁通道）→ 回填；`StockInfo` 构造器钩子喂宿主行情缓存 |
 | `feature/aistare/AiStareJs.kt`（新增） | 注入脚本常量：找「保存」（文本+底部 1/4 双判据）→ 三等分 → 克隆改「配置」→ 弹方案层 → `fill()` 派发 input/change/blur → 方向校验 → `MutationObserver`+500ms 自检 |
-| `feature/aistare/quote/QuoteRepository.kt`（新增） | `QuoteSource` 接口 + `QuoteSession`（第一次成功给出数据的通道全程锁定，杜绝口径混搭） |
-| `feature/aistare/quote/HostQuoteSource.kt`（新增） | 宿主行情（反射）：挂 `StockInfo` 构造器缓存最近实例，代码对得上才用；日 K 入口未确认暂不实现（待探针，§10-4/5） |
-| `feature/aistare/quote/PublicQuoteSource.kt`（新增） | 腾讯公开行情：实时（`qt.gtimg.cn`）+ 日 K（`web.ifzq.gtimg.cn`，不复权，5 分钟缓存） |
+| `feature/aistare/quote/QuoteRepository.kt`（新增） | `QuoteSource` 接口（含 `supportsSnapshot` / `supportsKline` 能力声明）+ `QuoteSession`（按能力挑通道、同通道优先但不锁定、失败逐级降级 —— 2026-10-17 修正了「全局锁定」那个致命缺陷） |
+| `feature/aistare/quote/QuoteFetcher.kt`（新增） | 取数编排：按方案需求决定取快照 / 日 K（`historyHigh/Low` 顺带要快照），跑 `QuoteSession` + `QuickConfigEngine`，失败时把「快照=… 日K=… 涨到槽=… 跌到槽=…」写进日志 |
+| `feature/aistare/quote/HttpTransport.kt`（新增） | 取数专用 HTTP：状态码判定、可恢复错误重试一次、连接/读超时分离、GBK 解码、显式 `disconnect()`、响应体封顶 4 MB |
+| `feature/aistare/quote/HostQuoteSource.kt`（新增） | 宿主行情（反射）：挂 `StockInfo` 构造器缓存最近实例，代码对得上才用；**只给快照**（日 K 入口未确认，§10-4） |
+| `feature/aistare/quote/PublicQuoteSource.kt`（新增） | 腾讯公开行情：实时（`qt.gtimg.cn`，**GBK**）+ 日 K（`web.ifzq.gtimg.cn`，不复权，5 分钟缓存）；代码回显校验、停牌行过滤 |
+| `feature/aistare/quote/EastmoneyQuoteSource.kt`（新增） | 东财公开行情（第二家）：实时 `push2` + 日 K `push2his`（`fqt=0` 不复权）；`fltt=2` 让价格直接是元，另做代码回显与价位合理性校验 |
 | `feature/aistare/quote/DomQuoteSource.kt`（新增） | 从页面文本正则抠「最新价:xx ±x%」，昨收反推；只能救 latest/prevClose |
 | `core/ConfigKeys.kt` | 加 `AISTARE_QUICK_ENABLED`（开关，进 `FEATURE_KEYS`）与 `AISTARE_QUICK_CONFIG`（方案 JSON，进 `FEATURE_PARAM_KEYS`）及两者默认值，进 `ALL_KEYS` / `DEFAULTS` —— **开关与数据分两个键**：重置 = 关开关、恢复出厂方案，不清用户数据 |
 | `core/ConfigSnapshot.kt` | 加 `aistareQuickEnabled: Boolean` + `aiStareQuickConfig: String`，进 `fingerprint`（乘数 2851 / 2879） |
@@ -597,7 +630,7 @@ QuoteRepository
 | 宿主限制 `addJavascriptInterface` | 低 | 退回 `onJsPrompt` 前置拦截自建 scheme（`gsaux://`），**在 `GsBridge` 之前截走**，绝不触发 `showCommandError` |
 | 未知命令把宿主的错误 UI 弹出来 | 中 | 红线：**我们的桥命令一律在漏斗前置截断**，原方法不调用 |
 | 取数失败 | 中 | 整体放弃 + 页面顶部轻提示；**绝不写半截值** |
-| 公开行情接口限流 / 不可达 | 中 | 通道锁定 + 5 分钟日K缓存 + 3 秒超时；失败降到下一级 |
+| 公开行情接口限流 / 不可达 | 中 | 两家公开行情（腾讯 / 东财）+ 5 分钟日K缓存 + 4~8 秒超时 + 可恢复错误重试一次 + 逐级降级 |
 | 宿主的 `HybirdWebView` 改名 | 低 | 类名/方法名全进候选数组；`WebView` 实例还可以从 `WebViewClient` 钩子的第一个参数拿 |
 | 算错价格写进盯盘策略 | 低但严重 | 写入前做**区间校验**（`0.01 < 价 < 昨收×1.5` 且 涨到 > 跌到），越界不写并报错 |
 | 影响原版稳定性 | — | 所有视图/JS 操作包 `runCatching`；非价格页的 H5 页面一个字节都不碰 |

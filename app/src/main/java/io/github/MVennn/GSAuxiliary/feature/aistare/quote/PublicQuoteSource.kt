@@ -5,15 +5,13 @@ import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
 import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigTargets
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
- * ② 公开行情 HTTP（兜底通道，§5.2 写死便于复核）—— 事实上的主通道。
+ * ② 公开行情 HTTP（腾讯，事实上的主通道，§5.2 写死便于复核）。
  *
  * 接口（腾讯）：
- *  - 实时：`https://qt.gtimg.cn/q=<mkt><code>`，`~` 分隔文本，
- *    字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 1=名称；
+ *  - 实时：`https://qt.gtimg.cn/q=<mkt><code>`，`~` 分隔文本（**GBK**），
+ *    字段 3=最新价 4=昨收 5=今开 33=最高 34=最低 1=名称 2=代码；
  *  - 日 K：`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=<mkt><code>,day,,,320,`
  *    （末段留空 = **不复权**，与 §5.3 的口径一致；响应 `data.<mkt><code>.day`
  *    是 `[日期, 开, 收, 高, 低, 量]` 数组，升序，含今日盘中未完成的一根）。
@@ -22,7 +20,8 @@ import java.net.URL
  *
  * 缓存与刷新（§5.4）：日 K 按 `code.market` 缓存 5 分钟（盯盘设置是低频动作，
  * 避免连点方案反复打接口）；**实时快照不缓存**（必须是当下的价）。
- * 网络请求在调用方给的线程上跑（本类不做线程切换），超时 3 秒。
+ * 网络请求走 [HttpTransport]（状态码判定 + 重试 + 编码 + 连接释放），
+ * 本类不做线程切换。
  */
 class PublicQuoteSource : QuoteSource {
 
@@ -33,11 +32,20 @@ class PublicQuoteSource : QuoteSource {
 
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
         val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
-        val text = httpGet(AiStareQuickConfigTargets.QT_SNAPSHOT_URL + mkt + code) ?: run {
+        // ⚠️ 快照接口是 **GBK**：按 UTF-8 解会把「华力创通」解成一串问号，
+        // 名称一废，引擎的 ST 判定就失效（→ 涨停价算错 5%/10%）。
+        // 数字字段是 ASCII 所以旧实现没暴露，但这是实打实的错值。
+        val text = HttpTransport.get(
+            AiStareQuickConfigTargets.QT_SNAPSHOT_URL + mkt + code,
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = SNAPSHOT_TIMEOUT_MS,
+            charset = HttpTransport.GBK,
+            tag = "tencent/snapshot",
+        ) ?: run {
             GLog.w("一键配置取数：公开行情实时请求失败（$mkt$code）")
             return null
         }
-        return parseSnapshot(text) ?: run {
+        return parseSnapshot(text, code) ?: run {
             GLog.w("一键配置取数：公开行情实时响应解析失败（$mkt$code）")
             null
         }
@@ -48,8 +56,8 @@ class PublicQuoteSource : QuoteSource {
         val mkt = AiStareQuickConfigTargets.marketToPrefix(market) ?: return null
         val key = "$code.$market"
         // 要多少根问多少根（下限 320）：「历史前高 / 前低」要 2000 根（≈8 年），
-        // 「30 日最高价」只要 320。腾讯接口单次上限就是 2000，超过会返回 param error。
-        val want = maxOf(n, DEFAULT_BARS)
+        // 「30 日最高价」只要 320。腾讯单次上限就是 2000，超过会回 param error。
+        val want = maxOf(n, DEFAULT_BARS).coerceAtMost(MAX_BARS)
 
         val now = System.currentTimeMillis()
         synchronized(klineCache) {
@@ -62,8 +70,13 @@ class PublicQuoteSource : QuoteSource {
         val url = String.format(AiStareQuickConfigTargets.QT_KLINE_URL, mkt + code)
             // 连逗号一起换：模板是 `…,day,,,320,`，只替数字会少一格 → 服务端 param error
             .replace(KLINE_COUNT_TOKEN, ",$want,")
-        // 2000 根的响应约 140 KB，3 秒容易读不完 —— 日 K 单独给 6 秒
-        val text = httpGet(url, KLINE_TIMEOUT_MS) ?: run {
+        // 2000 根的响应 100 多 KB，快照那 5 秒容易读不完 —— 日 K 单独给更长
+        val text = HttpTransport.get(
+            url,
+            connectTimeoutMs = CONNECT_TIMEOUT_MS,
+            readTimeoutMs = KLINE_TIMEOUT_MS,
+            tag = "tencent/kline",
+        ) ?: run {
             GLog.w("一键配置取数：公开行情日 K 请求失败（$mkt$code）")
             return null
         }
@@ -86,21 +99,38 @@ class PublicQuoteSource : QuoteSource {
 
     // ------------------------------------------------------------ 解析
 
-    /** `v_sz300045="51~华力创通~300045~12.70~10.58~…"` → 按文档字段的快照 */
-    internal fun parseSnapshot(text: String): QuoteSnapshot? {
+    /**
+     * `v_sz300045="51~华力创通~300045~12.70~10.58~…"` → 按文档字段的快照。
+     *
+     * 两条容错（2026-10-17）：
+     *  - **代码校验**：`parts[2]` 与请求的代码不一致就丢弃 —— 映射错 / 串包时
+     *    宁可降级，也不能把别的股票的价写进盯盘策略；
+     *  - **latest 允许缺失**：停牌、集合竞价前 `latest = 0.00`，旧实现直接判整份
+     *    快照失败，于是「涨停价 / 昨收 ±p%」这类**只依赖昨收**的方案也跟着失败。
+     *    现在 latest 给 null、由取值项自己判，昨收系的项照常可用。
+     */
+    internal fun parseSnapshot(text: String, expectCode: String): QuoteSnapshot? {
         val start = text.indexOf('"')
         val end = text.lastIndexOf('"')
         if (start < 0 || end <= start) return null
         val parts = text.substring(start + 1, end).split("~")
-        if (parts.size < 35) return null
+        // 字段 3/4 至少要在 —— 正常 A 股响应有 50 多项，但别再要求 35 项那么死
+        if (parts.size < 5) return null
+
+        val echoCode = parts.getOrNull(2)?.trim()
+        if (!echoCode.isNullOrEmpty() && echoCode != expectCode) {
+            GLog.w("一键配置取数：腾讯返回的代码（$echoCode）≠ 请求的（$expectCode），丢弃")
+            return null
+        }
 
         fun dec(i: Int): java.math.BigDecimal? =
             parts.getOrNull(i)?.trim()?.takeIf { it.isNotEmpty() && it != "0.00" }?.toBigDecimalOrNull()
 
-        val latest = dec(3) ?: return null
+        // 昨收是这一类取值的根（涨停 / 昨收 ±p% / 区间校验都要它），必须有
         val prevClose = dec(4) ?: return null
+        if (prevClose.signum() <= 0) return null
         return QuoteSnapshot(
-            latest = latest,
+            latest = dec(3),
             prevClose = prevClose,
             // 今开可能为 0.00（集合竞价前）——给 null 让该项自己失败
             open = dec(5),
@@ -123,37 +153,27 @@ class PublicQuoteSource : QuoteSource {
             for (i in 0 until arr.length()) {
                 val row = arr.optJSONArray(i) ?: continue
                 if (row.length() < 5) continue
-                bars.add(
-                    QuoteBar(
-                        date = row.optString(0),
-                        open = row.optString(1),
-                        close = row.optString(2),
-                        high = row.optString(3),
-                        low = row.optString(4),
-                    ),
-                )
+                // 停牌日 / 脏行（"-"、空串）直接跳过：留着会让引擎「整列可解析」的
+                // 判据整体失败 —— 一根坏数据连带把 250 根的历史项全判死
+                val open = row.optString(1)
+                val close = row.optString(2)
+                val high = row.optString(3)
+                val low = row.optString(4)
+                if (open.toBigDecimalOrNull() == null || close.toBigDecimalOrNull() == null ||
+                    high.toBigDecimalOrNull() == null || low.toBigDecimalOrNull() == null
+                ) continue
+                bars.add(QuoteBar(date = row.optString(0), open = open, close = close, high = high, low = low))
             }
             if (bars.isEmpty()) null else bars
         }.getOrNull()
     }
 
-    // ------------------------------------------------------------ HTTP
-
-    private fun httpGet(url: String, timeoutMs: Int = TIMEOUT_MS): String? {
-        return runCatching {
-            val conn = URL(url).openConnection() as HttpURLConnection
-            conn.connectTimeout = timeoutMs
-            conn.readTimeout = timeoutMs
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) GSAuxiliary")
-            conn.inputStream.use { stream ->
-                stream.readBytes().toString(Charsets.UTF_8)
-            }
-        }.onFailure { GLog.w("一键配置取数：HTTP 失败 $url", it) }.getOrNull()
-    }
-
     companion object {
         /** 请求根数的下限（普通取值项够用） */
         private const val DEFAULT_BARS = 320
+
+        /** 腾讯单次上限 2000 根，超过直接回 param error */
+        private const val MAX_BARS = 2000
 
         /**
          * URL 模板里「根数」那一格的占位符 —— **连着前后逗号一起匹配**。
@@ -162,10 +182,11 @@ class PublicQuoteSource : QuoteSource {
          */
         private const val KLINE_COUNT_TOKEN = ",320,"
 
-        private const val TIMEOUT_MS = 3000
+        private const val CONNECT_TIMEOUT_MS = 4000
+        private const val SNAPSHOT_TIMEOUT_MS = 5000
 
-        /** 日 K 的读超时（2000 根 ≈ 140 KB，实时快照那 3 秒不够） */
-        private const val KLINE_TIMEOUT_MS = 6000
+        /** 日 K 的读超时（2000 根 100 多 KB，快照那 5 秒不够） */
+        private const val KLINE_TIMEOUT_MS = 8000
         private const val KLINE_TTL_MS = 5 * 60 * 1000L
         private const val KLINE_CACHE_MAX = 16
     }

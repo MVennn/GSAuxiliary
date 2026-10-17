@@ -11,20 +11,19 @@ import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
-import io.github.MVennn.GSAuxiliary.core.QuickConfigEngine
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
-import io.github.MVennn.GSAuxiliary.feature.aistare.quote.DomQuoteSource
 import io.github.MVennn.GSAuxiliary.feature.aistare.quote.HostQuoteSource
-import io.github.MVennn.GSAuxiliary.feature.aistare.quote.PublicQuoteSource
-import io.github.MVennn.GSAuxiliary.feature.aistare.quote.QuoteSession
+import io.github.MVennn.GSAuxiliary.feature.aistare.quote.QuoteFetcher
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import org.json.JSONTokener
 import java.lang.ref.WeakReference
 import java.math.BigDecimal
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 智能盯盘「一键配置」：在价格页（H5）底部「保存」右边注入「配置」按钮，
@@ -43,8 +42,9 @@ import java.util.concurrent.Executors
  *   └ URL 命中 /earlywarning/setStrategy →
  *       addJavascriptInterface(gsaux) + evaluateJavascript(INJECT + init)
  * 点「配置」→ JS 调 gsaux.apply(id)（自建桥，不进宿主命令漏斗）
- *   └ JavaBridge 线程 → 主线程抓页面文本（③DOM 通道的原料）
- *       → 子线程取数（QuoteSession：①宿主 → ②公开行情 → ③DOM，通道锁定）
+ *   └ JavaBridge 线程 → 主线程抓页面文本（DOM 通道的原料，1.5 秒兜底）
+ *       → 子线程取数（QuoteFetcher：按方案需求挑通道，
+ *         ① 宿主 → ② 腾讯 → ③ 东财 → ④ 页面 DOM，失败逐级降级）
  *       → QuickConfigEngine 算价（区间校验）
  *       → 主线程 evaluateJavascript(fill(up, down))
  *       → JS 写值 + 派发 input/change/blur，宿主自己的校验接管（保存键变可用）
@@ -66,10 +66,24 @@ class AiStareQuickConfigFeature : Feature {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** 取数 / 计算线程：每次套用新建一个单线程池，用完即弃（低频动作，无泄漏顾虑） */
-    private val executor get() = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "gsaux-quickcfg").apply { isDaemon = true }
+    /**
+     * 取数 / 计算线程。
+     *
+     * **必须是持久的一个**（旧实现写成 `get() = newSingleThreadExecutor{…}`，
+     * 每次取用都新建一个线程池且从不 shutdown：一是线程堆积，二是「串行」的
+     * 本意完全失效，连点两下「配置并保存」就是两条线程各打一遍日 K 接口）。
+     */
+    private val worker: ExecutorService by lazy {
+        Executors.newSingleThreadExecutor { r -> Thread(r, "gsaux-quickcfg").apply { isDaemon = true } }
     }
+
+    /**
+     * 取数编排（通道顺序 / 降级 / 缓存都在里面）。
+     *
+     * 懒初始化是为了拿到 [install] 里才建好的 [hostSource]；实例是**持久**的，
+     * 腾讯与东财的日 K 缓存才能跨点击生效。
+     */
+    private val fetcher: QuoteFetcher by lazy { QuoteFetcher(hostSource) }
 
     /** 最近一个加载过价格页的 WebView（关开关时对它调 remove；弱引用防泄漏） */
     @Volatile
@@ -319,21 +333,35 @@ class AiStareQuickConfigFeature : Feature {
                     }
                     GLog.i("一键配置：开始取数 ${parsed.first}.${parsed.second}")
 
-                    // 先抓页面全文（③ DOM 通道的原料；必须在主线程调 WebView）
+                    // 先抓页面全文（④ DOM 通道的原料；必须在主线程调 WebView）。
+                    //
+                    // `evaluateJavascript` 的回调**不保证一定回来**（页面刚被销毁、
+                    // 渲染进程没起来时它就一直不回）。旧实现只靠这个回调推进，于是
+                    // 卡住时表现为「点了按钮什么都不发生」—— 既没有取数也没有提示，
+                    // 用户只能再点一次。现在加一道 1.5 秒兜底：到点还没开跑就按
+                    // 「没有页面文本」继续，公开行情通道照样能给数。
+                    val kicked = AtomicBoolean(false)
+                    fun kick(text: String) {
+                        if (!kicked.compareAndSet(false, true)) return
+                        worker.execute { applyOnWorker(wv, scheme, parsed.first, parsed.second, text) }
+                    }
+                    mainHandler.postDelayed(
+                        {
+                            if (!kicked.get()) GLog.w("一键配置：抓取页面文本超时（${PAGE_TEXT_TIMEOUT_MS}ms），按无 DOM 文本继续")
+                            kick("")
+                        },
+                        PAGE_TEXT_TIMEOUT_MS,
+                    )
                     runCatching {
                         wv.evaluateJavascript("(document.body ? (document.body.innerText || '') : '')") { raw ->
                             val pageText = runCatching {
                                 JSONTokener(raw).nextValue() as? String
                             }.getOrNull().orEmpty()
-                            executor.execute {
-                                applyOnWorker(env, wv, scheme, parsed.first, parsed.second, pageText)
-                            }
+                            kick(pageText)
                         }
                     }.onFailure {
                         GLog.w("一键配置：抓取页面文本失败", it)
-                        executor.execute {
-                            applyOnWorker(env, wv, scheme, parsed.first, parsed.second, "")
-                        }
+                        kick("")
                     }
                 }.onFailure { GLog.w("一键配置：apply 流程异常", it) }
             }
@@ -402,40 +430,28 @@ class AiStareQuickConfigFeature : Feature {
     // ------------------------------------------------------------ 取数 + 计算（子线程）
 
     private fun applyOnWorker(
-        env: FeatureEnv,
         wv: WebView,
         scheme: QuickConfigStore.Scheme,
         code: String,
         market: String,
         pageText: String,
     ) {
-        val session = QuoteSession(listOfNotNull(hostSource, PublicQuoteSource(), DomQuoteSource(pageText)))
-        val snapshot = session.snapshot(code, market)
-
-        val input = QuickConfigEngine.Input(
-            code = code,
-            market = market,
-            snapshot = snapshot,
-            cost = null, // cost 通道未确认（§10-5），首版恒为「无持仓」
-            klines = { n -> session.dailyKline(code, market, n) },
-        )
-        val result = runCatching { QuickConfigEngine.evaluate(scheme, input) }
-            .onFailure { GLog.w("一键配置：计算异常（整体放弃）", it) }
-            .getOrNull()
-        if (result == null) {
-            GLog.w("一键配置：算价放弃（取数通道=${session.usedSource}）")
-        }
+        // 取数 / 降级 / 按需打接口都在 QuoteFetcher 里；这里只管「拿到结果就回填，
+        // 拿不到就提示」，不写半截值（§3.2）
+        val outcome = fetcher.fetch(scheme, code, market, pageText)
 
         mainHandler.post {
             runCatching {
-                val (up, down) = result
-                    ?: run {
-                        // 整体放弃：不写值，弹一条原生 Toast（§3.2「取数失败不写值」）
-                        nativeToast("取数失败")
-                        return@post
-                    }
-                wv.evaluateJavascript(AiStareJs.fillCall(toPlain(up), toPlain(down)), null)
-                GLog.i("一键配置：已套用「${scheme.name}」（${session.usedSource}）涨=$up 跌=$down")
+                if (outcome == null) {
+                    // 整体放弃：不写值，弹一条原生 Toast（§3.2「取数失败不写值」）
+                    nativeToast("取数失败")
+                    return@post
+                }
+                wv.evaluateJavascript(AiStareJs.fillCall(toPlain(outcome.up), toPlain(outcome.down)), null)
+                GLog.i(
+                    "一键配置：已套用「${scheme.name}」（${outcome.source}）" +
+                        "涨=${outcome.up} 跌=${outcome.down}",
+                )
             }.onFailure { GLog.w("一键配置：回填失败", it) }
         }
     }
@@ -584,6 +600,12 @@ class AiStareQuickConfigFeature : Feature {
 
     /** 智能盯盘那一族页面的类名前缀（`saved()` 只收这些） */
     private val AISTARE_PACKAGE = "com.guosen.quotation.aistare"
+
+    /**
+     * 抓页面文本的兜底等待：超过这个时间还没回调就直接开跑。
+     * 取数本身有 5~8 秒的超时，这里不能等太久，否则用户体感就是「按钮没反应」。
+     */
+    private val PAGE_TEXT_TIMEOUT_MS = 1500L
 
     /** BigDecimal → JS（两位小数字符串，不科学计数） */
     private fun toPlain(v: BigDecimal): String = v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()

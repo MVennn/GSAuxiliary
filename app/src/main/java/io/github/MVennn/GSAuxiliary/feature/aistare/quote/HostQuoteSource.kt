@@ -33,6 +33,14 @@ class HostQuoteSource(classLoader: ClassLoader) : QuoteSource {
 
     override val name = "host"
 
+    /**
+     * **只能给实时快照**：日 K 入口未确认（§10-4）。
+     *
+     * 这条声明是 2026-10-17 取数稳定性修复的一部分：旧实现把它当「全能通道」
+     * 锁定，导致默认方案（30 日最高/最低）在主路径上必然失败。
+     */
+    override val supportsKline = false
+
     private val stockInfoClass = Reflect.loadClass(HOST_STOCK_INFO, classLoader)
 
     /** 最近见到的 StockInfo 实例（弱引用，防泄漏）；挂构造器填充 */
