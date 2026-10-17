@@ -155,6 +155,7 @@ class AiStareQuickConfigFeature : Feature {
                                 // 这是整条链路上最早能拿到 WebView 实例的时刻。
                                 (chain.thisObject as? WebView)?.let { wv ->
                                     runCatching {
+                                        trackedWebViews.add(WeakReference(wv))
                                         wv.addJavascriptInterface(
                                             Bridge(env),
                                             AiStareQuickConfigTargets.JS_BRIDGE_NAME,
@@ -420,6 +421,13 @@ class AiStareQuickConfigFeature : Feature {
                         // 必须留着 —— 全收掉的话，用户从详情页按返回就直接掉回首页了
                         //（2026-10-17 实测踩到）。
                         finishAistareAboveTopmostDetail()
+                        // 保留下来的「我的盯盘」是常驻 H5，露出来不会自己重新拉数据 ——
+                        // 刚删掉的那条还挂在列表上（2026-10-17 实测：退回去还是 6 只）。
+                        reloadWatchlistPages()
+                        // 混合容器会把 finish() 拦成 H5 goBack（实测：价格页 finish 之后
+                        // 没有真关，而是退回了策略列表）。轮询栈顶，把 above 详情页的
+                        // 盯盘页面一层层收干净，直到详情页真的露出来。
+                        mainHandler.postDelayed({ ensureDetailOnTop(6) }, 400)
                     } else {
                         // **一次性**把智能盯盘这一族页面全收掉：逐个 finish（每层等 450ms）
                         // 会让用户看见「先回智能盯盘、再回详情页」两跳
@@ -609,6 +617,57 @@ class AiStareQuickConfigFeature : Feature {
 
     /** 个股详情页 */
     private val STOCK_FRAG_CLASS = "com.guosen.quotation.ui.StockFragAct"
+
+    /**
+     * 刷新「智能盯盘」的常驻 H5（盯盘首页 / 我的盯盘列表）。
+     *
+     * 保存 / 删除发生在价格页，那些页面的 H5 列表不会自己重拉 —— 用户退回去看到的
+     * 还是旧数据（2026-10-17 实测：删完退回去还是 6 只，必须重进才刷新）。
+     * 做法：从钩子里登记过的 WebView 里找「宿主是盯盘首页 Activity」的那个，
+     * reload 一遍 —— 重新进页面本来也是这么刷的。
+     * （副作用：reload 后回到默认页签「今日提醒」，用户再点一下「我的盯盘」即可。）
+     */
+    private fun reloadWatchlistPages() {
+        mainHandler.post {
+            val snapshot = trackedWebViews.toList()
+            trackedWebViews.removeAll { it.get() == null }
+            for (ref in snapshot) {
+                val wv = ref.get() ?: continue
+                runCatching {
+                    val act = wv.context as? android.app.Activity ?: return@runCatching
+                    if (act.isFinishing) return@runCatching
+                    if (act.javaClass.name != AISTARE_INDEX_ACT) return@runCatching
+                    wv.reload()
+                    GLog.i("一键配置：已刷新盯盘首页（保活页面回显新列表）")
+                }.onFailure { GLog.w("一键配置：刷新盯盘首页失败", it) }
+            }
+        }
+    }
+
+    /**
+     * 轮询栈顶，把还压在详情页之上的盯盘页面收掉。
+     *
+     * 为什么不只 finish 一次：HybirdWebView 这一族 Activity 会把 finish() 拦成
+     * 「H5 还有历史就 goBack」（2026-10-17 实测：价格页 finish 后没真关，退回了
+     * 策略列表）。每轮 finish 退一层 H5，直到栈顶不再是盯盘页面（详情页露出）
+     * 或次数用尽。
+     */
+    private fun ensureDetailOnTop(tries: Int) {
+        if (tries <= 0) return
+        val top = topActivity() ?: return
+        if (!top.javaClass.name.startsWith(AISTARE_PACKAGE)) return
+        runCatching { top.finish() }
+        GLog.i("一键配置：栈顶仍是盯盘页面（${top.javaClass.simpleName}），再收一层")
+        mainHandler.postDelayed({ ensureDetailOnTop(tries - 1) }, 350)
+    }
+
+    /** 智能盯盘首页（今日提醒 / 我的盯盘 页签所在的 Activity） */
+    private val AISTARE_INDEX_ACT = "com.guosen.quotation.aistare.ui.AIStareIndexAct"
+
+    /** 钩子里见过的宿主 WebView（弱引用；刷新盯盘首页时用） */
+    private val trackedWebViews = java.util.Collections.synchronizedList(
+        mutableListOf<WeakReference<WebView>>(),
+    )
 
     /**
      * 收掉**最上面一个详情页之上**的盯盘页面，详情页之下的原样保留。

@@ -476,7 +476,13 @@ internal object AiStareJs {
       // 页面关掉之后它还在 —— 不需要像 HTML 提示那样等一会儿再走。
       try { window.gsaux.saved(); } catch (e) { D('saved err ' + e); }
     });
-    NS.saveObs.observe(document.body, { childList: true, subtree: true });
+    NS.saveObs.observe(document.body, {
+        childList: true, subtree: true,
+        // 「保存成功！」弹窗是 Vue 的 v-show —— 只切 style.display，**不增删节点**。
+        // 空数据保存时页面没有其它 DOM 变动，只盯 childList 的话观察器永远不会醒
+        // （2026-10-17 实测：弹窗就那么挂着）。style 属性变化也要算上。
+        attributes: true, attributeFilter: ['style']
+    });
     // 兜底：10 秒还没等到（比如保存失败）就撤掉观察，免得一直挂着
     setTimeout(function() { NS.disarmSkip(); }, 10000);
   };
