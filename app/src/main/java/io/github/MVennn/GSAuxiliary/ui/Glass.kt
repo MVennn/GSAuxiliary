@@ -198,9 +198,6 @@ internal fun dockScrollConnection(
  *
  * @param effect 是否做模糊。关闭时只留半透明面色（简约版），
  *               与底栏的「玻璃光效」开关是同一个值。
- * @param shadowAlpha 投影透明度乘数（0~1）。顶栏上滑收起时投影要跟着淡出：
- *               投影画在栏体下边缘**之外**，栏体平移出屏后它的下半圈
- *               仍会露在屏幕顶端 —— 所以收起进度要在这里一并乘掉。
  * @param extra  顶栏下方的附加内容（如功能页的搜索框），会被同一块玻璃盖住。
  */
 @Composable
@@ -210,7 +207,6 @@ internal fun GlassTopBar(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
-    shadowAlpha: Float = 1f,
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     val dark = LocalDarkTheme.current
@@ -233,10 +229,9 @@ internal fun GlassTopBar(
                     // 不要描边 / 高光：顶栏是贴边的一整块，任何描边都会变成横线
                     highlight = null,
                     // 投影属于「光」的部分：完整版才有，磨砂版与纯色兜底一律无。
-                    // 再乘 shadowAlpha：顶栏收起时投影跟随淡出（见参数注释）
-                    shadow = {
-                        Shadow.Default.copy(alpha = (if (tier == GlassTier.Full) 1f else 0f) * shadowAlpha)
-                    },
+                    // 顶栏收起时投影的跟随由位移承担（见 Screens.kt 的 topBar Box），
+                    // 这里不再乘任何进度 —— alpha<1 离屏合成会把边界外的投影裁没。
+                    shadow = { Shadow.Default.copy(alpha = if (tier == GlassTier.Full) 1f else 0f) },
                     onDrawSurface = { drawRect(tint) },
                 ),
         )

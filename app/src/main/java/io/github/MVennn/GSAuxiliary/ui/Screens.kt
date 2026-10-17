@@ -222,12 +222,16 @@ internal fun HomeScaffold(
                 //
                 // 关于页把整条顶栏往上滑出去（见上方 topBarHide）：Hero 要吃到
                 // 状态栏后面，顶栏留着会把渐变头部截成一条直线。
-                // 投影透明度跟着同一条进度走：投影画在栏体下边缘之外，栏体平移出屏后
-                // 它的下半圈仍会露在屏幕顶端，所以收起时一并淡出（见 GlassTopBar）。
+                //
+                // 这里**只做位移、不做透明度淡出**，而且要比栏高多滑一段（TopBarShadowOut）：
+                //   - 投影画在栏体下边缘之外，只平移一个栏高它仍会露在屏幕顶端，
+                //     多滑的这段正好把投影一起送出屏；
+                //   - alpha < 1 会让这一层走离屏合成，离屏缓冲按栏体边界裁剪，
+                //     边界之外的投影在动画全程被裁没、结束帧 alpha 回到 1 时一帧弹回
+                //     （「投影 1 帧出现」的根因）。纯位移下投影每帧都随栏体平移。
                 Box(
                     modifier = Modifier.graphicsLayer {
-                        translationY = -size.height * topBarHide
-                        alpha = 1f - topBarHide
+                        translationY = -(size.height + TopBarShadowOut.toPx()) * topBarHide
                     },
                 ) {
                     if (liquidGlass) {
@@ -236,7 +240,6 @@ internal fun HomeScaffold(
                             effect = glassEffect,
                             title = title,
                             subtitle = subtitle,
-                            shadowAlpha = 1f - topBarHide,
                         )
                     } else {
                         SmallTopAppBar(title = title, subtitle = subtitle)
@@ -515,3 +518,10 @@ private const val DockHideMillis = 240
  * 观感上就不会出现「顶栏还挂在上面、Hero 已经贴上去了」的错位。
  */
 private const val TopBarHideMillis = 220
+
+/**
+ * 顶栏收起时额外多滑出的距离 —— 盖过玻璃投影在栏体下边缘之外的延伸
+ * （`Shadow.Default` 半径量级），保证收起后连投影一起完全出屏、
+ * 顶部不留一条残影。
+ */
+internal val TopBarShadowOut = 24.dp
