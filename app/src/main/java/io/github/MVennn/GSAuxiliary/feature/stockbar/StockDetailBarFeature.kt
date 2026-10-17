@@ -85,6 +85,30 @@ import java.util.concurrent.atomic.AtomicReference
  *
  * 按文字而不是按下标，是因为「智能盯盘」在个股页是第 2 项、指数页是第 1 项。
  *
+ * ### 握手（认领）只有一条规矩：**先验指纹，再清标记**
+ *
+ * 上面 ①→④ 这几步不是原子的。「我们点了『更多』」与「面板显示出来」之间隔着宿主的一次
+ * `show()`，而这一步随时可能被别的事情插进来。早期实现是「谁先看到弹层谁把标记清零」，
+ * 于是有三种情况会让面板**落在我们手里却没人管它** —— 用户看到的就是
+ * **「点了『智能盯盘』却弹出了『更多』」**（偶发，取决于时序）：
+ *
+ *  1. 弹层显示的那一刻 `contentView` 还是 null、或里面还没有 `#gv_stk_bottom`：
+ *     标记已被清掉，等真正的更多面板显示出来时**已经没人认领**了；
+ *  2. 图标采集那一轮（注入后隐形开一次面板，见 [maybeHarvestIcon]）与用户点击撞在一起：
+ *     采集的弹层抢走了点击的标记，而点击自己那次 `performClick` 又开出**第二个面板**，
+ *     两个都没人认；
+ *  3. 上一轮还没走完用户又点了一下：单个标记被覆盖，两次 `performClick` 开出两个面板，
+ *     只有一个能被认领。
+ *
+ * 现在只有一条规矩：**验过指纹才允许认领**（`PopupWindow.contentView` 里找得到
+ * `#gv_stk_bottom` 才算我们的面板）。验不过就**一个字节都不动**，标记原样留着等真正的面板；
+ * 而且**同一轮只能认领一次**（[Round.claimed]）—— `showAsDropDown` 那几个重载会嵌套回调，
+ * 重复的认领请求直接被挡掉。
+ *
+ * 点击与采集两轮**互斥**：点击优先，会先把「还没弹面板」的采集轮掐掉（见 [openEntry]）；
+ * 上一轮点击没走完时再来一次点击会被合并（绝不开第二个面板）。一轮的生死只有一条路：
+ * 认领 → 处理 → 关闭 → [round] 清空（窗口夹子随之中止，不会留下来影响用户手点「更多」）。
+ *
  * ⚠️ **不要指望面板项有可点击祖先**：宿主的点击是挂在 `GridView` 上的
  * `OnItemClickListener`（探针栈 `StockDetailFrag$34#onItemClick` 就是它），
  * 项容器本身不保证 `clickable`。所以必须走 `performItemClick`。
@@ -165,6 +189,28 @@ class StockDetailBarFeature : PageSyncFeature() {
         val viewAlpha: Float,
     )
 
+    /**
+     * 一次「我们主动开面板」的全过程（null = 空闲）。
+     *
+     * 旧实现用三颗 `AtomicInteger`（`pendingClick` / `pendingHarvest` / `inFlight`）
+     * 分别记「点击」「采集」「全程」，三者的生死时间对不齐，留下的坑正是
+     * 「点『智能盯盘』却弹出『更多』」（见类注释第三节）。现在一轮就是一个对象：
+     * 「谁在等面板」「认领了没有」「窗口快照是谁的」都在一起，
+     * 收尾只有 [end] 一条路，不会出现「标记清了、夹子还架着」这种半死状态。
+     */
+    private class Round(
+        /** 代次，只用于日志（看得懂「哪一轮」） */
+        val gen: Int,
+        /** true = 图标采集（隐形开一次面板取图标），false = 用户点击 */
+        val harvest: Boolean,
+    ) {
+        /** 弹面板之前的宿主窗口状态（`performClick` 之前抓，见 [captureWindow]） */
+        @Volatile var window: WindowSnapshot? = null
+
+        /** 面板已被我们认领 —— **同一轮只允许认领一次**（嵌套的 show 重载会重复回调） */
+        val claimed = AtomicBoolean(false)
+    }
+
     // ------------------------------------------------------------------ 状态
 
     /** 面板里那一项的图标（进程级缓存，取到一次即可复用） */
@@ -173,31 +219,15 @@ class StockDetailBarFeature : PageSyncFeature() {
     /** 是否已经发起过图标采集（失败会复位，允许下次重试） */
     private val harvestStarted = AtomicBoolean(false)
 
-    /**
-     * 「这次面板是我们主动打开的」标记。
-     *
-     * 存的是**代次**而不是布尔：点击与超时兜底各自拿着自己的代次去 `compareAndSet`，
-     * 避免「上一次的超时任务把下一次的标记清掉」这种竞态。
-     */
-    private val pendingClick = AtomicInteger(0)
-    private val pendingHarvest = AtomicInteger(0)
+    /** 当前那一轮（null = 空闲）；点击与采集**互斥**，见 [openEntry] */
+    private val round = AtomicReference<Round?>(null)
+
+    /** 轮次代次（只用于日志） */
     private val gen = AtomicInteger(0)
 
     /** 已注入的现场，键是「更多」的盒子（弱引用） */
     private val injected =
         Collections.synchronizedMap(WeakHashMap<ViewGroup, Injected>())
-
-    /** 「我们主动弹面板」前的宿主窗口快照（见 [WindowSnapshot]） */
-    private val pendingWindow = AtomicReference<WindowSnapshot?>(null)
-
-    /**
-     * 「我们主动弹面板」的**全过程**代次（0 = 空闲）。
-     *
-     * 与 [pendingClick] 的区别：那个在 `PopupWindow` 显示时就被清掉（用于「认领」），
-     * 而这个要活到**面板关掉为止** —— 宿主是在 `show()` **返回之后**才把窗口调暗的，
-     * 认领那一刻还来得及，之后就得靠这个标记继续压住（见 [hookWindowLayout]）。
-     */
-    private val inFlight = AtomicInteger(0)
 
     /** 每轮只打一条「拦住宿主调暗」的日志，避免刷屏 */
     private val guardLogged = AtomicBoolean(false)
@@ -267,10 +297,11 @@ class StockDetailBarFeature : PageSyncFeature() {
      *
      * 光靠「事后还原」治不了 —— 必须**不让它落地**。这里是宿主改窗口参数的唯一漏斗
      * （`Window.setAttributes` 与 `WindowManager.updateViewLayout` 最终都走它），
-     * 代次非 0 时把 `alpha` / `dimAmount` 夹回快照值即可，一帧都不会被画出来。
+     * 我们那一轮还在时把 `alpha` / `dimAmount` 夹回快照值即可，一帧都不会被画出来。
      *
-     * ⚠️ 只在 [inFlight] 非 0（我们自己的那 ~50ms）里动手，用户手点「更多」时
-     * 一个字节都不碰 —— 原版的调暗行为保持不变。
+     * ⚠️ 只在 [round] 非空（我们自己的那 ~50ms）里动手，用户手点「更多」时
+     * 一个字节都不碰 —— 原版的调暗行为保持不变。快照挂在轮次上，
+     * 一轮结束就随之失效：不会出现「标记清了、夹子还架着」把后面的调暗全夹掉的残留。
      */
     private fun hookWindowLayout(env: FeatureEnv, bag: HookBag) {
         val cls = Reflect.loadClass("android.view.WindowManagerGlobal", env.classLoader)
@@ -302,8 +333,8 @@ class StockDetailBarFeature : PageSyncFeature() {
      * **不动 `flags`** —— 动 flags 可能破坏宿主自己后续弹面板时的变暗行为。
      */
     private fun clampWindowDim(args: List<Any?>) {
-        if (inFlight.get() == 0) return
-        val s = pendingWindow.get() ?: return
+        // 只在「我们自己的那一轮」里动手：轮次一结束 [round] 就空了，夹子跟着失效
+        val s = round.get()?.window ?: return
         if (args.getOrNull(0) as? View !== s.decor) return
         val lp = args.getOrNull(1) as? WindowManager.LayoutParams ?: return
         if (lp.alpha == s.alpha && lp.dimAmount == s.dim) return
@@ -675,7 +706,19 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     // ------------------------------------------------------------------ 打开
 
-    /** 用户点了我们注入的按钮：触发「更多」→ 由弹层钩子接力点「智能盯盘」 */
+    /**
+     * 用户点了我们注入的按钮：触发「更多」→ 由弹层钩子接力点「智能盯盘」。
+     *
+     * **一次点击 = 一轮**（[Round]），而且必须保证「一次点击最多只开一个面板」——
+     * 每次 `performClick()` 都会让宿主弹一层 `PopupWindow`，开两层就一定有一层没人认领、
+     * 明晃晃地留在屏幕上（用户看到的就是「点『智能盯盘』却弹出『更多』」）。
+     * 所以进来先看有没有在途的轮次：
+     *
+     *  - 在途的是**还没弹面板的采集轮** → 直接掐掉（它本来就要隐形开一次面板，让位给用户）；
+     *  - 在途的是**另一次点击** → 合并掉这一次，什么都不做（那一次已经会带用户过去）；
+     *  - 在途的采集轮**已经认领**（正在处理）→ 放它走完，本轮照常开始，
+     *    收尾时各自按身份核对自己的轮次，互不干扰。
+     */
     private fun openEntry(v: View) {
         // 必须找**同一个底栏里**的「更多」：分页器每页各有一份底栏，找错页就点错
         val bar = barAncestorOf(v) ?: v.rootView ?: return
@@ -683,43 +726,105 @@ class StockDetailBarFeature : PageSyncFeature() {
             GLog.w("底栏入口：点击时找不到「更多」按钮")
             return
         }
-        val token = gen.incrementAndGet()
-        pendingClick.set(token)
-        // 全程标记（活到面板关掉为止）—— 宿主是在 show() 之后才调暗窗口的
-        inFlight.set(token)
+        val active = round.get()
+        if (active != null) {
+            if (!active.harvest) {
+                // 上一次点击还在等面板 / 正在处理：合并。再开一层面板没人认领
+                GLog.d("底栏入口：上一次点击还在进行（第 ${active.gen} 轮），本次点击合并")
+                return
+            }
+            // 采集轮让位给用户点击：还没弹面板的就此掐掉；已经弹了的由它自己那段
+            // 收尾逻辑（[attemptHandle] 的「轮次被顶掉」分支）把弹层关掉，用户点击优先
+            round.compareAndSet(active, null)
+            // 采集那层若已经把窗口调暗了，先还原 —— 否则下面抓到的快照就是「暗着」的，
+            // 整条点击链路都会把那一层暗当成基准留住
+            restoreWindow(active.window, "让位时")
+            GLog.d("底栏入口：图标采集（第 ${active.gen} 轮）让位给用户点击")
+        }
+
+        val r = begin(harvest = false) ?: run {
+            GLog.d("底栏入口：已有一轮在途，本次点击合并")
+            return
+        }
         guardLogged.set(false)
         // ★ 必须在 performClick 之前抓窗口快照 —— 宿主是在点击处理里把窗口调暗的
-        pendingWindow.set(captureWindow(v))
-        moreText.performClick()
-        // 超时兜底：面板没被我们拦到就清标记，别劫持用户下一次手点「更多」
-        moreText.postDelayed({
-            if (pendingClick.compareAndSet(token, 0)) {
-                inFlight.compareAndSet(token, 0)
-                GLog.w("底栏入口：没等到「更多」面板，本次点击未生效")
-            }
-        }, PENDING_TIMEOUT_MS)
+        r.window = captureWindow(v)
+        val shown = runCatching { moreText.performClick() }.getOrDefault(false)
+        if (!shown) {
+            end(r)
+            GLog.w("底栏入口：「更多」没有响应点击，本次点击未生效")
+            return
+        }
+        scheduleTimeout(r, moreText)
     }
 
     /** 首次注入时隐形开一次面板，把「智能盯盘」那一项的图标取回来 */
     private fun maybeHarvestIcon(moreText: TextView) {
         if (entryIcon != null) return
         if (!harvestStarted.compareAndSet(false, true)) return
-        val token = gen.incrementAndGet()
-        pendingHarvest.set(token)
-        inFlight.set(token)
+        val r = begin(harvest = true)
+        if (r == null) {
+            // 有用户点击在途：**绝不插一脚**（两轮同时开面板必有一层认领不到）。
+            // 采集不着急，等用户这一轮走完再来
+            harvestStarted.set(false)
+            moreText.postDelayed({
+                if (moreText.isAttachedToWindow) maybeHarvestIcon(moreText)
+            }, HARVEST_RETRY_MS)
+            return
+        }
         guardLogged.set(false)
         moreText.post {
-            pendingWindow.set(captureWindow(moreText))
-            runCatching { moreText.performClick() }
-                .onFailure { GLog.w("底栏入口：采集图标时打开面板失败", it) }
-            moreText.postDelayed({
-                if (pendingHarvest.compareAndSet(token, 0)) {
-                    inFlight.compareAndSet(token, 0)
-                    harvestStarted.set(false)      // 允许下次重试
-                    GLog.w("底栏入口：没等到面板，图标采集跳过（按钮退化为纯文字）")
-                }
-            }, PENDING_TIMEOUT_MS)
+            // 这一轮可能已经被用户点击掐掉了 —— 掐掉了就绝不能再开面板
+            // （旧实现没这道门：采集晚到一步就用 `performClick` 又开出一层没有人认领的
+            //  面板，用户看到的就是「点了入口却弹出『更多』」）
+            if (round.get() !== r) {
+                harvestStarted.set(false)   // 允许下次注入时重试采集
+                return@post
+            }
+            r.window = captureWindow(moreText)
+            val shown = runCatching { moreText.performClick() }.getOrDefault(false)
+            if (!shown) {
+                end(r)
+                harvestStarted.set(false)      // 允许下次重试
+                GLog.w("底栏入口：采集图标时「更多」没有响应点击，按钮退化为纯文字")
+                return@post
+            }
+            scheduleTimeout(r, moreText)
         }
+    }
+
+    /** 开一轮「我们主动弹面板」：抢到空闲位才算开始（点击与采集互斥） */
+    private fun begin(harvest: Boolean): Round? {
+        val r = Round(gen.incrementAndGet(), harvest)
+        return if (round.compareAndSet(null, r)) r else null
+    }
+
+    /**
+     * 收尾：只清**自己那一轮**。
+     *
+     * 按身份核对（而不是按代次比较、也不是无条件清零）—— 上一轮的超时任务 / 重试链
+     * 可能比下一轮晚到，无条件清零会把**下一轮**的标记抹掉，那正是「偶发弹出更多」的老病根。
+     */
+    private fun end(r: Round) {
+        round.compareAndSet(r, null)
+        guardLogged.set(false)
+    }
+
+    /**
+     * 超时兜底：面板一直没出现就把这一轮作废。
+     *
+     * 只作废「还没被认领」的轮次；已经认领的正在 [attemptHandle] 里走，不归这里管。
+     */
+    private fun scheduleTimeout(r: Round, anchor: View) {
+        anchor.postDelayed({
+            if (round.get() !== r || r.claimed.get()) return@postDelayed
+            end(r)
+            if (r.harvest) harvestStarted.set(false)   // 允许下次重试
+            GLog.w(
+                "底栏入口：${if (r.harvest) "图标采集" else "点击"}没等到「更多」面板" +
+                    "（第 ${r.gen} 轮，$PENDING_TIMEOUT_MS ms），本轮作废"
+            )
+        }, PENDING_TIMEOUT_MS)
     }
 
     // -------------------------------------------------------------- 窗口防闪
@@ -767,27 +872,37 @@ class StockDetailBarFeature : PageSyncFeature() {
     }
 
     /**
-     * 面板显示时被调用。
+     * 面板显示时被调用（`PopupWindow` 的每个显示重载都会回调，嵌套重载会回调好几次）。
      *
-     * - 只有确认「这是更多面板」（能找到 `GridView`）才认领，
-     *   否则原样放行 —— 绝不能误伤 App 里其它 `PopupWindow`；
-     * - 不是我们触发的那一次，一个字节都不改。
+     * 顺序**不能颠倒**：
+     *
+     *  1. 没有在途的轮次 → 一个字节都不动（用户手点「更多」不受影响）；
+     *  2. 这一轮已经认领过 → 直接走开（嵌套 `showAsDropDown` 的重复回调落在这里）；
+     *  3. **先验指纹**：`contentView` 为空、或里面找不到 `#gv_stk_bottom` → **不动、也不清标记**。
+     *     旧实现在这一步之前就把标记清了，于是「面板还没 inflate 完」「这次弹的不是更多面板」
+     *     都会把认领机会白白吃掉；真正该认领的更多面板随后显示时已经没人接手
+     *     → 面板明晃晃留在屏幕上，就是「点『智能盯盘』却弹出『更多』」；
+     *  4. 验过才认领（`claimed` 只允许成功一次），藏弹层、还原窗口、下一帧处理内容。
      */
     private fun onPopupShown(self: Any?) {
         val popup = self as? PopupWindow ?: return
-        val click = pendingClick.getAndSet(0)
-        val harvest = pendingHarvest.getAndSet(0)
-        if (click == 0 && harvest == 0) return
+        val r = round.get() ?: return
+        if (r.claimed.get()) return
 
         val content = popup.contentView ?: run {
-            GLog.w("底栏入口：面板没有 contentView，放弃本次认领")
+            GLog.d("底栏入口：面板还没有 contentView，本次不认领（标记留到真正的弹层）")
             return
         }
         // GridView 是「更多面板」的指纹；findViewById 在布局前就能命中，所以能同步判断
         if (findMenuGrid(content) == null) {
-            GLog.w("底栏入口：这次弹层里没有 ${StockDetailBarTargets.MENU_GRID_ID_CANDIDATES.joinToString()}，不是更多面板")
+            GLog.d(
+                "底栏入口：这次弹层里没有 ${StockDetailBarTargets.MENU_GRID_ID_CANDIDATES.joinToString()}，" +
+                    "不是更多面板 —— 不认领，第 ${r.gen} 轮继续等"
+            )
             return
         }
+        // 认领：同一轮只允许成功一次（嵌套重载会重复回调到这儿）
+        if (!r.claimed.compareAndSet(false, true)) return
 
         // 面板已 addView 完成、但这一帧还没绘制 —— 现在处理，用户一帧都看不到
         //
@@ -799,11 +914,9 @@ class StockDetailBarFeature : PageSyncFeature() {
         // ② 宿主弹面板时会把 Activity 窗口调暗（实测 alpha 1.0 → 0.6），同步还原。
         //    注意这一次多半是空转（宿主是在 show() 返回之后才调的），真正兜住的是
         //    [hookWindowLayout] 那道夹子 + 下面 [attemptHandle] 里的「关闭时」还原。
-        restoreWindow(pendingWindow.get(), "打开时")
+        restoreWindow(r.window, "打开时")
 
-        // token = 这一轮「我们主动弹面板」的代次，收尾时用它把 [inFlight] 清掉
-        val token = if (click != 0) click else harvest
-        content.post { attemptHandle(content, layer, popup, click, token, 0) }
+        content.post { attemptHandle(content, layer, popup, r, 0) }
     }
 
     /**
@@ -817,16 +930,24 @@ class StockDetailBarFeature : PageSyncFeature() {
         content: View,
         layer: View,
         popup: PopupWindow,
-        click: Int,
-        token: Int,
+        r: Round,
         attempt: Int,
     ) {
+        // 这一轮在我们重试期间被顶掉了（用户点了入口，采集轮让位）→ 只收拾自己那层弹层，
+        // 别动窗口参数：此刻窗口归新的一轮管
+        if (round.get() !== r) {
+            restoreWindow(r.window, "让位时")
+            runCatching { layer.alpha = 1f }
+            runCatching { popup.dismiss() }
+            return
+        }
+
         val grid = findMenuGrid(content)
         val item = grid?.let { findMenuEntryText(it) }
 
         if (item == null && attempt < MAX_ATTEMPTS) {
             content.postDelayed(
-                { runCatching { attemptHandle(content, layer, popup, click, token, attempt + 1) } },
+                { runCatching { attemptHandle(content, layer, popup, r, attempt + 1) } },
                 RETRY_MS,
             )
             return
@@ -840,22 +961,23 @@ class StockDetailBarFeature : PageSyncFeature() {
                     entryIcon = icon
                     applyIconToAll()
                 }
-                if (click != 0 && grid != null) clickMenuEntry(grid, item)
+                // 采集轮到此为止；只有点击轮才继续往「智能盯盘」里走
+                if (!r.harvest && grid != null) clickMenuEntry(grid, item)
             }
         }.onFailure { GLog.w("底栏入口：处理面板内容异常", it) }
 
         // 宿主可能在 dismiss 里再调一次窗口，所以这里再兜一次底
-        restoreWindow(pendingWindow.getAndSet(null), "关闭时")
+        restoreWindow(r.window, "关闭时")
+        r.window = null
         runCatching { layer.alpha = 1f }   // 弹层实例可能被宿主复用，务必还原
         runCatching { popup.dismiss() }
 
-        // 收尾：撤掉防闪夹子（夹子只活在我们自己这一轮里）
-        inFlight.compareAndSet(token, 0)
-        guardLogged.set(false)
+        // 收尾：这一轮结束，防闪夹子随之失效（见 [clampWindowDim]）
+        end(r)
 
         if (item == null) {
             harvestStarted.set(false)        // 允许下次重试
-            GLog.w("底栏入口：面板里没找到「${StockDetailBarTargets.MENU_ITEM_TEXT}」")
+            GLog.w("底栏入口：面板里没找到「${StockDetailBarTargets.MENU_ITEM_TEXT}」（第 ${r.gen} 轮）")
         }
     }
 
@@ -1043,8 +1165,15 @@ class StockDetailBarFeature : PageSyncFeature() {
         /** 「更多」面板的显示入口（实测是 PopupWindow，不是 Dialog） */
         val POPUP_SHOW_METHODS = arrayOf("showAsDropDown", "showAtLocation")
 
-        /** 等面板出现的上限；超时就把标记清掉，避免影响用户手点 */
+        /**
+         * 等面板出现的上限；超时就把这一轮作废，别劫持用户下一次手点「更多」。
+         *
+         * 只有「还没被认领」的轮次会超时 —— 认领到的正在 [attemptHandle] 里走。
+         */
         const val PENDING_TIMEOUT_MS = 1500L
+
+        /** 图标采集遇到用户点击时让位的重试间隔（采集不着急，等这一轮走完再来） */
+        const val HARVEST_RETRY_MS = 600L
 
         /** 等 `GridView` 子项完成 measure/layout 的重试次数与间隔 */
         const val MAX_ATTEMPTS = 12

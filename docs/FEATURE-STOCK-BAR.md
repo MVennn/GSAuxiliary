@@ -175,21 +175,23 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 ```
 用户点我们注入的按钮
   │
-  ├─ pendingClick / inFlight = 本次代次（inFlight 活到面板关掉为止）
+  ├─ 开一轮（Round）：先看有没有在途的轮次（采集轮让位 / 上一次点击合并）
   ├─ 抓宿主窗口快照（alpha / dimAmount）
   ├─ moreText.performClick()                    → 宿主弹出「更多」面板
   │
   ├─ WindowManagerGlobal.updateViewLayout 钩子（全程）
-  │    └─ inFlight 非 0 且改的是本页 decorView
+  │    └─ 这一轮还在 且 改的是本页 decorView
   │         → 把 alpha / dimAmount 夹回快照值      ← ★ 宿主调暗在这里被拦下，一帧都不画
   │
   └─ PopupWindow 显示钩子被触发
-       ├─ 认领（代次非 0）且**确认这是更多面板**（能同步找到 #gv_stk_bottom）
-       ├─ 整个弹层 rootView.alpha = 0f           → 用户一帧都看不到
+       ├─ 没有在途的轮次 / 这一轮已认领 → 走开
+       ├─ **先验指纹**：contentView 里有 #gv_stk_bottom 才算我们的面板；
+       │    验不过 → 一个字节都不动，标记留着等真正的面板（★ 见 §8.14）
+       ├─ 认领（同一轮只成功一次）→ 整个弹层 rootView.alpha = 0f
        ├─ 重试直到 GridView 子项出现（下一帧 measure/layout 才有）
        ├─ 按**文字**「智能盯盘」找到 TextView → 上溯到 GridView 的直接子项
        ├─ grid.performItemClick(...)            → 与用户手点那一项完全同一条路径
-       └─ rootView.alpha = 1f; popup.dismiss(); inFlight = 0
+       └─ rootView.alpha = 1f; popup.dismiss(); 本轮结束（窗口夹子随之中止）
 ```
 
 **为什么要 `rootView.alpha = 0f` 而不是只设 `contentView`**：`PopupWindow` 在
@@ -209,9 +211,17 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 `OnItemClickListener`（探针栈 `StockDetailFrag$34#onItemClick` 就是它），
 面板项容器本身**不保证 `clickable`** —— 往上找可点击祖先会直接落空（见 §8.3）。
 
-**幂等与超时**：标记存的是**代次**而不是布尔，点击与超时兜底各拿各的代次
-`compareAndSet`，避免「上一次的超时任务清掉下一次的标记」。
-1.5s 等不到面板就清标记，绝不劫持用户下一次手点「更多」。
+**一轮 = 一次握手（3.1.0 现状）**：状态收在一个 `Round` 对象里（`harvest` 区分采集 / 点击、
+`claimed` 记录认领、`window` 存窗口快照），而不是三颗各活各的计数器：
+
+| 情形 | 处理 |
+|---|---|
+| 采集轮还没弹面板，用户点了入口 | 掐掉采集轮（先还原它可能造成的窗口变暗），用户点击优先 |
+| 上一轮点击还在等面板 / 正在处理 | **合并**这一次点击 —— 绝不 `performClick` 第二次（两次就两层弹层） |
+| 弹层不是更多面板 / 还没内容 | **不认领、也不清标记**，留着给真正的面板（§8.14） |
+| 嵌套 `showAsDropDown` 重载重复回调 | `claimed` 只允许成功一次，重复的走开 |
+| 1.5s 等不到面板 | 只作废**还没被认领**的轮次；收尾按身份核对（`round === r`），不会误清下一轮 |
+| `performClick()` 返回 false | 宿主根本没响应，立刻结束本轮（不占着标记去劫持一会儿后的手点「更多」） |
 
 ### 2.4 注入时机：布局回调驱动 + 幂等自愈（2.15.1 起）
 
@@ -452,3 +462,31 @@ bash tools/adbw.sh logcat -d -v brief | grep -A14 "LAUNCH"
     （实测一次翻页套了 5 层：`fl_more` 被撑到 1079px，买卖被挤成 0 宽，整条底栏报废）。
     所以盒子要**按资源 id 找**，沿父链兜底时按 `ENTRY_HOLDER_TAG` **跳过我们自己的壳**；
     再留一条硬红线：**「更多」祖先里已有我们的容器就绝不注入**。
+
+14. **「点了『智能盯盘』却弹出『更多』」= 握手顺序反了，标记被白吃掉**（3.1.0 修）。
+    早期实现是「谁先看到弹层谁把标记清零」，而**清零发生在验指纹之前**，
+    于是三种时序都会让面板落在我们手里却没人接手（都是偶发，越急越容易撞上）：
+
+    | 时序 | 结果 |
+    |---|---|
+    | 弹层显示时 `contentView` 还是 null / 里面还没 `#gv_stk_bottom` | 标记已被清 → 真正该认领的那次没人接 → 面板留在屏幕上 |
+    | 注入后的**图标采集轮**与用户点击撞在一起 | 采集的弹层抢走点击的标记；点击自己那次 `performClick` 又开出第二层，两层都没人认 |
+    | 上一轮还没走完用户又点一下 | 同一个标记被覆盖，两次 `performClick` 开出两层，只有一层被认领 |
+
+    另外「采集晚到一步」这条更隐蔽：`maybeHarvestIcon` 里 `moreText.post { performClick() }`
+    **不核对自己的轮次**，被点击掐掉之后照样开面板 —— 那一层必然无人认领。
+
+    改法（`StockDetailBarFeature` 的 `Round` / `begin` / `end`）：
+
+    - **先验指纹再认领**，验不过**一个字节都不动**（标记留着，等真正的更多面板）；
+    - 认领**同一轮只允许一次**（`Round.claimed` CAS）—— `showAsDropDown` 的嵌套重载会重复回调；
+    - 点击与采集**互斥**：点击优先掐掉采集轮，采集在点击在途时**不启动**（稍后重试）；
+    - 采集轮弹出前先核对 `round === 自己`，被掐掉就绝不再开面板；
+    - 收尾按**身份**核对（`round.compareAndSet(r, null)`），不是无条件清零 ——
+      晚到的超时任务不会误清下一轮；
+    - `performClick()` 返回 false 说明宿主没响应，立刻结束本轮（不占着标记去劫持手点「更多」）；
+    - 窗口快照挂在轮次上，**一轮结束夹子随之中止** —— 旧实现里认领失败时
+      `inFlight` 永久非 0，后续用户手点「更多」的调暗会被一直夹掉（连带把转场淡出也夹住）。
+
+    日志特征：正常一轮是「已触发『智能盯盘』(position=1)」；出问题那一轮会在
+    `没等到「更多」面板（第 N 轮）`、`让位给用户点击` 或 `不是更多面板 —— 不认领` 里留下痕迹。
