@@ -1,0 +1,37 @@
+GSAuxiliary
+Copyright 2026 MVennn
+
+This product includes software developed as part of the GSAuxiliary project
+(https://github.com/MVennn/GSAuxiliary), licensed under the Apache License,
+Version 2.0.
+
+==============================================================================
+Third-party components
+
+This product incorporates third-party software under the following licenses:
+
+- LSPosed / libxposed API (io.github.libxposed:api)
+  https://github.com/LSPosed/LSPosed
+  Licensed under the GNU General Public License v3.0 (GPL-3.0).
+  This product does not modify or redistribute libxposed source; it links
+  against the published API artifact at runtime via the LSPosed framework.
+
+- Miuix (miuix-kotlin-multiplatform)
+  https://github.com/miuix-kotlin-multiplatform/miuix
+  Licensed under the Apache License, Version 2.0.
+
+- AndroidLiquidGlass / backdrop (io.github.kyant0:backdrop)
+  https://github.com/Kyant0/AndroidLiquidGlass
+  Licensed under the Apache License, Version 2.0.
+
+- Jetpack Compose / AndroidX
+  https://developer.android.com/jetpack/compose
+  Licensed under the Apache License, Version 2.0.
+
+- Kotlin (JetBrains)
+  https://github.com/JetBrains/kotlin
+  Licensed under the Apache License, Version 2.0.
+
+- Material Design Icons (path data)
+  https://github.com/google/material-design-icons
+  Licensed under the Apache License, Version 2.0.

@@ -260,7 +260,9 @@ private fun parseInline(src: String): AnnotatedString = buildAnnotatedString {
             src.startsWith("**", i) -> {
                 val end = src.indexOf("**", i + 2)
                 if (end > i + 2) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                    // 免责声明里「免除或减轻责任的条款均已加粗提示」依赖这里的视觉强度，
+                    // SemiBold 与常规 Medium 标题拉不开差距，必须是 Bold。
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                         append(src.substring(i + 2, end))
                     }
                     i = end + 2

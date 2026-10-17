@@ -4,7 +4,7 @@
 
 # GSAuxiliary
 
-**国信金太阳 · 体验增强模块**
+**国信金太阳 · 体验增强模块**（非官方，与国信证券及其关联方无任何隶属、合作或授权关系）
 
 Make GoldenSun Great Again！
 
