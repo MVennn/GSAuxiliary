@@ -364,6 +364,26 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 
 ---
 
+## hygiene.py ★
+
+**代码卫生扫描器** —— 大扫除时用的只读报告工具，扫四类候选 + 一份磁盘垃圾清单。
+
+```bash
+python tools/hygiene.py all       # 全部
+python tools/hygiene.py res       # 没被引用的字符串 / 数组 / 颜色 / 尺寸 / 样式
+python tools/hygiene.py decls     # 没人引用的顶层声明
+python tools/hygiene.py members   # 文件内只声明、没调用的 private 成员
+python tools/hygiene.py imports   # 没被用到的 import
+python tools/hygiene.py junk      # 构建产物 / 临时目录 / 旧包（只报体积）
+```
+
+**它只报告、不删任何东西**。输出的是候选名单：反射、manifest 入口、
+`proguard` keep 规则这些「代码里搜不到但运行期要用」的东西都会出现在名单里，
+逐条 `git grep` 复核后才决定。判定口径、误报清单与清理红线见
+[`docs/MAINTENANCE.md`](../docs/MAINTENANCE.md)。
+
+---
+
 ## publish.py ★
 
 **一次把版本同时发到「源码仓库」和「LSPosed 模块仓库」。**
@@ -475,9 +495,11 @@ python tools/ci/version.py --check-tag 34-2.14.0  # 不一致就 exit 1
 └── *.png / *.raw       drive.sh 截图、手工取色留下的裸帧
 ```
 
-> **`.work/` 是纯暂存区，可以随时整体删除**（`rm -rf .work`）——
-> 里面的东西全部由脚本按需重建。它不属于交付物，
-> 仓库里也确实留过一批历史截图与反编译产物，已清理过一次；
-> 日常跑完脚本后不必刻意收拾，攒多了直接删掉整个目录即可。
+> **`.work/` 是暂存区，大部分可以随时删** —— 截图、日志、控件树 dump、解出来的宿主缓存
+> 全部由脚本按需重建，不属于交付物。**三个例外**：
+> `.work/lsposed-repo/`（`publish.py` 的模块仓库克隆，删了要重新 clone 才能发布）、
+> `.work/log.mark`（`glog.sh` 的行号游标）、`.work/wifi_serial`（无线调试地址）。
+> `.work/apk/` 只留当前版本一个包。
 >
-> `.work/` 不会进 Git（`.gitignore` 有 `/.work/`），所以删它不影响仓库。
+> 什么时候清、清到什么程度，见 [`docs/MAINTENANCE.md`](../docs/MAINTENANCE.md)。
+> `.work/` 不会进 Git（`.gitignore` 有 `/.work/`），删它不影响仓库。

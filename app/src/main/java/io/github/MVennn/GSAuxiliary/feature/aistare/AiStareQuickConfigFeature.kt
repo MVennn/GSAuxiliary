@@ -118,7 +118,7 @@ class AiStareQuickConfigFeature : Feature {
         val cl = env.classLoader
 
         // ---- ① 宿主行情通道：挂 StockInfo 构造器，缓存最近实例（HostQuoteSource 用） ----
-        val host = HostQuoteSource(cl)
+        val host = HostQuoteSource()
         hostSource = host
         Reflect.loadClass(HostQuoteSource.HOST_STOCK_INFO, cl)?.let { infoCls ->
             for (ctor in runCatching { infoCls.declaredConstructors }.getOrDefault(emptyArray())) {

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.view.View
 import android.view.ViewGroup
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
-import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.uiclean.IdCache
 import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean

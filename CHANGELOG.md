@@ -399,6 +399,20 @@
   文件），并分列模块 App 进程（logcat）与目标进程（LSPosed `/data/adb/lspd/log`）的
   两种抓法。
 
+### 收尾大扫除（维护流程成文）
+
+- 新增 `docs/MAINTENANCE.md`：一次大扫除做哪四层（磁盘垃圾 / 死代码 / 文档一致性 /
+  配置约定）、每层的判据与命令、误报表、**红线**（签名、发布链路、逆向结论、`assets/`
+  源图不动），以及收尾清单与汇报口径。以后一句话「做一次大扫除」即可按文档执行。
+- 新增 `tools/hygiene.py`：未引用资源 / 无人引用的顶层声明 / 未调用的 private 成员 /
+  未使用的 import / 磁盘垃圾五条只读扫描，**只报候选、不删东西**。
+- 顺手清掉的死代码：`AppIcons.iconOf`（图标统一到 `Widgets` 之后没人调用的 40 行
+  builder）、`HostQuoteSource.stockInfoClass`（构造函数里加载一次、从不读，随之去掉
+  那个只给它用的 `classLoader` 参数）、5 条未使用的 import。
+- 磁盘：仓库 458M → 110M，`.work/` 268M → 1.7M（宿主 H5 缓存与解包产物、历史截图、
+  9 个旧 APK 一并清掉；`.work/lsposed-repo`、`log.mark`、`wifi_serial` 保留）。
+- `tools/README.md` 里「`.work/` 可以随时整体删」改成与红线一致的说法。
+
 ## [2.18.0] — 2026-10-16
 
 两件事：设置页移除「热重载目标进程」；备份 / 日志导出文件的前缀统一更名。

@@ -25,28 +25,6 @@ import androidx.compose.ui.unit.dp
  */
 internal object AppIcons {
 
-    /**
-     * 与 [icon] 相同，但视口尺寸自定 —— 给「不是 24×24 网格」的图标用
-     * （目前只有从 Miuix 图标转过来的 [ArrowDown]，视口是 16×10）。
-     */
-    private fun iconOf(
-        name: String,
-        width: Dp,
-        height: Dp,
-        pathData: String,
-        viewportWidth: Float = width.value,
-        viewportHeight: Float = height.value,
-    ): ImageVector = ImageVector.Builder(
-        name = name,
-        defaultWidth = width,
-        defaultHeight = height,
-        viewportWidth = viewportWidth,
-        viewportHeight = viewportHeight,
-    ).addPath(
-        pathData = PathParser().parsePathString(pathData).toNodes(),
-        fill = SolidColor(Color.Black),
-    ).build()
-
     /** 解析 Material 官方 24x24 网格的 path 字符串，构建 ImageVector。 */
     private fun icon(
         name: String,

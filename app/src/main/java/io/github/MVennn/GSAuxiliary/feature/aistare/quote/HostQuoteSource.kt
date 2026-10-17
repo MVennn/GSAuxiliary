@@ -29,7 +29,7 @@ import java.math.BigDecimal
  * 待后续探针确认「实例权威入口」后，把入口方法加进 [INSTANCE_PROVIDERS] 即可，
  * 其余代码不用动。
  */
-class HostQuoteSource(classLoader: ClassLoader) : QuoteSource {
+class HostQuoteSource : QuoteSource {
 
     override val name = "host"
 
@@ -40,8 +40,6 @@ class HostQuoteSource(classLoader: ClassLoader) : QuoteSource {
      * 锁定，导致默认方案（30 日最高/最低）在主路径上必然失败。
      */
     override val supportsKline = false
-
-    private val stockInfoClass = Reflect.loadClass(HOST_STOCK_INFO, classLoader)
 
     /** 最近见到的 StockInfo 实例（弱引用，防泄漏）；挂构造器填充 */
     @Volatile
