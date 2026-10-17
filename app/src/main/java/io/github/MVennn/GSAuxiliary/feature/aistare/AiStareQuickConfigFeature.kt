@@ -62,7 +62,14 @@ class AiStareQuickConfigFeature : Feature {
     override val id = "aistare_quick_config"
     override val title = "智能盯盘一键配置"
 
-    override fun isEnabled(cfg: ConfigSnapshot) = cfg.aistareQuickEnabled
+    /**
+     * 这个类**同时承载两件事**：价格页的「配置并保存」按钮，与「数据为空时依旧可以保存」。
+     * 两者共用同一份注入脚本（同一页面、同一个 `__gsaux` 命名空间），所以只要有一项开着
+     * 就得把钩子装上 —— 否则只开「空数据保存」时根本进不了 `onPageFinished`。
+     * 具体哪一项生效由 `init` 各自收到的开关位决定。
+     */
+    override fun isEnabled(cfg: ConfigSnapshot) =
+        cfg.aistareQuickEnabled || cfg.aiStareEmptySave
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -221,15 +228,20 @@ class AiStareQuickConfigFeature : Feature {
                 // 直接把原始 JSON 塞进去会变成数组字面量 —— JS 收到的是对象，
                 // `String()` 出来是 `[object Object]`（15 个字符），JSON.parse 必然失败，
                 // 方案列表恒为空（3.1.0 起就带着这个 bug，2026-10-17 实测抓到）。
+                // 第一个布尔位只管「配置」按钮；「空数据保存」是独立的一位（两者可分开开）。
                 AiStareJs.initCall(
                     AiStareJs.safeJson(sj),
-                    true,
+                    env.config.aistareQuickEnabled,
                     env.config.aiStarePickScheme,
                     env.config.aiStareSkipSaveConfirm,
+                    env.config.aiStareEmptySave,
                 ),
                 null,
             )
-            GLog.i("一键配置：已注入价格页（${Uri.parse(url).getQueryParameter("stockCode")}）")
+            GLog.i(
+                "一键配置：已注入价格页（${Uri.parse(url).getQueryParameter("stockCode")}）" +
+                    " 空数据保存=${env.config.aiStareEmptySave}",
+            )
         }.onFailure { GLog.w("一键配置：JS 注入失败", it) }
     }
 
@@ -258,13 +270,15 @@ class AiStareQuickConfigFeature : Feature {
         val wv = currentWebView?.get() ?: return
         mainHandler.post {
             runCatching {
-                // 不分开关状态统一重发 init：开 = 补注入 / 更新方案摘要；关 = JS 端摘按钮
+                // 不分开关状态统一重发 init：JS 端按两位开关各自装 / 摘
+                // （quickEnabled 管「配置」按钮，emptySave 管空数据时的「保存」）
                 wv.evaluateJavascript(
                     AiStareJs.initCall(
                         AiStareJs.safeJson(schemesJson(env)),
-                        isEnabled(cfg),
+                        cfg.aistareQuickEnabled,
                         cfg.aiStarePickScheme,
                         cfg.aiStareSkipSaveConfirm,
+                        cfg.aiStareEmptySave,
                     ),
                     null,
                 )

@@ -92,6 +92,12 @@
 
     <string name="feature_quick_config_button_entry">Config button</string>
 
+    <!-- ============================ Save when empty (price page) ============================ -->
+    <string name="feature_empty_save_title">Clear alerts by saving</string>
+    <string name="feature_empty_save_summary">With both alert prices empty on the price page, Save is no longer greyed out; tapping it removes this stock from your smart watch list</string>
+    <string name="feature_empty_save_switch">Fix the Save button</string>
+    <string name="feature_empty_save_switch_summary">You can still save when the prices are empty</string>
+
     <!-- ============================ Skip save confirmation ============================ -->
     <string name="feature_skip_save_title">No save confirmation</string>
     <string name="feature_skip_save_summary">After a successful save on the watch price page, skip the dialog that needs a manual confirm</string>
@@ -99,6 +105,10 @@
     <string name="feature_skip_save_switch_summary">Show a toast and go back automatically</string>
     <string name="feature_skip_save_detail_title">After saving</string>
     <string name="feature_skip_save_detail_entry">Where to go back</string>
+    <string name="feature_card_detail_title">Card to stock detail</string>
+    <string name="feature_card_detail_summary">Tap a card in My watch to open the stock detail page directly, no need to search the code again</string>
+    <string name="feature_card_detail_switch">Tap card for detail</string>
+    <string name="feature_card_detail_switch_summary">Edit and delete at the corner stay untouched</string>
     <string name="switch_save_back_to_stock">Return straight to the stock detail page</string>
 
     <!-- ============================ Config button (sub screen) ============================ -->

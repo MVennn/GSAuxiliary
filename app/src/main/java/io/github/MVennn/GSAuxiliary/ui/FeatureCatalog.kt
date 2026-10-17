@@ -208,6 +208,19 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         detailEntry2Res = R.string.feature_quick_config_button_entry,
     ),
 
+    // 「优化保存按钮」：空数据也能保存（= 从我的盯盘删掉这条盯盘）
+    FeatureSpec(
+        id = "aistare_empty_save",
+        categoryRes = R.string.category_aistare,
+        titleRes = R.string.feature_empty_save_title,
+        summaryRes = R.string.feature_empty_save_summary,
+        switchTitleRes = R.string.feature_empty_save_switch,
+        switchSummaryRes = R.string.feature_empty_save_switch_summary,
+        enableKey = ConfigKeys.AISTARE_EMPTY_SAVE,
+        defaultEnabled = ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
     // 保存成功之后的行为：免确认 + 返回位置（默认关闭，保持宿主原有交互）
     FeatureSpec(
         id = "aistare_skip_save_confirm",
@@ -220,6 +233,20 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
         detailTitleRes = R.string.feature_skip_save_detail_title,
         detailEntryRes = R.string.feature_skip_save_detail_entry,
+    ),
+
+    // 我的盯盘卡片直达个股详情：卡片从不可点变成可点，界面不加任何元素
+    FeatureSpec(
+        id = "aistare_card_detail",
+        categoryRes = R.string.category_aistare,
+        titleRes = R.string.feature_card_detail_title,
+        summaryRes = R.string.feature_card_detail_summary,
+        switchTitleRes = R.string.feature_card_detail_switch,
+        // 副标题说边界：右下角编辑 / 删除不受影响，点的是卡片其余区域
+        switchSummaryRes = R.string.feature_card_detail_switch_summary,
+        enableKey = ConfigKeys.AISTARE_CARD_DETAIL,
+        defaultEnabled = ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
     // ---- 底栏：只改主界面底栏的结构 ----

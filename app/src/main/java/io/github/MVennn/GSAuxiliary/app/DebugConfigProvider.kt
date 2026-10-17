@@ -46,6 +46,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_IPO_DIALOG_CLEAN = "ipo_dialog_clean"
         const val COL_AISTARE_QUICK = "aistare_quick_enabled"
         const val COL_AISTARE_SCHEMES = "aistare_quick_config"
+        const val COL_AISTARE_EMPTY_SAVE = "aistare_empty_save"
     }
 
     override fun onCreate(): Boolean {
@@ -77,7 +78,7 @@ class DebugConfigProvider : ContentProvider() {
                 COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
                 COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
                 COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
-                COL_AISTARE_QUICK, COL_AISTARE_SCHEMES,
+                COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
             )
         ).apply {
             addRow(
@@ -96,6 +97,7 @@ class DebugConfigProvider : ContentProvider() {
                     if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
                     if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED)) 1 else 0,
                     ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
+                    if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE)) 1 else 0,
                 )
             )
         }
@@ -160,6 +162,10 @@ class DebugConfigProvider : ContentProvider() {
             }
             if (values.containsKey(COL_AISTARE_QUICK)) {
                 putBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, values.getAsInteger(COL_AISTARE_QUICK) != 0)
+                n++
+            }
+            if (values.containsKey(COL_AISTARE_EMPTY_SAVE)) {
+                putBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, values.getAsInteger(COL_AISTARE_EMPTY_SAVE) != 0)
                 n++
             }
             if (values.containsKey(COL_AISTARE_SCHEMES)) {

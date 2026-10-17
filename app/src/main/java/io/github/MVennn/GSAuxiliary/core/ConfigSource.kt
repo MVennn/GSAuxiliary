@@ -104,6 +104,12 @@ class ConfigSource(private val xposed: XposedInterface) {
                 aiStareSkipSaveConfirm = p.getBoolean(
                     ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM, ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
                 ),
+                aiStareEmptySave = p.getBoolean(
+                    ConfigKeys.AISTARE_EMPTY_SAVE, ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE,
+                ),
+                aiStareCardDetail = p.getBoolean(
+                    ConfigKeys.AISTARE_CARD_DETAIL, ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL,
+                ),
                 aiStareSaveBackToStock = p.getBoolean(
                     ConfigKeys.AISTARE_SAVE_BACK_TO_STOCK, ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
                 ),

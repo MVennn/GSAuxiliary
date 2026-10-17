@@ -123,6 +123,12 @@
     <!-- 配置按钮的二级设置（第二个入口）：多方案时是否还弹选择层 -->
     <string name="feature_quick_config_button_entry">配置按钮设置</string>
 
+    <!-- ============================ 优化保存按钮（智能盯盘价格页） ============================ -->
+    <string name="feature_empty_save_title">保存时清空盯盘</string>
+    <string name="feature_empty_save_summary">价格页涨到跌到都没填时，保存按钮不再置灰，点一下保存就把这只股票从我的盯盘里移除，不用再去盯盘列表删</string>
+    <string name="feature_empty_save_switch">优化保存按钮</string>
+    <string name="feature_empty_save_switch_summary">在数据为空时依旧可以保存</string>
+
     <!-- ============================ 保存后免确认（智能盯盘价格页） ============================ -->
     <string name="feature_skip_save_title">保存后免确认</string>
     <string name="feature_skip_save_summary">智能盯盘价格页保存成功后，不再弹需要手动确认的弹窗</string>
@@ -131,6 +137,12 @@
     <string name="feature_skip_save_detail_title">保存后设置</string>
     <string name="feature_skip_save_detail_entry">返回位置</string>
     <string name="switch_save_back_to_stock">保存成功后直接返回个股详情页</string>
+
+    <!-- ============================ 我的盯盘卡片直达详情（智能盯盘） ============================ -->
+    <string name="feature_card_detail_title">卡片直达详情</string>
+    <string name="feature_card_detail_summary">我的盯盘里的卡片点一下直接进该股的个股详情页，不用再退出去搜代码</string>
+    <string name="feature_card_detail_switch">点卡片看详情</string>
+    <string name="feature_card_detail_switch_summary">右下角编辑、删除不受影响</string>
 
     <!-- ============================ 配置按钮设置（二级菜单） ============================ -->
     <string name="switch_pick_scheme">在多配置下弹出选择方案弹窗</string>

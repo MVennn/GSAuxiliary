@@ -59,6 +59,9 @@ internal object AiStareJs {
   NS.interval = null;
   NS.pickScheme = true;      // 多方案时是否弹选择层（配置按钮设置）
   NS.skipConfirm = false;    // 保存成功是否免确认（保存后免确认）
+  NS.emptySave = false;      // 两个价都空时「保存」仍可点（= 取消该股盯盘）
+  NS.saveEl = null;          // 被我们放开过的宿主「保存」节点
+  NS.saveForced = false;     // 灰态是我们换掉的（关开关时要还回去）
   NS.saveObs = null;
 
   var BTN_TEXT = '__BTN_TEXT__';
@@ -322,6 +325,93 @@ internal object AiStareJs {
     if (up === null && inputs.length >= 2) { up = inputs[0]; down = inputs[1]; }
     return { up: up, down: down };
   }
+
+  // ---------- 数据为空时依旧可以保存（等价于「从我的盯盘里删掉」） ----------
+  // 实测（2026-10-17，宿主 H5 的 Price.vue）：模板按 `above || below` 分两支渲染 ——
+  //   有值 → <a class="btn_save active" @click=saveStrategy>
+  //   全空 → <a class="btn_save disable">
+  // 空的那一支**根本没有绑 click**，所以光摘 `disable` 类没用，必须自己接管点击。
+  // 而 `saveStrategy` 本身并不拒绝空值：空掉的那一槽走 `eSub = 2` 提交
+  // （eSub 2 = 取消订阅），宿主自己的语义就是「不设提醒 = 把这条盯盘删掉」。
+  // 于是只要替用户把这一下点下去，就等于去「我的盯盘」里点了垃圾桶。
+  function inputsEmpty() {
+    var ui = findInputs();
+    if (!ui.up && !ui.down) return false;   // 认不出输入框就别乱放开
+    var up = ui.up ? String(ui.up.value || '').trim() : '';
+    var down = ui.down ? String(ui.down.value || '').trim() : '';
+    return up === '' && down === '';
+  }
+
+  /** 从 #app 的 __vue__ 往下找带 saveStrategy 的组件 —— 就是价格页那个 Price 实例 */
+  function findPriceVm() {
+    var root = document.getElementById('app') || document.querySelector('#app');
+    var vm = root && root.__vue__;
+    if (!vm) return null;
+    var queue = [vm], seen = 0;
+    while (queue.length && seen < 64) {
+      var cur = queue.shift(); seen++;
+      if (cur && typeof cur.saveStrategy === 'function') return cur;
+      var kids = cur.${'$'}children || [];
+      for (var i = 0; i < kids.length; i++) queue.push(kids[i]);
+    }
+    return null;
+  }
+
+  function onEmptySaveClick(e) {
+    // 有值时宿主的 active 分支自己绑了 saveStrategy —— 让它走原逻辑，我们不重复提交
+    if (!NS.emptySave || !inputsEmpty()) return;
+    var vm = findPriceVm();
+    D('empty-save click vm=' + (!!vm));
+    if (!vm) { NS.toast('__MSG_UNAVAILABLE__'); return; }
+    // 宿主那个「保存成功！」弹窗照旧会弹；开了「无需确定保存」就交给 armSkip 收掉
+    NS.armSkip();
+    try { vm.saveStrategy(); } catch (err) { D('empty-save err ' + err); NS.toast('__MSG_UNAVAILABLE__'); }
+  }
+
+  /**
+   * 按当前状态把宿主的「保存」放开或还回去。幂等，靠 install 之后的自检反复调。
+   * 注意 Vue 每次重渲染都会把 class 刷回 `disable`，所以这里不能只做一次。
+   */
+  NS.applyEmptySave = function() {
+    var found = findBar();
+    if (!found) return;
+    var el = found.save;
+    var empty = inputsEmpty();
+    var want = !!NS.emptySave && empty;
+    if (want) {
+      if (NS.saveEl !== el) {
+        if (NS.saveEl) { try { NS.saveEl.removeEventListener('click', onEmptySaveClick, true); } catch (e0) {} }
+        el.addEventListener('click', onEmptySaveClick, true);
+        NS.saveEl = el;
+      }
+      if (el.classList && el.classList.contains('disable')) {
+        el.classList.remove('disable');
+        el.classList.add('active');
+        NS.saveForced = true;
+        D('empty-save enabled');
+      }
+    } else if (NS.saveEl === el) {
+      try { el.removeEventListener('click', onEmptySaveClick, true); } catch (e1) {}
+      NS.saveEl = null;
+      if (NS.saveForced) {
+        NS.saveForced = false;
+        // 有值时 class 归宿主自己刷；只有「还是空的」（= 开关被关掉）才需要还回灰态
+        if (empty && el.classList) { el.classList.remove('active'); el.classList.add('disable'); }
+      }
+    }
+  };
+
+  /** 关开关：把「保存」还原成宿主的灰态，别留下一个看着能点、其实没人接的按钮 */
+  NS.restoreEmptySave = function() {
+    if (!NS.saveEl) { NS.saveForced = false; return; }
+    try { NS.saveEl.removeEventListener('click', onEmptySaveClick, true); } catch (e) {}
+    if (NS.saveForced && NS.saveEl.classList && inputsEmpty()) {
+      NS.saveEl.classList.remove('active');
+      NS.saveEl.classList.add('disable');
+    }
+    NS.saveForced = false;
+    NS.saveEl = null;
+  };
   function pagePrice() {
     var m = (document.body.innerText || '').match(/__PRICE_REGEX__/);
     return m ? parseFloat(m[1]) : NaN;
@@ -413,27 +503,35 @@ internal object AiStareJs {
   // ---------- 生命周期 ----------
   NS.remove = function() {
     NS.enabled = false;
+    NS.emptySave = false;
     NS.closeLayer();
     if (NS.btn) { NS.btn.remove(); NS.btn = null; }
+    NS.restoreEmptySave();
     if (NS.observer) { NS.observer.disconnect(); NS.observer = null; }
     if (NS.interval) { clearInterval(NS.interval); NS.interval = null; }
   };
-  NS.init = function(schemesJson, enabled, pickScheme, skipConfirm) {
+  NS.init = function(schemesJson, enabled, pickScheme, skipConfirm, emptySave) {
     NS.enabled = !!enabled;
     NS.pickScheme = pickScheme !== false;
     NS.skipConfirm = !!skipConfirm;
+    NS.emptySave = !!emptySave;
     try { NS.schemes = JSON.parse(schemesJson) || []; } catch (e) { NS.schemes = []; }
     D('init len=' + String(schemesJson || '').length + ' n=' + NS.schemes.length +
-      ' pick=' + NS.pickScheme + ' skip=' + NS.skipConfirm);
+      ' pick=' + NS.pickScheme + ' skip=' + NS.skipConfirm + ' emptySave=' + NS.emptySave);
     if (!NS.enabled) {
-      // 开关被关：立即摘掉按钮与自绘层（§8 降级链），页面回到原样
+      // 「配置」按钮这一支被关：立即摘掉按钮与自绘层（§8 降级链）
       NS.closeLayer();
       if (NS.btn) { NS.btn.remove(); NS.btn = null; }
+    }
+    // 两个能力都关掉才彻底停；只关一个时自检还得继续跑（另一个还要用）
+    if (!NS.enabled && !NS.emptySave) {
+      NS.restoreEmptySave();
       if (NS.observer) { NS.observer.disconnect(); NS.observer = null; }
       if (NS.interval) { clearInterval(NS.interval); NS.interval = null; }
       return;
     }
-    NS.install();
+    if (NS.enabled) NS.install();
+    NS.applyEmptySave();
     NS.watch();
   };
   NS.watch = function() {
@@ -448,11 +546,18 @@ internal object AiStareJs {
     NS.checkTimer = setTimeout(function() {
       NS.checkTimer = null;
       if (NS.enabled) NS.install();
+      if (NS.emptySave || NS.saveEl) NS.applyEmptySave();
     }, 300);
   }
 
   // 输入时实时校验（只加自己的监听，不碰宿主的）
-  document.addEventListener('input', function() { NS.validate(); }, true);
+  document.addEventListener('input', function() {
+    NS.validate();
+    NS.applyEmptySave();
+    // 宿主的 v-model 改完会走一次微任务重渲染（class 从 active 刷回 disable），
+    // 补一次能让按钮在「清空最后一个输入框」的当下就变亮，不用等 500ms 自检
+    setTimeout(NS.applyEmptySave, 0);
+  }, true);
 })();"""
 
     /**
@@ -464,8 +569,10 @@ internal object AiStareJs {
         enabled: Boolean,
         pickScheme: Boolean,
         skipSaveConfirm: Boolean,
+        emptySave: Boolean,
     ): String =
-        "window.__gsaux && window.__gsaux.init($schemesJson, $enabled, $pickScheme, $skipSaveConfirm);"
+        "window.__gsaux && window.__gsaux.init($schemesJson, $enabled, $pickScheme, " +
+            "$skipSaveConfirm, $emptySave);"
 
     /** 原生 → JS：回填两个价 */
     fun fillCall(up: String, down: String): String =

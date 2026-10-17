@@ -44,6 +44,10 @@ data class ConfigSnapshot(
     val aiStareQuickConfig: String,
     /** 保存成功不弹确认弹窗（轻提示 + 自动返回） */
     val aiStareSkipSaveConfirm: Boolean,
+    /** 价格页两个价都空时「保存」仍可点（= 取消该股盯盘） */
+    val aiStareEmptySave: Boolean,
+    /** 「我的盯盘」卡片点一下直达个股详情页 */
+    val aiStareCardDetail: Boolean,
     /** 保存成功后退到个股详情页（false = 只回上一页） */
     val aiStareSaveBackToStock: Boolean,
     /** 多方案时弹「选择方案」层（false = 直接套默认方案） */
@@ -72,6 +76,8 @@ data class ConfigSnapshot(
                 + (if (ipoDialogClean) 1 else 0) * 2741
                 + (if (aistareQuickEnabled) 1 else 0) * 2851
                 + (if (aiStareSkipSaveConfirm) 1 else 0) * 2887
+                + (if (aiStareEmptySave) 1 else 0) * 2909
+                + (if (aiStareCardDetail) 1 else 0) * 2927
                 + (if (aiStareSaveBackToStock) 1 else 0) * 2897
                 + (if (aiStarePickScheme) 1 else 0) * 2903
                 + aiStareQuickConfig.hashCode() * 2879)
@@ -97,6 +103,8 @@ data class ConfigSnapshot(
             aistareQuickEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
             aiStareQuickConfig = ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG,
             aiStareSkipSaveConfirm = ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+            aiStareEmptySave = ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE,
+            aiStareCardDetail = ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL,
             aiStareSaveBackToStock = ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
             aiStarePickScheme = ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME,
         )

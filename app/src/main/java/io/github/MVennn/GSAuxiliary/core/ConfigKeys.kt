@@ -181,6 +181,32 @@ object ConfigKeys {
     const val DEFAULT_AISTARE_SKIP_SAVE_CONFIRM = false
 
     /**
+     * 「数据为空时依旧可以保存」：价格页两个价都没填时，宿主的「保存」本来是灰的、
+     * 连点击都没绑；打开后把它恢复成可点，点了就走宿主自己的保存 ——
+     * 宿主对空槽提交的是 `eSub = 2`（取消该条提醒），于是这一步等价于
+     * 「把这只股票从我的盯盘里删掉」，不用再绕去盯盘列表点垃圾桶。
+     *
+     * **默认关闭** —— 默认保持宿主原有交互（空着就是不让存）。
+     *
+     * 见 [io.github.MVennn.GSAuxiliary.feature.aistare.AiStareJs] 的 `applyEmptySave`。
+     */
+    const val AISTARE_EMPTY_SAVE = "aistare_empty_save"
+    const val DEFAULT_AISTARE_EMPTY_SAVE = false
+
+    /**
+     * 「我的盯盘」卡片直达个股详情：盯盘列表里的卡片（股票名 + 提醒描述 +
+     * 右下角编辑 / 删除）本来没有任何通往个股详情页的入口，打开后点卡片
+     * 空白处直接进该股的详情页。
+     *
+     * 右下角「编辑 / 删除」不受影响（子视图先消费点击），上方股票名行
+     * 保持宿主原有点击。界面不加任何可见元素。
+     *
+     * 见 [io.github.MVennn.GSAuxiliary.feature.aistare.AiStareCardDetailFeature]。
+     */
+    const val AISTARE_CARD_DETAIL = "aistare_card_detail"
+    const val DEFAULT_AISTARE_CARD_DETAIL = false
+
+    /**
      * 保存成功后退回哪一层：`true` = 直接回个股详情页（把叠在上面的智能盯盘系列页面
      * 一起收掉），`false` = 只回上一页（策略列表）。
      *
@@ -395,6 +421,7 @@ object ConfigKeys {
         IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
+        AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
         DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
         LOG_LEVEL,
     )
@@ -413,7 +440,8 @@ object ConfigKeys {
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
             IPO_DIALOG_CLEAN,
-            AISTARE_QUICK_ENABLED, AISTARE_SKIP_SAVE_CONFIRM,
+            AISTARE_QUICK_ENABLED, AISTARE_SKIP_SAVE_CONFIRM, AISTARE_EMPTY_SAVE,
+            AISTARE_CARD_DETAIL,
         )
 
     /**
@@ -450,6 +478,8 @@ object ConfigKeys {
         AISTARE_QUICK_ENABLED to DEFAULT_AISTARE_QUICK_ENABLED,
         AISTARE_QUICK_CONFIG to DEFAULT_AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM to DEFAULT_AISTARE_SKIP_SAVE_CONFIRM,
+        AISTARE_EMPTY_SAVE to DEFAULT_AISTARE_EMPTY_SAVE,
+        AISTARE_CARD_DETAIL to DEFAULT_AISTARE_CARD_DETAIL,
         AISTARE_SAVE_BACK_TO_STOCK to DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
         AISTARE_PICK_SCHEME to DEFAULT_AISTARE_PICK_SCHEME,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
