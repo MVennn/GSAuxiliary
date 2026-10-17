@@ -29,7 +29,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 「自选股高亮」的二级菜单。
  *
  * 一级页面（功能 Tab）只放总开关；这里放该功能**全部可调节项**：
- * 染色设置（作用域）、高亮颜色、效果预览。
+ * 高亮颜色设置（作用域）、高亮颜色、效果预览。
  */
 @Composable
 internal fun WatchlistDetailScreen() {
@@ -49,7 +49,7 @@ internal fun WatchlistDetailScreen() {
         Spacer(Modifier.height(8.dp))
 
         // --- 作用于策略详情页 ---
-        // 不放分组标题：页标题就是「染色设置」，再来一个同名 SmallTitle 是同一句
+        // 不放分组标题：页标题就是「高亮颜色设置」，再来一个同名 SmallTitle 是同一句
         // 话说两遍（2.17.2）。开关也不带副标题 —— 原来那行钩子目标
         // （AIStkStgDetailAct · tv_item_stk_name）是开发者才看得懂的类名 / 控件 ID，
         // 面向用户的界面不写这类信息，完整档案在 docs/ARCHITECTURE.md 与

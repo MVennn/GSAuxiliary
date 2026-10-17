@@ -54,7 +54,7 @@
     <!-- Sign-in -->
     <string name="feature_ipo_clean_title">Hide the IPO reminder dialog</string>
     <string name="feature_ipo_clean_summary">The daily new-share subscription reminder no longer pops up after signing in; you land straight on the main screen</string>
-    <string name="feature_ipo_clean_switch">Hide IPO reminder</string>
+    <string name="feature_ipo_clean_switch">Hide IPO dialog</string>
 
     <string name="feature_watchlist_title">Watchlist highlight</string>
     <string name="feature_watchlist_summary">Highlight watchlist stock names on the strategy detail page</string>
@@ -95,20 +95,21 @@
     <!-- ============================ Save when empty (price page) ============================ -->
     <string name="feature_empty_save_title">Clear alerts by saving</string>
     <string name="feature_empty_save_summary">With both alert prices empty on the price page, Save is no longer greyed out; tapping it removes this stock from your smart watch list</string>
-    <string name="feature_empty_save_switch">Fix the Save button</string>
+    <string name="feature_empty_save_switch">Better confirmation logic</string>
     <string name="feature_empty_save_switch_summary">You can still save when the prices are empty</string>
 
     <!-- ============================ Skip save confirmation ============================ -->
     <string name="feature_skip_save_title">No save confirmation</string>
     <string name="feature_skip_save_summary">After a successful save on the watch price page, skip the dialog that needs a manual confirm</string>
-    <string name="feature_skip_save_switch">Save without confirming</string>
+    <string name="feature_skip_save_switch">Save alerts without confirming</string>
     <string name="feature_skip_save_switch_summary">Show a toast and go back automatically</string>
-    <string name="feature_skip_save_detail_title">After saving</string>
-    <string name="feature_skip_save_detail_entry">Where to go back</string>
-    <string name="feature_card_detail_title">Open stock detail from watch card</string>
+    <string name="feature_skip_save_detail_title">Return position after saving</string>
+    <string name="feature_skip_save_detail_entry">Return position after saving</string>
+    <string name="feature_card_detail_title">Watch card extension</string>
     <string name="feature_card_detail_summary">Tap a card in My watch to open the stock detail page directly; edit and delete at the corner stay untouched</string>
-    <string name="feature_card_detail_switch">Open stock detail from watch card</string>
-    <string name="switch_save_back_to_stock">Return straight to the stock detail page</string>
+    <string name="feature_card_detail_switch">Watch card extension</string>
+    <string name="feature_card_detail_switch_summary">Tap a data card to open the stock detail page</string>
+    <string name="switch_save_back_to_stock">Return to the stock detail page after saving</string>
 
     <!-- ============================ Config button (sub screen) ============================ -->
     <string name="switch_pick_scheme">Ask which scheme when there are several</string>
@@ -162,18 +163,19 @@
     <string name="feature_market_banner_summary">Hides both the scrolling news ticker below the market overview chart and the quick-entry row under it, so the sector block moves up</string>
     <string name="feature_market_banner_switch">Hide ticker and quick entries</string>
 
-    <string name="feature_market_sector_title">Sectors: keep the top three</string>
-    <string name="feature_market_sector_summary">The sector block normally fills six slots; keep only the top three and collapse the rest</string>
-    <string name="feature_market_sector_switch">Keep top three sectors</string>
+    <string name="feature_market_sector_title">Sectors on a single row</string>
+    <string name="feature_market_sector_summary">The sector block normally fills six slots; keep only the top row and collapse the rest</string>
+    <string name="feature_market_sector_switch">Sectors on one row</string>
 
-    <string name="feature_market_overview_title">Shorter market overview</string>
+    <string name="feature_market_overview_title">Optimize market overview height</string>
     <string name="feature_market_overview_summary">The market overview block gets shorter and the bar charts inside are compressed to match</string>
-    <string name="feature_market_overview_switch">Shorter market overview</string>
+    <string name="feature_market_overview_switch">Optimize overview height</string>
 
     <!-- Display -->
     <string name="feature_nav_bar_title">Match gesture bar color</string>
     <string name="feature_nav_bar_summary">The gesture navigation bar at the bottom is filled with the color of the interface right above it, instead of a hard-edged pure black or pure white strip in dark and light mode alike</string>
     <string name="feature_nav_bar_switch">Match gesture bar color</string>
+    <string name="feature_nav_bar_switch_summary">Picks the color of the Android gesture bar</string>
 
     <!-- ============================ Direct standard quote (detail) ============================ -->
     <!-- The master switch lives on the feature tab; this menu holds parameters only.

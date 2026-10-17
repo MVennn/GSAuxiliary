@@ -48,7 +48,7 @@
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
 | 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
-| 底栏隐藏理财项 | `feature/dock/DockCleanTargets.kt` |
+| 底栏隐藏理财入口 | `feature/dock/DockCleanTargets.kt` |
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场（滚动横幅 / 板块 / 概览，三功能共用一份） | `feature/market/MarketTargets.kt` |
 | 手势导航条同色 | `feature/navbar/NavBarTargets.kt` |

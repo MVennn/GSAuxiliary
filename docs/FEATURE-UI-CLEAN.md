@@ -13,11 +13,11 @@
 
 | # | 分区 | 功能（卡片上的名字） | 配置键 | 实现类 |
 |---|---|---|---|---|
-| 1 | 底栏 | 隐藏理财项 | `dock_clean` | `feature/dock/DockCleanFeature.kt` |
+| 1 | 底栏 | 隐藏 理财 入口 | `dock_clean` | `feature/dock/DockCleanFeature.kt` |
 | 2 | 首页 | 隐藏横幅 | `home_banner_hide` | `feature/home/HomeBannerFeature.kt` |
 | 3 | 行情市场 | 隐藏滚动横幅与快捷入口 | `market_banner_hide` | `feature/market/MarketBannerFeature.kt` |
-| 4 | 行情市场 | 板块只留三项 | `market_sector_compact` | `feature/market/MarketSectorCompactFeature.kt` |
-| 5 | 行情市场 | 市场概览压矮 | `market_overview_compact` | `feature/market/MarketOverviewCompactFeature.kt` |
+| 4 | 行情市场 | 板块显示单行 | `market_sector_compact` | `feature/market/MarketSectorCompactFeature.kt` |
+| 5 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | `feature/market/MarketOverviewCompactFeature.kt` |
 
 定位常量分别落在 `DockCleanTargets.kt` / `HomeBannerTargets.kt` / `MarketTargets.kt`。
 

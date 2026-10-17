@@ -275,7 +275,7 @@ private sealed interface Route {
     data class QuickConfigEdit(val schemeId: String) : Route
     /** 配置按钮设置：多方案时是否弹选择层 */
     data object QuickConfigButton : Route
-    /** 保存后设置：保存成功退到哪一层 */
+    /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
 }

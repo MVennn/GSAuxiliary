@@ -53,7 +53,7 @@ import java.lang.ref.WeakReference
 class MarketOverviewCompactFeature : UiCleanFeature() {
 
     override val id = "market_overview_compact"
-    override val title = "行情市场概览压矮"
+    override val title = "行情市场概览高度优化"
 
     override val pages = MarketTargets.PAGES
 

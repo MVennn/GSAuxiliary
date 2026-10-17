@@ -24,7 +24,7 @@
 | `FeatureTab.kt` | Tab 2 功能（搜索框在**列表顶部**随列表滚动 + 按 `query` 过滤 + 功能卡片 + 二级入口） |
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
 | `AboutTab.kt` | Tab 4 关于（含免责声明二级页正文 `DisclaimerContent`） |
-| `WatchlistDetail.kt` | 二级页：自选股高亮的**染色设置**（作用域 / 高亮颜色 / 效果预览） |
+| `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
 | `QuickConfigEditScreen.kt` | **三级页**：单个方案的编辑（名称 / 涨到槽 / 跌到槽 / 提醒时效 / 设为默认 / 删除，见 §4.4） |
@@ -521,7 +521,7 @@ LaunchedEffect(controller.closing) {
 | **设置** | **模块范围内**的设置：桌面图标、材质设置（液态玻璃 / 玻璃光效）、通用（主题设置 / 语言 / 可预测返回）、数据管理（备份 / 恢复 / 重置）、日志（等级 / 查看） | 任何具体功能的开关与参数 |
 | **功能** | 每个功能一行**开关**；开关打开后在下方展开该功能的「XX设置」入口 | 具体参数（都在二级菜单里） |
 
-具体功能自己的可调项（染色设置 / 滑动设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
+具体功能自己的可调项（高亮颜色设置 / 滑动设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
 
 > 有二级入口的才展开 —— 「策略多选全选」没有可调参数，所以只有开关，不展开入口
 > （`FeatureSpec.hasDetail` 为 `false`）。
@@ -769,7 +769,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 │ 自选股高亮                    [开关]   │
 │ 把已加入自选的股票名称显示为高亮色        │
 ├─────────────────────────────────────────┤   ← 开关打开后才出现
-│ 染色设置                           ›     │
+│ 高亮颜色设置                       ›     │
 │ 作用域、颜色、预览                        │
 └─────────────────────────────────────────┘
 
@@ -784,7 +784,7 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前十一个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前十六个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
@@ -793,13 +793,17 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 | 策略页 | 策略多选全选 | `stg_select_all` | 无 |
 | 策略页 | 策略筛选股票 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 股票详情页 | 底栏智能盯盘入口 | `stock_bar_entry` | 无 |
-| 底栏 | 底栏隐藏理财项 | `dock_clean` | 无 |
+| 智能盯盘 | 价格页一键配置 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
+| 智能盯盘 | 保存时清空盯盘 | `aistare_empty_save` | 无 |
+| 智能盯盘 | 保存后免确认 | `aistare_skip_save_confirm` | 保存后返回位置设置（`AiStareSaveBehaviorScreen`） |
+| 智能盯盘 | 盯盘数据卡片拓展 | `aistare_card_detail` | 无 |
+| 底栏 | 底栏隐藏理财入口 | `dock_clean` | 无 |
 | 首页 | 首页隐藏横幅 | `home_banner_hide` | 无 |
 | 行情市场 | 行情市场隐藏滚动横幅与快捷入口 | `market_banner_hide` | 无 |
-| 行情市场 | 行情市场板块只留三项 | `market_sector_compact` | 无 |
-| 行情市场 | 行情市场概览压矮 | `market_overview_compact` | 无 |
+| 行情市场 | 行情市场板块显示单行 | `market_sector_compact` | 无 |
+| 行情市场 | 行情市场概览高度优化 | `market_overview_compact` | 无 |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
-| 显示 | 自选股高亮 | `enabled` | 染色设置（`WatchlistDetail`） |
+| 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
 
 > 上表第一列写的是**分区名**，第二列写的是 `titleRes`（完整功能名，只喂搜索）；
 > 卡片上用户看到的是 `switchTitleRes`，与第二列不一定逐字相同 —— 对照表见
@@ -812,11 +816,11 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 功能清单的数据源是 `FeatureCatalog.FEATURE_CATALOG`（展示元数据），
 运行期真正生效的实现类登记在 `feature/FeatureManager.features` —— 两处都要加。
 
-#### 4.3 二级页：「染色设置」与「滑动设置」
+#### 4.3 二级页：「高亮颜色设置」与「滑动设置」
 
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|
-| `WatchlistDetail.kt` | 自选股高亮 → 染色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设）/ 效果预览（两行示例，无说明行） |
+| `WatchlistDetail.kt` | 自选股高亮 → 高亮颜色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设）/ 效果预览（两行示例，无说明行） |
 | `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，不带副标题 —— 2.17.2 起，见 [NAMING.md](NAMING.md) §3） |
 
 **二级页只放「总开关之外」的参数。**

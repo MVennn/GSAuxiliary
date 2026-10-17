@@ -18,7 +18,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * | **智能盯盘** `category_aistare` | **改的是「盯盘页面本身」** —— 智能盯盘页（H5）里的交互与内容 | 价格页「一键配置」按钮、盯盘页结构 … |
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
  * | **首页** `category_home` | **只改首页的结构** —— 隐藏 / 压缩首页上某一块 | 隐藏快捷入口下方的横幅、隐藏首页某个卡片 … |
- * | **行情市场** `category_market` | **只改行情市场页的结构** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块六项压三项、市场概览压矮 … |
+ * | **行情市场** `category_market` | **只改行情市场页的结构** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块显示单行、市场概览高度优化 … |
  * | **显示** `category_display` | **只改变「看到的样子」** —— 颜色、字号、图标、布局、动效；不改交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
  *
  * ### 归类时怎么判断
@@ -235,14 +235,15 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         detailEntryRes = R.string.feature_skip_save_detail_entry,
     ),
 
-    // 我的盯盘卡片直达个股详情：卡片从不可点变成可点，界面不加任何元素
+    // 盯盘数据卡片拓展：卡片从不可点变成可点，界面不加任何元素
     FeatureSpec(
         id = "aistare_card_detail",
         categoryRes = R.string.category_aistare,
         titleRes = R.string.feature_card_detail_title,
         summaryRes = R.string.feature_card_detail_summary,
         switchTitleRes = R.string.feature_card_detail_switch,
-        // 无副标题：标题已把「哪张卡片、点了去哪」说全（docs/NAMING.md §副标题）
+        // 副标题说清点了会怎样：标题只说「拓展」，不说落到哪个页面
+        switchSummaryRes = R.string.feature_card_detail_switch_summary,
         enableKey = ConfigKeys.AISTARE_CARD_DETAIL,
         defaultEnabled = ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
@@ -306,7 +307,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_market_overview_title,
         summaryRes = R.string.feature_market_overview_summary,
         switchTitleRes = R.string.feature_market_overview_switch,
-        // 无副标题：「市场概览压矮」已经说清了改的是什么
+        // 无副标题：「市场概览高度优化」已经说清了改的是什么
         enableKey = ConfigKeys.MARKET_OVERVIEW_COMPACT,
         defaultEnabled = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
@@ -319,7 +320,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         titleRes = R.string.feature_nav_bar_title,
         summaryRes = R.string.feature_nav_bar_summary,
         switchTitleRes = R.string.feature_nav_bar_switch,
-        // 无副标题：原副标题「不再是一条纯黑或纯白」是同一件事的反面说法
+        // 副标题点明是哪根条、怎么来的（「小白条」是用户对底部手势条的叫法）
+        switchSummaryRes = R.string.feature_nav_bar_switch_summary,
         enableKey = ConfigKeys.NAV_BAR_BLEND,
         defaultEnabled = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
@@ -336,6 +338,6 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_ENABLED,
         detailTitleRes = R.string.detail_color_title,
         detailEntryRes = R.string.feature_detail_entry,
-        // 无入口副标题：「染色设置」已经说清进去做什么，不再列一遍里面的项目
+        // 无入口副标题：「高亮颜色设置」已经说清进去做什么，不再列一遍里面的项目
     ),
 )

@@ -50,7 +50,7 @@ import kotlin.math.abs
 class DockCleanFeature : UiCleanFeature() {
 
     override val id = "dock_clean"
-    override val title = "底栏隐藏理财项"
+    override val title = "底栏隐藏理财入口"
 
     override val pages = DockCleanTargets.PAGES
 

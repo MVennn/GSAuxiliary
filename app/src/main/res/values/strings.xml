@@ -53,14 +53,14 @@
     <string name="feature_empty">没有匹配的功能</string>
 
     <!-- 登录 -->
-    <string name="feature_ipo_clean_title">隐藏新股申购提醒弹窗</string>
+    <string name="feature_ipo_clean_title">隐藏 新股申购 弹窗</string>
     <string name="feature_ipo_clean_summary">登录后不再弹出今日新股申购提醒，直接进主界面</string>
-    <string name="feature_ipo_clean_switch">隐藏新股申购提醒</string>
+    <string name="feature_ipo_clean_switch">隐藏 新股申购 弹窗</string>
 
     <string name="feature_watchlist_title">自选股高亮</string>
     <string name="feature_watchlist_summary">策略详情页里，把已加入自选的股票名称显示为高亮色</string>
     <string name="feature_watchlist_switch">自选股高亮</string>
-    <string name="feature_detail_entry">染色设置</string>
+    <string name="feature_detail_entry">高亮颜色设置</string>
 
     <string name="feature_stg_direct_title">策略直达标准行情</string>
     <string name="feature_stg_direct_summary">我的策略里点股票直接进个股详情，不用再点一次标准行情</string>
@@ -84,9 +84,9 @@
     <string name="feature_stock_bar_switch_summary">详情页底栏「自选」与「更多」之间</string>
 
     <!-- 底栏 -->
-    <string name="feature_dock_clean_title">底栏隐藏理财项</string>
+    <string name="feature_dock_clean_title">底栏隐藏理财入口</string>
     <string name="feature_dock_clean_summary">主界面底栏不再显示理财那一格，其余入口自动均分铺满整行</string>
-    <string name="feature_dock_clean_switch">隐藏理财项</string>
+    <string name="feature_dock_clean_switch">隐藏 理财 入口</string>
 
     <!-- 首页 -->
     <string name="feature_home_banner_title">首页隐藏横幅</string>
@@ -99,18 +99,19 @@
     <string name="feature_market_banner_summary">行情市场页概览图下方的滚动横幅、以及它下面那排快捷入口一并隐藏，板块直接顶上来</string>
     <string name="feature_market_banner_switch">隐藏滚动横幅与快捷入口</string>
 
-    <string name="feature_market_sector_title">行情市场板块只留三项</string>
+    <string name="feature_market_sector_title">行情市场板块显示单行</string>
     <string name="feature_market_sector_summary">行情市场页的板块原本一屏六个，只保留最上面三个，其余收起</string>
-    <string name="feature_market_sector_switch">板块只留三项</string>
+    <string name="feature_market_sector_switch">板块显示单行</string>
 
-    <string name="feature_market_overview_title">行情市场概览压矮</string>
+    <string name="feature_market_overview_title">行情市场概览高度优化</string>
     <string name="feature_market_overview_summary">行情市场页的市场概览区整体压矮，里面的柱状图高度一并压缩</string>
-    <string name="feature_market_overview_switch">市场概览压矮</string>
+    <string name="feature_market_overview_switch">市场概览高度优化</string>
 
     <!-- 显示 -->
     <string name="feature_nav_bar_title">手势导航条同色</string>
     <string name="feature_nav_bar_summary">屏幕底部的手势导航条区域填充与紧邻界面一致的颜色，深色与浅色模式下都不再是一条生硬的纯黑或纯白</string>
     <string name="feature_nav_bar_switch">手势导航条同色</string>
+    <string name="feature_nav_bar_switch_summary">安卓底部小白条吸色取色</string>
 
     <!-- 智能盯盘 -->
     <string name="feature_quick_config_title">价格页一键配置</string>
@@ -123,25 +124,26 @@
     <!-- 配置按钮的二级设置（第二个入口）：多方案时是否还弹选择层 -->
     <string name="feature_quick_config_button_entry">配置按钮设置</string>
 
-    <!-- ============================ 优化保存按钮（智能盯盘价格页） ============================ -->
+    <!-- ============================ 优化确定逻辑（智能盯盘价格页） ============================ -->
     <string name="feature_empty_save_title">保存时清空盯盘</string>
     <string name="feature_empty_save_summary">价格页涨到跌到都没填时，保存按钮不再置灰，点一下保存就把这只股票从我的盯盘里移除，不用再去盯盘列表删</string>
-    <string name="feature_empty_save_switch">优化保存按钮</string>
+    <string name="feature_empty_save_switch">优化确定逻辑</string>
     <string name="feature_empty_save_switch_summary">在数据为空时依旧可以保存</string>
 
     <!-- ============================ 保存后免确认（智能盯盘价格页） ============================ -->
     <string name="feature_skip_save_title">保存后免确认</string>
     <string name="feature_skip_save_summary">智能盯盘价格页保存成功后，不再弹需要手动确认的弹窗</string>
-    <string name="feature_skip_save_switch">无需确定保存</string>
+    <string name="feature_skip_save_switch">无需确定保存盯盘</string>
     <string name="feature_skip_save_switch_summary">改为轻提示并自动返回</string>
-    <string name="feature_skip_save_detail_title">保存后设置</string>
-    <string name="feature_skip_save_detail_entry">返回位置</string>
-    <string name="switch_save_back_to_stock">保存成功后直接返回个股详情页</string>
+    <string name="feature_skip_save_detail_title">保存后返回位置设置</string>
+    <string name="feature_skip_save_detail_entry">保存后返回位置设置</string>
+    <string name="switch_save_back_to_stock">保存后返回个股详情页</string>
 
-    <!-- ============================ 我的盯盘卡片直达详情（智能盯盘） ============================ -->
-    <string name="feature_card_detail_title">我的盯盘卡片跳转股票详情页</string>
+    <!-- ============================ 盯盘数据卡片拓展（智能盯盘） ============================ -->
+    <string name="feature_card_detail_title">盯盘数据卡片拓展</string>
     <string name="feature_card_detail_summary">我的盯盘里的卡片点一下直接进该股的个股详情页，右下角编辑、删除不受影响</string>
-    <string name="feature_card_detail_switch">我的盯盘卡片跳转股票详情页</string>
+    <string name="feature_card_detail_switch">盯盘数据卡片拓展</string>
+    <string name="feature_card_detail_switch_summary">点击数据卡片跳转股票详情页</string>
 
     <!-- ============================ 配置按钮设置（二级菜单） ============================ -->
     <string name="switch_pick_scheme">在多配置下弹出选择方案弹窗</string>
@@ -189,9 +191,9 @@
     <string name="section_stg_swipe">左右滑动</string>
     <string name="item_stg_quote_swipe">左右滑动切换股票</string>
 
-    <!-- ============================ 染色设置（二级菜单） ============================ -->
+    <!-- ============================ 高亮颜色设置（二级菜单） ============================ -->
     <!-- 页面标题就是分组名，页内不再放同名 SmallTitle；开关不带钩子目标这类开发者向说明（2.17.2） -->
-    <string name="detail_color_title">染色设置</string>
+    <string name="detail_color_title">高亮颜色设置</string>
     <string name="item_scope_strategy">作用于策略详情页</string>
     <string name="section_highlight_color">高亮颜色</string>
     <string name="section_preview">效果预览</string>

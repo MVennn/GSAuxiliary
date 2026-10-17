@@ -45,7 +45,7 @@ import java.lang.ref.WeakReference
 class MarketSectorCompactFeature : UiCleanFeature() {
 
     override val id = "market_sector_compact"
-    override val title = "行情市场板块只留三项"
+    override val title = "行情市场板块显示单行"
 
     override val pages = MarketTargets.PAGES
 

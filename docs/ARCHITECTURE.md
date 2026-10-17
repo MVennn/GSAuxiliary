@@ -135,7 +135,7 @@
 | `ui/AppIcons.kt` | 自绘 `ImageVector` 图标（零图标库依赖） | 模块进程 |
 | `ui/MarkdownText.kt` | 轻量 Markdown 渲染（免责声明正文） | 模块进程 |
 | `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
-| `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` | 二级页（染色设置 / 滑动设置） | 模块进程 |
+| `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` | 二级页（高亮颜色设置 / 滑动设置） | 模块进程 |
 | `ui/QuickConfigScreen.kt` · `ui/QuickConfigEditScreen.kt` | 二级页「一键配置方案列表」+ 三级页「方案编辑」 | 模块进程 |
 | `ui/PrefState.kt` · `ui/FeatureCatalog.kt` · `ui/Widgets.kt` | 配置读取、功能展示元数据、共用部件 | 模块进程 |
 
@@ -217,11 +217,11 @@ onHotReloaded(param)
 
 | 功能 | `Feature` 实现 | 目标页面（`pages` 门禁） | 做什么 |
 |---|---|---|---|
-| **底栏隐藏理财项** | `DockCleanFeature` | `MainAct` | 把底栏「理财」那一格 `GONE` + 其余格均分铺满 |
+| **底栏隐藏理财入口** | `DockCleanFeature` | `MainAct` | 把底栏「理财」那一格 `GONE` + 其余格均分铺满 |
 | **首页隐藏横幅** | `HomeBannerFeature` | `MainAct` | 隐藏首页快捷入口下方那条横幅 |
 | **行情市场隐藏滚动横幅与快捷入口** | `MarketBannerFeature` | `MainAct` | 收起轮播横幅 + 快捷入口两个版块 |
-| **行情市场板块只留三项** | `MarketSectorCompactFeature` | `MainAct` | 板块 3 列 × 2 行压成一行（限高） |
-| **行情市场概览压矮** | `MarketOverviewCompactFeature` | `MainAct` | 概览图表区与柱状图一起压矮 |
+| **行情市场板块显示单行** | `MarketSectorCompactFeature` | `MainAct` | 板块 3 列 × 2 行压成一行（限高） |
+| **行情市场概览高度优化** | `MarketOverviewCompactFeature` | `MainAct` | 概览图表区与柱状图一起压矮 |
 
 三条共同约定：钩子里的异常一律 `runCatching` 吞掉（绝不抛给宿主）、
 所有句柄进 `HookBag`、`onConfigChanged` 必须在主线程处理。
@@ -417,7 +417,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 | 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |
-| 底栏隐藏理财项 | `feature/dock/DockCleanTargets.kt` |
+| 底栏隐藏理财入口 | `feature/dock/DockCleanTargets.kt` |
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场（滚动横幅 / 板块 / 概览，三功能共用） | `feature/market/MarketTargets.kt` |
 | 手势导航条同色 | `feature/navbar/NavBarTargets.kt` |
