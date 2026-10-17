@@ -13,7 +13,6 @@
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 架构说明：分层与进程模型，每个功能挂在宿主的哪个点上 |
 | [REVERSE-ENGINEERING.md](REVERSE-ENGINEERING.md) | 逆向与 Hook：取证过程与结论（前半「过程与证据」）、卡过的问题与解法（后半「难点与解法」） |
-| [FINDINGS-LOGIN-KICK.md](FINDINGS-LOGIN-KICK.md) | 顶号与登录态调研：一次以**否定结论**收场的调研，四条已验证无效的拦截思路别再走 |
 | [EXTENDING.md](EXTENDING.md) | 扩展与演进指南：怎么给这套架构加一个新功能 |
 | [UI.md](UI.md) | 模块 App 设置界面：逐页逐控件的说明与约束 |
 | [UI-HISTORY.md](UI-HISTORY.md) | 模块 App 界面踩坑史：安装体积、系统栏沉浸、Launcher 图标的历史决策与根因 |

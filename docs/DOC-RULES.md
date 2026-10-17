@@ -11,7 +11,7 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 
 | 类别 | 收什么 | 现有成员 |
 |---|---|---|
-| 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、FINDINGS-LOGIN-KICK、EXTENDING、UI、UI-HISTORY |
+| 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、UI-HISTORY |
 | 功能专项 | 一个功能一篇（FEATURE-*） | 9 篇 FEATURE-*.md |
 | 流程与规范 | 构建、发版、版本、维护、排错、命名、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、DOC-RULES、TOOLS-DOC-RULES |
 | 参考资料 | 原始数据、Release 说明、免责全文 | reference/、release-notes/、DISCLAIMER |
