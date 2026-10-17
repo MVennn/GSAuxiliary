@@ -144,7 +144,7 @@ python tools/hygiene.py all      # ①②③④ 四条一起跑
 
 | 项 | 结果 |
 |---|---|
-| 仓库体积 | **458M → 109.6M**（清完构建产物；重编后 `app/build` 105M） |
+| 仓库体积 | **458M → 123M**。中间过程：清 `.work/` 后 190M → `gradlew clean` 后源码侧 20M → 重编 release 后 123M（`app/build` 107M 是**当前版本**的产物，留着方便直接装、不再算"旧版本垃圾"） |
 | `.work/` | **268M → 1.7M**（删了 4 个逆向缓存目录、45M 压缩包、20 个截图、9 个历史 APK） |
 | 死代码 | `AppIcons.iconOf`（40 行，图标统一后没人用）、`HostQuoteSource.stockInfoClass`（构造函数里加载一次、从不读） |
 | import | 删 5 条未使用的（`AdapterView`、`GLog`、`Dp`、`Icon`、`padding`） |
