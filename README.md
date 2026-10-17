@@ -25,7 +25,7 @@ Make GoldenSun Great Again！
 
 ## 安装
 
-1. [Releases](../../releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
+1. [Releases](https://github.com/MVennn/GSAuxiliary/releases/latest) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
 3. 作用域中勾上「国信金太阳」（模块已声明默认作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次
@@ -60,7 +60,7 @@ Make GoldenSun Great Again！
 
 「国信金太阳」商标、标识的权利均归其权利人所有。本项目与之不存在任何隶属、合作、授权、认可或支持关系。
 
-完整声明（含使用者声明与承诺）见 [docs/DISCLAIMER.md](docs/DISCLAIMER.md)，模块 App 内「关于 → 免责声明」为同一内容。
+完整声明（含使用者声明与承诺）见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)，模块 App 内「关于 → 免责声明」为同一内容。
 
 ## 开源鸣谢
 
