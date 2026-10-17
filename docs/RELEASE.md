@@ -199,6 +199,16 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
   可回溯、可 review）。`release.yml` 会自动找这个文件；
   本机 `publish.py` 也可以直接 `--notes docs/release-notes/2.14.0.md`。
 - 不传 `--notes` 时脚本会退回 CHANGELOG 的对应段落，**并主动警告**。
+- **每版 Release 说明末尾固定附风险提示段**（法律留痕：持续提示、提示在先），
+  原样粘贴，不随版本改写：
+
+  ```markdown
+  ---
+
+  > 风险提示：本模块仅供学习研究，会 Hook 国信金太阳，可能违反其用户协议并导致
+  > 账号风控或封禁；不构成任何投资建议。下载使用前请阅读并同意
+  > [免责声明](../../blob/main/docs/DISCLAIMER.md)。
+  ```
 
 ---
 

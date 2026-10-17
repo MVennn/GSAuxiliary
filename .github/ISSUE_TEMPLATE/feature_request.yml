@@ -8,6 +8,19 @@ body:
         提建议前可以先翻翻已有的 Issue，避免重复；
         功能页里已经有的开关也请先确认一下没被漏掉。
 
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: 建议前确认
+      description: 本模块仅供学习研究，请知悉以下事项后再提交。
+      options:
+        - label: 我已知悉本模块会 Hook 国信金太阳，可能违反其用户协议并导致账号风控或封禁，相关风险由我自行承担。
+          required: true
+        - label: 我已阅读并同意仓库中的免责声明（docs/DISCLAIMER.md）；我的建议仅涉及界面显示与操作便捷，不涉及自动化交易、荐股或任何违规用途。
+          required: true
+        - label: 我没读上面的清单，闭眼全选（选了这项就别提了，直接关闭）。
+          required: false
+
   - type: textarea
     id: problem
     attributes:
