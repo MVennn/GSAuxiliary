@@ -8,11 +8,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
-import java.util.Collections
-import java.util.WeakHashMap
+import io.github.MVennn.GSAuxiliary.util.Density
+import io.github.MVennn.GSAuxiliary.util.ViewIds
 
 /**
- * 「界面精简」类功能的公共工具。
+ * 「界面精简」类功能的公共工具 —— **只留精简语义**。
  *
  * ## 为什么需要这一层
  *
@@ -25,8 +25,17 @@ import java.util.WeakHashMap
  *    对「认」的精度要求低得多，可以大量依赖**结构特征 + 文案**，
  *    而不是硬编码资源 id。
  *
- * 所以这里提供的是「认视图」的工具箱：遍历、按文案找、按结构判、
- * 资源 id 多级兜底、以及**认不出来时把视图树打出来**（[dump]）。
+ * 所以这里提供的是「认视图」的工具箱：遍历、按文案找、按结构判、量高度。
+ *
+ * ## 边界（2026-10-17 收敛，解除 feature/ ↔ feature/uiclean 包级循环）
+ *
+ * 原先这里还混着一批**与「精简」无关的通用件**：资源 id 解析（`IdCache` / `idsFor`）、
+ * 视图树快照（`dump`）、文案 / 几何小工具（`textOf` / `rectIn`）、dp 换算（`dp`）。
+ * 它们被 `PageSyncFeature`（feature/ 包的调度骨架）反向依赖，形成包级循环；
+ * 现已整体上提到 util 层（`util.ViewIds` / `util.Density`），实现与 KDoc 都随迁。
+ * 下面保留的 `textOf` / `rectIn` / `dp` / `idsFor` / `dump` 入口只是对 util 实现的
+ * **薄委托**：本包与相邻 feature 的既有调用方（`DockCleanFeature`、`HomeBannerFeature`、
+ * `Market*Feature` 等）仍从这里调用；等这些调用方迁到 util 入口后即可删除。
  *
  * ## 与宿主 App 的关系
  *
@@ -74,9 +83,8 @@ object UiClean {
 
     // ------------------------------------------------------------------ 文本
 
-    /** 视图上的可见文案；空串 / 全空白一律当「没有文案」 */
-    fun textOf(v: View): String? =
-        (v as? TextView)?.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+    /** 视图上的可见文案；空串 / 全空白一律当「没有文案」（实现见 [ViewIds.textOf]） */
+    fun textOf(v: View): String? = ViewIds.textOf(v)
 
     /** 子树（含自身）里第一个文案等于 [text] 的 `TextView` */
     fun findText(root: View, text: String): TextView? =
@@ -119,24 +127,11 @@ object UiClean {
         return 0
     }
 
-    /** [v] 在 [root] 坐标系里的矩形；不是后代或还没布局时返回 null */
-    fun rectIn(root: View, v: View): Rect? {
-        val r = Rect()
-        // 注意：View.getDrawingRect 是 void（把结果写进参数里），不是返回布尔
-        v.getDrawingRect(r)
-        if (r.width() <= 0 || r.height() <= 0) return null
-        if (root === v) return r
-        // offsetDescendantRectToMyCoords 定义在 ViewGroup 上（它要按自己的坐标系换算）
-        val group = root as? ViewGroup ?: return null
-        return runCatching {
-            group.offsetDescendantRectToMyCoords(v, r)
-            r
-        }.getOrNull()
-    }
-
-    /** dp → px */
-    fun dp(v: View, value: Int): Int =
-        (value * v.resources.displayMetrics.density + 0.5f).toInt()
+    /**
+     * [v] 在 [root] 坐标系里的矩形；不是后代或还没布局时返回 null。
+     * （实现见 [ViewIds.rectIn]）
+     */
+    fun rectIn(root: View, v: View): Rect? = ViewIds.rectIn(root, v)
 
     /**
      * 一行里宽度和 [ref] 相近的其它格子。
@@ -178,128 +173,28 @@ object UiClean {
 
     fun activityOf(v: View?): Activity? = activityOf(v?.context)
 
-    // ------------------------------------------------------------------ 资源 id
+    // ------------------------------------------------------------------ 换算与资源 id（薄委托，实现已上提 util）
 
-    private val idCaches = Collections.synchronizedMap(WeakHashMap<Context, IdCache>())
+    /** dp → px（实现见 [Density.dp]） */
+    fun dp(v: View, value: Int): Int = Density.dp(v, value)
 
-    /** 取（并缓存）某个 `Context` 上的资源 id 解析器 */
-    fun idsFor(context: Context, pkg: String): IdCache =
-        synchronized(idCaches) { idCaches.getOrPut(context) { IdCache(context, pkg) } }
-
-    // ------------------------------------------------------------------ 诊断
+    /** 取（并缓存）某个 `Context` 上的资源 id 解析器（实现见 [ViewIds.idsFor]） */
+    fun idsFor(context: Context, pkg: String): IdCache = ViewIds.idsFor(context, pkg)
 
     /**
-     * 把一棵视图树压成多行文本 —— **认不出目标控件时的唯一救命稻草**。
-     *
-     * 输出形如（缩进即层级）：
-     *
-     * ```
-     * FrameLayout #content [0,0][1080,2205]
-     *   LinearLayout #ll_home_menu [0,320][1080,520]
-     *     LinearLayout [0,320][180,520]
-     *       ImageView #iv_item_icon [30,340][90,400]
-     *       TextView #tv_item_name "新股申购" [10,404][170,440]
-     * ```
-     *
-     * 每一行都带**真实资源 id 名**（`getResourceEntryName` 反查）与屏幕坐标，
-     * 拿到之后直接往对应 `*Targets.kt` 的候选数组里加一项即可，不需要 adb。
+     * 把一棵视图树压成多行文本（实现见 [ViewIds.dump]）——
+     * **认不出目标控件时的唯一救命稻草**，输出格式与用法见那边的 KDoc。
      */
-    fun dump(root: View, ids: IdCache?, maxNodes: Int = 140, maxDepth: Int = 14): String {
-        val sb = StringBuilder()
-        var n = 0
-        fun rec(v: View, depth: Int) {
-            if (n >= maxNodes || depth > maxDepth) return
-            n++
-            val r = rectIn(root, v)
-            sb.append("  ".repeat(depth)).append(v.javaClass.simpleName)
-            sb.append(" #").append(ids?.nameOf(v.id) ?: v.id.toString())
-            if (r != null) {
-                sb.append(" [").append(r.left).append(',').append(r.top)
-                    .append("][").append(r.right).append(',').append(r.bottom).append(']')
-            } else {
-                sb.append(" [未布局]")
-            }
-            if (v.visibility != View.VISIBLE) sb.append(" vis=").append(v.visibility)
-            textOf(v)?.let { sb.append(" \"").append(it.take(24)).append('"') }
-            sb.append('\n')
-            if (v is ViewGroup) for (i in 0 until v.childCount) rec(v.getChildAt(i), depth + 1)
-        }
-        rec(root, 0)
-        if (n >= maxNodes) sb.append("  …（已截断，共 $n 个节点）\n")
-        return sb.toString()
-    }
+    fun dump(root: View, ids: IdCache?, maxNodes: Int = 140, maxDepth: Int = 14): String =
+        ViewIds.dump(root, ids, maxNodes, maxDepth)
 }
 
 /**
- * 「资源 id 名 → id」解析器。
+ * 「资源 id 名 → id」解析器 —— 实现已随通用件上提至
+ * `io.github.MVennn.GSAuxiliary.util.IdCache`（与 `util.ViewIds` 同文件，
+ * 解析/预热/双层的缓存语义 KDoc 也随迁）。
  *
- * 宿主被加固，静态反编译拿不到 `R.id`，但**运行时**用
- * `Resources.getIdentifier(name, "id", pkg)` 一定拿得到 ——
- * 这正是本项目「候选名 + 多级兜底」容错模式的基础。
- *
- * ## 缓存分两层，因为命中与未命中不一样
- *
- *  - **命中**（解析出非 0）：写进 [HITS]，**进程级共享** —— 同一个包里的 id
- *    与配置、与哪个 `Context` 都无关，一次拿到就永远有效。
- *  - **未命中**（返回 0）：只写进本实例的 `misses`。理由：0 有可能是**时机问题**
- *    而不是真的不存在 —— 名字是在启动早期（启动图那会儿）被 [warm] 预解析的，
- *    那时万一资源还没装配完，进程级缓存会把「这次没查到」永久钉死。
- *    所以未命中按 `Context` 各记一份，换个页面还会再试一次，代价只是一次函数调用。
- *
- * 反查（id → 名字）走 `getResourceEntryName`，供 [UiClean.dump] 输出可读的名字。
+ * 这个别名只为既有 `import ...feature.uiclean.IdCache` 的调用方保留，
+ * 调用方改用 util 包名后即可删除。
  */
-class IdCache(context: Context, private val pkg: String) {
-
-    private val res = (context.applicationContext ?: context).resources
-
-    /** 本 `Context` 上查不到的 id 名（见类注释：未命中不跨 `Context` 共享） */
-    private val misses = HashMap<String, Int>()
-
-    /**
-     * 解析一个 id 名；不存在返回 0。
-     *
-     * `getIdentifier` 是**按名字扫资源表**，不便宜（每个名字一次）。
-     * 所以启动路径上的解析一定要提前做掉 —— 见 [warm]。
-     */
-    fun of(name: String): Int {
-        synchronized(HITS) { HITS["$pkg/$name"] }?.let { return it }
-        synchronized(misses) { misses[name] }?.let { return it }
-        val id = runCatching { res.getIdentifier(name, "id", pkg) }.getOrDefault(0)
-        if (id != 0) synchronized(HITS) { HITS["$pkg/$name"] = id }
-        else synchronized(misses) { misses[name] = 0 }
-        return id
-    }
-
-    /**
-     * 先把一批名字解析好（幂等，重复调用只剩一次哈希查表）。
-     *
-     * 调用点就是全部意义：`UiCleanFeature` 在**每个页面 resume 时**（早于该页第一次布局）
-     * 就调它，而第一个 resume 的页面通常正是**启动图** —— 那一两秒主线程闲着，
-     * 正好把这十几个 `getIdentifier` 算掉，等真正要改界面时不占首帧的时间。
-     *
-     * 返回解析到的数量（日志用）。
-     */
-    fun warm(names: Array<String>): Int {
-        var hit = 0
-        for (n in names) if (of(n) != 0) hit++
-        return hit
-    }
-
-    /** 按候选顺序取第一个存在的 id；全都不存在返回 0 */
-    fun firstOf(names: Array<String>): Int {
-        for (n in names) {
-            val id = of(n)
-            if (id != 0) return id
-        }
-        return 0
-    }
-
-    /** id → 资源名（反查失败返回 null，不抛） */
-    fun nameOf(id: Int): String? =
-        if (id == 0) null else runCatching { res.getResourceEntryName(id) }.getOrNull()
-
-    private companion object {
-        /** `"包名/资源名" -> id`，进程级共享（只存命中的） */
-        val HITS = HashMap<String, Int>()
-    }
-}
+typealias IdCache = io.github.MVennn.GSAuxiliary.util.IdCache

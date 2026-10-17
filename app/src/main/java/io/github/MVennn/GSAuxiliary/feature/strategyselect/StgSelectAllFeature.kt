@@ -16,6 +16,7 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import io.github.MVennn.GSAuxiliary.util.Density
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.util.Collections
 import java.util.WeakHashMap
@@ -440,8 +441,7 @@ class StgSelectAllFeature : Feature {
             )
         }
         if (copy is ViewGroup.MarginLayoutParams) {
-            val density = src.context.resources.displayMetrics.density
-            copy.rightMargin = (GAP_DP * density + 0.5f).toInt()
+            copy.rightMargin = Density.dp(src, GAP_DP)
         }
         return copy
     }

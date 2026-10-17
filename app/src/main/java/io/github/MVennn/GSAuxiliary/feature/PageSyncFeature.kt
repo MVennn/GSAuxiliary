@@ -8,9 +8,8 @@ import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.core.TargetApp
-import io.github.MVennn.GSAuxiliary.feature.uiclean.IdCache
-import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import io.github.MVennn.GSAuxiliary.util.ViewIds
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
@@ -94,14 +93,14 @@ import java.util.WeakHashMap
  * ## 四、预热：把「查 id」挪到启动图那会儿做
  *
  * `Resources.getIdentifier` 是按名字扫资源表，不便宜。本类在**每个页面 resume 时**
- * 就把本功能用到的 id 名解析掉（[idNames]，见 [IdCache.warm]）——
+ * 就把本功能用到的 id 名解析掉（[idNames]，预热用 util 层的 `IdCache.warm`）——
  * 第一个 resume 的页面通常就是启动图，那一两秒主线程正好闲着，
  * 等真正要改界面时只剩哈希查表，首帧不背这个开销。
  *
  * ## 五、失配与「校准入口」
  *
  * [sync] 返回 `false` = 认不出目标控件。连续 [missScanThreshold] 次之后打**一条**警告 +
- * 一份**当前页面的视图树快照**（[UiClean.dump]）。报告挂在布局回调而不是 `onResume`，
+ * 一份**当前页面的视图树快照**（[ViewIds.dump]）。报告挂在布局回调而不是 `onResume`，
  * 是因为布局回调只在「页面真的在屏幕上、并且刚刚发生过布局」时触发，
  * 打出来的快照**就是用户正看着的那一页**。报告频率三重限制（同一 `decorView` 上）：
  * 间隔至少 [reportCooldownMs]、最多 [maxReports] 次、成功一次就清零。
@@ -331,7 +330,7 @@ abstract class PageSyncFeature : Feature {
         val names = idNames
         if (names.isEmpty() || warmed) return
         runCatching {
-            val hit = UiClean.idsFor(activity, idPkg).warm(names)
+            val hit = ViewIds.idsFor(activity, idPkg).warm(names)
             warmed = true
             GLog.d("$id：预热资源 id $hit/${names.size}（在 ${activity.javaClass.simpleName} 上做，省首帧的查表）")
         }.onFailure { GLog.w("$id：预热资源 id 失败（不影响功能）", it) }
@@ -544,10 +543,10 @@ abstract class PageSyncFeature : Feature {
                 "可能是宿主改版，也可能是当前不在目标页"
         )
         if (!dumpOnMiss) return
-        val ids = runCatching { UiClean.idsFor(activity, idPkg) }.getOrNull()
+        val ids = runCatching { ViewIds.idsFor(activity, idPkg) }.getOrNull()
         GLog.i(
             "$id：$page 视图树快照（照着往 *Targets.kt 的候选数组里加 id）\n" +
-                UiClean.dump(root, ids)
+                ViewIds.dump(root, ids)
         )
     }
 

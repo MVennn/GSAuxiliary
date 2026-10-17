@@ -568,11 +568,11 @@ class StockDetailBarFeature : PageSyncFeature() {
         val originalWidth = box.width.takeIf { it > 0 }
             ?: box.measuredWidth.takeIf { it > 0 }
             ?: box.layoutParams?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT
-        val gapPx = gapPx(moreText)
+        val gapPx = StockDetailBarMeasure.gapPx(moreText)
         val moreWidth = moreText.width.takeIf { it > 0 }
             ?: moreText.measuredWidth.takeIf { it > 0 } ?: 0
         val index = box.indexOfChild(moreText)
-        val (iconW, iconH) = refIconSize(moreText)
+        val (iconW, iconH) = StockDetailBarMeasure.refIconSize(moreText)
 
         // ① 把「更多」从盒子里摘出来
         box.removeView(moreText)
@@ -625,34 +625,10 @@ class StockDetailBarFeature : PageSyncFeature() {
         return Injected(box, holder, moreText, entry, originalWidth, index, iconW, iconH)
     }
 
-    /** 「更多」自己那个图标的尺寸 —— 我们的图标按它缩放，才能和同排按钮一样高 */
-    private fun refIconSize(moreText: TextView): Pair<Int, Int> {
-        val d = runCatching { moreText.compoundDrawables.getOrNull(1) }.getOrNull()
-        var w = d?.intrinsicWidth ?: 0
-        var h = d?.intrinsicHeight ?: 0
-        if (w <= 0) w = runCatching { d?.bounds?.width() ?: 0 }.getOrDefault(0)
-        if (h <= 0) h = runCatching { d?.bounds?.height() ?: 0 }.getOrDefault(0)
-        if (w <= 0 || h <= 0) {
-            // 兜底：按 22dp 方图（与「更多」的 ••• 视觉相当）
-            val px = (FALLBACK_ICON_DP * moreText.resources.displayMetrics.density + 0.5f).toInt()
-            w = px
-            h = px
-        }
-        return w to h
-    }
-
-    /** 与「更多」之间的间距：优先沿用盒子原本的 margin，拿不到就用 10dp */
-    private fun gapPx(moreText: TextView): Int {
-        val m = (moreText.parent as? View)?.layoutParams as? ViewGroup.MarginLayoutParams
-        val fromMargin = m?.marginStart ?: 0
-        if (fromMargin > 0) return fromMargin
-        return (GAP_DP * moreText.resources.displayMetrics.density + 0.5f).toInt()
-    }
-
     /** 从「更多」按钮克隆出一颗样式一致、但**独立 id / 独立 tag** 的按钮 */
     private fun buildEntry(moreText: TextView): TextView? {
         val button = TextView(moreText.context)
-        copyStyle(moreText, button)
+        StockDetailBarMeasure.copyStyle(moreText, button)
         button.text = StockDetailBarTargets.ENTRY_TEXT
         button.tag = StockDetailBarTargets.ENTRY_TAG
         runCatching { button.id = View.generateViewId() }
@@ -665,30 +641,6 @@ class StockDetailBarFeature : PageSyncFeature() {
             runCatching { openEntry(v) }.onFailure { GLog.w("底栏入口：打开智能盯盘失败", it) }
         }
         return button
-    }
-
-    /**
-     * 复制「更多」按钮的可见样式。
-     *
-     * 与 `StgSelectAllFeature.copyStyle` 同思路：只复制可见属性，尺寸交给容器。
-     */
-    private fun copyStyle(src: TextView, dst: TextView) {
-        runCatching { dst.setTextColor(src.textColors) }
-        runCatching { src.typeface?.let { dst.typeface = it } }
-        runCatching { dst.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, src.textSize) }
-        runCatching { dst.letterSpacing = src.letterSpacing }
-        runCatching { dst.textScaleX = src.textScaleX }
-        runCatching {
-            dst.setPadding(src.paddingLeft, src.paddingTop, src.paddingRight, src.paddingBottom)
-        }
-        runCatching { dst.compoundDrawablePadding = src.compoundDrawablePadding }
-        runCatching { dst.includeFontPadding = src.includeFontPadding }
-        runCatching { dst.maxLines = src.maxLines }
-        runCatching { dst.ellipsize = src.ellipsize }
-        runCatching { dst.setBackground(src.background?.constantState?.newDrawable()?.mutate()) }
-        runCatching { dst.backgroundTintList = src.backgroundTintList }
-        runCatching { dst.foreground = src.foreground?.constantState?.newDrawable()?.mutate() }
-        runCatching { dst.setAllCaps(false) }
     }
 
     /** 关开关 / 撤销注入：把「更多」搬回盒子、盒子宽度改回原值 */
@@ -1266,12 +1218,6 @@ class StockDetailBarFeature : PageSyncFeature() {
         /** 等 `GridView` 子项完成 measure/layout 的重试次数与间隔 */
         const val MAX_ATTEMPTS = 12
         const val RETRY_MS = 16L
-
-        /** 拿不到盒子 margin 时，新按钮与「更多」之间的兜底间距（dp） */
-        const val GAP_DP = 10f
-
-        /** 量不到「更多」图标尺寸时的兜底边长（dp） */
-        const val FALLBACK_ICON_DP = 22f
 
         /**
          * 注入时把「更多」盒子的**原宽**记在我们自己的 holder 上（keyed tag）。

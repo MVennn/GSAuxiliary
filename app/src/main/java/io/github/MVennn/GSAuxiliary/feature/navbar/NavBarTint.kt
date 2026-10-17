@@ -15,6 +15,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean
+import io.github.MVennn.GSAuxiliary.util.Density
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -58,10 +59,6 @@ object NavBarTint {
         }
     }
 
-    /** [v] 所在屏幕密度下的 dp → px */
-    fun dp(v: View, value: Int): Int =
-        (value * v.resources.displayMetrics.density + 0.5f).toInt()
-
     /**
      * 内容最后那一行的取色带（见 `NavBarTargets` 类注释第二节的图）。
      *
@@ -89,7 +86,7 @@ object NavBarTint {
             h
         }
         val safeBottom = bottom.coerceAtLeast(1).coerceAtMost(h)
-        val top = (safeBottom - dp(decor, NavBarTargets.BAND_DP)).coerceAtLeast(0)
+        val top = (safeBottom - Density.dp(decor, NavBarTargets.BAND_DP)).coerceAtLeast(0)
         return Band(top, safeBottom)
     }
 
