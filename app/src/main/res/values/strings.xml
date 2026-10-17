@@ -255,11 +255,10 @@
          （用户看不懂），完整档案在 docs/（2.17.2 起） -->
 
     <string name="section_author">关于作者</string>
-    <string name="about_developer">开发者</string>
-    <string name="about_github">GitHub</string>
     <string name="about_license">开源协议</string>
     <string name="about_repo">项目仓库</string>
     <string name="about_value_developer">M.Venn</string>
+    <string name="about_value_handle">@MVennn</string>
     <string name="about_value_github">https://github.com/MVennn</string>
     <string name="about_value_license">Apache-2.0</string>
     <string name="about_value_repo_url">https://github.com/MVennn/GSAuxiliary</string>
@@ -271,8 +270,14 @@
     <string name="oss_lsposed_desc">模块框架与现代 Xposed API</string>
     <string name="oss_liquid_glass">AndroidLiquidGlass (backdrop)</string>
     <string name="oss_liquid_glass_desc">液态玻璃折射与模糊效果</string>
+    <string name="oss_compose">Jetpack Compose / AndroidX</string>
+    <string name="oss_compose_desc">声明式界面框架与 Android 基础组件</string>
+    <string name="oss_kotlin">Kotlin</string>
+    <string name="oss_kotlin_desc">开发语言与标准库</string>
     <string name="oss_material_icons">Material Icons</string>
-    <string name="oss_material_icons_desc">界面图标的矢量路径数据（自绘 ImageVector，不引入图标库）</string>
+    <string name="oss_material_icons_desc">界面图标的矢量路径数据（自绘，未引入图标库）</string>
+    <string name="oss_hyperisland">HyperIsland</string>
+    <string name="oss_hyperisland_desc">关于页的布局与动效移植自该项目（MIT）</string>
     <string name="about_third_party">第三方组件声明</string>
     <string name="about_third_party_desc">查看随 APK 分发的 NOTICE（各开源组件的版权与许可证）</string>
     <string name="notice_detail_title">第三方组件声明</string>

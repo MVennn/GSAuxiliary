@@ -36,3 +36,42 @@ This product incorporates third-party software under the following licenses:
 - Material Design Icons (path data)
   https://github.com/google/material-design-icons
   Licensed under the Apache License, Version 2.0.
+
+- HyperIsland (1812z) — About page
+  https://github.com/1812z/HyperIsland
+  Licensed under the MIT License, full text below.
+  app/src/main/java/io/github/MVennn/GSAuxiliary/ui/AboutHero.kt and the layout
+  structure of AboutTab.kt are derived from HyperIsland's compose/page/AboutPage.kt.
+  The logo mark in res/drawable/ic_about_mark.xml follows the shape language of
+  its about_logo_mark.xml. Modifications: our own logo geometry, miuix 0.9.3
+  compatible mark tinting (gradient mask instead of miuix-blur), Chinese copy.
+
+  MIT License
+
+  Copyright (c) 2026 1812z
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+==============================================================================
+Acknowledgements
+
+Two further debts are already covered by the component list above: the
+structure of ui/GsSwitch.kt follows Miuix's Switch, and the interaction physics
+in ui/LiquidPhysics.kt are ported from AndroidLiquidGlass.
+

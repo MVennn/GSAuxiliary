@@ -23,7 +23,8 @@
 | `ModuleTab.kt` | Tab 1 概览（顶部状态卡 + 模块 / 运行环境 两组，见 §3） |
 | `FeatureTab.kt` | Tab 2 功能（搜索框在**列表顶部**随列表滚动 + 按 `query` 过滤 + 功能卡片 + 二级入口） |
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
-| `AboutTab.kt` | Tab 4 关于（含免责声明二级页正文 `DisclaimerContent`） |
+| `AboutTab.kt` | Tab 4 关于：Hero + 作者卡 + 开源鸣谢 + 免责声明二级页正文 `DisclaimerContent` |
+| `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 玻璃 mark / 滚动淡出），切到该页时顶栏上滑收起 |
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.3） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |

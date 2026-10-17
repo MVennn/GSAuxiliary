@@ -248,11 +248,10 @@
          full records live in docs/ (since 2.17.2) -->
 
     <string name="section_author">Author</string>
-    <string name="about_developer">Developer</string>
-    <string name="about_github">GitHub</string>
     <string name="about_license">License</string>
     <string name="about_repo">Repository</string>
     <string name="about_value_developer">M.Venn</string>
+    <string name="about_value_handle">@MVennn</string>
     <string name="about_value_github">https://github.com/MVennn</string>
     <string name="about_value_license">Apache-2.0</string>
     <string name="about_value_repo_url">https://github.com/MVennn/GSAuxiliary</string>
@@ -264,8 +263,14 @@
     <string name="oss_lsposed_desc">Module framework and modern Xposed API</string>
     <string name="oss_liquid_glass">AndroidLiquidGlass (backdrop)</string>
     <string name="oss_liquid_glass_desc">Liquid glass refraction and blur effects</string>
+    <string name="oss_compose">Jetpack Compose / AndroidX</string>
+    <string name="oss_compose_desc">Declarative UI toolkit and Android base libraries</string>
+    <string name="oss_kotlin">Kotlin</string>
+    <string name="oss_kotlin_desc">Language and standard library</string>
     <string name="oss_material_icons">Material Icons</string>
-    <string name="oss_material_icons_desc">Vector path data for UI icons (hand-built ImageVector, no icon library)</string>
+    <string name="oss_material_icons_desc">Vector path data for UI icons (hand-built, no icon library)</string>
+    <string name="oss_hyperisland">HyperIsland</string>
+    <string name="oss_hyperisland_desc">About page layout and motion ported from this project (MIT)</string>
     <string name="about_third_party">Third-party notices</string>
     <string name="about_third_party_desc">View the NOTICE bundled with the APK (copyright and licenses of components)</string>
     <string name="notice_detail_title">Third-party notices</string>

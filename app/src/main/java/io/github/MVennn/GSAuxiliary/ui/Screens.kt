@@ -180,6 +180,16 @@ internal fun HomeScaffold(
         label = "dock-alpha",
     )
 
+    // 关于页整块 Hero 要吃到状态栏后面，顶栏留着会把渐变的头部齐齐截断 ——
+    // 切到关于时顶栏向上滑出并淡出，切走时滑回来。
+    // 用 1 - 进度 去缩内容顶部留白，所以顶栏收起的同时内容会平滑地补上去，
+    // 而不是先留一条空白再突然跳。
+    val topBarHide by animateFloatAsState(
+        targetValue = if (currentTab == Tab.ABOUT) 1f else 0f,
+        animationSpec = tween(TopBarHideMillis),
+        label = "topbar-hide",
+    )
+
     Box(Modifier.fillMaxSize()) {
         // 悬浮底栏与顶栏玻璃都要采样「内容」才能做出折射 / 模糊，所以把内容录进图层
         val backdrop = rememberLayerBackdrop {
@@ -205,15 +215,25 @@ internal fun HomeScaffold(
                 val subtitle = stringResource(currentTab.subtitleRes)
                 // 搜索框 2.9.3 起移进「功能」列表顶部（随列表一起滚动），
                 // 顶栏只剩标题 —— 理由见 FeatureTab 的注释。
-                if (liquidGlass) {
-                    GlassTopBar(
-                        backdrop = backdrop,
-                        effect = glassEffect,
-                        title = title,
-                        subtitle = subtitle,
-                    )
-                } else {
-                    SmallTopAppBar(title = title, subtitle = subtitle)
+                //
+                // 关于页把整条顶栏往上滑出去（见上方 topBarHide）：Hero 要吃到
+                // 状态栏后面，顶栏留着会把渐变头部截成一条直线。
+                Box(
+                    modifier = Modifier.graphicsLayer {
+                        translationY = -size.height * topBarHide
+                        alpha = 1f - topBarHide
+                    },
+                ) {
+                    if (liquidGlass) {
+                        GlassTopBar(
+                            backdrop = backdrop,
+                            effect = glassEffect,
+                            title = title,
+                            subtitle = subtitle,
+                        )
+                    } else {
+                        SmallTopAppBar(title = title, subtitle = subtitle)
+                    }
                 }
             },
             bottomBar = {
@@ -227,19 +247,22 @@ internal fun HomeScaffold(
                 }
             },
         ) { padding ->
+            // 顶栏收起多少，顶部留白就少多少：两者用同一个 topBarHide 驱动，
+            // 内容才能跟着顶栏一起平滑上移，而不是等动画结束再跳一格
+            val contentTopPadding = padding.calculateTopPadding() * (1f - topBarHide)
             CompositionLocalProvider(
                 // 设置页的选择项 / 重置确认都从自绘弹窗走，控制器在这里下发
                 LocalDialogController provides dialogs,
                 LocalDockInset provides if (liquidGlass) DockHeight + DockMargin else 0.dp,
                 // 玻璃模式下内容铺到屏幕顶边，首屏空白交给各 Tab 自己补（见上方注释）
-                LocalTopInset provides if (liquidGlass) padding.calculateTopPadding() else 0.dp,
+                LocalTopInset provides if (liquidGlass) contentTopPadding else 0.dp,
             ) {
                 Box(Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(
-                                top = if (liquidGlass) 0.dp else padding.calculateTopPadding(),
+                                top = if (liquidGlass) 0.dp else contentTopPadding,
                                 // 液态底栏时不留底部 inset，内容铺到屏幕最底边（导航条沉浸）
                                 bottom = if (liquidGlass) 0.dp else padding.calculateBottomPadding(),
                             )
@@ -458,3 +481,11 @@ internal val DockHideThreshold = 24.dp
 
 /** 悬浮底栏收起 / 放出的动画时长 */
 private const val DockHideMillis = 240
+
+/**
+ * 关于页顶栏上滑收起的时长。
+ *
+ * 比板块切换的 260ms 略短一点：顶栏是「让路」，先走完一半再让内容顶上来，
+ * 观感上就不会出现「顶栏还挂在上面、Hero 已经贴上去了」的错位。
+ */
+private const val TopBarHideMillis = 220

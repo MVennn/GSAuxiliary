@@ -146,6 +146,7 @@
 | `ui/AppDialogWidgets.kt` | 弹窗子组件（`DialogBody` / 按钮行 / 勾选行等，从 AppDialog 拆出） | 模块进程 |
 | `ui/SystemBars.kt` | 系统栏沉浸（`LocalNavBarInset`） | 模块进程 |
 | `ui/AppIcons.kt` | 自绘 `ImageVector` 图标（零图标库依赖） | 模块进程 |
+| `ui/AboutHero.kt` | 关于页 Hero：渐变光场、负空间 mark、滚动淡出（移植自 HyperIsland，MIT） | 模块进程 |
 | `ui/MarkdownText.kt` | 轻量 Markdown 渲染（免责声明正文） | 模块进程 |
 | `ui/*Tab.kt` | 四个板块的页面内容 | 模块进程 |
 | `ui/WatchlistDetail.kt` · `ui/StrategyQuoteDetail.kt` | 二级页（高亮颜色设置 / 滑动设置） | 模块进程 |
