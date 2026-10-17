@@ -84,7 +84,14 @@ def screen_size(dev):
 
 def dump_ui(dev):
     sh([ADB, "-s", dev, "shell", "uiautomator dump /sdcard/ui.xml"])
-    return sh([ADB, "-s", dev, "shell", "cat /sdcard/ui.xml"])
+    xml = sh([ADB, "-s", dev, "shell", "cat /sdcard/ui.xml"])
+    if "<hierarchy" not in xml:
+        # dump 失败时 cat 会拿到空内容或旧文件，别让 ET 抛裸 traceback
+        raise SystemExit(
+            "控件树 dump 失败（返回 %d 字节）——先确认设备在线、目标页在前台，再重试"
+            % len(xml)
+        )
+    return xml
 
 
 def screenshot(dev):
