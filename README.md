@@ -60,7 +60,7 @@ Make GoldenSun Great Again！
 
 「国信金太阳」商标、标识的权利均归其权利人所有。本项目与之不存在任何隶属、合作、授权、认可或支持关系。
 
-完整声明（含使用者声明与承诺）见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)，模块 App 内「关于 → 免责声明」为同一内容。
+完整声明共十一条（含使用者声明与承诺、违约与授权终止），见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)；模块 App 内「关于 → 免责声明」为同一内容。
 
 ## 开源鸣谢
 
