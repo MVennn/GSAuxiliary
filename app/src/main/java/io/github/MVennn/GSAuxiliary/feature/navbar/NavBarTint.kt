@@ -202,22 +202,59 @@ object NavBarTint {
      * 它是合成链的**底色**：链上任何一层给了实心背景就覆盖它，
      * 一层都没有时它至少保证结果是「宿主页面的底色」而不是黑 / 白硬块。
      *
-     * 解析不出（主题没声明、声明的是渐变 / 图片且渲染失败）返回 null。
+     * 主题里常见 `?attr/xxx` 的**套娃引用**：`resolveAttribute` 拿到的是
+     * attr id（[TypedValue.TYPE_ATTRIBUTE]，`resourceId` 为 0）——必须拿这个
+     * attr id 再解析一次才是真值，直接放弃会让结构取色整档空手，
+     * 首帧只能等像素校准兜底（真机上量过：小白条要黑 ~2 秒）。
+     *
+     * 解析不出（各失败分支有 d 级日志）返回 null。
      */
     fun windowBackground(activity: Activity): Int? {
         val tv = TypedValue()
         val ok = runCatching {
             activity.theme.resolveAttribute(android.R.attr.windowBackground, tv, true)
         }.getOrDefault(false)
-        if (!ok) return null
-        if (tv.type >= TypedValue.TYPE_FIRST_COLOR_INT && tv.type <= TypedValue.TYPE_LAST_COLOR_INT) {
-            return tv.data or 0xFF000000.toInt()
+        if (!ok) {
+            GLog.d("nav_bar_blend：windowBackground 主题里没声明，结构取色将无底色")
+            return null
         }
-        if (tv.resourceId == 0) return null
+        var v = tv
+        if (v.type == TypedValue.TYPE_ATTRIBUTE) {
+            if (v.data == 0) {
+                GLog.d("nav_bar_blend：windowBackground 指向的 attr id 为 0，不解析")
+                return null
+            }
+            val tv2 = TypedValue()
+            val ok2 = runCatching { activity.theme.resolveAttribute(v.data, tv2, true) }
+                .getOrDefault(false)
+            if (!ok2) {
+                GLog.d("nav_bar_blend：windowBackground 是 attr 套娃（0x${"%08X".format(v.data)}），二段解析失败")
+                return null
+            }
+            v = tv2
+        }
+        if (v.type >= TypedValue.TYPE_FIRST_COLOR_INT && v.type <= TypedValue.TYPE_LAST_COLOR_INT) {
+            return v.data or 0xFF000000.toInt()
+        }
+        if (v.resourceId == 0) {
+            GLog.d("nav_bar_blend：windowBackground 既不是颜色也没有资源 id（type=${v.type}），解析不出")
+            return null
+        }
         val d = runCatching { activity.resources.getDrawable(tv.resourceId, activity.theme) }
-            .getOrNull() ?: return null
+            .getOrNull() ?: run {
+            GLog.d("nav_bar_blend：windowBackground 资源 ${activity.resources.getResourceEntryName(tv.resourceId)} 加载失败")
+            return null
+        }
         val c = drawableColor(d)
-        return if (Color.alpha(c) >= NavBarTargets.MIN_ALPHA) c else null
+        if (Color.alpha(c) < NavBarTargets.MIN_ALPHA) {
+            GLog.d(
+                "nav_bar_blend：windowBackground 资源 " +
+                    "${runCatching { activity.resources.getResourceEntryName(tv.resourceId) }.getOrNull()} " +
+                    "读不出实心色（alpha ${Color.alpha(c)}），不用它当底色",
+            )
+            return null
+        }
+        return c
     }
 
     // ---------------------------------------------------------------- 上色
@@ -332,11 +369,15 @@ object NavBarTint {
     /**
      * 一个 `Drawable` 「大概是什么颜色」。
      *
-     * [ColorDrawable] 直接取（精确）；其余一律**渲染成 1×1 位图**再读那一像素 ——
+     * [ColorDrawable] 直接取（精确）；其余一律渲染到小画板再读像素 ——
      * 这样 `GradientDrawable` / `ShapeDrawable` / `LayerDrawable` / `StateListDrawable`
      * / 九宫格都能拿到一个说得过去的值，不用去反射各个版本里名字还不一样的私有字段。
      *
-     * 取不到（渲染失败 / 真的是透明的）返回 [Color.TRANSPARENT]，
+     * 读的是**中轴三点的平均**（见 [NavBarTargets.SAMPLE_EDGE_PX]）：圆角背景的
+     * 四角在圆弧外是透明的，只读一个角的旧法会读出空；垂直渐变只读左上角
+     * 则会取到顶部色，而取色带在底部 —— 中轴三点至少拿到中下部的代表色。
+     *
+     * 拿不到（渲染失败 / 真的是透明的）返回 [Color.TRANSPARENT]，
      * 调用方按「这一层没有给颜色」处理。
      */
     fun drawableColor(d: Drawable): Int {
@@ -344,12 +385,38 @@ object NavBarTint {
         val old = Rect(d.bounds)
         return runCatching {
             scratch.eraseColor(Color.TRANSPARENT)
-            d.setBounds(0, 0, NavBarTargets.RENDER_EDGE_PX, NavBarTargets.RENDER_EDGE_PX)
+            d.setBounds(0, 0, NavBarTargets.SAMPLE_EDGE_PX, NavBarTargets.SAMPLE_EDGE_PX)
             d.draw(scratchCanvas)
-            scratch.getPixel(0, 0)
+            sampleColor(scratch)
         }.getOrDefault(Color.TRANSPARENT).also {
             runCatching { d.bounds = old }
         }
+    }
+
+    /**
+     * 小画板上的读色：沿中轴取三个高度（1/4、1/2、3/4）做平均，
+     * 透明像素不参与 —— 与 [average] 的「整幅平均」不同，这里只关心
+     * 「这个背景的中下部是什么色」。
+     */
+    private fun sampleColor(bmp: Bitmap): Int {
+        val x = bmp.width / 2
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        var cnt = 0
+        for (y in intArrayOf(bmp.height / 4, bmp.height / 2, bmp.height * 3 / 4)) {
+            val c = bmp.getPixel(x, y)
+            if (Color.alpha(c) == 0) continue
+            r += Color.red(c)
+            g += Color.green(c)
+            b += Color.blue(c)
+            cnt++
+        }
+        if (cnt == 0) return Color.TRANSPARENT
+        return 0xFF000000.toInt() or
+            ((r / cnt).toInt() shl 16) or
+            ((g / cnt).toInt() shl 8) or
+            (b / cnt).toInt()
     }
 
     /** 源色叠加在目标色之上（标准 source-over，返回的颜色带正确 alpha） */
@@ -375,7 +442,9 @@ object NavBarTint {
 
     // ---------------------------------------------------------------- 私有
 
-    /** 复用的 1×1 画板（只在主线程用，见 [drawableColor]） */
-    private val scratch = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    /** 复用的小画板（只在主线程用，见 [drawableColor]） */
+    private val scratch = Bitmap.createBitmap(
+        NavBarTargets.SAMPLE_EDGE_PX, NavBarTargets.SAMPLE_EDGE_PX, Bitmap.Config.ARGB_8888,
+    )
     private val scratchCanvas = Canvas(scratch)
 }
