@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +33,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.FrameworkBridge
@@ -79,32 +83,49 @@ internal fun ModuleTab() {
     val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}"
     val buildTime = BuildConfig.BUILD_TIME.ifEmpty { "—" }
 
-    // 框架信息一次取全，只喂给顶部状态卡
-    val framework = remember(connected.value, unknown, unreadable, noFramework) {
+    // 框架信息：读到就存下来，**未激活时短轮询几次**。
+    //
+    // 之前是 `remember(connected.key){ … }` 只算一次 —— 冷启动时框架服务刚连上、
+    // `scope` / 版本号还读不到，这一版就永远停在「未激活 + 感叹号」，直到连接状态
+    // 再次翻转才重算。LSPosed 明明已激活、卡片还挂感叹号，就是它。
+    fun readFramework(): FrameworkInfo {
         val svc = FrameworkBridge.service()
         if (svc == null) {
             // 连都没连上：框架没装 / 没启用模块 / 服务已断开
-            FrameworkInfo(
+            return FrameworkInfo(
                 state = FrameworkState.Disconnected,
                 version = noFramework,
                 api = "—",
             )
-        } else {
-            val version = runCatching {
-                listOfNotNull(svc.frameworkName, svc.frameworkVersion)
-                    .joinToString(" ")
-                    .ifEmpty { unreadable }
-            }.getOrDefault(unreadable)
-            val api = runCatching { "API ${svc.apiVersion}" }.getOrDefault(unknown)
-            // 连上了不等于生效：作用域为空说明框架认得这个模块、但没把它派到任何应用上。
-            // 读不到版本号 / API 也算异常态。两者任一不成立就落到「未激活」。
-            val scope = runCatching { svc.scope }.getOrNull()
-            val activated = version != unreadable && api != unknown && !scope.isNullOrEmpty()
-            FrameworkInfo(
-                state = if (activated) FrameworkState.Active else FrameworkState.Inactive,
-                version = version,
-                api = api,
-            )
+        }
+        val version = runCatching {
+            listOfNotNull(svc.frameworkName, svc.frameworkVersion)
+                .joinToString(" ")
+                .ifEmpty { unreadable }
+        }.getOrDefault(unreadable)
+        val api = runCatching { "API ${svc.apiVersion}" }.getOrDefault(unknown)
+        // 连上了不等于生效：作用域为空说明框架认得这个模块、但没把它派到任何应用上。
+        // 读不到版本号 / API 也算异常态。两者任一不成立就落到「未激活」。
+        val scope = runCatching { svc.scope }.getOrNull()
+        val activated = version != unreadable && api != unknown && !scope.isNullOrEmpty()
+        return FrameworkInfo(
+            state = if (activated) FrameworkState.Active else FrameworkState.Inactive,
+            version = version,
+            api = api,
+        )
+    }
+
+    var framework by remember(connected.value, unknown, unreadable, noFramework) {
+        mutableStateOf(readFramework())
+    }
+    // 还没读到「已激活」就每 400ms 再看一眼（最多 8 次 ≈ 3.2s）：框架刚起来的
+    // 那一小段确实可能还读不到作用域。读到已激活立刻停，不空转。
+    LaunchedEffect(connected.value) {
+        var tries = 0
+        while (tries < 8 && framework.state != FrameworkState.Active) {
+            delay(400)
+            framework = readFramework()
+            tries++
         }
     }
 
@@ -305,11 +326,13 @@ private fun OverviewStatusCard(
             }
             val iconSizePx = with(density) { StatusCardIconSize.toPx() }
             val reservedPx = with(density) {
-                (StatusCardTextStartPadding + StatusCardIconGap + StatusCardIconEndPadding).toPx()
+                (StatusCardTextStartPadding + StatusCardIconGap).toPx()
             }
-            // 剩给图标的横向空间 / 图标自身宽 = 能露出几分之几（最少四分之一）
+            // 能露出几分之几：默认只露 [StatusCardIconDefaultVisible]（图标本来就吃在
+            // 卡片右缘外，参考 LSPosed 那张「已激活」卡），文字更宽时继续往右推，
+            // 最少留 [StatusCardIconMinVisible]。
             val iconVisibleFraction = ((constraints.maxWidth - reservedPx - textMaxPx) / iconSizePx)
-                .coerceIn(StatusCardIconMinVisible, 1f)
+                .coerceIn(StatusCardIconMinVisible, StatusCardIconDefaultVisible)
             val iconShift = with(density) { (iconSizePx * (1f - iconVisibleFraction)).toDp() }
 
             // --- 卡面：关于页那套流动光场（同一份代码，不是另写一遍） ---
@@ -328,30 +351,33 @@ private fun OverviewStatusCard(
                 modifier = Modifier.matchParentSize(),
             )
 
-            // --- 右侧装饰图标：还是原来那颗描边图标，只是颜色跟文字走 ---
+            // --- 右侧装饰图标：状态色、贴右缘出血（照 LSPosed 那张「已激活」卡）---
             //
-            // 3.2.1 一度做成「关于页 mark 那种玻璃板」，用户否掉了：这张卡要的是
-            // 大号线框图标当背景，不是一块实心玻璃。现在回退成 `TintedIcon` +
-            // CheckCircle / ErrorCircle，**不上状态色**（tint 直接取标题的
-            // heroAccent），相当于「同一句话的水印」。
+            // 位置：`CenterEnd` + 向右偏移 = 只露 [StatusCardIconDefaultVisible]，
+            // 其余吃到卡片外（Card 的 squircle 会裁掉），不是整颗摆在卡里。
+            // 颜色：用状态色 [accent]（已激活亮绿 / 未激活红 / 未连接灰），
+            // 不再跟随文字 —— 参考那张卡里对勾就是绿的。
             //
-            // 文字放大后图标会让位：按三行文字实测的最宽一行算出还剩多少横向空间，
-            // 有空间就整颗露出来；不够就往右推出去，最少留四分之一（用户：
-            // 「实在没位置就只展示四分之一，其他地方都给文字」）。
+            // **两种图形必须写在两条分支里**：`TintedIcon` 内部按 painter 缓存，
+            // 同一个调用点只改参数会复用上一颗图形（用户看到「已激活还挂着感叹号」）。
             Box(Modifier.matchParentSize()) {
-                TintedIcon(
-                    imageVector = if (state == FrameworkState.Active) {
-                        AppIcons.CheckCircle
-                    } else {
-                        AppIcons.ErrorCircle
-                    },
-                    tint = titleColor.copy(alpha = StatusCardIconAlpha),
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .offset(x = iconShift)
-                        .padding(end = StatusCardIconEndPadding)
-                        .size(StatusCardIconSize),
-                )
+                val glyphModifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .offset(x = iconShift)
+                    .size(StatusCardIconSize)
+                if (state == FrameworkState.Active) {
+                    TintedIcon(
+                        imageVector = AppIcons.CheckCircle,
+                        tint = accent,
+                        modifier = glyphModifier,
+                    )
+                } else {
+                    TintedIcon(
+                        imageVector = AppIcons.ErrorCircle,
+                        tint = accent,
+                        modifier = glyphModifier,
+                    )
+                }
             }
 
             // --- 左侧三行文字：垂直居中 ---
@@ -418,8 +444,8 @@ private val StatusCardTitleSize = 34.sp
 private val StatusCardVersionSize = 18.sp
 private val StatusCardApiSize = 16.sp
 
-/** 图标与文字同色时的透明度：它是水印，不能和标题一样重 */
-private const val StatusCardIconAlpha = 0.30f
+/** 图标默认露出多少（其余吃到卡片右缘外，与 LSPosed 那张卡一致） */
+private const val StatusCardIconDefaultVisible = 0.75f
 
 /**
  * 「已激活」的绿色（2.17.1 由 `0xFF1AAE6A` 加深到 `0xFF0E8A52`）。
@@ -431,7 +457,7 @@ private val StatusActiveColor = Color(0xFF0E8A52)
 /** 文字挤到没地方时，图标最少露出这个比例（再少就认不出图形了） */
 private const val StatusCardIconMinVisible = 0.25f
 
-/** 文字起始边距（与图标右缘边距对称） */
+/** 文字起始边距 */
 private val StatusCardTextStartPadding = 16.dp
 
 /** 文字与图标之间至少留的空隙，用来算「还剩多少给图标」 */
@@ -447,10 +473,3 @@ private val StatusCardIconGap = 12.dp
  */
 private val StatusCardIconSize = 132.dp
 
-/**
- * 图标右缘距卡片右缘的距离（2.17.2 新增，16dp）。
- *
- * 取 0 时图标贴着卡边；留 16dp 与左侧文字的 16dp 起始边距对称，
- * 也给卡片圆角让出余地。
- */
-private val StatusCardIconEndPadding = 16.dp

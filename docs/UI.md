@@ -248,8 +248,11 @@ Miuix 基础件拼的。
 > （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光）。
 > **不要**再压半透明底色：彩色光场上压一层灰，光感就没了。
 >
-> **配色分两层**：三态色（绿 / 红 / 灰）只染**背景流光**；前景文字与图标保持中性 ——
-> 深色白、浅色黑，副行与图标按同一色降透明度。背景已经带色，文字再染色会糊。
+> **配色分两层**：三态色（绿 / 红 / 灰）同时给**背景流光**与**右侧图标**；前景文字
+> 保持中性（深色白 / 浅色黑，副行按同色降透明度）。文字再染色会和背景糊在一起。
+>
+> **图标照 LSPosed 那张「已激活」卡**：贴右缘、吃出卡片外（默认只露 75%），
+> 已激活时是实心绿对勾，不是压在文字后面的水印。
 
 ```kotlin
 Card(
@@ -263,12 +266,15 @@ Card(
             palettes = lightFieldPalettesFrom(accent, darkTheme),  // 状态色 → 整套调色板
             modifier = Modifier.matchParentSize(),
         )
-        TintedIcon(                                 // 大号线框图形，跟标题同色
-            imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
-            tint = titleColor.copy(alpha = 0.30f),
-            modifier = Modifier.align(Alignment.CenterEnd).offset(x = iconShift)
-                .padding(end = 16.dp).size(StatusCardIconSize),
-        )
+        // 状态色 + 出血：两条分支分开写，别在同一次调用里换 imageVector
+        // （TintedIcon 内部按 painter 缓存，复用会停在上一颗图形）
+        val glyphModifier = Modifier.align(Alignment.CenterEnd)
+            .offset(x = iconShift).size(StatusCardIconSize)
+        if (active) {
+            TintedIcon(AppIcons.CheckCircle, tint = accent, modifier = glyphModifier)
+        } else {
+            TintedIcon(AppIcons.ErrorCircle, tint = accent, modifier = glyphModifier)
+        }
         Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
             标题(titleColor, Bold, 34sp) / 版本(subColor, SemiBold, 18sp) / API(subColor, 16sp)
         }
@@ -283,74 +289,29 @@ private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
 ```
 
 **行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp。**图标让位**：`TextMeasurer` 先量
-三行最宽那行，空间够就整颗露出、不够往右推、最少留四分之一（`StatusCardIconMinVisible`）。
+三行最宽那行 —— 默认露 75%（`StatusCardIconDefaultVisible`），文字更宽就继续往右推，
+最少留 25%（`StatusCardIconMinVisible`）。
 
-| 状态 | 条件 | 流光主色（背景） | 文字与图标 |
+**状态读取**：读到「已激活」之前每 400ms 重读一次框架信息（最多 8 次）—— 框架刚起来的
+那一小段 `scope` / 版本号可能还读不到，只算一次会永远停在「未激活 + 感叹号」。
+
+| 状态 | 条件 | 流光 + 图标 | 文字 |
 |---|---|---|---|
 | 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 | 深色白 / 浅色黑 |
-| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` | 同上 |
-| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` | 同上 |
+| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` 红 | 同上 |
+| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` 灰 | 同上 |
 
-#### 3.1.1 2.9.1：纵向拉长 + 图标「只露左上四分之一」
+#### 3.1.1 图标的版式演进（2.9.1 → 2.17.2）
 
-用户要求「容器框纵向拉长，长度约为当前高度的一半；右侧图标放大，放到右下角，
-只展示其左上四分之一，以营造设计感」。三处改动：
+2.9.1 用户要求「卡片纵向拉长、右侧图标放到右下角只露左上四分之一」：高度定
+`148dp`，图标 `52 → 150dp`、透明度降到 0.18，`align(BottomEnd)` 后各推半个身位。
+2.9.2 字号上调一档（20/14/13 → 22/16/15）、图标 `150 → 170dp` 并回缩 16dp；
+2.9.3 才发现**图标一直在参与卡片高度测量**（`offset` 不改尺寸，170dp 的图标
+把卡片顶高），于是把它移进 `matchParentSize` 容器，高度从此只由内容 + 148dp 决定。
 
-1. **高度**：`heightIn(min = 148.dp)`（原内容高度约 97dp），约 +50%；
-   三行文字改在 `Box` 里 `align(Alignment.CenterStart)` 垂直居中，留白更从容。
-2. **图标放大**：`52.dp → 150.dp`，`tint` 从实色降到 `accent.copy(alpha = 0.18f)` ——
-   尺寸上去了就必须降透明度，否则会喧宾夺主。
-3. **只露左上四分之一**：`align(BottomEnd)` 让图标右下角贴卡片右下角，再
-   `offset(x = 75.dp, y = 75.dp)` 各推**半个身位**（150 / 2），于是图标**中心**
-   正好落在卡片的右下角上 —— 卡片范围之内只剩它的左上四分之一。
-
-> **不需要自己包一层 `clip`。** Miuix `Card` 的 `BasicCard` 内部走
-> `squircleSurface`，其中调用了 `ClipKt.clip(modifier, shape)`
-> （`javap -c` 逆 `miuix-squircle` 的 `SquircleBackgroundKt` 确认），
-> 超出卡片范围的内容会被自动切掉 —— 这也是为什么 `insideMargin` 必须置 0：
-> 否则图标会被内边距提前裁一刀，露出来的就不止四分之一了。
-
-#### 3.1.2 2.9.2：字号上调 + 图标放大并向左上微调
-
-用户反馈「LSPosed API 激活相关字体适当加大」「右下角图标向左上方微调（当前约
-四分之一不可见），同时适当放大」。三处改动：
-
-| 项 | 2.9.1 | 2.9.2 | 说明 |
-|---|---|---|---|
-| 标题字号 | 20sp | **22sp** | 状态文案是这张卡的主信息 |
-| 版本字号 | 14sp | **16sp** | |
-| API 字号 | 13sp | **15sp** | 「LSPosed API 已激活」这行 |
-| 图标尺寸 | 150dp | **170dp** | 适当放大 |
-| 图标透明度 | 0.18f | **0.16f** | 再放大就得再降一点，维持同样的视觉重量 |
-| 图标偏移 | `75.dp, 75.dp` | `170/2 - 16, 170/2 - 16` | 各推半个身位后再**回缩 16dp** |
-
-偏移量的推导：`align(BottomEnd)` 之后，图标中心落在卡片右下角 → 露出左上**四分之一**；
-每边回缩 `StatusCardIconInset = 16.dp`，等于把图标往左上平移 16dp，
-露出的部分从 85dp 见方变成 **101dp 见方**（约 60%），既不显得被生硬切掉，
-又保留了「溢出卡片」的设计感。
-
-> 用 `StatusCardIconSize / 2f - StatusCardIconInset` 而不是写死 `69.dp`，
-> 是为了让「改尺寸」和「改内缩」互不干扰 —— 调 `StatusCardIconSize` 时
-> 偏移会跟着走，不用两处同步改。
-
-#### 3.1.3 2.9.3：高度回退（图标不再撑高卡片）+ 图标再向左上移
-
-用户反馈「仅改字体大小、不要改高度，高度回退」「icon 再向左上移动一些」。
-这次挖出一个**一直存在但没被发现的真相**：
-
-> **装饰图标一直都在参与卡片的高度测量。**
-> `Modifier.offset` 只挪位置、不改测量尺寸，所以 `Modifier.size(170.dp)` 的图标
-> 作为 Box 的直接子节点时，Box 的高度恒等于 170dp —— `heightIn(min = 148.dp)`
-> 从来没真正生效过。2.9.1「纵向拉长」的 148dp 其实是 150dp 图标顶出来的，
-> 2.9.2 图标放大到 170dp 后卡片又被顶高 20dp。
-
-两处改动：
-
-1. **图标移进 `matchParentSize` 容器**：`matchParentSize` 的节点不参与父级尺寸
-   测量，卡片高度从此只由「文字内容 + [StatusCardMinHeight]」决定 —— 固定 148dp，
-   **之后只调字号不会再改变卡片高度**（这正是用户要的）。
-2. **`StatusCardIconInset` 16dp → 26dp**：露出部分从 101dp 见方变成
-   **111dp 见方**（约占图标 65%），图标整体再往左上挪 10dp。
+> **不需要自己包一层 `clip`**：Miuix `Card` 的 `BasicCard` 内部走 `squircleSurface`，
+> 其中调用了 `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt`
+> 确认），超出卡片范围的内容会被自动切掉 —— 这也是 `insideMargin` 必须置 0 的原因。
 
 #### 3.1.4 2.17.2：裁切弧废弃，图标完整显示
 
@@ -358,12 +319,12 @@ private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
 2.17.1 到 260dp / 内缩 60dp 后，露出的 190dp 见方竖向盖满整条卡片右缘，
 弧线从右上连到右下，认不出是个对勾。2.17.2 推倒重来：
 
-- **完整显示**：`align(CenterEnd)` 右侧垂直居中，132dp 对 148dp 卡高上下各留
-  8dp，`StatusCardIconEndPadding = 16.dp` 让图标与右缘留出与文字起始边距对称的
-  空隙 —— 对齐 LSPosed 那张「已激活 + 大对勾」卡的原始版式；
+- **完整显示**：`align(CenterEnd)` 右侧垂直居中，132dp 对 148dp 卡高上下各留 8dp；
 - **`StatusCardIconInset` 删除**：不再裁切，偏移推导公式随之消失；
-- **图标画在文字下层**（Box 里先声明图标、后声明文字列）：窄屏 / 大字号下
-  文字延长线碰到图标，也只是 0.30 透明度的水印垫底，不会盖字。
+- **图标画在文字下层**（Box 里先声明图标、后声明文字列），窄屏下也不会盖字。
+
+> 3.2.1 又按用户提供的 LSPosed 截图改了回来：图标**贴右缘、吃出卡片外**（默认露
+> 75%），颜色用状态色。§3.1 开头那段就是这个形态。
 
 ### 3.2 分类按「信息归属」划分
 
