@@ -473,6 +473,13 @@ aapt2 dump resources "$APK" | grep -E "ic_launcher_(background|foreground|monoch
   `TopAppBarKt` 字节码可查）；
   ② 但直接顶到 20sp 又**过大**，18sp（`title4`）才是 17 与 20 之间的稳定解；
   ③ 正文同理：14sp 偏小、16sp 偏大，15sp 折中。**字号只能上机看，静态无法替代**
+- **行尾控件的显隐动画别只用横向**（3.2.1）：`AnimatedVisibility(exit = shrinkHorizontally)`
+  收窄时子节点高度一直留着，**播完那一刻**节点离场、高度归零 —— 而 `BasicComponent`
+  的行高取「文字行 / startAction / endActions」里最高的那个，于是整行矮一截、整张卡
+  跟着跳一下（「✕ 消失时卡片突然变矮」就是这个）。做法：别卸载节点，改成常驻一个
+  跟触控区同高的格子、只让**宽度**在 40 ↔ 0 之间动，行高在两种状态下一致。
+  竖排的 `shrinkVertically` 没这问题（它把高度动到 0 才离场）
+
 - **`TextField` 默认背景是 `secondaryContainer`，不是卡片色**（2.9.4）：
   想要「与卡片一致」必须显式传
   `colors = TextFieldDefaults.textFieldColors(backgroundColor = surfaceContainer, labelColor = onSurfaceSecondary)`；

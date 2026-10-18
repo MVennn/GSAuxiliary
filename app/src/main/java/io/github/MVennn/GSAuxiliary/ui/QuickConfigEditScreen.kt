@@ -2,6 +2,8 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -38,6 +40,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -678,12 +682,19 @@ private fun RemoveTermButton(
 }
 
 /**
- * 删除按钮的显隐动画。
+ * 删除键的显隐动画（宽度 + 透明度），**高度始终占住**。
  *
- * 取值项从 1 变 2 时 ✕ 才出现（一个槽至少留一项）。原来用 `if (deletable)` 直接挂 /
- * 卸，出现是硬的、消失会让行宽瞬间回弹 —— 用户说的「硬出现然后占位」。
- * 现在走 `AnimatedVisibility`：宽度用 expand/shrink 撑开与收拢，同时淡入淡出，
- * 时长与行本身的展开动画同一个 [TermAnimMillis]。
+ * ## 为什么不再用 `AnimatedVisibility`
+ *
+ * 原来用 `AnimatedVisibility(enter = expandHorizontally, exit = shrinkHorizontally)`：
+ * 横向收窄时子节点的高度一直留着（40dp），动画**播完那一刻**子节点被移出组合、
+ * 高度立刻归零 —— 而 `BasicComponent` 的行高是取「文字行 / startAction / endActions」
+ * 里最高的那个，于是整行矮一截、整张卡跟着跳一下（用户说的「✕ 消失时卡片突然
+ * 变矮，能感觉卡一下」）。
+ *
+ * 现在不卸载节点，改成**常驻一个 40dp 高的格子**，只让宽度在 40 ↔ 0 之间动：
+ * 行高在「有 ✕ / 没 ✕」两种状态下完全一致，也就没有可跳的差量。
+ * 宽度归零后才真正把内容摘掉（那会儿已经看不见了）。
  */
 @Composable
 private fun AnimatedRemoveTermButton(
@@ -691,15 +702,31 @@ private fun AnimatedRemoveTermButton(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(160)) + expandHorizontally(tween(TermAnimMillis)),
-        exit = fadeOut(tween(120)) + shrinkHorizontally(tween(TermAnimMillis)),
-        modifier = modifier,
+    val width by animateDpAsState(
+        targetValue = if (visible) DeleteSlotSize else 0.dp,
+        animationSpec = tween(TermAnimMillis),
+        label = "delete-slot-width",
+    )
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(if (visible) 160 else 120),
+        label = "delete-slot-alpha",
+    )
+    Box(
+        modifier = modifier
+            // 高度固定：这一格在两种状态下都占 40dp，行高才不会跟着 ✕ 走
+            .height(DeleteSlotSize)
+            .width(width)
+            .clipToBounds()
+            .alpha(alpha),
     ) {
-        RemoveTermButton(onDelete = onDelete)
+        // 宽度收到 0 之后内容才离场；在这之前一直留着，收窄过程不会被截断
+        if (width > 0.dp) RemoveTermButton(onDelete = onDelete)
     }
 }
+
+/** 删除键的触控格尺寸（宽度参与动画，高度恒定） */
+private val DeleteSlotSize = 40.dp
 
 /** 添加取值项：主色 + 加号，点整行弹目录 */
 @Composable
