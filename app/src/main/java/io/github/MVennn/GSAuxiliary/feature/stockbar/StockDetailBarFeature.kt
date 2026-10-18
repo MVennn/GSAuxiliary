@@ -610,7 +610,7 @@ class StockDetailBarFeature : PageSyncFeature() {
         }.onFailure {
             GLog.w("底栏入口：容器塞回盒子失败，回滚", it)
             runCatching { holder.removeView(entry); holder.removeView(moreText) }
-            runCatching { box.addView(moreText, index.coerceAtLeast(0)) }
+            runCatching { box.addView(moreText, index.coerceIn(0, box.childCount)) }
             return null
         }
 

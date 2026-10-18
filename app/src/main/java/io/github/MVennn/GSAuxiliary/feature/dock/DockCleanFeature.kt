@@ -68,6 +68,15 @@ class DockCleanFeature : UiCleanFeature() {
 
     private var reflow = Reflow.TODO
 
+    /**
+     * 均分状态机没收敛就让冷却让路（见 [PageSyncFeature.needsFollowUp]）。
+     *
+     * 底栏重排天生要连跑几趟：改 weight / 改格子宽 → 等宿主量一次 → 发现末格被挤出
+     * 屏幕 → 再加宽整行。每趟都靠下一次布局回调推进，而 1.5 秒冷却正好把那次回调吃掉，
+     * 结果底栏停在「留空档」或「末格在屏幕外」的中间态。
+     */
+    override val needsFollowUp: Boolean get() = reflow != Reflow.SETTLED
+
     /** 第一次量到的「整行可用宽度」（加宽之后行自身会变，所以要留住原值） */
     private var refRowW = 0
 

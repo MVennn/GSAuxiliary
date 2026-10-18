@@ -159,6 +159,15 @@ abstract class PageSyncFeature : Feature {
      */
     protected open val actionCooldownMs: Long get() = 1500L
 
+    /**
+     * 这一轮之后**还有下一趟要跑**吗（多招状态机用，默认没有）。
+     *
+     * 返回 true 时 [actionCooldownMs] 让路 —— 布局回调照常进来，让状态机按「改一趟、
+     * 量一趟」的节奏推进到收敛。只在没收敛时返回 true，收敛后必须回到 false，
+     * 否则等于把冷取消掉（滚动期又会每帧全量重扫）。
+     */
+    protected open val needsFollowUp: Boolean get() = false
+
     /** 连续多少次布局回调都认不出来，才报告一次 */
     protected open val missScanThreshold: Int get() = 3
 
@@ -397,8 +406,14 @@ abstract class PageSyncFeature : Feature {
 
         val now = SystemClock.uptimeMillis()
         // 审查 2026-10-17：动作冷却 —— 只在「上一轮有实际动作」时生效（lastActionAt 才有值）
+        //
+        // 审查 2026-10-18：**有待收敛的下一趟时不冷却**。冷却的初衷是压掉滚动 / 动画期的
+        // 高频回调，但它同时会掐死「多招状态机」——`DockCleanFeature` 的底栏重排要连跑
+        // 几趟（改 weight → 量宽度 → 加宽整行），每趟都靠下一次布局回调推进；而它改完
+        // 布局参数后宿主立刻重排，那次回调正好落在 1.5 秒冷却里被丢掉，底栏就停在中间态
+        // （留空档 / 末格被推出屏幕）。所以由功能自己声明「还有下一趟」，冷却让路。
         val actedAt = synchronized(lastActionAt) { lastActionAt[root] ?: 0L }
-        if (now - actedAt < actionCooldownMs) {
+        if (now - actedAt < actionCooldownMs && !needsFollowUp) {
             GLog.d("$id：${activity.javaClass.simpleName} 刚同步过且有改动，冷却期内跳过本次布局回调")
             return
         }
