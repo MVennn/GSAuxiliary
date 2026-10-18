@@ -5,6 +5,7 @@
     <string name="xposed_description">Make GoldenSun Great Again！</string>
 
     <!-- ============================ 通用 ============================ -->
+    <string name="common_delete">删除</string>
     <string name="common_back">返回</string>
     <string name="common_unknown">未知</string>
 

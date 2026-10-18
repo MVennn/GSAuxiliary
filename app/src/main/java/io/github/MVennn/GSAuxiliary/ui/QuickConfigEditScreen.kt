@@ -3,9 +3,11 @@ package io.github.MVennn.GSAuxiliary.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -503,7 +505,7 @@ private fun TermRow(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             PeriodPill(current)
-                            if (deletable) RemoveTermButton { removing = true }
+                            AnimatedRemoveTermButton(visible = deletable, onDelete = { removing = true })
                         }
                     },
                     modifier = Modifier.onGloballyPositioned { anchor = it.boundsInWindow() },
@@ -538,7 +540,7 @@ private fun TermRow(
                                 initial = term.param[param.key] ?: "",
                                 onChanged = { text -> onParam(term.param + (param.key to text)) },
                             )
-                            if (deletable) RemoveTermButton { removing = true }
+                            AnimatedRemoveTermButton(visible = deletable, onDelete = { removing = true })
                         }
                     },
                 )
@@ -548,9 +550,11 @@ private fun TermRow(
             else -> BasicComponent(
                 title = name,
                 endActions = {
-                    if (deletable) {
-                        RemoveTermButton(Modifier.align(Alignment.CenterVertically)) { removing = true }
-                    }
+                    AnimatedRemoveTermButton(
+                        visible = deletable,
+                        onDelete = { removing = true },
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    )
                 },
             )
         }
@@ -654,21 +658,46 @@ private fun RemoveTermButton(
     modifier: Modifier = Modifier,
     onDelete: () -> Unit,
 ) {
+    val deleteLabel = stringResource(R.string.common_delete)
     Box(
         modifier = modifier
             .size(40.dp)
             .clip(CircleShape)
-            .clickable(onClick = onDelete),
-        // 图标贴着右缘、再让出 2dp：16dp 的 ✕ 中心落在「距行右缘 10dp」这一列 ——
-        // 与 20dp 宽、齐右缘的箭头**同一条中线**（用户反馈「✕ 对齐的是箭头左侧」：
-        // 原来居中在 40dp 盒子里，中心比箭头左 10dp）。
+            .clickable(onClickLabel = deleteLabel, onClick = onDelete),
+        // ✕ 现在与 › 同宽（都是 10dp）且贴右缘 → 两者墨迹中心都落在「距行右缘 5dp」
+        // 那一条竖线上，不用再靠内边距凑。3.2.1 之前是 16dp 的叉、靠 end=2dp 硬调，
+        // 一旦换机型密度就偏。
         contentAlignment = Alignment.CenterEnd,
     ) {
         TintedIcon(
             imageVector = AppIcons.Close,
             tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-            modifier = Modifier.padding(end = 2.dp),
+            contentDescription = deleteLabel,
         )
+    }
+}
+
+/**
+ * 删除按钮的显隐动画。
+ *
+ * 取值项从 1 变 2 时 ✕ 才出现（一个槽至少留一项）。原来用 `if (deletable)` 直接挂 /
+ * 卸，出现是硬的、消失会让行宽瞬间回弹 —— 用户说的「硬出现然后占位」。
+ * 现在走 `AnimatedVisibility`：宽度用 expand/shrink 撑开与收拢，同时淡入淡出，
+ * 时长与行本身的展开动画同一个 [TermAnimMillis]。
+ */
+@Composable
+private fun AnimatedRemoveTermButton(
+    visible: Boolean,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(160)) + expandHorizontally(tween(TermAnimMillis)),
+        exit = fadeOut(tween(120)) + shrinkHorizontally(tween(TermAnimMillis)),
+        modifier = modifier,
+    ) {
+        RemoveTermButton(onDelete = onDelete)
     }
 }
 

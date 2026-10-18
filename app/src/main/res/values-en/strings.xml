@@ -4,6 +4,7 @@
     <string name="xposed_description">Make GoldenSun Great Again！</string>
 
     <!-- ============================ Common ============================ -->
+    <string name="common_delete">Delete</string>
     <string name="common_back">Back</string>
     <string name="common_unknown">Unknown</string>
 
