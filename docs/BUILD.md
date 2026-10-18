@@ -461,7 +461,7 @@ cp keystore.properties.example keystore.properties
 > `./gradlew.bat :app:assembleRelease` + 真机验证完才提交，云端再编一遍是重复；
 > 而「一天里频繁 push、每次 push 都起一次 runner」正是账号风控最容易盯上的模式。
 > 要云端复验就到 Actions 页面手动跑；发版那条链（`release.yml`）自带完整的构建与红线校验，
-> 不依赖本工作流。
+> 不依赖本工作流。推送节奏与账号风控的完整口径见 [RELEASE.md](RELEASE.md) §3.1。
 
 > **`ci.yml` 默认只编 release**（不发 debug 包，交付规则见 [RELEASE.md](RELEASE.md) §0.1）：
 > debug 包占产物九成体积（约 11 MB，release 只有 1.5 MB）且日常没人下载，

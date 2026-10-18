@@ -252,6 +252,34 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 ---
 
+## 3.1 推送节奏与账号风控（2026-10-18 起）
+
+2026-10-18 凌晨账号被 GitHub 停机（`Your account is suspended`，申诉工单 4871189）。
+恢复之后按下面四条走 —— 它们不是「以防万一」，而是被停用过的账号再犯一次的直接代价。
+
+**1. 攒批推，别一提交一推。**
+一个工作日、或者一个版本，推一次。推之前先 `git status --short` 看一眼：
+历史上就是在这步被并发会话暂存的改动一起吞过（见 MEMORY 的「提交前看 status」）。
+推不上去时把待办记进 `.work/notes/pending-push.md`，恢复后照单推，别在本地反复 rebase 试。
+
+**2. 不改写已推历史。**
+不用 `push --force` / `--force-with-lease`，不 rebase 远端已有的提交。确需改写，
+先在 commit 说明里写清楚为什么，而且一次只改一个分支。
+
+**3. Release 说明定稿再发，一次发版只调一次 `publish.py`。**
+3.2.0 那晚同一份说明连打三次 PATCH，从 API 看就是「同一个 Release 短时间反复写」。
+要补文案就等说明齐了再发；发完才发现错字，用 `--skip-build --notes` 单独补**一次**，
+不要一小时里改三五次。
+
+**4. 构建触发收窄到「人主动发起」。**
+`ci.yml` 已在 2026-10-18 去掉 `push` 触发，只剩开 PR / 手动（见 [BUILD.md](BUILD.md) §8）；
+`release.yml` 只认 tag 与手动。日常一律本地 `assembleRelease` + 真机验证，云端不再自动编。
+
+另外两条同样算异常活动模式：短时间批量创建 / 删除仓库或 Release；多个 token 轮换着用
+（本项目的分工是固定的 —— `LSPOSED_REPO_TOKEN` 给 CI 发版，`GS_GITHUB_TOKEN` 给本地脚本）。
+
+---
+
 ## 4. 只在模块仓库做的事
 
 ### 4.1 仓库描述（**必须浏览器手动**，已完成 ✅）
