@@ -454,8 +454,14 @@ cp keystore.properties.example keystore.properties
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
-| `ci.yml` | 推 `main` / 开 PR / 手动 | 编译 `assembleRelease`（手动触发勾了 `build_debug` 才连 `assembleDebug`）+ 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
+| `ci.yml` | **开 PR / 手动**（不在 push 上跑） | 编译 `assembleRelease`（手动触发勾了 `build_debug` 才连 `assembleDebug`）+ 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
 | `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
+
+> **`ci.yml` 不在 push 上跑**（2026-10-18 起）：日常改动都在本地
+> `./gradlew.bat :app:assembleRelease` + 真机验证完才提交，云端再编一遍是重复；
+> 而「一天里频繁 push、每次 push 都起一次 runner」正是账号风控最容易盯上的模式。
+> 要云端复验就到 Actions 页面手动跑；发版那条链（`release.yml`）自带完整的构建与红线校验，
+> 不依赖本工作流。
 
 > **`ci.yml` 默认只编 release**（不发 debug 包，交付规则见 [RELEASE.md](RELEASE.md) §0.1）：
 > debug 包占产物九成体积（约 11 MB，release 只有 1.5 MB）且日常没人下载，

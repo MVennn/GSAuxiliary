@@ -1,8 +1,16 @@
 name: CI
 
 # ---------------------------------------------------------------------------
-# 每次推 main / 开 PR 都完整编译一遍，并把 docs/BUILD.md 里那几条「红线」
-# 固化成自动校验（tools/ci/verify_apk.py）。
+# **不在 push 上跑**：只在开 PR、或到 Actions 页面手动触发时完整编译一遍，
+# 并把 docs/BUILD.md 里那几条「红线」固化成自动校验（tools/ci/verify_apk.py）。
+#
+# 为什么去掉 push 触发（2026-10-18）：
+#   1. 日常改动一律在本地 `./gradlew.bat :app:assembleRelease` + 真机验证完才提交，
+#      推上去再编一遍是纯重复；
+#   2. 推得勤 + 每次推都起一次 runner，是账号风控最容易盯上的模式
+#      （同一天内频繁 push 触发大量构建）。
+#   要云端复验时手动触发即可；发版的构建与红线校验在 release.yml 里另有一整套，
+#   不依赖本工作流。
 #
 # 默认只编 **release**，理由有两条：
 #   1. release 才是要发的包，也是红线校验的对象；
@@ -17,16 +25,9 @@ name: CI
 # ---------------------------------------------------------------------------
 
 on:
-  push:
-    branches: [main]
-    # 纯文档改动不浪费 CI 时间；pull_request 不加这条，保证 PR 永远有检查结果
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - 'LICENSE'
-      - '.gitignore'
-      - '.gitattributes'
   pull_request:
+  # 手动触发才编。push 分支被有意去掉，理由见文件头。
+
   workflow_dispatch:
     inputs:
       build_debug:
