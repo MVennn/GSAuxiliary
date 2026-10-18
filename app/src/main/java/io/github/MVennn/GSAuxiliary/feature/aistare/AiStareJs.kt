@@ -626,14 +626,27 @@ internal object AiStareJs {
     private fun escape(s: String): String =
         s.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"")
 
+    /** JS **单引号字符串**的转义（占位符替换用；与 [escape] 的 JSON 口径不同） */
+    private fun escapeJs(s: String): String = s
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+
     /**
      * 生成最终脚本：把占位符替换成实测值。
      * 占位符集中在这一步替换，保持 [INJECT] 与真机实测的页面契约对得上。
      */
     fun build(buttonText: String, buttonColor: String, saveText: String): String = INJECT
-        .replace("__BTN_TEXT__", buttonText)
-        .replace("__BTN_COLOR__", buttonColor)
-        .replace("__SAVE_TEXT__", saveText)
+        // 这三个值来自宿主 DOM 的文本，**必须按 JS 单引号字符串转义**再拼：
+        // INJECT 里是 `var BTN_TEXT = '__BTN_TEXT__';`，宿主文案一旦带上 ' 或反斜杠，
+        // 整段脚本就是语法错误（按钮装不上、方案列表恒空）。
+        .replace("__BTN_TEXT__", escapeJs(buttonText))
+        .replace("__BTN_COLOR__", escapeJs(buttonColor))
+        .replace("__SAVE_TEXT__", escapeJs(saveText))
         .replace("__UP_MARK__", UP_MARK)
         .replace("__DOWN_MARK__", DOWN_MARK)
         .replace("__MSG_UNAVAILABLE__", MSG_UNAVAILABLE)

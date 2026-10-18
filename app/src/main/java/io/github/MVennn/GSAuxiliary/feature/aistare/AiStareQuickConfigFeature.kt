@@ -10,6 +10,7 @@ import android.webkit.WebView
 import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import io.github.MVennn.GSAuxiliary.core.TargetApp
@@ -63,13 +64,16 @@ class AiStareQuickConfigFeature : Feature {
     override val title = "智能盯盘一键配置"
 
     /**
-     * 这个类**同时承载两件事**：价格页的「配置并保存」按钮，与「数据为空时依旧可以保存」。
-     * 两者共用同一份注入脚本（同一页面、同一个 `__gsaux` 命名空间），所以只要有一项开着
-     * 就得把钩子装上 —— 否则只开「空数据保存」时根本进不了 `onPageFinished`。
+     * 这个类**同时承载三件事**：价格页的「配置并保存」按钮、「数据为空时依旧可以保存」、
+     * 「保存时不弹二次确认」。三者共用同一份注入脚本（同一页面、同一个 `__gsaux` 命名空间），
+     * 所以**只要有一项开着**就得把钩子装上 —— 否则只开其中一项时根本进不了 `onPageFinished`。
      * 具体哪一项生效由 `init` 各自收到的开关位决定。
+     *
+     * ⚠️ 三个开关位缺一不可：漏一个就是「界面上有开关、底下不装钩子」的死开关
+     * （3.2.0 就漏了 `aiStareSkipSaveConfirm`，只开它时功能页怎么点都没反应）。
      */
     override fun isEnabled(cfg: ConfigSnapshot) =
-        cfg.aistareQuickEnabled || cfg.aiStareEmptySave
+        cfg.aistareQuickEnabled || cfg.aiStareEmptySave || cfg.aiStareSkipSaveConfirm
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -603,13 +607,8 @@ class AiStareQuickConfigFeature : Feature {
 
     // ------------------------------------------------------------ 工具
 
-    /** 个股代码脱敏（INFO 级日志专用）：6 位代码保留前 2 位，如 300045.1 → 30****.1 */
-    private fun maskStockCode(codeDotMarket: String?): String {
-        if (codeDotMarket.isNullOrBlank()) return "代码已略"
-        val dot = codeDotMarket.lastIndexOf('.')
-        if (dot <= 0) return "代码已略"
-        return codeDotMarket.take(2) + "****" + codeDotMarket.substring(dot)
-    }
+    /** 个股代码脱敏：统一走 [LogMask]，口径只有一处（见 core/LogMask.kt） */
+    private fun maskStockCode(codeDotMarket: String?): String = LogMask.stock(codeDotMarket)
 
     /**
      * 桥方法的 URL 守卫（[Bridge.apply] 同款）：桥挂在宿主**全部** HybirdWebView 上

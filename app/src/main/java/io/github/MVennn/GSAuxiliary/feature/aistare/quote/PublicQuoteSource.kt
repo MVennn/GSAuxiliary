@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
 import org.json.JSONObject
@@ -42,11 +43,11 @@ class PublicQuoteSource : QuoteSource {
             charset = HttpTransport.GBK,
             tag = "tencent/snapshot",
         ) ?: run {
-            GLog.w("一键配置取数：公开行情实时请求失败（$mkt$code）")
+            GLog.w("一键配置取数：公开行情实时请求失败（${LogMask.stock(code, market)}）")
             return null
         }
         return parseSnapshot(text, code) ?: run {
-            GLog.w("一键配置取数：公开行情实时响应解析失败（$mkt$code）")
+            GLog.w("一键配置取数：公开行情实时响应解析失败（${LogMask.stock(code, market)}）")
             null
         }
     }
@@ -77,11 +78,11 @@ class PublicQuoteSource : QuoteSource {
             readTimeoutMs = KLINE_TIMEOUT_MS,
             tag = "tencent/kline",
         ) ?: run {
-            GLog.w("一键配置取数：公开行情日 K 请求失败（$mkt$code）")
+            GLog.w("一键配置取数：公开行情日 K 请求失败（${LogMask.stock(code, market)}）")
             return null
         }
         val bars = parseKline(text, mkt + code) ?: run {
-            GLog.w("一键配置取数：公开行情日 K 解析失败（$mkt$code）")
+            GLog.w("一键配置取数：公开行情日 K 解析失败（${LogMask.stock(code, market)}）")
             return null
         }
         synchronized(klineCache) {
@@ -92,7 +93,7 @@ class PublicQuoteSource : QuoteSource {
         // 「最近前高」要的是「有多少算多少」。够不够由引擎按各项口径自己判
         // （highN/lowN/maN 仍要求 size >= N，历史项只要求 >= 2）。
         if (bars.size < n) {
-            GLog.i("一键配置取数：日 K 只有 ${bars.size} 根（要 $n，$mkt$code），按实有数据返回")
+            GLog.i("一键配置取数：日 K 只有 ${bars.size} 根（要 $n，${LogMask.stock(code, market)}），按实有数据返回")
         }
         return bars
     }

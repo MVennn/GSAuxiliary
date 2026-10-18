@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
 
@@ -155,11 +156,11 @@ class QuoteSession(
             klineSource = best.first.name
             synchronized(lock) { klineMemo[memoKey] = best.second }
             GLog.w(
-                "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，要 $n，$code.$market），按实有返回",
+                "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，要 $n，${LogMask.stock(code, market)}），按实有返回",
             )
             return best.second
         }
-        GLog.w("一键配置取数：全部通道的日 K 都失败（$code.$market，n=$n，候选=${candidates.joinToString { it.name }}）")
+        GLog.w("一键配置取数：全部通道的日 K 都失败（${LogMask.stock(code, market)}，n=$n，候选=${candidates.joinToString { it.name }}）")
         return null
     }
 

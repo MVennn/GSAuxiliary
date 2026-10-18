@@ -10,6 +10,7 @@ import android.widget.ListView
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.Feature
@@ -245,7 +246,7 @@ class AiStareCardDetailFeature : Feature {
         }
         val code = cam.substring(0, dot)
         val market = cam.substring(dot + 1)
-        GLog.i("我的盯盘卡片：点卡片 → 个股详情页（$code.$market）")
+        GLog.i("我的盯盘卡片：点卡片 → 个股详情页（${LogMask.stock(code, market)}）")
         openStockDetail(v.context, code, market)
     }
 

@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
 import org.json.JSONObject
@@ -46,7 +47,7 @@ class EastmoneyQuoteSource : QuoteSource {
             tag = "eastmoney/snapshot",
         ) ?: return null
         return parseSnapshot(text, code) ?: run {
-            GLog.w("一键配置取数：东财实时响应解析失败（$secid）")
+            GLog.w("一键配置取数：东财实时响应解析失败（${LogMask.stock(code, market)}）")
             null
         }
     }
@@ -71,7 +72,7 @@ class EastmoneyQuoteSource : QuoteSource {
             tag = "eastmoney/kline",
         ) ?: return null
         val bars = parseKline(text) ?: run {
-            GLog.w("一键配置取数：东财日 K 响应解析失败（$secid）")
+            GLog.w("一键配置取数：东财日 K 响应解析失败（${LogMask.stock(code, market)}）")
             return null
         }
         synchronized(klineCache) {

@@ -33,13 +33,16 @@ class ConfigSource(private val xposed: XposedInterface) {
     private var prefs: SharedPreferences? = null
 
     private val changeListener =
-        SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             val fresh = read()
             // 指纹只取一次，避免比对两侧各算一遍
             val freshFingerprint = fresh.fingerprint
             if (freshFingerprint != snapshot.fingerprint) {
                 snapshot = fresh
-                GLog.i("配置已更新 -> $fresh")
+                // 只打「哪个键变了 + 指纹」，**不要整份快照**：快照里带着
+                // `aiStareQuickConfig`（方案 JSON，KB 级），改一次开关就往 512KB
+                // 的滚动日志里灌一条，历史很快被冲掉，真出问题时反而没上下文。
+                GLog.i("配置已更新（${key ?: "?"}）指纹=$freshFingerprint")
                 runCatching { onChanged?.invoke(fresh) }
                     .onFailure { GLog.w("配置变化回调异常", it) }
             }
@@ -63,7 +66,7 @@ class ConfigSource(private val xposed: XposedInterface) {
             prefs = p
             snapshot = read()
             channel = "remote preferences"
-            GLog.i("配置通道 = $channel -> $snapshot")
+            GLog.i("配置通道 = $channel（指纹=${snapshot.fingerprint}）")
         } catch (t: Throwable) {
             channel = "remote preferences 不可用: $t"
             GLog.w(channel, t)
