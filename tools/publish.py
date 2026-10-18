@@ -160,8 +160,10 @@ def repo_url(tok):
 
 def read_version():
     src = open(GRADLE, encoding="utf-8").read()
-    vc = re.search(r"versionCode\s*=\s*(\d+)", src)
-    vn = re.search(r'versionName\s*=\s*"([^"]+)"', src)
+    # 与 tools/ci/version.py 同一套口径：只认「整行就是一条赋值」，
+    # 注释里出现的示例值不算（两边规则不一致时，本地发版与 CI 会读出两个版本号）
+    vc = re.search(r"^\s*versionCode\s*=\s*(\d+)\s*(?://.*)?$", src, re.M)
+    vn = re.search(r'^\s*versionName\s*=\s*"([^"]+)"\s*(?://.*)?$', src, re.M)
     if not vc or not vn:
         sys.exit("[X] 读不到 versionCode / versionName（%s）" % GRADLE)
     return int(vc.group(1)), vn.group(1)
