@@ -323,9 +323,8 @@ internal object AppIcons {
      *
      * 圆：中心 (12,12)、半径 9.4，四段三次贝塞尔顺时针闭合；勾：左下 → 拐点 → 右上。
      *
-     * 提成常量是因为概览页状态卡要把**同一个图形**挖进玻璃底板
-     * （[HeroGlassGlyph] 收的是路径字符串，不是 ImageVector）——
-     * 两处共用一条字符串，改图不会只改到半边。
+     * 提成常量只是为了让下面那颗图标有一处可引用的名字（3.2.1 曾用它把同一个
+     * 图形挖进玻璃底板，那条路径已回退，现在只有图标本身在用）。
      */
     internal const val CheckCirclePath: String = "M12,2.6 " +
         "C17.19,2.6 21.4,6.81 21.4,12 " +
@@ -345,7 +344,7 @@ internal object AppIcons {
      * 因为 `PathParser` 里零长度线段在部分渲染器上不会画出来。
      * 圆的画法与 [CheckCircle] 相同（三次贝塞尔近似，理由见该处注释）。
      */
-    /** 「大感叹号」的路径（同网格）；与 [CheckCirclePath] 一样两处共用 */
+    /** 「大感叹号」的路径（同网格，写法与 [CheckCirclePath] 一致） */
     internal const val ErrorCirclePath: String = "M12,2.6 " +
         "C17.19,2.6 21.4,6.81 21.4,12 " +
         "C21.4,17.19 17.19,21.4 12,21.4 " +

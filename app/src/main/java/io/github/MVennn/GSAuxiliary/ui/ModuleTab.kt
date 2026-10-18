@@ -2,6 +2,7 @@ package io.github.MVennn.GSAuxiliary.ui
 
 import android.os.Build
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -20,9 +22,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -183,9 +187,9 @@ private data class FrameworkInfo(
  * 所以这里按 Miuix 的视觉规范自绘一个等效实现：
  * `Card` + 左侧三行文字 + 右侧一块超大的装饰图标。
  *
- * **3.2.1 起这张卡就是「缩小版的关于」**：卡面光场、文字配色、图标玻璃全部复用
- * [AboutHeroBackground] / [heroAccent] / [heroCaption] / [HeroGlassGlyph]，
- * 一行视觉代码都没有另写 —— 关于页改什么，这张卡跟着改什么。
+ * **3.2.1 起这张卡就是「缩小版的关于」**：卡面光场与文字配色直接复用
+ * [AboutHeroBackground] / [heroAccent] / [heroCaption]，一行视觉代码都没有另写 ——
+ * 关于页改什么，这张卡跟着改什么。图标仍是自己的大号线框图形（玻璃板那条已回退）。
  *
  * ## 版式调整
  *
@@ -205,22 +209,14 @@ private data class FrameworkInfo(
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
  *    > 所以**不需要自己再包一层裁剪**，超出卡片范围的部分会被自动切掉。
  *
- * ## 三态配色（2.17.1）
+ * ## 三态与配色
  *
- * 状态从「激活 / 未激活」两态扩成三态，颜色各自独立：
+ * 三种状态（已激活 / 未激活 / 未连接）只靠文案与图标形状区分，**不上状态色**：
+ * 卡面是彩色光场，再叠一层绿 / 红会互相打架。颜色统一取关于页那套 ——
+ * 标题 [heroAccent]、副行 [heroCaption]，图标跟着标题同色（[StatusCardIconAlpha] 压成水印）。
  *
- *  | 状态 | 条件 | 颜色 |
- *  |---|---|---|
- *  | 已激活 | 连上框架服务，且作用域非空、版本可读 | [StatusActiveColor] |
- *  | 未激活 | 连上框架服务，但作用域为空 / 信息读不出来 | `colorScheme.error` |
- *  | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
- *
- * **3.2.1 起色只用一处**：`accent` 只染右侧那块玻璃底板的染色层，卡面不再是
- * 「状态色 @0.14」而是关于页的流动光场，标题与副行改用 [heroAccent] / [heroCaption]
- * —— 三态的区别落在底板颜色与文案上，文字本身保持关于页的紫／浅紫。
- *
- * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），图形本身挖进玻璃底板
- * （[HeroGlassGlyph]），与关于页 mark 同一块玻璃、同一种挖法。
+ * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），是**大号线框图形**：
+ * 3.2.1 一度做成关于页 mark 那种玻璃板，被否掉了（这张卡要的是水印，不是一块实心玻璃）。
  *
  * @param state 三态之一，决定配色与右侧图标
  */
@@ -232,13 +228,8 @@ private fun OverviewStatusCard(
     api: String,
     modifier: Modifier = Modifier,
 ) {
-    // 状态色只用来**染玻璃底板**（对勾那块玻璃），文字取关于页那套配色 ——
-    // 卡面是彩色光场，标题再跟状态色走就会互相打架。
-    val accent = when (state) {
-        FrameworkState.Active -> StatusActiveColor
-        FrameworkState.Inactive -> MiuixTheme.colorScheme.error
-        FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
-    }
+    // 3.2.1 定稿：这张卡**不再用状态色**（标题、图标都取关于页那套色）。
+    // 状态靠三行文案本身表达（已激活 / 未激活 / 未连接），颜色交给光场。
     val darkTheme = LocalDarkTheme.current
     val surface = MiuixTheme.colorScheme.surface
 
@@ -275,11 +266,43 @@ private fun OverviewStatusCard(
         // 卡面底色就是页面底色：卡片的形由光场给出，不再垫一层状态色
         colors = CardDefaults.defaultColors(color = surface),
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = StatusCardMinHeight),
         ) {
+            // --- 图标要不要让位：先量一遍文字 ---
+            //
+            // 用 `TextMeasurer` 在**进入布局之前**量出三行里最宽的那一行，于是首帧
+            // 就是最终位置 —— 不会出现「先整颗图标、下一帧再被推出去」的闪动。
+            val density = LocalDensity.current
+            val measurer = rememberTextMeasurer()
+            val textMaxPx = remember(title, version, api, density) {
+                listOf(
+                    title to TextStyle(
+                        fontSize = StatusCardTitleSize,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    version to TextStyle(fontSize = StatusCardVersionSize),
+                    api to TextStyle(fontSize = StatusCardApiSize),
+                ).maxOf { (text, style) ->
+                    measurer.measure(
+                        text = text,
+                        style = style,
+                        maxLines = 1,
+                        softWrap = false,
+                    ).size.width
+                }.toFloat()
+            }
+            val iconSizePx = with(density) { StatusCardIconSize.toPx() }
+            val reservedPx = with(density) {
+                (StatusCardTextStartPadding + StatusCardIconGap + StatusCardIconEndPadding).toPx()
+            }
+            // 剩给图标的横向空间 / 图标自身宽 = 能露出几分之几（最少四分之一）
+            val iconVisibleFraction = ((constraints.maxWidth - reservedPx - textMaxPx) / iconSizePx)
+                .coerceIn(StatusCardIconMinVisible, 1f)
+            val iconShift = with(density) { (iconSizePx * (1f - iconVisibleFraction)).toDp() }
+
             // --- 卡面：关于页那套流动光场（同一份代码，不是另写一遍） ---
             //
             // `AboutHeroBackground` 是 Hero 背景本体，这里只是关掉底边渐隐：
@@ -294,67 +317,60 @@ private fun OverviewStatusCard(
                 modifier = Modifier.matchParentSize(),
             )
 
-            // --- 右侧装饰图标：关于页 mark 的做法，挖进同一块玻璃 ---
+            // --- 右侧装饰图标：还是原来那颗描边图标，只是颜色跟文字走 ---
             //
-            // 玻璃底板采样卡面光场 → 模糊 → 按状态染色，再把对勾 / 感叹号用
-            // `BlendMode.Clear` 挖成负空间（`HeroGlassGlyph`，与 mark 共用 GlassPlate）。
-            // 图形取自 AppIcons 的路径常量，与列表里那份图标是同一个图形。
+            // 3.2.1 一度做成「关于页 mark 那种玻璃板」，用户否掉了：这张卡要的是
+            // 大号线框图标当背景，不是一块实心玻璃。现在回退成 `TintedIcon` +
+            // CheckCircle / ErrorCircle，**不上状态色**（tint 直接取标题的
+            // heroAccent），相当于「同一句话的水印」。
             //
-            // 尺寸 132dp 对 148dp 的卡高正好上下各留 8dp；放在 matchParentSize
-            // 容器里不参与测量，所以调图标尺寸不会把卡片撑高。
+            // 文字放大后图标会让位：按三行文字实测的最宽一行算出还剩多少横向空间，
+            // 有空间就整颗露出来；不够就往右推出去，最少留四分之一（用户：
+            // 「实在没位置就只展示四分之一，其他地方都给文字」）。
             Box(Modifier.matchParentSize()) {
-                HeroGlassGlyph(
-                    darkTheme = darkTheme,
-                    backdrop = cardBackdrop,
-                    pathData = if (state == FrameworkState.Active) {
-                        AppIcons.CheckCirclePath
+                TintedIcon(
+                    imageVector = if (state == FrameworkState.Active) {
+                        AppIcons.CheckCircle
                     } else {
-                        AppIcons.ErrorCirclePath
+                        AppIcons.ErrorCircle
                     },
-                    tint = accent.copy(alpha = if (darkTheme) 0.55f else 0.62f),
-                    fallback = listOf(
-                        accent.copy(alpha = 0.86f),
-                        accent.copy(alpha = 0.52f),
-                    ),
+                    tint = heroAccent(darkTheme).copy(alpha = StatusCardIconAlpha),
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
+                        .offset(x = iconShift)
                         .padding(end = StatusCardIconEndPadding)
                         .size(StatusCardIconSize),
                 )
             }
 
-            // --- 左侧三行文字：垂直居中，字号与节奏照旧 ---
+            // --- 左侧三行文字：垂直居中 ---
             //
             // 配色按关于页来：标题用 heroAccent（与关于页名称同一个常量），
             // 版本与 API 两行用 heroCaption（名称色降透明度，关于页版本号同款）。
+            // 字号在 3.2.1 按原比例整体放大 1.25 倍（24/14/15 → 30/18/19），
+            // 三行的相对大小不变，只是整块更醒目。
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    // 右侧留出图标那块玻璃的整个宽度：它现在是**不透明的玻璃板**
-                    // （以前是 0.30 的水印，文字压上去也无所谓），文字不能钻到下面去。
-                    // 中文三行都很短，英文最长的「Not activated」约 144dp，172dp 放得下。
-                    .padding(
-                        start = 16.dp,
-                        end = StatusCardIconSize + StatusCardIconEndPadding,
-                    ),
+                    .padding(horizontal = StatusCardTextStartPadding),
             ) {
                 Text(
                     text = title,
                     color = heroAccent(darkTheme),
-                    fontSize = 24.sp,
+                    fontSize = StatusCardTitleSize,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = version,
                     color = heroCaption(darkTheme),
-                    fontSize = 14.sp,
+                    fontSize = StatusCardVersionSize,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = api,
                     color = heroCaption(darkTheme),
-                    fontSize = 15.sp,
+                    fontSize = StatusCardApiSize,
                 )
             }
         }
@@ -378,12 +394,25 @@ private fun OverviewStatusCard(
 private val StatusCardMinHeight = 148.dp
 
 /**
- * 「已激活」的绿色（2.17.1 由 `0xFF1AAE6A` 加深到 `0xFF0E8A52`）。
+ * 状态卡三行文字的字号：24 / 14 / 15 等比放大 1.25 倍（3.2.1）。
  *
- * 原来的中绿在浅色卡面上偏亮，标题读起来发飘。加深一档之后标题稳下来，
- * 卡面底色（同一颜色 `alpha = 0.14`）几乎看不出变化。
+ * 三行的相对大小不变 —— 用户要的是「整块更醒目」，不是重新排轻重。
  */
-private val StatusActiveColor = Color(0xFF0E8A52)
+private val StatusCardTitleSize = 30.sp
+private val StatusCardVersionSize = 18.sp
+private val StatusCardApiSize = 19.sp
+
+/** 图标与文字同色时的透明度：它是水印，不能和标题一样重 */
+private const val StatusCardIconAlpha = 0.30f
+
+/** 文字挤到没地方时，图标最少露出这个比例（再少就认不出图形了） */
+private const val StatusCardIconMinVisible = 0.25f
+
+/** 文字起始边距（与图标右缘边距对称） */
+private val StatusCardTextStartPadding = 16.dp
+
+/** 文字与图标之间至少留的空隙，用来算「还剩多少给图标」 */
+private val StatusCardIconGap = 12.dp
 
 /**
  * 右侧装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp，

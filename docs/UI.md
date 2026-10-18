@@ -247,50 +247,49 @@ Miuix 基础件拼的。
 > **3.2.1 起这张卡就是「缩小版的关于」**：卡面直接用关于页的 `AboutHeroBackground`
 > （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光），
 > 文字用 `heroAccent` / `heroCaption`（关于页名称与版本号那两个颜色常量），
-> 右侧图标用 `HeroGlassGlyph`（与关于页 mark 共用 `GlassPlate`：采样卡面光场 →
-> 模糊 → 按状态染色 → 把对勾 / 感叹号用 `BlendMode.Clear` 挖成负空间）。
+> 字号按原比例整体放大 1.25 倍（24/14/15 → **30 / 18 / 19sp**）。
 > **不要**再给它压一层半透明底色 —— 彩色光场上压一层灰，光感就没了。
-> 字号仍是 24 / 15 / 14sp。
+> 三态**不上色**：卡面已经是彩色光场，再叠绿 / 红会互相打架，状态靠文案说。
 
 ```kotlin
 Card(
     insideMargin = PaddingValues(0.dp),            // 图标要贴到卡边
     colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surface),
 ) {
-    Box(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
+    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
         AboutHeroBackground(                        // 关于页背景本体
             time = fieldClock, darkTheme = darkTheme, alpha = alwaysVisible,
             backdrop = cardBackdrop, fadeBottom = false,
             modifier = Modifier.matchParentSize(),
         )
-        Box(Modifier.matchParentSize()) {           // 图标不参与测量，调尺寸不撑高卡片
-            HeroGlassGlyph(                         // 玻璃底板 + 挖空图形
-                backdrop = cardBackdrop,
-                pathData = if (active) AppIcons.CheckCirclePath else AppIcons.ErrorCirclePath,
-                tint = accent.copy(alpha = 0.62f),  // accent 只染玻璃，不再垫卡面
-                modifier = Modifier.align(Alignment.CenterEnd).size(StatusCardIconSize),
-            )
-        }
-        // 右内边距 = 图标宽度 + 边距：玻璃板不透明，文字不能钻到它下面
-        Column(Modifier.align(Alignment.CenterStart).padding(start = 16.dp, end = 148.dp)) {
-            标题(heroAccent, 24sp) / 版本(heroCaption, 14sp) / API(heroCaption, 15sp)
+        // 图标：大号线框图形，颜色跟标题同色（0.30 压成水印），不上状态色。
+        // 放 matchParentSize 里不参与测量，调尺寸不撑高卡片。
+        TintedIcon(
+            imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
+            tint = heroAccent(darkTheme).copy(alpha = 0.30f),
+            modifier = Modifier.align(Alignment.CenterEnd).offset(x = iconShift)
+                .padding(end = 16.dp).size(StatusCardIconSize),
+        )
+        Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
+            标题(heroAccent, 30sp, SemiBold) / 版本(heroCaption, 18sp) / API(heroCaption, 19sp)
         }
     }
 }
 
 private val StatusCardMinHeight = 148.dp    // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
-private val StatusCardIconSize = 132.dp     // 2.17.2：260 → 132，不再裁切
+private val StatusCardIconSize = 132.dp     // 2.17.2：260 → 132
 private val StatusCardIconEndPadding = 16.dp // 与文字起始边距对称
 ```
 
-| 状态 | 玻璃底板染色 | 挖空图形 |
-|---|---|---|
-| 已激活（连上框架，作用域非空、信息可读） | `Color(0xFF0E8A52)` 绿 | `AppIcons.CheckCirclePath` |
-| 未激活（连上框架，但作用域为空 / 信息读不出） | `MiuixTheme.colorScheme.error` | `AppIcons.ErrorCirclePath` |
-| 未连接（拿不到框架服务） | `MiuixTheme.colorScheme.onBackgroundVariant` | `AppIcons.ErrorCirclePath` |
+**图标让位**（3.2.1）：先量后放 —— `TextMeasurer` 在布局前量出三行里最宽的那行，
+算出还剩多少横向空间：够就整颗露出，不够往右推出去、最少留四分之一
+（`StatusCardIconMinVisible`）。测量在组合期做且 `remember` 缓存，首帧即最终位置。
 
-状态色**只染玻璃底板**：卡面是彩色光场，标题再跟状态色走两边互相打架；三态的区别
-落在底板颜色与文案上，文字保持关于页的紫 / 浅紫。
+| 状态 | 条件 | 图标 |
+|---|---|---|
+| 已激活 | 连上框架服务，作用域非空、版本可读 | `AppIcons.CheckCircle` |
+| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `AppIcons.ErrorCircle` |
+| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `AppIcons.ErrorCircle` |
 #### 3.1.1 2.9.1：纵向拉长 + 图标「只露左上四分之一」
 
 用户要求「容器框纵向拉长，长度约为当前高度的一半；右侧图标放大，放到右下角，

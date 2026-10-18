@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -25,9 +24,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -319,52 +316,6 @@ private fun AboutMark(
         )
     }
 }
-
-/**
- * 玻璃底板上挖一个**线框图标**（24×24 网格的描边图形），给概览页状态卡用。
- *
- * 与 [AboutMark] 同一块玻璃、同一种挖法，只是挖的图形换成调用方给的路径：
- * 状态卡要表达「已激活 / 未激活 / 未连接」，把对勾或感叹号直接挖进底板，
- * 既是关于页那套视觉，又保住了状态语义（[tint] 再按状态染色）。
- *
- * @param pathData 24×24 网格上的描边路径（来自 [AppIcons] 的常量，别另抄一份）
- */
-@Composable
-internal fun HeroGlassGlyph(
-    darkTheme: Boolean,
-    backdrop: LayerBackdrop?,
-    pathData: String,
-    tint: Color,
-    fallback: List<Color>,
-    strokeWidth: Float = 1.6f,
-    corner: Dp = 33.dp,
-    modifier: Modifier = Modifier,
-) {
-    val path = remember(pathData) { PathParser().parsePathString(pathData).toPath() }
-    GlassPlate(
-        darkTheme = darkTheme,
-        backdrop = backdrop,
-        tint = tint,
-        corner = corner,
-        modifier = modifier,
-        fallback = fallback,
-    ) {
-        // 路径是 24 单位网格，缩放到实际边长后再按同比例描边，
-        // 挖出来的线宽才与图形本身的比例一致
-        val unit = size.minDimension / GlyphCanvasUnits
-        scale(unit, unit, pivot = Offset.Zero) {
-            drawPath(
-                path = path,
-                color = Color.Transparent,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
-                blendMode = BlendMode.Clear,
-            )
-        }
-    }
-}
-
-/** 状态卡图标所在的网格边长（[AppIcons] 的 24dp 网格） */
-private const val GlyphCanvasUnits = 24f
 
 // ---------------------------------------------------------------------------
 // 绘制（以下函数复刻自 HyperIsland 的 AboutPage.kt，参数名保持一致便于对照）
