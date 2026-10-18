@@ -41,6 +41,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,6 +101,10 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
         ) {
             Text(
                 text = spec.title,
+                // 兜底：超长标题最多 3 行（现有标题都是 1 行，这里等于零视觉变化），
+                // 再长就省略 —— 否则它会把副标题挤到不确定的位置
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
                 color = MiuixTheme.colorScheme.onSurfaceContainer,
                 // 主标题字号 = `title4`（**18sp**）+ Medium（2.9.6 定稿）：夹在
                 // 「主页卡片标题 headline1 = 17sp」与「顶栏标题 title3 = 20sp」之间 ——
@@ -167,6 +172,8 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
             ) {
                 Text(
                     text = spec.title,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
                     color = colors.onSurfaceContainer,
                     fontSize = MiuixTheme.textStyles.title4.fontSize,
                     fontWeight = FontWeight.Medium,

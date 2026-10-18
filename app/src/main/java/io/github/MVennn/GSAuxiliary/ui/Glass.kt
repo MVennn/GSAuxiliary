@@ -42,9 +42,13 @@ import kotlin.math.abs
  * 让「首屏从顶栏下方开始、滚上去的内容从玻璃后面穿过」两件事同时成立。
  */
 internal val LocalTopInset = compositionLocalOf { 0.dp }
+// 默认 0.dp 是**有意的缺省**：没包这一层的页面等于「内容从屏幕顶边开始」，
+// 不会崩，但首屏会压到顶栏下面。新增页面 / 新板块时忘了 `provides` 就是这种表现
+// （不报错、只是第一屏挤）—— 所以模板里每一处 `LocalTopInset provides` 都别删。
 
 /** 当前是否深色配色（由 `AppTheme` 提供，避免各处重复订阅主题配置） */
 internal val LocalDarkTheme = compositionLocalOf { false }
+// 同上：默认 false（浅色）。忘了包不会崩，但深色主题下这一片的配色会按浅色算。
 
 /**
  * 玻璃档位 —— 正本定义见 docs/LIQUID-GLASS.md §3。

@@ -155,12 +155,15 @@ class QuoteSession(
         if (best != null) {
             klineSource = best.first.name
             synchronized(lock) { klineMemo[memoKey] = best.second }
+            // 用户可见的那句只留「结果」，n 与候选通道是排查用的实现细节，放 DEBUG
             GLog.w(
-                "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，要 $n，${LogMask.stock(code, market)}），按实有返回",
+                "一键配置取数：所有通道的日 K 都不足（最多 ${best.second.size} 根，${LogMask.stock(code, market)}），按实有返回",
             )
+            GLog.d("一键配置取数：想要 $n 根，候选=${candidates.joinToString { it.name }}")
             return best.second
         }
-        GLog.w("一键配置取数：全部通道的日 K 都失败（${LogMask.stock(code, market)}，n=$n，候选=${candidates.joinToString { it.name }}）")
+        GLog.w("一键配置取数：全部通道的日 K 都失败（${LogMask.stock(code, market)}）")
+        GLog.d("一键配置取数：n=$n，候选=${candidates.joinToString { it.name }}")
         return null
     }
 

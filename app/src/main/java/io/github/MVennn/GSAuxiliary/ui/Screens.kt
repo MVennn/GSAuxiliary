@@ -13,12 +13,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -30,6 +33,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -102,6 +106,7 @@ internal fun HomeScaffold(
     // 板块切走时把该页的 rememberSaveable 状态（滚动位置等）存下来，切回来再还原：
     // 没有它 AnimatedContent 离场即销毁旧页，功能页滚到「显示」分组、去设置再回来
     // 就回到顶部（审查第三轮）。
+    val layoutDirection = LocalLayoutDirection.current
     val tabStates = rememberSaveableStateHolder()
     // 板块页里「跨页面存活」的长任务（备份 / 恢复 / 导出日志）用这个作用域：
     // 它挂在 HomeScaffold 上，切板块不会把它取消。
@@ -211,7 +216,11 @@ internal fun HomeScaffold(
         // backdrop 实例始终创建、各消费方引用同一实例，只是不挂 `.layerBackdrop` 修饰符。
         // 条件额外包含 dockAlpha > 0.005f：关玻璃时底栏走淡出动画，动画期间
         // LiquidGlassDock 仍在采样，此时不能把图层提前摘掉，否则淡出瞬间采到空图层。
-        val needsBackdrop = liquidGlass || dockAlpha > 0.005f
+        // dockAlpha 是动画值：直接在组合期读它，淡入淡出那 220ms 里每帧都会让
+    // HomeScaffold 失效。这里只关心「有没有跨过阈值」，交给 derivedStateOf
+    // 折叠成一次布尔翻转（否则下面两处各读一次，等于双倍帧内重组）。
+    val dockInUse by remember { derivedStateOf { dockAlpha > 0.005f } }
+    val needsBackdrop = liquidGlass || dockInUse
 
         Scaffold(
             // 显式指定容器色 = 页面底色。Miuix `Scaffold` 的默认值恰好就是 `surface`，
@@ -273,6 +282,11 @@ internal fun HomeScaffold(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(
+                                // 左右 inset 不能丢：横屏 + 三键导航时导航栏在屏幕右侧，
+                                // 卡片右端的箭头 / 开关会压在它下面点不到（审查第三轮 M11）。
+                                // 竖屏 / 手势导航下这两个值都是 0，等于没有改动。
+                                start = padding.calculateStartPadding(layoutDirection),
+                                end = padding.calculateEndPadding(layoutDirection),
                                 // 液态底栏时不留底部 inset，内容铺到屏幕最底边（导航条沉浸）
                                 bottom = if (liquidGlass) 0.dp else padding.calculateBottomPadding(),
                             )
@@ -354,7 +368,7 @@ internal fun HomeScaffold(
                     // 这里也刻意**不用** AnimatedContent：它的 SizeTransform 默认 clip = true，
                     // 会把长按气泡（画在胶囊上方 -38dp 处）切掉。用透明度过渡更稳。
                     // （dockAlpha 声明上提到了 needsBackdrop 之前，见其注释。）
-                    if (dockAlpha > 0.005f) {
+                    if (dockInUse) {
                         LiquidGlassDock(
                             backdrop = backdrop,
                             effect = glassEffect,
@@ -473,7 +487,12 @@ internal fun SubScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = padding.calculateTopPadding())
+                            // 左右 inset 与一级页同口径（横屏三键导航时导航栏在侧边）
+                            .padding(
+                                start = padding.calculateStartPadding(LocalLayoutDirection.current),
+                                end = padding.calculateEndPadding(LocalLayoutDirection.current),
+                                top = padding.calculateTopPadding(),
+                            )
                             .pointerInput(focusManager) {
                                 detectTapGestures(onTap = { focusManager.clearFocus() })
                             },

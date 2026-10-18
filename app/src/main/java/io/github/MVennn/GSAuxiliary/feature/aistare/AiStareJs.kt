@@ -131,13 +131,26 @@ internal object AiStareJs {
     return { bar: bar, save: saveBtn, saveLeaf: saveLeaf };
   }
 
+  // 3.2.1：findBar 结果缓存。
+  // 「保存」按钮在自检的每一拍里几乎永远在树上，但空数据保存那一支每轮都要
+  // findBar（leafByText 是整文档遍历）。缓存命中条件只有一个：缓存的按钮
+  // 仍在文档里 —— Vue 重渲染换了节点，contains 立刻为 false，自然退回重找。
+  NS.barCache = null;
+  function findBarCached() {
+    var b = NS.barCache;
+    if (b && b.save && document.contains(b.save)) return b;
+    b = findBar();
+    NS.barCache = b;
+    return b;
+  }
+
   // ---------- 注入：三等分 + 克隆「保存」改「配置」 ----------
   // found 可选：schedule 的单轮里已做过 findBar 时直接传入，省一次全文档扫描
   // （审查 2026-10-17，与 applyEmptySave 共用同一次查找结果）
   NS.install = function(found) {
     if (!NS.enabled) return false;
     if (NS.btn && document.contains(NS.btn)) return true;
-    if (!found) found = findBar();
+    if (!found) found = findBarCached();
     if (!found) return false;
     var bar = found.bar;
     var btn = found.save.cloneNode(true);
@@ -378,7 +391,7 @@ internal object AiStareJs {
    */
   NS.applyEmptySave = function(found) {
     // found 可选：与 install 共用 schedule 单轮的 findBar 结果（审查 2026-10-17）
-    if (!found) found = findBar();
+    if (!found) found = findBarCached();
     if (!found) return;
     var el = found.save;
     var empty = inputsEmpty();
@@ -582,6 +595,9 @@ internal object AiStareJs {
     if (NS.checkTimer) return;
     NS.checkTimer = setTimeout(function() {
       NS.checkTimer = null;
+      // 页面在后台（切走 / 锁屏）：这一拍什么都不用做。Vue 的变动由 observer 记着，
+      // 回到前台后 interval 最多 1.5 秒内补一轮 —— 与原来「后台也扫」的可见行为一致。
+      if (document.hidden) return;
       // 审查 2026-10-17：单轮只做一次 findBar，install 与 applyEmptySave 共用结果，
       // 省掉原来一轮里 2-3 次的全文档扫描（按钮已在树上时无需重复查找）
       var btnOnTree = !!(NS.btn && document.contains(NS.btn));
