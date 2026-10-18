@@ -21,6 +21,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -95,10 +97,18 @@ internal fun HomeScaffold(
     // **不要**用 `colorScheme.background`：Miuix 里它和 `Card` 的默认色
     // `surfaceContainer` 完全同色，页面一换卡片就整片消失（详见 MainScreen 的注释）。
     val background = MiuixTheme.colorScheme.surface
+    val dialogs = remember { DialogController() }
+
+    // 板块切走时把该页的 rememberSaveable 状态（滚动位置等）存下来，切回来再还原：
+    // 没有它 AnimatedContent 离场即销毁旧页，功能页滚到「显示」分组、去设置再回来
+    // 就回到顶部（审查第三轮）。
+    val tabStates = rememberSaveableStateHolder()
+    // 板块页里「跨页面存活」的长任务（备份 / 恢复 / 导出日志）用这个作用域：
+    // 它挂在 HomeScaffold 上，切板块不会把它取消。
+    val hostScope = rememberCoroutineScope()
 
     // 两个「选择类」设置项（深色模式 / 语言）与重置确认
     // 都走自绘弹窗，宿主统一在这里渲染（见 ui/AppDialog.kt）。
-    val dialogs = remember { DialogController() }
 
     // --- 首次启动的免责声明同意弹窗 ---
     //
@@ -302,27 +312,31 @@ internal fun HomeScaffold(
                             // 两页各拿各的值，切换时谁都不会因为对页的状态而重排 ——
                             // 顶栏该上滑还是下滑，由它自己的动画负责（见 topBarHide）。
                             val tabTopInset = if (tab == Tab.ABOUT) 0.dp else topBarSpace
-                            CompositionLocalProvider(
-                                // 玻璃模式下内容铺到屏幕顶边，首屏空白交给各 Tab 自己补（见上方注释）
-                                LocalTopInset provides if (liquidGlass) tabTopInset else 0.dp,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(top = if (liquidGlass) 0.dp else tabTopInset),
+                            // SaveableStateProvider：切走时把这一页的 rememberSaveable
+                            // （滚动位置、展开态）存档，切回来原样还原。
+                            tabStates.SaveableStateProvider(tab) {
+                                CompositionLocalProvider(
+                                    // 玻璃模式下内容铺到屏幕顶边，首屏空白交给各 Tab 自己补（见上方注释）
+                                    LocalTopInset provides if (liquidGlass) tabTopInset else 0.dp,
                                 ) {
-                                    when (tab) {
-                                        Tab.MODULE -> ModuleTab()
-                                        Tab.FEATURE -> FeatureTab(
-                                            onOpenDetail = { spec, second ->
-                                                onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
-                                            },
-                                        )
-                                        Tab.SETTINGS -> SettingsTab()
-                                        Tab.ABOUT -> AboutTab(
-                                            onOpenDisclaimer = onOpenDisclaimer,
-                                            onOpenNotice = onOpenNotice,
-                                        )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(top = if (liquidGlass) 0.dp else tabTopInset),
+                                    ) {
+                                        when (tab) {
+                                            Tab.MODULE -> ModuleTab()
+                                            Tab.FEATURE -> FeatureTab(
+                                                onOpenDetail = { spec, second ->
+                                                    onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
+                                                },
+                                            )
+                                            Tab.SETTINGS -> SettingsTab(hostScope = hostScope)
+                                            Tab.ABOUT -> AboutTab(
+                                                onOpenDisclaimer = onOpenDisclaimer,
+                                                onOpenNotice = onOpenNotice,
+                                            )
+                                        }
                                     }
                                 }
                             }

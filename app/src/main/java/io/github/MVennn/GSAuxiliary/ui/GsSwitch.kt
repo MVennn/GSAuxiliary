@@ -11,7 +11,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -46,7 +45,6 @@ import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * 自绘开关 —— 替换 Miuix 的 `Switch` / `SwitchPreference`。
@@ -70,10 +68,10 @@ private val TrackSize = DpSize(49.dp, 28.dp)
 /** 滑块直径（Miuix 同款） */
 private const val ThumbSize = 20
 
-/** 滑块轨道内的左右行程：4dp → 25dp，拖动边界 ±21（Miuix 同款） */
+/** 滑块轨道内的左右行程：4dp → 25dp，拖动边界 ±21dp（Miuix 同款） */
 private val ThumbOffsetOn = 25.dp
 private val ThumbOffsetOff = 4.dp
-private const val DragRange = 21f
+private val DragRange = 21.dp
 
 /** 按压 / 拖住滑块时的放大倍率（Miuix 同款） */
 private const val PressedThumbScale = 1.127f
@@ -96,6 +94,10 @@ internal fun GsSwitch(
     var hasVibratedOnce by remember { mutableStateOf(false) }
     var rawDragOffset by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
+    // 拖动量、钳制范围、翻转阈值**全部用像素**，只在贴给 offset 时才转 dp。
+    // 反例（3.2.0 及更早）：`rawDragOffset += dragAmount / 2f` 把像素当 dp 累计，
+    // 于是密度 3 的屏上手指走 3.5dp 就翻面、滑块只挪 1/3 行程 —— 拖动手感全靠密度抽奖。
+    val dragRangePx = with(density) { DragRange.toPx() }
     val dragOffsetDp = with(density) { rawDragOffset.toDp() }
 
     val thumbOffset = animateDpAsState(
@@ -180,26 +182,28 @@ internal fun GsSwitch(
                         Modifier.draggable(
                             orientation = Orientation.Horizontal,
                             state = rememberDraggableState { dragAmount ->
-                                rawDragOffset += dragAmount / 2f
+                                // 1:1 跟手：手指走多少像素，滑块走多少像素
+                                rawDragOffset += dragAmount
                                 val clamped = if (checked) {
-                                    rawDragOffset.coerceIn(-DragRange, 0f)
+                                    rawDragOffset.coerceIn(-dragRangePx, 0f)
                                 } else {
-                                    rawDragOffset.coerceIn(0f, DragRange)
+                                    rawDragOffset.coerceIn(0f, dragRangePx)
                                 }
                                 // 震动反馈的分档逻辑与 Miuix 一致：拉到头 / 回到起点各一档
-                                if (clamped in -11f..-10f || clamped in 10f..11f) {
+                                val mid = dragRangePx / 2f
+                                if (abs(abs(clamped) - mid) <= mid / 10f) {
                                     hasVibratedOnce = false
-                                } else if (clamped in -20f..-1f || clamped in 1f..20f) {
+                                } else if (abs(clamped) in 1f..(dragRangePx - 1f)) {
                                     hasVibrated = false
                                 } else if (!hasVibrated) {
-                                    if ((checked && clamped == -DragRange) ||
+                                    if ((checked && clamped == -dragRangePx) ||
                                         (!checked && clamped == 0f)
                                     ) {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.ToggleOff)
                                         hasVibrated = true
                                         hasVibratedOnce = true
                                     } else if ((checked && clamped == 0f) ||
-                                        (!checked && clamped == DragRange)
+                                        (!checked && clamped == dragRangePx)
                                     ) {
                                         hapticFeedback.performHapticFeedback(HapticFeedbackType.ToggleOn)
                                         hasVibrated = true
@@ -214,7 +218,8 @@ internal fun GsSwitch(
                                 rawDragOffset = 0f
                             },
                             onDragStopped = {
-                                if (abs(rawDragOffset) > DragRange / 2f) {
+                                // 过半即翻转（同样按像素比）
+                                if (abs(rawDragOffset) > dragRangePx / 2f) {
                                     currentOnCheckedChange?.invoke(!checked)
                                 }
                                 rawDragOffset = 0f
@@ -227,8 +232,6 @@ internal fun GsSwitch(
         )
     }
 }
-
-/** 拖动增量折算成 Dp（draggable 给的是 px，除以密度即可） */
 
 /**
  * 带「标题 + 副标题」的自绘开关行 —— 对齐 Miuix `SwitchPreference` 的用法。

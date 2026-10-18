@@ -108,6 +108,9 @@ class SettingsActivity : ComponentActivity() {
                 else -> null
             }
         }
+        // 只消费一次：路由本身已经用 rememberSaveable 存档，重建时会从存档还原；
+        // 留着 extra 会让「回到首页 → 转屏」又跳回配置页（审查第三轮）。
+        intent?.removeExtra(QuickConfigStore.EXTRA_ROUTE)
         setContent {
             AppTheme {
                 MainScreen(initialRoute = initialRoute ?: Route.Home)

@@ -19,7 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -37,6 +37,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.LogExporter
 import io.github.MVennn.GSAuxiliary.core.LogLevel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,17 +91,28 @@ import java.util.Locale
  * 挡住「主题/语言整树重组」与弹窗关闭动画重叠的情况。
  */
 @Composable
-internal fun SettingsTab() {
+internal fun SettingsTab(
+    /**
+     * 备份 / 恢复 / 导出日志用的协程作用域，由 [HomeScaffold] 持有。
+     *
+     * **不能用 Tab 自己的 `rememberCoroutineScope()`**：切板块会把本页移出组合、
+     * 作用域随之取消 —— 导出日志正等着 root 授权（注释自述可 20 秒）时切走，
+     * 协程静默消失，文件可能没写出、提示也不会出现（审查第三轮）。
+     */
+    hostScope: CoroutineScope,
+) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val scope = hostScope
     val scrollState = rememberScrollState()
     val dialogs = LocalDialogController.current
 
-    // 备份 / 恢复的结果提示（热重载的结果走 Toast，不占用这里）
-    var actionResult by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
+    // 备份 / 恢复的结果提示（热重载的结果走 Toast，不占用这里）。
+    // 三个标记都用 rememberSaveable：配合 HomeScaffold 的 SaveableStateProvider，
+    // 切走再回来还能看到「正在…」或结果，不会被重置成空白。
+    var actionResult by rememberSaveable { mutableStateOf("") }
+    var busy by rememberSaveable { mutableStateOf(false) }
     // 导出日志自己的忙标记：它可能挂起几秒等 root 授权，与备份/恢复互不影响
-    var exportingLog by remember { mutableStateOf(false) }
+    var exportingLog by rememberSaveable { mutableStateOf(false) }
 
     // --- 预取带占位符的文案：回调（非 Composable）里没法再调 stringResource ---
     val backupSuccessFmt = stringResource(R.string.backup_success)
@@ -109,6 +121,9 @@ internal fun SettingsTab() {
     val restoreFailedFmt = stringResource(R.string.restore_failed)
     val resetDone = stringResource(R.string.reset_done)
     val backupWorking = stringResource(R.string.backup_working)
+    // 异常 message 会拼进「导出/恢复失败：%s」，所以必须取**当前语言**的文案
+    val openFailed = stringResource(R.string.backup_open_failed)
+    val readFailed = stringResource(R.string.backup_read_failed)
     val restoreWorking = stringResource(R.string.restore_working)
 
     // 导出日志的结果提示（走 Toast —— 它会拉起 root 授权、耗时不确定，页面里不留状态）
@@ -156,7 +171,7 @@ internal fun SettingsTab() {
                     val json = ConfigBackup.exportJson()
                     ctx.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(json.toByteArray(Charsets.UTF_8))
-                    } ?: throw IllegalStateException("无法打开所选文件")
+                    } ?: throw IllegalStateException(openFailed)
                     String.format(backupSuccessFmt, uri.lastPathSegment ?: uri.toString())
                 }.getOrElse { String.format(backupFailedFmt, it.message ?: it.javaClass.simpleName) }
             }
@@ -177,7 +192,7 @@ internal fun SettingsTab() {
                 runCatching {
                     val text = ctx.contentResolver.openInputStream(uri)?.use { input ->
                         input.readBytes().toString(Charsets.UTF_8)
-                    } ?: throw IllegalStateException("无法读取所选文件")
+                    } ?: throw IllegalStateException(readFailed)
                     val count = ConfigBackup.importJson(text).getOrThrow()
                     String.format(restoreSuccessFmt, count)
                 }.getOrElse { String.format(restoreFailedFmt, it.message ?: it.javaClass.simpleName) }
@@ -208,7 +223,7 @@ internal fun SettingsTab() {
                     val result = LogExporter.build(logLevelLabel)
                     ctx.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(result.text.toByteArray(Charsets.UTF_8))
-                    } ?: throw IllegalStateException("无法打开所选文件")
+                    } ?: throw IllegalStateException(openFailed)
                     val name = uri.lastPathSegment ?: uri.toString()
                     // 目标进程那段拿不到也照样出文件（原因写在文件的那一节抬头里），
                     // 但提示里要带一句 —— 否则用户会以为「日志就这么多」

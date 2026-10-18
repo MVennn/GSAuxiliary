@@ -13,6 +13,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.SaverScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -45,6 +48,40 @@ internal sealed interface Route {
 private const val RouteAnimMillis = 300
 
 /**
+ * [Route] 的存档器（转屏 / 分屏 / 进程被回收后重建靠它把「当前在哪一层」带回来）。
+ *
+ * 为什么不用 `rememberSaveable` 的自动存盘：`Route` 是 sealed interface，
+ * `QuickConfigEdit` 还带一个 id，自动存盘只认 Parcelable / Serializable。
+ * 编成一个短字符串最省事，也顺手把「新加路由忘了写存盘」这件事变成一个必须填的 when 分支。
+ */
+private object RouteSaver : Saver<Route, String> {
+    override fun SaverScope.save(value: Route): String = when (value) {
+        Route.Home -> "home"
+        Route.QuickConfig -> "quick_config"
+        is Route.QuickConfigEdit -> "quick_config_edit:" + value.schemeId
+        Route.QuickConfigButton -> "quick_config_button"
+        Route.AiStareSaveBehavior -> "aistare_save_behavior"
+        Route.WatchlistDetail -> "watchlist_detail"
+        Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
+        Route.Disclaimer -> "disclaimer"
+        Route.Notice -> "notice"
+    }
+
+    override fun restore(value: String): Route = when {
+        value == "quick_config" -> Route.QuickConfig
+        value.startsWith("quick_config_edit:") ->
+            Route.QuickConfigEdit(value.removePrefix("quick_config_edit:"))
+        value == "quick_config_button" -> Route.QuickConfigButton
+        value == "aistare_save_behavior" -> Route.AiStareSaveBehavior
+        value == "watchlist_detail" -> Route.WatchlistDetail
+        value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
+        value == "disclaimer" -> Route.Disclaimer
+        value == "notice" -> Route.Notice
+        else -> Route.Home
+    }
+}
+
+/**
  * 三层叠放 + 两条独立的滑动进度。
  *
  * ## 为什么三级页要单独一层
@@ -73,8 +110,11 @@ private const val RouteAnimMillis = 300
 internal fun MainScreen(initialRoute: Route = Route.Home) {
     val scope = rememberCoroutineScope()
 
-    var currentTab by remember { mutableStateOf(Tab.MODULE) }
-    var route by remember { mutableStateOf<Route>(initialRoute) }
+    // 这两项必须**跨 Activity 重建**存活：转屏 / 分屏 / 折叠屏都会重建 Activity，
+    // 用 remember 的话「在三级编辑页转个屏」就直接回到概览首页，正在填的方案白填
+    // （审查 3.2.0 后第三轮发现）。Tab 是 enum（Serializable），自动存盘即可。
+    var currentTab by rememberSaveable { mutableStateOf(Tab.MODULE) }
+    var route by rememberSaveable(stateSaver = RouteSaver) { mutableStateOf<Route>(initialRoute) }
 
     // 首次启动的免责声明同意门槛：没同意就必须先同意。
     //

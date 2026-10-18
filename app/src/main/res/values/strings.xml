@@ -200,6 +200,8 @@
     <string name="restore_working">正在恢复…</string>
     <string name="backup_success">已导出配置到 %1$s</string>
     <string name="backup_failed">导出失败：%1$s</string>
+    <string name="backup_open_failed">无法打开所选文件</string>
+    <string name="backup_read_failed">无法读取所选文件</string>
     <string name="restore_success">已恢复 %1$d 项配置</string>
     <string name="restore_failed">恢复失败：%1$s</string>
 

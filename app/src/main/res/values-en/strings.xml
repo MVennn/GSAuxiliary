@@ -193,6 +193,8 @@
     <string name="restore_working">Restoring…</string>
     <string name="backup_success">Config exported to %1$s</string>
     <string name="backup_failed">Export failed: %1$s</string>
+    <string name="backup_open_failed">cannot open the selected file</string>
+    <string name="backup_read_failed">cannot read the selected file</string>
     <string name="restore_success">Restored %1$d settings</string>
     <string name="restore_failed">Restore failed: %1$s</string>
 
