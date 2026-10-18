@@ -284,3 +284,199 @@ aapt2 dump resources "$APK" | grep -E "ic_launcher_(background|foreground|monoch
 
 真机自检：手势导航条那一条应当**透出页面内容**（列表可以滚到它下面），
 而不是一条纯色带；深色 / 亮色来回切，手势条与状态栏的图标应当跟着翻色。
+
+---
+
+## 13. 改界面时的注意事项（原文，2026-10-18 从 UI.md §9 移入）
+
+> 这一节是踩坑清单的**全文**，UI.md §9 只留了最容易再犯的五条摘要。
+> 节内的「见 §x.y」指向**原 UI.md 的编号**：§1.3（弹层）、§6（玻璃）、§7（状态）、
+> §8（组件）这些章节已搬到 [UI-MATERIAL.md](UI-MATERIAL.md)，编号照旧。
+> 节内没有编号，条目按「能不能再踩一次」排列。
+
+
+- **Miuix 0.9.3 不可升级**（0.9.4+ 要求 AGP ≥ 9.1，与 Kotlin 插件冲突），
+  新增组件前先确认它在 0.9.3 的 API 里可用
+- **backdrop 停在 1.x**（2.x 需要 Compose 1.12 → AGP 9.1+）
+- Miuix 扩展图标（`MiuixIcons.Extended.*`）**不在 0.9.3 的产物里**，
+  图标统一走 `ui/AppIcons.kt`（自绘 `ImageVector`）。
+  **不要引回 `material-icons-extended`** —— 那个包会把 11400 个用不到的图标类带进 dex
+  （详见 [UI-HISTORY §10](UI-HISTORY.md#10-安装体积构成240-起)），新增图标照抄 `AppIcons.kt` 的写法加一条即可
+- `Icon` 的 `contentDescription` **没有默认值**，必须显式传（可传 `null`）
+- `NavigationBar` 接收的是 `content: @Composable RowScope.() -> Unit`，
+  `NavigationBarItem` 是 `RowScope` 的扩展函数 —— 不能当普通列表项用
+- `ArrowPreference` 在 `top.yukonga.miuix.kmp.preference`，**不在** `.basic`
+- `BasicComponent` 的第一个参数是 `modifier`，标题必须写成 `title = "..."`
+- 所有面向用户的文案走资源（`values/` + `values-en/`），不要在 Kotlin 里硬编码中文
+- 读写配置一律走 `ModulePreferences`，不要直接操作 `SharedPreferences`
+- **弹层走自绘 `DialogHost`**（`ui/AppDialog.kt`），**不要**再用 Miuix 的
+  `OverlayDropdownPreference` / `OverlayDialog`。它们在库内部的 `onClick` 里
+  同步开始收起动画，与同步回写的配置状态打架 → 闪退（2.8.0 换成自绘，见 §1.3）。
+  **2.9.0 起 `DialogHost` 挂在 `MainScreen` 最外层 `Box` 的最后一个子节点** ——
+  锚点用 `boundsInWindow()`（窗口坐标），宿主必须与窗口原点对齐，否则弹窗会整体偏掉
+- **弹窗定位用 `SubcomposeLayout` 先量后摆**，不要用 `Popup` / `DropdownMenu`：
+  前者能一次成型（先量出卡片尺寸再算坐标），避免「先出现在中间再跳过去」的抖动。
+  **所有弹窗都有渐变压黑遮罩**（2.9.2 起，`ScrimAlpha * progress`）；
+  锚定菜单的缩放原点取贴控件那一角 `TransformOrigin(1f, 0f)`（见 §1.3.2 / §1.3.4）
+- **弹窗退出动画期间必须保留 `spec`**（2.9.2 起）：`DialogController.closing = true`
+  → 播收起动画 → `finishDismiss()` 才置空 `spec`。**不能在 `dismiss()` 里直接置空** ——
+  内容全部来自 `spec`，先置空会渲染出空壳。选择类弹窗（下拉菜单）不需要退出动画，
+  仍走「立即置空」；只有贴底确认弹窗需要下滑退出（见 §1.3.5 / §1.3.6）
+- **入场动画用 `remember(spec) { Animatable(0f) }` 而不是 `remember { }` + `snapTo`**：
+  后者会在 spec 换了但 effect 还没跑的那一帧先按旧值（=1）画一次完整卡片再 snap 回 0，
+  又是一次闪；用 `spec` 当 key 让它直接拿到全新的 `Animatable(0f)`（见 §1.3.5）
+- **板块切换时不要让任何共享状态挂动画**（2.9.2 修的教训，搜索框已移除）：早期搜索框
+  挂在顶栏，为了「切板块」做了横向滑入 + 方向跟着左右切换走，结果与板块本身的左右平移
+  撞在一起 → 割裂感。教训保留：动画值只驱动它自己的元素，切换期间每页按身份取定值
+  （见 `docs/UI-HISTORY.md`）
+- **主题切换不要直接给 `MiuixTheme` 传目标 `dark`**：必须走 `shownDark`（渲染值）
+  与目标值分离 + 遮罩常驻 + `withFrameNanos { }` 再切，否则会「先变白再闪黑」
+  （2.9.0 修，三根因见 §5.3）
+- **Dock 的手势不要拆成两条链**（父级拖动 + 子级 `clickable`）：手指轻抖越过
+  `touchSlop` 时父级抢先拖动并 `consume()`，子级点击被取消 → 「既没切换又抖一下」。
+  点击 / 拖动 / 长按合并进**一个 `awaitEachGesture`**，用同一份状态机判定（见 §6.2.1）
+- **`LocaleHelper.wrap()` 必须返回 `ContextWrapper`**，不能直接返回
+  `createConfigurationContext()` 的结果（那是 `ContextImpl`，会打断 androidx 的
+  宿主查找链，表现为「切完语言点设置页闪退」）
+- **语言切换不要 `recreate()`** —— `AppTheme` 在 Compose 层 `provides LocalContext` 即可
+- **`Card` 要自己加 `Modifier.cardPadding()`**（12dp），Miuix 不会替你加左右边距
+- **系统栏 inset 只归 `Scaffold` 管**，内容里不要再加 `navigationBarsPadding()`（会算两遍）
+- **系统栏一律全透明 + 关掉 `enforceNavigationBarContrast`**，否则手势条那一条会被
+  系统遮罩填成纯色带；图标明暗只能靠 `WindowInsetsControllerCompat` 设（主题属性在
+  API 35+ 已失效）。详见 [UI-HISTORY §11](UI-HISTORY.md#11-系统栏沉浸250-起)
+- **页面底色必须是 `colorScheme.surface`，不是 `background`**：Miuix 里
+  `background` 与 `Card` 的默认色 `surfaceContainer` **完全同色**
+  （深色都是 #242424 / 浅色都是 #FFFFFF），用 `background` 会让所有卡片消失、
+  整页看不出分组（2.7.0 的回归，2.8.0 修）。需要同色的五处：
+  第 0 层底色层、根 `Box`、`Scaffold.containerColor`、`SubScreen` 的 `Scaffold`、
+  `rememberLayerBackdrop` 的底衬。色值表见 §1.0
+- **可预测返回要有一层不参与变换的底色层**：一级页缩放后露出的那一圈，必须由
+  一个**最底层、不挂任何 `graphicsLayer` 变换**的 `Box` 铺 `surface` 兜住（见 §1.0）
+- **三级页要单独一层、单独一条进度**（3.1.0，见 §1.0.0）：只有一条进度时，
+  三级页的可预测返回会把整层二级页推走、露出首页，看着像要回一级页
+- **锚定菜单的锚点必须每个触发控件一份**：共享一个 `Rect` 状态的写法是错的 ——
+  `onGloballyPositioned` 谁最后回调谁就是锚点，菜单会贴在别的行上（3.1.0 修）
+- **自绘弹窗关闭后要立刻落配置**：`DialogHost` 没有「库的收起动画」，但关闭瞬间
+  仍是一次状态翻转；配置写入统一走 `ModulePreferences.editDeferred { }`
+  （延迟 360ms + `AtomicReference` 只保留最后一次）作为第二层防御；
+  `notifyChanged()` 一律 post 到主线程（2.7.0 / 2.8.0 两轮修）
+- **弹层里的动作要排在「关闭动画播完」之后**（3.1.0）：`DialogController.dismiss { 动作 }`
+  把动作交给 `finishDismiss()` 执行。`dismiss()` 与写配置**挨着**调用时，`commit()`
+  会同步回调订阅方当场重组，而收起动画还在跑 —— 就是上一条那类崩溃。
+  （菜单 / 确认 / 同意三种弹窗的动作都走这条。）
+- **图标染色要走 GraphicsLayer，别用 `Icon(imageVector, tint = ...)`**（3.1.0）：
+  `Icon(imageVector, tint)` 与 `Image(colorFilter = ColorFilter.tint(...))` 这条
+  **画笔记账层**的染色在魅族 20 / Android 16 上整体不生效（debug 与 release 都复现，
+  换成 `Color.Red` 也照旧画成占位黑），图标一律是黑的。统一改用 `Widgets.TintedIcon`
+  （miuix `Icon(painter, tint = ColorProducer, ...)` → `layer.colorFilter`，
+  与 Miuix 底栏图标同一条路）
+- **锚定菜单要有最大高度**（3.1.0）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
+  超出的选项由列表自己 `verticalScroll`（右侧是一条**常驻**指示条，内容超出才画）——
+  取值项目录 18 项，不封顶时菜单几乎铺满整屏
+- **画在卡片里的东西别参与测量**（3.1.0 踩过）：那条常驻指示条一开始写成
+  `Modifier.width(3.dp).fillMaxHeight()`，`fillMaxHeight` 会参与测量，把整张卡片顶到
+  高度上限 —— 7 个周期的菜单只有 329dp 内容，却被撑成 390dp、底部白出一大截
+  （用户报的「弹窗过长」）。改成 `matchParentSize()`（只取父盒量好的尺寸、不反过来
+  影响它），宽度 / 右缘 5dp / 上下 16dp 的几何全在 `drawBehind` 里自己算。
+  顺带两个上机结论：① 开头 8dp 会压在 28dp 圆角的弧线上，16dp 才落在直边里；
+  ② Miuix 亮色主题的 `onSurfaceVariantSummary` 几乎是纯黑，不透明度给到 0.7 就是
+  一条硬黑线，**0.18** 才是不抢眼的浅轨（真机取色：卡片 245 → 条子 200）
+- **`AnimatedVisibility(visible = false)` 首次挂载不播退出动画**（3.1.0 踩过）：
+  想给列表行的「删除」补收起动画，不能按状态分成「普通 / 进入 / 移除」三条分支 ——
+  删除那一刻节点是新建的，`visible` 直接就是 false，动画不会跑。正确写法是
+  **每一行常驻一个 `AnimatedVisibility`**，出现与移除都只翻 `visible`
+- **App 里的箭头一律自绘，不用 `ArrowPreference`**（3.1.0）：Miuix 自带那颗箭头走
+  `Image(colorFilter = ColorFilter.tint(...))` —— **画笔记账层**染色，在本机不生效，
+  库里所有箭头**永远是黑的**、不跟亮暗色走（和自绘图标摆一起明显不是一套）。
+  现在 14 处 `ArrowPreference` 全换成 `BasicComponent` + `Widgets.ArrowRightIcon()`：
+  - 会**呼出弹窗**的行（主题设置 / 语言 / 日志等级 / 聚合方式 / 周期 / 提醒时效）
+    用 `Widgets.DownArrowIcon()`（朝下 = 就地弹窗，朝右 = 进入下一级）；
+  - 进入下一级 / 动作行保持朝右，禁用态传 `ArrowRightIcon(enabled = false)`。
+  两颗箭头现在是**同一颗 chevron**（`strokedIconOf` 自绘，斜率 47°、描边 1.4dp、
+  臂长 5.9dp），只差方向：› 墨迹 5.7×10.1dp、⌄ 墨迹 9.5×5.8dp，两者墨迹中心同列
+  （实测 cx 都 986.5、⋮ 与 › 的 cy 都 485.5）。
+  - **别用「缩放旋转路径」调大小**（连踩两轮）：放大到 20×12.5 比 › 宽一倍、右缘对齐
+    后中心偏左 3.3dp；缩到 11dp 笔画又只剩 0.69dp。描边是路径的一部分，缩放会连笔画一起改。
+  - **判断「两颗箭头是不是一套」，看臂长而不是外框**：Miuix 原路径（10×16 视口）
+    臂长 9.65dp，而下箭头那版只有 5.87dp —— 差 1.6 倍，摆同一页就是「右箭头比下箭头
+    大一圈」。同臂长 + 同斜率 + 同描边，才是一套（旋转不变）。
+  - 列对齐靠**两个图标的声明宽度一致**（都 10dp），墨迹在框内居中，中心自然对齐。
+- **主题过渡遮罩要靠 `try/finally` 收尾**（3.1.0）：那层「旧配色遮罩」是
+  `Animatable.animateTo` 淡出的，过渡途中被重启就停在半透明处 —— 表现是「切完主题
+  整个界面被压暗，重启才恢复」。用 `withContext(NonCancellable) { snapTo(0f) }` 兜底
+- **`values-en/strings.xml` 里的撇号必须写成 `\'`，引号写成 `\"`**。
+  写 `&#39;` / `&quot;` 会在 AGP 合并资源时被**解码成裸字符**写进
+  `merged.dir/values-en.xml`，而 aapt2 要求撇号转义，报
+  `Invalid unicode escape sequence in string`（行号会指向文件末尾，极具误导性）。
+  直接对合并后的文件跑 `aapt2 compile --dir` 才能看到真话（`unescaped apostrophe in string`）
+- **`MiuixTheme` 通过 `LocalIndication` 提供 `MiuixIndication(onBackground)`**，
+  按压时叠一层**背景色反色**浮层（深色模式即白色）。玻璃底栏**不挂任何
+  `clickable` / `combinedClickable`**（手势全部收归 §6.2.1 的单一 `awaitEachGesture`），
+  从根上就没有 indication，否则按一下整块变白（2.7.0 移除点击反馈，2.9.0 去掉可点击修饰符）
+- **`pointerInput` 回调是过期闭包**：它的 key 只有 `(itemCount, itemWidthPx)`，
+  重组不重建；手势里要用 `rememberUpdatedState` 取最新的 `current` / `onSelect`（见 §6.2）
+- **悬浮底栏的让位靠 `LocalDockInset`**（滚动内容末尾补空白），不要把内容整体上推 ——
+  推上去底栏背后就空了，玻璃没东西可采样，看起来「没悬浮」
+- **`Modifier.align` / `Modifier.weight` 必须挂在对应容器的直接子节点上**。
+  `align` 是 `BoxScope` 的 parent data，`weight` 是 `RowScope` / `ColumnScope` 的。
+  `AnimatedContentScope` **只继承 `AnimatedVisibilityScope`、不是 `BoxScope`** ——
+  在它的 content lambda 里写 `Modifier.align(...)` 能编译通过，但父容器读不到这份
+  parent data，元素会掉到 Layout 左上角。2.6.0 的「底栏消失」就是这么来的，详见 §6.3
+- **保存 / 导出文件走 SAF**（`ActivityResultContracts.CreateDocument`），
+  不要申请存储权限，也不要直接写 `Environment.getExternalStorageDirectory()`
+- **`Toast` 只能在主线程弹**。IO / Binder 调用放 `withContext(Dispatchers.IO)`，
+  回来再 `Toast.makeText(...).show()`
+- **XML 注释里不能出现连续两个 `-`**（`--`）。写分隔线用 `=` 或干脆不写，
+  否则 `mergeResources` 直接报 `ParseError: 注释中不允许出现字符串 "--"`
+- **根容器要铺 `MiuixTheme.colorScheme.surface`** —— 否则窗口底色会透出来（深色下是一片黑）
+- `drawBackdrop` 的图层**会裁剪子节点**（`setClip(true)`），要溢出到胶囊外面的东西
+  （比如长按气泡）必须放在 `drawBackdrop` **之外的兄弟节点**里；
+  滑动指示同理，且要画在玻璃**之上**才不会被半透明面色压暗
+- **手势回调里不能调挂起函数**（`Animatable.snapTo` 等）—— 用普通 state + 独立的
+  `animate(...)`，见 §6.2
+- **Binder 调用不能放主线程，`Toast` 不能放后台线程**：先 `withContext(Dispatchers.IO)`
+  拿结果，回到 `scope.launch` 的主线程再弹提示（热重载踩过这个坑）
+- 新增**功能开关**时，`core/ConfigKeys.kt` + `core/ConfigSnapshot.kt` +
+  `core/ConfigSource.read()` 三处都要同步改；
+  只被模块 App 消费的设置项（如 Dock 形态、主题设置、可预测返回）**不进** `ConfigSnapshot`
+- **Dock 拖拽滑块的放大镜要采样「dock 自身图层」，不能采样页面 `backdrop`**（2.9.3 修）：
+  早期滑块直接采样主页 `backdrop`（含底栏**下方**的内容），拖动时放大镜会透出底栏之下
+  的内容、而非 dock 本身的图标 / 标题 / 玻璃 → 视觉穿透。修法：用
+  `rememberLayerBackdrop { drawContent() }` 把「玻璃胶囊 + 图标行」单独录进 `dockBackdrop`，
+  滑块画在内容层**之上**、只采样 `dockBackdrop`，穿透消失；
+  `GlassDockItem` 删掉文字 `alpha = 1f - magnify`，标题与图标在镜中原样保留（2.9.3 修）
+- **概览状态卡装饰图标要放进 `matchParentSize` 容器，否则会撑高卡片**（2.9.3 发现）：
+  `Modifier.offset` 只挪位置不改正测量，`Modifier.size(170.dp)` 的图标作为 Box 直接子节点
+  时，Box 高度恒等于 170dp，`heightIn(min = 148.dp)` **实际从未生效**（2.9.1 的 148dp 是
+  150dp 图标顶出来的、2.9.2 图标放大后又被顶高 20dp）。把图标移进
+  `Box(Modifier.matchParentSize())` 后它不参与父级测量，卡片高度才真正固定为 148dp，
+  之后改字号 / 图标尺寸都不再改变卡片高度
+- **弹窗遮罩压黑要一处加深、两处同步**：主题设置与重置模块共用同一个
+  `Color.Black.copy(alpha = ScrimAlpha * progress)` 遮罩。2.9.3 把 `ScrimAlpha`
+  从 0.32 **加深到 0.48**（用户反馈压黑不够、弹窗与身后内容对比不足），改一处两处一起生效，
+  **不要**只在一处单独加遮罩
+- **要让两条动画「独立运行」，就用两个 `Animatable`**（2.9.4）：主题设置弹窗的
+  缩放（`progress`）与渐隐渐出（`fade`）刻意**不复用同一条进度** —— 入场是两个
+  `LaunchedEffect` 各跑各的、出场是两条 `launch` 并发、`join()` 齐了再 `finishDismiss()`。
+  共用一条进度等于把两种动画焊死（时长 / 曲线互相牵连），独立驱动才谈得上「互不干扰」
+- **`MiuixIndication` 的按压高亮是「给整个节点 `drawRect` 铺一层」**（2.9.4）：
+  它不会贴合圆角 —— 满宽行（`ChoiceRow`）的高亮是**矩形**，首 / 末行会越过弹窗
+  28dp 圆角糊到外面。要给**内容层**加 `.clip(shape)` 裁一刀；**别裁外层** ——
+  外层 `drawBackdrop` 还画着外投影，裁了连投影一起切掉
+- **弹窗字号不要手写 sp（能引用就引用），且对齐对象要选「页面上最显眼的那行」**：
+  重置弹窗的调参史是 **17 → 20 → 18（主）/ 14 → 16 → 15（副）**，2.9.6 定稿为主标题
+  `title4.fontSize`（**18sp**）+ Medium、副标题 `15.sp`（Miuix 文字样式表没有 15 这一档：
+  body2 = 14、body1 = 16，故直接写 sp）。三条经验：
+  ① 17sp（= 卡片标题 `headline1`）在**整宽弹窗里居中**看就是「比外面的字小一号」——
+  页面上最显眼的对照物是 **顶栏标题**（`SmallTopAppBar` 用 `title3` 20sp + Medium，
+  `TopAppBarKt` 字节码可查）；
+  ② 但直接顶到 20sp 又**过大**，18sp（`title4`）才是 17 与 20 之间的稳定解；
+  ③ 正文同理：14sp 偏小、16sp 偏大，15sp 折中。**字号只能上机看，静态无法替代**
+- **`TextField` 默认背景是 `secondaryContainer`，不是卡片色**（2.9.4）：
+  想要「与卡片一致」必须显式传
+  `colors = TextFieldDefaults.textFieldColors(backgroundColor = surfaceContainer, labelColor = onSurfaceSecondary)`；
+  `borderColor` 默认 `primary`（同时是光标色），不要顺手改掉
+
+---
+
+
