@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.github.MVennn.GSAuxiliary.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -389,9 +391,12 @@ internal fun NoticeContent() {
     val ctx = LocalContext.current
     var notice by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
-        notice = runCatching {
-            ctx.assets.open("NOTICE.txt").bufferedReader().use { it.readText() }
-        }.getOrElse { "" }
+        // 挪到 IO：5KB 虽小，但这段在首帧路径上，读盘 + 解码没有理由占主线程
+        notice = withContext(Dispatchers.IO) {
+            runCatching {
+                ctx.assets.open("NOTICE.txt").bufferedReader().use { it.readText() }
+            }.getOrElse { "" }
+        }
     }
     Column(
         modifier = Modifier

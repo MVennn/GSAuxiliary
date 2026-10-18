@@ -130,12 +130,30 @@ class SettingsActivity : ComponentActivity() {
      * 覆盖掉那份缓存。（`TaskDescription(String, Bitmap)` 是 API 21+，minSdk 27 无碍。）
      */
     private fun syncTaskDescription() {
-        val bitmap = runCatching {
-            packageManager.getApplicationIcon(packageName).toBitmap()
-        }.getOrNull() ?: return
+        // 位图在进程内只解一次：每次 onCreate（含转屏）都去 getApplicationIcon().toBitmap()
+        // 是一次「主线程读资源 + 位图化」，冷启动首帧能被它推后几十毫秒。
+        taskIcon ?: run {
+            Thread {
+                val bitmap = runCatching {
+                    packageManager.getApplicationIcon(packageName).toBitmap()
+                }.getOrNull() ?: return@Thread
+                taskIcon = bitmap
+                runOnUiThread { applyTaskDescription(bitmap) }
+            }.apply { isDaemon = true }.start()
+            return
+        }.let(::applyTaskDescription)
+    }
+
+    private fun applyTaskDescription(bitmap: android.graphics.Bitmap) {
         runCatching {
             setTaskDescription(ActivityManager.TaskDescription(getString(R.string.app_name), bitmap))
         }
+    }
+
+    private companion object {
+        /** 启动器图标位图（进程内缓存；launcher alias 由系统换图标，位图本身不变） */
+        @Volatile
+        var taskIcon: android.graphics.Bitmap? = null
     }
 }
 

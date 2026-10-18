@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ internal fun FeatureTab(
     onOpenDetail: (FeatureSpec, Boolean) -> Unit,
 ) {
     val scrollState = rememberScrollState()
+    val rememberedGroups = remember { FEATURE_CATALOG.groupBy { it.categoryRes } }
 
     Column(
         modifier = Modifier
@@ -46,7 +48,8 @@ internal fun FeatureTab(
         Spacer(Modifier.height(8.dp + LocalTopInset.current))
 
         // --- 按分类分组 ---
-        FEATURE_CATALOG.groupBy { it.categoryRes }.forEach { (categoryRes, specs) ->
+        // 目录是常量：分组只做一次，别每次重组都重算
+        rememberedGroups.forEach { (categoryRes, specs) ->
             SmallTitle(stringResource(categoryRes))
             Card(modifier = Modifier.cardPadding()) {
                 specs.forEach { spec ->
