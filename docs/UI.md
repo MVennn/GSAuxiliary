@@ -294,8 +294,8 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 
 **行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp。**图标让位**：`TextMeasurer` 先量
 三行最宽那行 —— 默认露 75%（`StatusCardIconDefaultVisible`），文字更宽就继续往右推，
-最少留 25%（`StatusCardIconMinVisible`）；向下探出 `StatusCardIconDropFraction = 0.34`
-（光圆上沿落在卡高 37%，与参照图重合）。
+最少留 25%（`StatusCardIconMinVisible`）；向下探出 `StatusCardIconDropFraction = 0.28`
+（光圆上沿落在卡高 30%，圆底仍被切掉约 29dp，但**勾完整可见** —— 0.34 会把勾尾切掉）。
 
 **状态读取**：读到「已激活」之前每 400ms 重读一次框架信息（最多 8 次）—— 框架刚起来的
 那一小段 `scope` / 版本号可能还读不到，只算一次会永远停在「未激活 + 感叹号」。

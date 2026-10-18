@@ -461,9 +461,11 @@ private val StatusActiveIconColor = Color(0xFF6ACF73)
 /**
  * 图标向下探出卡片底边的比例（同样参照那张卡）。
  *
- * 取 0.34 时光圆的**上沿落在卡高的 37%**、下沿被切掉约 39dp —— 与参照图几乎重合。
+ * 0.34 时和参照图几乎重合，但**勾的尾巴被卡片底边切掉一截**（168dp 的图标下发
+ * 「勾」最低点在 16.5/24 处，探太多就压到线外）。收到 0.28：光圆仍被底边切掉
+ * 约 29dp，勾完整可见，上沿落在卡高 30% 处。
  */
-private const val StatusCardIconDropFraction = 0.34f
+private const val StatusCardIconDropFraction = 0.28f
 
 /** 图标默认露出多少（其余吃到卡片右缘外，与 LSPosed 那张卡一致） */
 private const val StatusCardIconDefaultVisible = 0.75f
