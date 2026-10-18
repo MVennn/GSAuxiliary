@@ -163,8 +163,8 @@
     <string name="section_preview">效果预览</string>
     <string name="preview_in_watchlist">已在自选</string>
     <string name="preview_not_in_watchlist">未加自选</string>
-    <string name="preview_sample_in">莱美药业</string>
-    <string name="preview_sample_out">七一二</string>
+    <string name="preview_sample_in">示例股票甲</string>
+    <string name="preview_sample_out">示例股票乙</string>
 
     <!-- ============================ 设置页 ============================ -->
     <string name="section_interface">界面</string>

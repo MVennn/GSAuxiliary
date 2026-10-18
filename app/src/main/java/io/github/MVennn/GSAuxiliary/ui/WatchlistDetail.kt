@@ -93,6 +93,9 @@ internal fun WatchlistDetailScreen() {
         // --- 效果预览 ---
         // 预览本身已经说明了一切（两个名字一高一低的色差摆在眼前），
         // 卡底不再放口径说明（2.17.2 删）。
+        //
+        // 示例名**必须是占位名**（示例股票甲 / 乙）：以前用的是真实个股（莱美药业、
+        // 七一二），用户在行情里能搜到，看着像模块在暗示某只票。
         SmallTitle(stringResource(R.string.section_preview))
         Card(modifier = Modifier.cardPadding()) {
             PreviewRow(

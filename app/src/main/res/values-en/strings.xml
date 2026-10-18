@@ -156,8 +156,8 @@
     <string name="section_preview">Preview</string>
     <string name="preview_in_watchlist">In watchlist</string>
     <string name="preview_not_in_watchlist">Not in watchlist</string>
-    <string name="preview_sample_in">Leimei Pharma</string>
-    <string name="preview_sample_out">712</string>
+    <string name="preview_sample_in">Example Stock A</string>
+    <string name="preview_sample_out">Example Stock B</string>
 
     <!-- ============================ Settings tab ============================ -->
     <string name="section_interface">Interface</string>
