@@ -23,10 +23,14 @@
 
 - 调整 配置日志 —— 各设置项；改开关只记键名与指纹，不再把整份方案 JSON 写进日志。
 - 调整 英文界面 —— 备份 / 恢复失败提示不再夹中文异常串。
+- 调整 文档 —— 界面篇拆成 UI.md（页面）与 UI-MATERIAL.md（弹层 / 材质 / 组件），UI.md 回到 800 行内。
+- 调整 文档 —— 发版说明规则补「内部改动也算修复、按对象拆条」；RELEASE §3.1 记推送节奏与账号风控。
+- 调整 仓库 —— 3.2.0 说明补齐 14 条漏项（内部整理按对象拆开，不再打包成「代码整理」）。
 
 ### 优化
 
 - 优化 安装包体积 —— 只打包中英文资源，去掉依赖库自带的几十种语言。
+- 优化 首帧 —— 关于页 NOTICE 读盘移到 IO、设置页任务图标改缓存 + 后台解码、功能页目录分组只算一次。
 
 ---
 
@@ -89,7 +93,7 @@ G2「运行中补装」实测通过（关 `stock_bar_entry` 重启宿主 → adb
 挂桥时顺手清 `trackedWebViews` 死引用；筛选菜单容器归一化前存档 `lp.height`，
 还原时按原值放回。
 
-### 法律 风险专项整改与 reference 数据移出公开仓库
+### 调整 法律与仓库 —— 许可纠错、免责补条、reference 移出公开仓库
 
 - NOTICE 事实纠错（libxposed 许可证 GPL-3.0 → Apache-2.0，法律文件不允许错），
   并随 APK 分发（`assets/NOTICE.txt`）；关于页新增「第三方组件声明」二级页渲染全文
@@ -102,7 +106,7 @@ G2「运行中补装」实测通过（关 `stock_bar_entry` 重启宿主 → adb
 - HttpTransport 的 UA 注释去掉「伪装 / 规避风控」措辞，改为与免责声明一致的中性表述
   （行为不变）
 
-### 性能 第二轮审查中危清零 —— 冷却、降频、条件挂载与缓存粒度
+### 优化 第二轮审查性能项 —— 冷却、降频、条件挂载与缓存粒度
 
 症状：策略页高频布局回调每次全树遍历；滚动热路径每行对整份方案 JSON 做 O(n) 哈希、
 每行沿继承链全量反射扫描。改法：PageSyncFeature 有实际动作后 1.5 秒冷却（空闲轮
@@ -111,7 +115,7 @@ AiStareJs 自检周期 500ms → 1500ms、回调先廉价判断再全扫；`Conf
 改构造期缓存；WatchlistFeature 反射 accessor 按类缓存（WeakHashMap，失败也缓存）；
 QuoteSession 日 K 会话内 memo 防同会话重复取数。
 
-### 增加 运行中打开开关即时生效（审查高-2）
+### 新增 运行中打开开关即时生效（审查高-2）
 
 症状：启动时未启用的功能被永久跳过，运行中打开开关必须重启宿主才生效。
 改法：FeatureManager 记录已装功能表，配置变化分发前对「没装过 && 本轮已启用」的
@@ -148,7 +152,7 @@ trackedActivity 改 WeakReference；StockDetailBar 按 keyed tag 扫描孤儿容
 加 `@Synchronized` 消除并发读到 null 的窗口；LogExporter 的 su 超时先温和
 `destroy` 再 `destroyForcibly`；删四处死代码常量与悬空注释等，全部清零。
 
-### 重构与整理（行为零变更与纯文档，归并概述）
+### 修复 重构与整理 —— 行为零变更（Release 说明里按对象拆条）
 
 超文件拆分两轮：`AppDialog.kt` → AppDialogSpec / AppDialogHost / AppDialogWidgets，
 `SettingsActivity.kt` → `Routing.kt` / `Screens.kt`；`StgStockFilterFeature` 拆出

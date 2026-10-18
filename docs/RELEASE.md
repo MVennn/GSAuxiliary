@@ -188,6 +188,10 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 ## 2. Release 说明要短、面向用户
 
+> 格式、动词边界与「内部改动也要写」的规则在
+> [release-notes/README.md](release-notes/README.md)：四动词、一行一条，
+> **重构 / 底层修复 / 死代码也算修复且必须按对象拆开**（3.2.1 起）。
+
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
 - Release 说明只讲**这版做了什么**，而且写成**清单**：一行一条
