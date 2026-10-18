@@ -248,8 +248,8 @@ Miuix 基础件拼的。
 > （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光）。
 > **不要**再压半透明底色：彩色光场上压一层灰，光感就没了。
 >
-> 文字与图标仍走**三态配色**（绿 / 红 / 灰），且全部由同一个 `accent` 派生：
-> 标题用原色、版本与 API 降透明度、图标再压到 0.30 当水印。
+> **配色分两层**：三态色（绿 / 红 / 灰）只染**背景流光**；前景文字与图标取关于页
+> 那套（`heroAccent` / `heroCaption`）。背景已经带色了，文字再染色会糊成一片。
 
 ```kotlin
 Card(
@@ -259,37 +259,37 @@ Card(
     BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
         AboutHeroBackground(                        // 关于页背景本体
             time = fieldClock, darkTheme = darkTheme, alpha = alwaysVisible,
-            fadeBottom = false, modifier = Modifier.matchParentSize(),
+            fadeBottom = false,
+            palettes = lightFieldPalettesFrom(accent, darkTheme),  // 状态色 → 整套调色板
+            modifier = Modifier.matchParentSize(),
         )
-        TintedIcon(                                 // 大号线框图形，颜色跟标题
+        TintedIcon(                                 // 大号线框图形，跟标题同色
             imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
-            tint = accent.copy(alpha = 0.30f),
+            tint = heroAccent(darkTheme).copy(alpha = 0.30f),
             modifier = Modifier.align(Alignment.CenterEnd).offset(x = iconShift)
                 .padding(end = 16.dp).size(StatusCardIconSize),
         )
         Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
-            标题(accent, Bold, 34sp) / 版本(subColor, SemiBold, 18sp) / API(subColor, 16sp)
+            标题(heroAccent, Bold, 34sp) / 版本(heroCaption, SemiBold, 18sp) / API(heroCaption, 16sp)
         }
     }
 }
 
 private val StatusCardMinHeight = 148.dp     // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
-private val StatusCardTitleSize = 34.sp      // 3.2.1：30 → 34，并加粗到 Bold
+private val StatusCardTitleSize = 34.sp      // 3.2.1：30 → 34，加粗到 Bold
 private val StatusCardVersionSize = 18.sp    // 与标题是同一句话的两段，SemiBold
 private val StatusCardApiSize = 16.sp        // API 是附注，收小一档、常规字重
 private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
 ```
 
-**行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp —— 前两行是一句主信息加补充。
+**行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp。**图标让位**：`TextMeasurer` 先量
+三行最宽那行，空间够就整颗露出、不够往右推、最少留四分之一（`StatusCardIconMinVisible`）。
 
-**图标让位**：`TextMeasurer` 在布局前量出三行最宽的那行，剩余空间够就整颗露出、
-不够往右推出去、最少留四分之一（`StatusCardIconMinVisible`）；测量 `remember` 缓存，首帧即终态。
-
-| 状态 | 条件 | `accent` |
-|---|---|---|
-| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 |
-| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` |
-| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` |
+| 状态 | 条件 | 流光主色（背景） | 文字与图标 |
+|---|---|---|---|
+| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 | `heroAccent` / `heroCaption` |
+| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` | 同上 |
+| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` | 同上 |
 
 #### 3.1.1 2.9.1：纵向拉长 + 图标「只露左上四分之一」
 

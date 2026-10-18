@@ -209,16 +209,17 @@ private data class FrameworkInfo(
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
  *    > 所以**不需要自己再包一层裁剪**，超出卡片范围的部分会被自动切掉。
  *
- * ## 三态与配色（绿 / 红 / 灰）
+ * ## 三态与配色（绿 / 红 / 灰，只染背景）
  *
- * | 状态 | 条件 | 主色 |
+ * | 状态 | 条件 | 流光主色 |
  * |---|---|---|
  * | 已激活 | 连上框架服务，且作用域非空、版本可读 | [StatusActiveColor] 绿 |
  * | 未激活 | 连上框架服务，但作用域为空 / 信息读不出来 | `colorScheme.error` |
  * | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
  *
- * 三处同一来源：标题用主色、版本与 API 用主色降透明度、图标再用主色压到
- * [StatusCardIconAlpha] 当水印。**改深浅只动 `accent` 一处**。
+ * **状态色只换背景那层流光**（[lightFieldPalettesFrom] 由主色派生整套调色板）；
+ * 前景文字与图标不跟着染色 —— 它们取关于页那套 [heroAccent] / [heroCaption]，
+ * 压在任何色系的淡彩上都能读。
  *
  * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），是**大号线框图形**：
  * 3.2.1 一度做成关于页 mark 那种玻璃板，被否掉了（这张卡要的是水印，不是一块实心玻璃）。
@@ -234,15 +235,20 @@ private fun OverviewStatusCard(
     modifier: Modifier = Modifier,
 ) {
     val darkTheme = LocalDarkTheme.current
-    // 三态配色（绿 / 红 / 灰）：**所有颜色都从这一个 accent 派生** ——
-    // 标题用原色、副行与图标按同一色降透明度。改「有多深」只动这一个变量。
+    // 三态配色（绿 / 红 / 灰）只作用在**背景流光**上：状态色派生出整套光场调色板，
+    // 于是「已激活」是一层绿光、「未激活」一层红光、「未连接」一层灰光。
     val accent = when (state) {
         FrameworkState.Active -> StatusActiveColor
         FrameworkState.Inactive -> MiuixTheme.colorScheme.error
         FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
     }
-    // 副行色：同一个状态色降透明度（深色 0.62 / 浅色 0.58，与关于页版本号同口径）
-    val subColor = accent.copy(alpha = if (darkTheme) 0.62f else 0.58f)
+    val fieldPalettes = remember(accent, darkTheme) {
+        lightFieldPalettesFrom(accent, darkTheme)
+    }
+    // 前景文字不跟状态色走，取关于页那套（名称色 + 同名色降透明度）——
+    // 背景已经带色了，文字再染色会糊成一片；关于页的紫 / 浅紫压在绿光上最稳。
+    val titleColor = heroAccent(darkTheme)
+    val subColor = heroCaption(darkTheme)
     val surface = MiuixTheme.colorScheme.surface
 
     // 动画时间：只在绘制阶段被读取（`fieldClock` 是个 lambda），推进靠
@@ -316,6 +322,8 @@ private fun OverviewStatusCard(
                 time = fieldClock,
                 darkTheme = darkTheme,
                 alpha = alwaysVisible,
+                // 状态色只换调色板，其余参数与关于页完全一致
+                palettes = fieldPalettes,
                 // 不再录 backdrop：图标已回退成普通矢量，没有东西要采样它了
                 fadeBottom = false,
                 modifier = Modifier.matchParentSize(),
@@ -338,7 +346,7 @@ private fun OverviewStatusCard(
                     } else {
                         AppIcons.ErrorCircle
                     },
-                    tint = accent.copy(alpha = StatusCardIconAlpha),
+                    tint = titleColor.copy(alpha = StatusCardIconAlpha),
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .offset(x = iconShift)
@@ -360,7 +368,7 @@ private fun OverviewStatusCard(
             ) {
                 Text(
                     text = title,
-                    color = accent,
+                    color = titleColor,
                     fontSize = StatusCardTitleSize,
                     fontWeight = FontWeight.Bold,
                 )

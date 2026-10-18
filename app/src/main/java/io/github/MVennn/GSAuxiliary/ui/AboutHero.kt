@@ -96,6 +96,9 @@ internal val AboutBackgroundFadeDistance = 389.dp
  * @param alpha 整体不透明度，由滚动量算出；同样只在绘制阶段读取
  * @param fadeBottom 底边是否渐隐进页面底色。关于页要（下面还有内容要接），
  *   概览页那张状态卡不要 —— 卡片是封闭表面，渐隐只会把下半张的光吃掉
+ * @param palettes 自定义调色板（3 组 × 4 色）。传空走关于页那三组粉蓝；
+ *   状态卡按三态传「绿 / 红 / 灰」（见 [lightFieldPalettesFrom]）——
+ *   配色只在背景这层变，前景文字仍取关于页那套色
  */
 @Composable
 internal fun AboutHeroBackground(
@@ -105,6 +108,7 @@ internal fun AboutHeroBackground(
     modifier: Modifier = Modifier,
     backdrop: LayerBackdrop? = null,
     fadeBottom: Boolean = true,
+    palettes: List<List<Color>>? = null,
 ) {
     Canvas(
         modifier = modifier
@@ -121,7 +125,7 @@ internal fun AboutHeroBackground(
         // 这里直接 return 掉，滚远之后不再为这块光场花任何绘制开销。
         if (alpha() <= 0f) return@Canvas
         val t = time()
-        val colors = animatedGradientColors(t, darkTheme)
+        val colors = animatedGradientColors(t, darkTheme, palettes)
         drawAboutGradientField(
             animationTime = t,
             colors = colors,
@@ -425,8 +429,9 @@ private fun strengthenGradientColor(color: Color): Color {
 internal fun animatedGradientColors(
     animationTime: Float,
     dark: Boolean,
+    custom: List<List<Color>>? = null,
 ): List<Color> {
-    val palettes = if (dark) DarkGradientPalettes else LightGradientPalettes
+    val palettes = custom ?: if (dark) DarkGradientPalettes else LightGradientPalettes
     val segmentValue = animationTime / ColorInterpolationSeconds
     val segment = floor(segmentValue).toInt() % 4
     val rawProgress = segmentValue - floor(segmentValue)
@@ -444,6 +449,39 @@ internal fun animatedGradientColors(
         else -> palettes[1]
     }
     return start.indices.map { index -> lerp(start[index], end[index], progress) }
+}
+
+/**
+ * 由**一个主色**派生出整套流光调色板（3 组 × 4 色，形状与关于页那三组一致）。
+ *
+ * 关于页那三组是「粉 → 蓝」的换色循环；概览页状态卡要的是「绿 / 红 / 灰」，
+ * 于是不再另配三套手调色板，而是从状态色按同一套明度关系派生：
+ *
+ *  - 浅色：主色兑白，四档递进（10% → 42%），做成整组淡彩；
+ *  - 深色：主色往黑里兑，再压 0.40~0.52 的透明度 —— 与关于页深色那三组的
+ *    alpha 同档，叠在深色页面底上才是「夜光」而不是「一块亮色」。
+ *
+ * 三组之间只差一点点混合比例，12 秒折返时看着像光在慢慢转，但色相始终是
+ * 这一个主色 —— 状态是什么颜色，背景就一直是什么颜色。
+ */
+internal fun lightFieldPalettesFrom(accent: Color, dark: Boolean): List<List<Color>> {
+    val mixes = listOf(
+        listOf(0.10f, 0.20f, 0.30f, 0.42f),
+        listOf(0.14f, 0.26f, 0.36f, 0.48f),
+        listOf(0.08f, 0.18f, 0.28f, 0.40f),
+    )
+    return mixes.map { group ->
+        group.map { t ->
+            if (dark) {
+                lerp(Color.Black, accent, (0.55f + t).coerceAtMost(0.95f))
+                    .copy(alpha = 0.40f + t * 0.25f)
+            } else {
+                // 浅色必须不透明：`drawAboutGradientField` 见到底色带透明会切到
+                // 「整组都半透明」的另一支，淡彩会被压成一层灰雾
+                lerp(Color.White, accent, t).copy(alpha = 1f)
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
