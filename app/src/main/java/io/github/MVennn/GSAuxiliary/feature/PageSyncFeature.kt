@@ -36,8 +36,8 @@ import java.util.WeakHashMap
  * Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 decorView 只挂一次）
  *                    └─→ 立刻 sync()（从别的页面返回时不用等下一次布局）
  *
- * 全局布局回调 ──→ sync()（反复认不出来时按 layoutThrottleMs 限速，只延迟不丢弃；
- *                    上一轮有实际改动时按 actionCooldownMs 冷却，冷却期内直接跳过）
+ * 全局布局回调 ──→ sync()（两道闸**都只延后、不丢弃**：反复认不出来时按 layoutThrottleMs
+ *                    限速；上一轮有实际改动时按 actionCooldownMs 把这一趟排到冷却结束时补跑）
  *
  * 首帧屏障(OnPreDraw) ──→ 「自上一帧以来界面被动过」就 return false，这一帧不画
  * ```
@@ -148,23 +148,39 @@ abstract class PageSyncFeature : Feature {
     protected open val layoutThrottleMs: Long get() = 300L
 
     /**
-     * 同步**有实际动作**后的冷却间隔（ms）。
+     * 同步**有实际动作**后，同一页面上两次同步之间的最小间隔（ms）。
      *
      * 审查 2026-10-17：布局回调在 RecyclerView 滚动、动画、Fragment 重建时是**高频**来源，
      * 而认出目标页之后每一轮回调都会全量跑一遍所有启用功能的 sync —— 多数功能有
      * alreadyHidden / stillAttached 快速通道，但快速通道失效（宿主重建视图后 id 直取失败）
      * 时会落到全树遍历（如 HomeBannerFeature 的 UiClean.walk 整棵 decor），没有兜底。
-     * 所以「上一轮真的动过视图」就冷却 [actionCooldownMs]：冷却期内布局回调直接跳过；
-     * 空闲轮不冷却，宿主之后真改了视图（快速通道失效、需要重扫描），冷却一过下一次布局就能响应。
+     * 所以「上一轮真的动过视图」之后的一小段时间里不再一趟一趟地跑。
+     *
+     * ⚠️ **窗口内的回调只延后、不丢弃**（2026-10-19 修，见 [onLayout]）：宿主恰恰是在
+     * 我们改完视图之后立刻布局一趟 —— 新建的分页、重建的底栏、补挂的子视图都在那一趟里
+     * 上来。丢掉它，界面就停在这一轮的样子，要等「下一次与本功能无关的布局」才补上，
+     * 用户看到的就是「入口要停留一会儿才出现」。
+     *
+     * ⚠️ **窗口长度只由「用户感知不感知得到」决定**：200ms ≈ 12 帧，比它短没意义
+     * （该做的事就是要做），比它长就是拿可见的迟钝换 CPU —— 压爆发的收益来自
+     * 「同一窗口只跑一趟」，与窗口多长无关。3.2.0 线上那版是 1500ms，真机上直接
+     * 表现为「滑动时不注入、要停留一会儿」（BUG1）。
      */
-    protected open val actionCooldownMs: Long get() = 1500L
+    protected open val actionCooldownMs: Long get() = 200L
 
     /**
      * 这一轮之后**还有下一趟要跑**吗（多招状态机用，默认没有）。
      *
      * 返回 true 时 [actionCooldownMs] 让路 —— 布局回调照常进来，让状态机按「改一趟、
-     * 量一趟」的节奏推进到收敛。只在没收敛时返回 true，收敛后必须回到 false，
-     * 否则等于把冷取消掉（滚动期又会每帧全量重扫）。
+     * 量一趟」的节奏推进到收敛（`DockCleanFeature` 的底栏重排就是这种：改 weight /
+     * 改格子宽 → 等宿主量一次 → 发现末格被挤出屏幕 → 再加宽整行）。
+     *
+     * ⚠️ 它不是**正确性**的开关：2026-10-19 起冷却只延后、不丢弃，忘了覆写这一条
+     * 最多让状态机按 200ms 一拍推进（看得见但不算错），不会再出现「停在中间态」。
+     * 它管的是**手感** —— 让多趟状态机在下一帧就接着走，而不是等冷却窗结束。
+     *
+     * 只在没收敛时返回 true，收敛后必须回到 false，否则等于把限速取消掉
+     * （滚动期又会每帧全量重扫）。
      */
     protected open val needsFollowUp: Boolean get() = false
 
@@ -243,10 +259,11 @@ abstract class PageSyncFeature : Feature {
     private val deferredScan = Collections.synchronizedMap(WeakHashMap<View, Boolean>())
 
     /**
-     * 页面 → 上一次同步**真动了视图**的时刻（[actionCooldownMs] 冷却的起点，审查 2026-10-17）。
+     * 页面 → 上一次同步**真动了视图**的时刻（动作限速窗口的起点，[actionCooldownMs]）。
      *
      * 判据是现成的：一轮 [sync] 前后 [mutations] 涨了（[noteChange] 或记账工具的计数），
-     * 和首帧屏障「界面被动过」用的是同一个信号。只在有动作时写入 —— 空闲轮不冷却。
+     * 和首帧屏障「界面被动过」用的是同一个信号。只在有动作时写入 —— 空闲轮不开窗口
+     * （宿主之后真改了视图要立刻响应）。窗口内进来的布局回调由 [deferSync] 补跑，不走丢。
      */
     private val lastActionAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
 
@@ -391,46 +408,60 @@ abstract class PageSyncFeature : Feature {
     /**
      * 布局回调：页面刚布局完（**在这一帧画出来之前**），正是改树的最佳时机。
      *
-     * 两道闸（审查 2026-10-17 起是两道）：
+     * 两道闸，**两条都是「这一趟先不跑，排到稍后补跑」—— 绝不丢弃**：
      *
-     *  - **动作冷却**：上一轮 sync 真动了视图后 [actionCooldownMs] 内直接跳过 ——
-     *    滚动 / 动画期间的高频布局回调不值得每帧全量重扫；空闲轮不写冷却，
-     *    宿主之后真改了视图，冷却一过下一次布局就能响应；
-     *  - **认不出限速**：连续认不出来时按 [layoutThrottleMs] 限速，
-     *    而且**只延后不丢弃** —— 布局回调是「页面变了」的唯一信号，
-     *    直接丢掉就要白等下一次布局（宿主重建视图后可能再没有下一次布局，界面就永远停在原样）。
+     *  - **动作限速**：上一轮 sync 真动了视图后 [actionCooldownMs] 内把回调汇总成一趟，
+     *    排到窗口结束时补跑。宿主滚动 / 动画期间的高频回调不值得每帧全量重扫；
+     *    空闲轮不开窗口，宿主之后真改了视图，下一次布局就能立刻响应。
+     *  - **认不出限速**：连续认不出来时按 [layoutThrottleMs] 限速（同样只延后不丢弃）。
+     *
+     * **为什么绝不能丢弃**（2026-10-19 修 BUG1 的教训）：布局回调是「页面变了」的**唯一**
+     * 信号，而宿主恰恰是在我们改完视图之后立刻布局一趟 —— 新建的分页、重建的底栏、
+     * 补挂上去的子视图都在那一趟里上来。丢掉它，界面就停在这一轮的样子，
+     * 要等某次与本功能无关的布局才补上：用户看到的是「个股详情页滑过去不注入
+     * 『智能盯盘』入口，要停留一会儿才出现」「底栏『理财』先消失、占位过一会儿才归位」，
+     * 而且**同一个坑会在每个新功能上重演**（谁忘了声明 [needsFollowUp] 谁中招）。
+     * 限速的收益只是「同一个窗口少跑几趟」，拿它换肉眼可见的迟钝不划算。
      */
     private fun onLayout(env: FeatureEnv, activity: Activity, root: View) {
         if (!switchedOn(env.config)) return
         if (activity.isFinishing || activity.isDestroyed) return
 
         val now = SystemClock.uptimeMillis()
-        // 审查 2026-10-17：动作冷却 —— 只在「上一轮有实际动作」时生效（lastActionAt 才有值）
-        //
-        // 审查 2026-10-18：**有待收敛的下一趟时不冷却**。冷却的初衷是压掉滚动 / 动画期的
-        // 高频回调，但它同时会掐死「多招状态机」——`DockCleanFeature` 的底栏重排要连跑
-        // 几趟（改 weight → 量宽度 → 加宽整行），每趟都靠下一次布局回调推进；而它改完
-        // 布局参数后宿主立刻重排，那次回调正好落在 1.5 秒冷却里被丢掉，底栏就停在中间态
-        // （留空档 / 末格被推出屏幕）。所以由功能自己声明「还有下一趟」，冷却让路。
-        val actedAt = synchronized(lastActionAt) { lastActionAt[root] ?: 0L }
-        if (now - actedAt < actionCooldownMs && !needsFollowUp) {
-            GLog.d("$id：${activity.javaClass.simpleName} 刚同步过且有改动，冷却期内跳过本次布局回调")
-            return
+        // 动作限速：有待收敛的下一趟（多招状态机）就不进这道闸 —— 它要按「改一趟、量一趟」推进
+        if (!needsFollowUp) {
+            val actedAt = synchronized(lastActionAt) { lastActionAt[root] ?: 0L }
+            val actWait = actionCooldownMs - (now - actedAt)
+            if (actWait > 0) {
+                deferSync(env, activity, root, actWait)
+                GLog.d(
+                    "$id：${activity.javaClass.simpleName} 刚同步过且有改动，" +
+                        "本趟改到 ${actWait}ms 后补跑（不走丢）"
+                )
+                return
+            }
         }
+        // 认不出限速：连续认不出来才生效（多招状态机也照常限速 —— 认不出时更该慢下来）
         val last = synchronized(lastRunAt) { lastRunAt[root] ?: 0L }
         val miss = synchronized(missScans) { missScans[root] ?: 0 }
         val missing = synchronized(lastScanOk) { lastScanOk[root] == false }
         if (missing && miss >= missScanThreshold) {
-            val wait = layoutThrottleMs - (now - last)
-            if (wait > 0) {
-                deferSync(env, activity, root, wait)
+            val missWait = layoutThrottleMs - (now - last)
+            if (missWait > 0) {
+                deferSync(env, activity, root, missWait)
                 return
             }
         }
         runSync(env, activity, root, fromLayout = true)
     }
 
-    /** 限速时把这次同步降级成「稍后再来」——**不丢** */
+    /**
+     * 这一趟先不跑：把这次同步降级成「稍后再来」—— **不丢**。
+     *
+     * 两道闸（动作限速、认不出限速）共用这一条排队，所以同一页面上同时只会排一趟：
+     * 窗口内接连进来的高频回调被折叠成**一趟**，这正是限速想要的收益 ——
+     * 收益来自「窗口内只跑一趟」，而不是「把这一趟扔掉」。
+     */
     private fun deferSync(env: FeatureEnv, activity: Activity, root: View, delayMs: Long) {
         val queued = synchronized(deferredScan) {
             if (deferredScan[root] == true) true else {

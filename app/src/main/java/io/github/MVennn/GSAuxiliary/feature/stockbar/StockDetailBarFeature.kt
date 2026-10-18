@@ -161,6 +161,37 @@ class StockDetailBarFeature : PageSyncFeature() {
         StockDetailBarTargets.MENU_GRID_ID_CANDIDATES +
         StockDetailBarTargets.MENU_ITEM_TEXT_ID_CANDIDATES
 
+    /**
+     * 还有没落地的活就不让限速闸挡（见 [PageSyncFeature.needsFollowUp]）。
+     *
+     * 三种情况都发生在宿主**刚重建或刚重排过**之后，而那一趟布局回调正是必须进来的 ——
+     * 被限速延后的话，用户看到的就是「左右滑动时不注入，要停留一会儿才出现」、
+     * 「先注入文字，图标过一会儿才补上」（2026-10-19 修 BUG1）：
+     *
+     *  1. 现场还没复核过（刚注入 / 宿主刚重建过底栏）→ 立刻看一眼；
+     *  2. 现场失活（我们的容器已经不在盒子里）→ 立刻重新注入；
+     *  3. 图标采到过、这颗按钮却还没套上 → 立刻补。
+     *
+     * 收敛后必须回到 false（由 [reassert] 复核通过后置 [Injected.confirmed]），
+     * 否则详情页每一次布局回调都会全量重扫一遍底栏。
+     */
+    override val needsFollowUp: Boolean
+        get() = synchronized(injected) { injected.any { (_, e) -> !settled(e) } }
+
+    /** 这一份现场算不算「看过一眼、确实落地」—— [needsFollowUp] 的判据 */
+    private fun settled(e: Injected): Boolean {
+        // 盒子已经不在窗口上（分页器把那一页销毁了）：这份记账只是**过期**，不是「没落地」——
+        // 宿主把那一页翻回来是**新的**视图对象，会走一次全新的注入。不这么判的话，
+        // 一根残留记账就能让本页永远不进限速闸（滚动期每帧全量重扫）。
+        if (!e.box.isAttachedToWindow) return true
+        if (e.holder.parent !== e.box) return false
+        if (e.button.parent !== e.holder) return false
+        if (!e.button.isAttachedToWindow) return false
+        if (!e.confirmed) return false
+        // 图标采到过就必须套上；还没采到不算「没落地」（采集是异步的，见 maybeHarvestIcon）
+        return entryIcon == null || topDrawableOf(e) != null
+    }
+
     /** 一次注入的现场，用于「关开关立即还原」 */
     private class Injected(
         val box: ViewGroup,
@@ -173,7 +204,16 @@ class StockDetailBarFeature : PageSyncFeature() {
         /** 「更多」那个图标的目标尺寸 —— 面板里采到的图标比它大，不缩会顶破底栏 */
         val iconW: Int,
         val iconH: Int,
-    )
+    ) {
+        /**
+         * 这一份现场**复核过一眼、确实落地**了没有 —— [needsFollowUp] 只看它。
+         *
+         * 注入或宿主重建之后先置 false：宿主紧接着的那一趟布局（重建底栏、重排栅格、
+         * 套回它自己的 `LayoutParams`）正是会把我们改回去的一趟，必须让它进来复核，
+         * 复核通过（[reassert]）才置 true，重新交给限速闸。
+         */
+        @Volatile var confirmed = false
+    }
 
     /**
      * 「我们主动弹面板」**之前**的宿主窗口状态。
@@ -455,6 +495,10 @@ class StockDetailBarFeature : PageSyncFeature() {
             "底栏入口：已在「自选」与「更多」之间注入「${StockDetailBarTargets.ENTRY_TEXT}」" +
                 "（盒子 ${box.javaClass.simpleName}，原宽 ${built.originalBoxWidth}px）"
         )
+        // 图标早采到过（进程级缓存）就**当场套上**：不套的话这颗按钮要等下几趟同步被
+        // [reassert] 补图标，用户看到的是「先注入文字，图标过一会儿才出现」（2026-10-19 修 BUG1）。
+        // 一次都还没采到才交给下面那条异步采集（它要隐形开一次「更多」面板，快不了）。
+        if (entryIcon != null) applyIcon(built)
         maybeHarvestIcon(more)
         return true
     }
@@ -542,7 +586,7 @@ class StockDetailBarFeature : PageSyncFeature() {
     }
 
     /**
-     * 现场还成立时，顺手把宿主改回去的东西再压一次。
+     * 现场还成立时，顺手把宿主改回去的东西再压一次，并把这一份现场标记成「已复核」。
      *
      * 实测宿主重排底栏时会重新套用它自己的 `LayoutParams`：盒子宽度一旦回到原来的
      * 固定值，我们的按钮就被挤没了（看着就是「入口消失了」）—— 加宽是「买卖让位」的
@@ -557,8 +601,14 @@ class StockDetailBarFeature : PageSyncFeature() {
             noteChange()
             GLog.i("底栏入口：宿主把「更多」盒子宽度改回去了，已重新加宽（买卖重新让位）")
         }
-        if (runCatching { e.button.compoundDrawables.getOrNull(1) }.getOrNull() == null) applyIcon(e)
+        if (topDrawableOf(e) == null) applyIcon(e)
+        // 这一份现场到此算复核过：限速闸恢复正常（见 needsFollowUp）
+        e.confirmed = true
     }
+
+    /** 我们套在入口按钮上的那颗图标；没套（或套失败）返回 null */
+    private fun topDrawableOf(e: Injected): Drawable? =
+        runCatching { e.button.compoundDrawables.getOrNull(1) }.getOrNull()
 
     /**
      * 真正动手：把「更多」搬进一个横向容器，前面并排我们的按钮，再把容器塞回盒子，

@@ -69,11 +69,14 @@ class DockCleanFeature : UiCleanFeature() {
     private var reflow = Reflow.TODO
 
     /**
-     * 均分状态机没收敛就让冷却让路（见 [PageSyncFeature.needsFollowUp]）。
+     * 均分状态机没收敛就让限速闸让路（见 [PageSyncFeature.needsFollowUp]）。
      *
      * 底栏重排天生要连跑几趟：改 weight / 改格子宽 → 等宿主量一次 → 发现末格被挤出
-     * 屏幕 → 再加宽整行。每趟都靠下一次布局回调推进，而 1.5 秒冷却正好把那次回调吃掉，
-     * 结果底栏停在「留空档」或「末格在屏幕外」的中间态。
+     * 屏幕 → 再加宽整行。每趟都靠下一次布局回调推进，而限速闸一延后就是 200ms 一拍 ——
+     * 用户看到的是「那一格没了、位置过一会儿才腾出来」。
+     *
+     * （2026-10-19 起限速只延后、不丢弃，所以覆写这一条已经不影响正确性，只影响手感；
+     * 见 `docs/FEATURE-UI-CLEAN.md` §2.4。）
      */
     override val needsFollowUp: Boolean get() = reflow != Reflow.SETTLED
 
@@ -316,12 +319,19 @@ class DockCleanFeature : UiCleanFeature() {
             }
 
             Reflow.REORDER -> {
-                // ⑥ 连挪位都不灵 → 全部退回，接受「留一条空档」
+                // ⑥ 连挪位都不灵 → 退回我们留下的**重排**改动，接受「留一条空档」。
+                //
+                // ⚠️ 退回重排**不能连「藏起来」一起撤**（2026-10-19 修）：`restoreAll`
+                // 会把那一格还原成可见 —— 而下一趟 `applyTo` 又会重新藏（`isShown` 为真 →
+                // `hideItem` → 重排状态机从头跑）。于是变成「藏 → 试四招 → 撤回 → 再藏」
+                // 的死循环：用户看到那一格在闪，开关等于没生效，日志还一直刷。
+                // 本职就是把那一格藏掉，重排只是补救，所以撤完重排再把隐藏补回来。
                 patcher.restoreAll()
+                patcher.hide(hidden, "底栏「${DockCleanTargets.REMOVE_TEXT}」格（退回重排后保住隐藏）")
                 lastHidden = WeakReference(hidden)
                 GLog.w(
                     "$id：底栏去格后仍留 ${refRowW - covered}px 空档 —— 试过改格子宽度 / 加宽整行 / " +
-                        "挪到末尾，宿主栅格都不吃，已退回原样（不再重试）"
+                        "挪到末尾，宿主栅格都不吃，已退回重排改动的原样（那一格仍然隐藏，不再重试）"
                 )
                 reflow = Reflow.SETTLED
             }
