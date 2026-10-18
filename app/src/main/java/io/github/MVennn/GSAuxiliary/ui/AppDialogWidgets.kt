@@ -1,5 +1,8 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,10 +22,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +38,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -44,6 +53,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
@@ -58,10 +68,52 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
         // 由列表自己滚动，而不是把卡片撑满整屏。
         is ChoiceDialogSpec -> {
             val scrollState = rememberScrollState()
+            // 3.2.1：滚到顶 / 底之后**继续拖**的那段余量（列表自己不消费）用来驱动
+            // 指示条的「拉长 + 回弹」。不抓这段的话，拉满时目标值恒为 0 / 1，
+            // 弹簧没有可追的差量 —— 也就是用户说的「拉满是没有动画的」。
+            var edgePull by remember { mutableFloatStateOf(0f) }
+            val edgeScroll = remember {
+                object : NestedScrollConnection {
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ): Offset {
+                        if (available.y != 0f) {
+                            edgePull = (edgePull + available.y).coerceIn(-EdgePullMax, EdgePullMax)
+                        }
+                        return Offset.Zero
+                    }
+                }
+            }
+            // 手指离开后让余量自己弹回去（松手即回弹，不是等下一次滚动）。
+            // 这里手写一小段欠阻尼弹簧积分：`animate()` 对 Float 没有直接重载，
+            // 而为了这一处引一个 Animatable 反而要多维护一条状态。
+            LaunchedEffect(scrollState.isScrollInProgress) {
+                if (scrollState.isScrollInProgress || edgePull == 0f) return@LaunchedEffect
+                var value = edgePull
+                var velocity = 0f
+                var last = withFrameNanos { it }
+                while (true) {
+                    val now = withFrameNanos { it }
+                    val dt = ((now - last) / 1_000_000_000f).coerceIn(0f, 0.032f)
+                    last = now
+                    // k / c 取欠阻尼：约 0.5 秒收敛，肉眼能看到一次回弹
+                    val accel = -520f * value - 26f * velocity
+                    velocity += accel * dt
+                    value += velocity * dt
+                    edgePull = value
+                    if (abs(value) < 0.5f && abs(velocity) < 8f) {
+                        edgePull = 0f
+                        break
+                    }
+                }
+            }
             Box {
                 Column(
                     modifier = Modifier
                         .verticalScroll(scrollState)
+                        .nestedScroll(edgeScroll)
                         .padding(vertical = 8.dp),
                 ) {
                     spec.items.forEachIndexed { index, label ->
@@ -85,6 +137,7 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 // 已经量好的尺寸、不反过来影响它，卡片才会贴合内容。
                 MenuScrollThumb(
                     scrollState = scrollState,
+                    edgePull = { edgePull },
                     modifier = Modifier.matchParentSize(),
                 )
             }
@@ -219,6 +272,9 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
     }
 }
 
+/** 到头后继续拖的余量上限（px）：超过这个值再拖也不再拉长，避免拉成一根长条 */
+private const val EdgePullMax = 160f
+
 /** 选项列表的滚动指示条：宽 3dp、距卡片右缘 5dp、上下各留 16dp（几何在 drawBehind 里算） */
 private val MenuThumbWidth = 3.dp
 private val MenuThumbRightInset = 5.dp
@@ -251,9 +307,25 @@ private val MenuThumbVerticalInset = 16.dp
 @Composable
 private fun MenuScrollThumb(
     scrollState: ScrollState,
+    /** 到头之后继续拖的余量（px），由列表的嵌套滚动喂进来；只在绘制阶段读 */
+    edgePull: () -> Float,
     modifier: Modifier = Modifier,
 ) {
     val color = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    // 3.2.1：指示条加弹性。位置不再直接跟 `scrollState.value` 走，而是追一个
+    // 欠阻尼弹簧（dampingRatio < 1）—— 拖动时条子略微落后于手指，甩到底 /
+    // 顶时冲过头再弹回来；冲到轨道之外的那一截不裁掉，而是转成「拉长」，
+    // 于是「拉满」也有动画（原来到端点就是静止的）。
+    //
+    // `fraction` 只在下面的 drawBehind 里被读 —— 读的是 State，滚动与弹簧
+    // 都只让这一层**重绘**，概览页 / 菜单列表不会跟着重组。
+    val rawFraction =
+        if (scrollState.maxValue > 0) scrollState.value.toFloat() / scrollState.maxValue else 0f
+    val fraction by animateFloatAsState(
+        targetValue = rawFraction,
+        animationSpec = spring(dampingRatio = 0.42f, stiffness = Spring.StiffnessMediumLow),
+        label = "menu-thumb-elastic",
+    )
     Box(
         modifier = modifier.drawBehind {
             val max = scrollState.maxValue
@@ -264,8 +336,17 @@ private fun MenuScrollThumb(
             // 条子的活动范围（去掉上下留白），最短不低于自身宽度的两倍
             val track = (size.height - inset * 2).coerceAtLeast(w)
             val total = (max + viewport).toFloat()
-            val h = (track * viewport / total).coerceAtLeast(w * 2f)
-            val y = inset + (track - h) * (scrollState.value.toFloat() / max)
+            val baseH = (track * viewport / total).coerceAtLeast(w * 2f)
+            // 两路拉伸：① 弹簧过冲（甩到底时的惯性）；② 到头后继续拖的余量
+            //    （手指还按着、列表已经不动了）—— 后者是「拉满也有动画」的来源。
+            val overshoot = fraction - fraction.coerceIn(0f, 1f)
+            val pull = abs(edgePull()).coerceIn(0f, EdgePullMax)
+            val stretch = 1f +
+                (abs(overshoot) * 1.2f).coerceAtMost(0.6f) +
+                (pull / EdgePullMax) * 0.45f
+            val h = (baseH * stretch).coerceAtMost(track)
+            val y = (inset + (track - h) * fraction.coerceIn(0f, 1f))
+                .coerceIn(inset, inset + track - h)
             drawRoundRect(
                 // 18%：Miuix 的 `onSurfaceVariantSummary` 在亮色主题下几乎是纯黑
                 // （真机取色 = 卡片 245 上叠出 170），所以不透明度得比直觉更低。
