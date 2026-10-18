@@ -251,8 +251,8 @@ Miuix 基础件拼的。
 > **配色分两层**：三态色（绿 / 红 / 灰）同时给**背景流光**与**右侧图标**；前景文字
 > 保持中性（深色白 / 浅色黑，副行按同色降透明度）。文字再染色会和背景糊在一起。
 >
-> **图标照 LSPosed 那张「已激活」卡**：贴右缘、吃出卡片外（默认只露 75%），
-> 已激活时是实心绿对勾，不是压在文字后面的水印。
+> **图标照 LSPosed 那张「已激活」卡**：落在**右下角**，右边与下边各被卡边裁掉，
+> 168dp（光圆 ≈ 卡高的 0.89 倍），已激活时是亮绿对勾（`#6ACF73`）。
 
 ```kotlin
 Card(
@@ -285,21 +285,22 @@ private val StatusCardMinHeight = 148.dp     // 2.9.3 起这才是卡片真实�
 private val StatusCardTitleSize = 34.sp      // 3.2.1：30 → 34，加粗到 Bold
 private val StatusCardVersionSize = 18.sp    // 与标题是同一句话的两段，SemiBold
 private val StatusCardApiSize = 16.sp        // API 是附注，收小一档、常规字重
-private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
+private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168（光圆 ≈ 卡高 0.89）
 ```
 
 **行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp。**图标让位**：`TextMeasurer` 先量
 三行最宽那行 —— 默认露 75%（`StatusCardIconDefaultVisible`），文字更宽就继续往右推，
-最少留 25%（`StatusCardIconMinVisible`）。
+最少留 25%（`StatusCardIconMinVisible`）；向下探出 `StatusCardIconDropFraction = 0.34`
+（光圆上沿落在卡高 37%，与参照图重合）。
 
 **状态读取**：读到「已激活」之前每 400ms 重读一次框架信息（最多 8 次）—— 框架刚起来的
 那一小段 `scope` / 版本号可能还读不到，只算一次会永远停在「未激活 + 感叹号」。
 
-| 状态 | 条件 | 流光 + 图标 | 文字 |
-|---|---|---|---|
-| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 | 深色白 / 浅色黑 |
-| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` 红 | 同上 |
-| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` 灰 | 同上 |
+| 状态 | 条件 | 流光 | 图标 | 文字 |
+|---|---|---|---|---|
+| 已激活 | 连上框架服务，作用域非空、版本可读 | `#0E8A52` 绿 | 深色 `#6ACF73` 亮绿 / 浅色 `#0E8A52` | 深色白 / 浅色黑 |
+| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` | 同色 | 同上 |
+| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `onBackgroundVariant` | 同色 | 同上 |
 
 #### 3.1.1 图标的版式演进（2.9.1 → 2.17.2）
 

@@ -220,11 +220,10 @@ private data class FrameworkInfo(
  *    装饰图标放进 `matchParentSize` 容器，**不再参与高度测量** ——
  *    于是「只调字号」不会连带改变卡片高度（2.9.1 / 2.9.2 时高度其实是被图标
  *    顶到 150 / 170dp 的，见 [StatusCardMinHeight] 的注释）；
- *  - **图标完整显示、右侧垂直居中**（2.17.2 定稿；2.9.1 ~ 2.17.1 为裁切弧）：
- *    图标尺寸 [StatusCardIconSize]，`align(CenterEnd)` 靠右垂直居中、距右缘
- *    [StatusCardIconEndPadding]，整个圆完整露出 —— 132dp 对 148dp 的卡高，
- *    上下各留 8dp。此前一直走「顶到右下角、只露左上一块弧线」的路线，
- *    2.17.1 放大到 260dp 后弧线盖满整条卡片右缘，认不出是个对勾，故废弃。
+ *  - **图标落在右下角、右侧与底部各切一刀**（3.2.1 按用户给的 LSPosed 截图定稿）：
+ *    尺寸 [StatusCardIconSize]、`align(BottomEnd)` 后右移与下探，光圆上沿落在卡高
+ *    约 37%、右边与下边都被卡边裁掉。2.17.2 曾改成「完整显示、右侧垂直居中」，
+ *    与参照图不符；更早的 2.9.1 ~ 2.17.1 是「顶到右下角只露左上一块弧线」。
  *
  *    > Miuix `Card` 的 `BasicCard` 内部走 `squircleSurface`，其中调用了
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
@@ -334,6 +333,17 @@ private fun OverviewStatusCard(
             val iconVisibleFraction = ((constraints.maxWidth - reservedPx - textMaxPx) / iconSizePx)
                 .coerceIn(StatusCardIconMinVisible, StatusCardIconDefaultVisible)
             val iconShift = with(density) { (iconSizePx * (1f - iconVisibleFraction)).toDp() }
+            // 往下探出的那截：参照图里对勾的下沿同样被卡片切掉
+            val iconDrop = with(density) {
+                (iconSizePx * StatusCardIconDropFraction).toDp()
+            }
+            // 深色下「已激活」用亮绿（参照图那颗 #6ACF73），#0E8A52 压在深绿光场上
+            // 只剩一档明度差，看着像没亮
+            val iconColor = if (state == FrameworkState.Active && darkTheme) {
+                StatusActiveIconColor
+            } else {
+                accent
+            }
 
             // --- 卡面：关于页那套流动光场（同一份代码，不是另写一遍） ---
             //
@@ -361,20 +371,21 @@ private fun OverviewStatusCard(
             // **两种图形必须写在两条分支里**：`TintedIcon` 内部按 painter 缓存，
             // 同一个调用点只改参数会复用上一颗图形（用户看到「已激活还挂着感叹号」）。
             Box(Modifier.matchParentSize()) {
+                // 右下角 + 双向出血（参照 LSPosed 那张卡：对勾的右边和下边都被切）
                 val glyphModifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .offset(x = iconShift)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = iconShift, y = iconDrop)
                     .size(StatusCardIconSize)
                 if (state == FrameworkState.Active) {
                     TintedIcon(
                         imageVector = AppIcons.CheckCircle,
-                        tint = accent,
+                        tint = iconColor,
                         modifier = glyphModifier,
                     )
                 } else {
                     TintedIcon(
                         imageVector = AppIcons.ErrorCircle,
-                        tint = accent,
+                        tint = iconColor,
                         modifier = glyphModifier,
                     )
                 }
@@ -444,6 +455,16 @@ private val StatusCardTitleSize = 34.sp
 private val StatusCardVersionSize = 18.sp
 private val StatusCardApiSize = 16.sp
 
+/** 「已激活」图标在深色下用的亮绿（参照 LSPosed 卡片里那颗对勾） */
+private val StatusActiveIconColor = Color(0xFF6ACF73)
+
+/**
+ * 图标向下探出卡片底边的比例（同样参照那张卡）。
+ *
+ * 取 0.34 时光圆的**上沿落在卡高的 37%**、下沿被切掉约 39dp —— 与参照图几乎重合。
+ */
+private const val StatusCardIconDropFraction = 0.34f
+
 /** 图标默认露出多少（其余吃到卡片右缘外，与 LSPosed 那张卡一致） */
 private const val StatusCardIconDefaultVisible = 0.75f
 
@@ -464,12 +485,12 @@ private val StatusCardTextStartPadding = 16.dp
 private val StatusCardIconGap = 12.dp
 
 /**
- * 右侧装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp，
- * 2.17.2 收到 132dp 并改为**完整显示**、不再裁切）。
+ * 右侧装饰图标的尺寸（2.9.2：150 → 170dp；2.17.1：260dp；2.17.2：132dp；
+ * 3.2.1 按 LSPosed 参照图回到 **168dp**）。
  *
  * 图标在 `matchParentSize` 容器里，所以这个尺寸**不影响卡片高度**。
- * 132dp 对 148dp 的卡片最小高度正好上下各留 8dp —— 图标与卡片近乎等高，
- * 对勾读得清，也不压过左侧文字。
+ * 168dp 是「光圆直径 ≈ 卡高的 0.89 倍」这个比例算出来的 —— 参照图里对勾就是
+ * 这么大：上沿落在卡高 37%，右边与下边各被切掉一截。
  */
-private val StatusCardIconSize = 132.dp
+private val StatusCardIconSize = 168.dp
 
