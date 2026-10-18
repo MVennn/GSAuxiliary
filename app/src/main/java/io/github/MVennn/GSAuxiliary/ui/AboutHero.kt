@@ -465,11 +465,23 @@ internal fun animatedGradientColors(
  * 这一个主色 —— 状态是什么颜色，背景就一直是什么颜色。
  */
 internal fun lightFieldPalettesFrom(accent: Color, dark: Boolean): List<List<Color>> {
-    val mixes = listOf(
-        listOf(0.10f, 0.20f, 0.30f, 0.42f),
-        listOf(0.14f, 0.26f, 0.36f, 0.48f),
-        listOf(0.08f, 0.18f, 0.28f, 0.40f),
-    )
+    val mixes = if (dark) {
+        // 深色：主色往黑里兑，光斑落在 0.65~0.95（见下方 copy(alpha = ...)）
+        listOf(
+            listOf(0.10f, 0.20f, 0.30f, 0.42f),
+            listOf(0.14f, 0.26f, 0.36f, 0.48f),
+            listOf(0.08f, 0.18f, 0.28f, 0.40f),
+        )
+    } else {
+        // 浅色：兑白的比例要压得比深色低一档 —— 浅色卡面贴着白色页面走，
+        // 之前那套（最高 0.48）合成出来是「灰绿」的，比 LSPosed 那张浅色卡
+        // （实测均值约 204 / 229 / 209）暗了 30 个色阶，看着像脏。
+        listOf(
+            listOf(0.05f, 0.13f, 0.20f, 0.28f),
+            listOf(0.07f, 0.15f, 0.23f, 0.31f),
+            listOf(0.04f, 0.11f, 0.18f, 0.26f),
+        )
+    }
     return mixes.map { group ->
         group.map { t ->
             if (dark) {

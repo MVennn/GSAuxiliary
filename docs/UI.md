@@ -288,6 +288,10 @@ private val StatusCardApiSize = 16.sp        // API 是附注，收小一档、�
 private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168（光圆 ≈ 卡高 0.89）
 ```
 
+**调色板强度**：深色 `lerp(Black, accent, 0.55~0.95)` + alpha 0.40~0.52；浅色
+`lerp(White, accent, 0.04~0.31)` —— 浅色必须压得比深色更狠，否则合成出来是灰绿
+（实测比 LSPosed 浅色卡暗 30 个色阶，看着像脏）。
+
 **行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp。**图标让位**：`TextMeasurer` 先量
 三行最宽那行 —— 默认露 75%（`StatusCardIconDefaultVisible`），文字更宽就继续往右推，
 最少留 25%（`StatusCardIconMinVisible`）；向下探出 `StatusCardIconDropFraction = 0.34`
