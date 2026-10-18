@@ -117,14 +117,25 @@ object QuickConfigStore {
      * 的结构），绝不返回空列表、绝不抛异常 —— 调用方（目标进程的注入回调）不设防。
      */
     fun decode(json: String?): Data {
-        val fallback = decodeOrNull(ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG)
-            ?: error("出厂方案 JSON 自身解析失败（不该发生）")
-        if (json.isNullOrBlank()) return fallback
+        if (json.isNullOrBlank()) return fallback()
         val parsed = decodeOrNull(json)
         if (parsed != null) return parsed
         GLog.w("一键配置方案 JSON 解析失败，回落出厂方案")
-        return fallback
+        return fallback()
     }
+
+    /**
+     * 出厂方案（解析一次就留着）。
+     *
+     * 原先在 [decode] 第一行**无条件**解析一遍出厂 JSON 做兜底 —— 成功路径上
+     * 那份解析纯属白做（调用点在主线程：注入回调、设置页读写）。
+     */
+    private val fallbackData: Data by lazy {
+        decodeOrNull(ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG)
+            ?: error("出厂方案 JSON 自身解析失败（不该发生）")
+    }
+
+    private fun fallback(): Data = fallbackData
 
     /** 容错解析；完全解不出（无有效方案）返回 null */
     private fun decodeOrNull(json: String): Data? {

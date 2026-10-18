@@ -22,4 +22,13 @@ object LogMask {
     /** 代码与市场分开传的调用方用这个（取数层都是这种形状） */
     fun stock(code: String?, market: String?): String =
         stock(if (code.isNullOrBlank()) null else "$code.${market.orEmpty()}")
+
+    /**
+     * 只有代码、没有市场后缀时用这个 —— 例如行情接口**回显**的代码（`300045`）。
+     *
+     * 与 [stock] 同一口径：保留前两位 + `****`。拼不出完整代码，但对排查仍有用
+     * （能看出「回显的确实是另一只」还是「整体错位」）。
+     */
+    fun code(code: String?): String =
+        if (code.isNullOrBlank() || code.length <= 2) "代码已略" else code.take(2) + "****"
 }

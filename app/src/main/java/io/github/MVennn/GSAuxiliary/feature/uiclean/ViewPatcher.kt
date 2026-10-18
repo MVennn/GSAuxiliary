@@ -84,7 +84,7 @@ class ViewPatcher(private val tag: String) {
         remember(v)
         v.visibility = View.GONE
         bump()
-        GLog.i("$tag：隐藏 $why（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：隐藏 $why（${describe(v)}）")
         return true
     }
 
@@ -108,7 +108,7 @@ class ViewPatcher(private val tag: String) {
         lp.height = 0
         v.requestLayout()
         bump()
-        GLog.i("$tag：收起 $why（高度归零 + GONE，${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：收起 $why（高度归零 + GONE，${describe(v)}）")
         return true
     }
 
@@ -124,7 +124,7 @@ class ViewPatcher(private val tag: String) {
         lp.height = height
         v.requestLayout()
         bump()
-        GLog.i("$tag：$why 高度 -> ${height}px（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：$why 高度 -> ${height}px（${describe(v)}）")
         return true
     }
 
@@ -155,7 +155,7 @@ class ViewPatcher(private val tag: String) {
         lp.width = width
         v.requestLayout()
         bump()
-        GLog.i("$tag：$why 宽度 -> ${width}px（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：$why 宽度 -> ${width}px（${describe(v)}）")
         return true
     }
 
@@ -173,7 +173,7 @@ class ViewPatcher(private val tag: String) {
         lp.marginStart = px
         v.requestLayout()
         bump()
-        GLog.i("$tag：$why 左边距 -> ${px}px（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：$why 左边距 -> ${px}px（${describe(v)}）")
         return true
     }
 
@@ -186,7 +186,7 @@ class ViewPatcher(private val tag: String) {
         lp.weight = 1f
         v.requestLayout()
         bump()
-        GLog.i("$tag：$why 均分铺满（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：$why 均分铺满（${describe(v)}）")
         return true
     }
 
@@ -213,7 +213,7 @@ class ViewPatcher(private val tag: String) {
             parent.addView(v)
         }.onFailure { GLog.w("$tag：挪位失败（${describe(v)}）", it); return false }
         bump()
-        GLog.i("$tag：把 ${describe(v)} 从第 $from 位挪到最后一位（宿主栅格按序号摆位，只能这么绕）")
+        if (GLog.isInfo) GLog.i("$tag：把 ${describe(v)} 从第 $from 位挪到最后一位（宿主栅格按序号摆位，只能这么绕）")
         return true
     }
 
@@ -240,7 +240,7 @@ class ViewPatcher(private val tag: String) {
         val s = synchronized(snapshots) { snapshots.remove(v) } ?: return
         restoreTo(v, s)
         bump()
-        GLog.i("$tag：已还原 1 处（${describe(v)}）")
+        if (GLog.isInfo) GLog.i("$tag：已还原 1 处（${describe(v)}）")
     }
 
     /** 把挪过位的视图挪回原位置；返回 true = 真的挪过 */

@@ -17,6 +17,8 @@ import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.watchlist.ZxWatchlist
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.reflect.Field
+import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -145,6 +147,9 @@ class StgStockFilterFeature : Feature {
     /** 左上角「策略个股N只」那颗计数的资源 id 缓存 */
     @Volatile private var resNumIdCache = 0
 
+    /** 列标题行（名称 / 最新价 / 涨跌幅）的资源 id 缓存 —— 收放空态时每轮都要查，见 [colTitleId] */
+    @Volatile private var colTitleIdCache = 0
+
     /** 我们摆上去的那块空态视图（宿主 `empty_ai_stk` 的实例），弱引用，页面重建后自然失效 */
     @Volatile private var emptyViewRef: java.lang.ref.WeakReference<View>? = null
 
@@ -176,6 +181,56 @@ class StgStockFilterFeature : Feature {
      * 未必会写回数据项字段，所以顺手把行内 `#tv_item_stk_percent` 的文案记一份。
      */
     private val percentByCam = Collections.synchronizedMap(WeakHashMap<Any, MutableMap<String, Double>>())
+
+    // ------------------------------------------------------------------ 反射缓存（规则 2.1）
+
+    /**
+     * 反射解析结果槽：`null` 也要缓存，所以不能直接把结果塞进 map
+     * （`WeakHashMap` 的 `get` 分不清「没有这个键」和「值是 null」）。
+     */
+    private class Slot<T>(val value: T?)
+
+    /** 适配器类 → `getItem(int)`（没有也是结果，缓存哨兵） */
+    private val getItemCache = Collections.synchronizedMap(WeakHashMap<Class<*>, Slot<Method>>())
+
+    /** 适配器类 → `data` 字段 */
+    private val dataFieldCache = Collections.synchronizedMap(WeakHashMap<Class<*>, Slot<Field>>())
+
+    /** 任意类 → 拆包方法（`getWrappedAdapter` / `getTarget` 各一张表，按类缓存） */
+    private val headerUnwrapCache = Collections.synchronizedMap(WeakHashMap<Class<*>, Slot<Method>>())
+    private val proxyUnwrapCache = Collections.synchronizedMap(WeakHashMap<Class<*>, Slot<Method>>())
+
+    /** 条目类 → 解析好的候选字段（按候选顺序；`null` 项 = 该类没有这个字段） */
+    private class ItemFields(
+        val cam: List<Field?>,
+        val code: List<Field?>,
+        val market: List<Field?>,
+        val percent: List<Field?>,
+    )
+
+    private val itemFieldsCache = Collections.synchronizedMap(WeakHashMap<Class<*>, ItemFields>())
+
+    /**
+     * 条目类的候选字段**解析一次**。
+     *
+     * 这是规则 2.1 的直接要求：`Reflect.findField` 沿继承链逐个 `getDeclaredField` 试错、
+     * 未命中靠抛异常（填栈），而 [codeAndMarket] / [percentOf] 在**每行**都要跑
+     * （筛选生效时每次 `notifyDataSetChanged` 还要对全量重跑一遍）。按类缓存之后，
+     * 每行的成本只剩「对已解析的 `Field` 做一次 `get`」，继承链不再重扫。
+     *
+     * 语义与原先的 `Reflect.readField(item, 候选…)` 一致：候选顺序不变、空值照样跳过，
+     * 只是把「找字段」这一步提出循环。
+     */
+    private fun fieldsOf(cls: Class<*>): ItemFields = synchronized(itemFieldsCache) {
+        itemFieldsCache.getOrPut(cls) {
+            ItemFields(
+                cam = StgStockFilterTargets.CAM_FIELDS.map { Reflect.findField(cls, it) },
+                code = StgStockFilterTargets.CODE_FIELDS.map { Reflect.findField(cls, it) },
+                market = StgStockFilterTargets.MARKET_FIELDS.map { Reflect.findField(cls, it) },
+                percent = StgStockFilterTargets.PERCENT_FIELDS.map { Reflect.findField(cls, it) },
+            )
+        }
+    }
 
     /** 上一次打印过的筛选结果，用来抑制重复日志 */
     @Volatile private var lastSummary: String? = null
@@ -235,8 +290,14 @@ class StgStockFilterFeature : Feature {
          * update() 与宿主下一次 notifyDataSetChanged 之间，ListView 可能仍按旧 count
          * 发起 getView/getItem，position 越界会直接把宿主打崩（审查 2026-10-17）。
          * 越界时回退用原始 position 转调 base：base 是全量列表，position 必在其范围内。
+         *
+         * 走下标而不是 `getOrNull`：后者返回 `Int?`，**每行都要装箱一次**
+         * （2026-10-19；这个方法在每次 `getView` / `getItem` 上）。
          */
-        private fun mapped(position: Int): Int = indices.getOrNull(position) ?: position
+        private fun mapped(position: Int): Int {
+            val idx = indices
+            return if (position >= 0 && position < idx.size) idx[position] else position
+        }
 
         override fun getItem(position: Int): Any? = base.getItem(mapped(position))
 
@@ -275,9 +336,43 @@ class StgStockFilterFeature : Feature {
      * ClassLoader 下的同名类**，`is FilteredAdapter` 只认得自己这一份，旧实例留在
      * ListView 上的代理就成了「无主」的 —— 还原逻辑全部走不到。这里按类名判断，
      * 跨实例、跨 ClassLoader 都有效。
+     *
+     * ⚠️ **这条判据在 release 包里曾经是失效的**（2026-10-19 真机定位）：模块自己
+     * 也开 R8，`FilteredAdapter` 会被混淆成 `f2.m`，于是「类名里含 FilteredAdapter」
+     * 认不出**自己刚装上去的**代理 —— 表现为「按『确定』筛选不生效、退出重进才生效」
+     * （重进时列表上还是宿主的原适配器，那条路不需要认代理）。
+     * 现在两条腿走路：本实例靠 [proxiedLists] **身份直判**（不依赖任何名字），
+     * 跨实例才退回这里；类名与 `getTarget()` 由 proguard 的 `-keepnames` 保住
+     * （见 `app/proguard-rules.pro`）。
      */
     private fun isFilteredAdapter(a: Any?): Boolean =
         a != null && "FilteredAdapter" in a.javaClass.name
+
+    /**
+     * 列表 → 我们装上去的过滤代理 + 它包着的原适配器。
+     *
+     * 身份直判的依据：代理是**我们自己**放进这个列表的，记账比类名可靠得多
+     * （类名会被 R8 混淆，见 [isFilteredAdapter]）。弱引用键，列表回收后自然失效。
+     */
+    private class ProxyRecord(val proxy: Any, val target: Any)
+
+    private val proxiedLists = Collections.synchronizedMap(WeakHashMap<ListView, ProxyRecord>())
+
+    /** 这个 adapter 是不是我们装在这个列表上的过滤代理（身份判据，不依赖类名） */
+    private fun isProxiedOnList(lv: ListView, a: Any?): Boolean =
+        a != null && synchronized(proxiedLists) { proxiedLists[lv]?.proxy === a }
+
+    /**
+     * 列表上那个 adapter 若是我们装的过滤代理，返回它包着的原适配器；不是就原样返回。
+     *
+     * 先按**身份**判（本实例装的），认不出再退回 [unwrapProxy] 的类名拆包
+     * （热重载后旧实例留在列表上的代理只能这么认）。
+     */
+    private fun unwrapOnList(lv: ListView, a: Any): Any? {
+        val rec = synchronized(proxiedLists) { proxiedLists[lv] }
+        if (rec != null && rec.proxy === a) return rec.target
+        return unwrapProxy(a)
+    }
 
     /**
      * 取出过滤代理包着的原适配器；不是代理就原样返回。
@@ -288,7 +383,10 @@ class StgStockFilterFeature : Feature {
      */
     private fun unwrapProxy(a: Any): Any? {
         if (!isFilteredAdapter(a)) return a
-        return runCatching { a.javaClass.getMethod("getTarget").invoke(a) }.getOrNull()
+        val m = synchronized(proxyUnwrapCache) {
+            proxyUnwrapCache.getOrPut(a.javaClass) { Slot(Reflect.findMethod(a.javaClass, "getTarget")) }
+        }.value ?: return null
+        return runCatching { m.invoke(a) }.getOrNull()
     }
 
     // ------------------------------------------------------------------ 安装
@@ -392,8 +490,18 @@ class StgStockFilterFeature : Feature {
                         .setId("stgfilter:getView:${cls.simpleName}:${m.parameterTypes.size}")
                         .intercept { chain ->
                             val result = chain.proceed()
-                            runCatching { onGetView(env, chain.thisObject, chain.args, result) }
-                                .onFailure { GLog.w("筛选股票：getView 后处理异常", it) }
+                            val self = chain.thisObject
+                            // 先做最便宜的判据再取参数：这个钩子挂在**基类**上，
+                            // 全 App 所有列表的每一行都会进来，非目标适配器不该付
+                            // 「物化整条参数表」的钱（`chain.args` 返回一个 List，
+                            // 而我们要的只是第 0 个参数 —— 2026-10-19）
+                            if (self != null &&
+                                StgStockFilterTargets.isTargetAdapter(self.javaClass.name)
+                            ) {
+                                runCatching {
+                                    onGetView(env, self, (chain.getArg(0) as? Int) ?: -1, result)
+                                }.onFailure { GLog.w("筛选股票：getView 后处理异常", it) }
+                            }
                             result
                         }
                 )
@@ -426,13 +534,10 @@ class StgStockFilterFeature : Feature {
 
     // ------------------------------------------------------------------ 数据交换
 
-    private fun onGetView(env: FeatureEnv, adapter: Any?, args: List<Any?>, result: Any?) {
-        if (adapter == null) return
-        if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) return
-
+    private fun onGetView(env: FeatureEnv, adapter: Any, position: Int, result: Any?) {
         // ① 顺手记一份行内涨跌幅文案（数据项 zdf 读不到时的兜底）
         val row = result as? View
-        if (row != null) recordRowPercent(adapter, args.getOrNull(0) as? Int ?: -1, row)
+        if (row != null) recordRowPercent(adapter, position, row)
 
         // ② 行点击回映射要**常驻**：宿主随时可能在刷新流程里重新
         //    `setOnItemClickListener(...)`，把我们的 wrapper 顶掉 ——
@@ -502,28 +607,36 @@ class StgStockFilterFeature : Feature {
      *               原方法马上会通知，不用也不要重复通知。
      */
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
-        val ctx = trackedActivity() ?: return
-        val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return
-        val base = adapter as? android.widget.ListAdapter ?: return
+        val ctx = trackedActivity() ?: return noteApplySkip("没有 trackedActivity")
+        val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return noteApplySkip("找不到列表控件")
+        val base = adapter as? android.widget.ListAdapter ?: return noteApplySkip("适配器不是 ListAdapter")
 
         // 保险：只给「当前列表在用的那个适配器」装代理。
         // 宿主换过适配器 / 页面重建之后，旧实例的 notify 与 getView 回调仍会打到我们身上，
         // 照着旧实例装代理会把列表的数据源换成过期内容（见 [liveAdapter]）。
         // 列表还没有适配器时（live == null）放行 —— 那是首次安装的场景。
-        // 列表上挂着的是我们的过滤代理就先拆包（热重载后可能是旧实例的，按类名认）。
-        unwrapHeaderAdapter(lv.adapter)?.let { live ->
-            val liveBase = unwrapProxy(live) ?: return
-            if (liveBase !== adapter) return
+        // 列表上挂着的是我们的过滤代理就先拆包（本实例按身份、热重载后按类名，见 [unwrapOnList]）。
+        val liveOnList = unwrapHeaderAdapter(lv.adapter)
+        if (liveOnList != null && liveOnList !== adapter) {
+            val liveBase = unwrapOnList(lv, liveOnList)
+                ?: return noteApplySkip("列表上挂着过滤代理但拆不出原适配器")
+            if (liveBase !== adapter) {
+                return noteApplySkip(
+                    "列表在用的适配器与传入的不是同一个（列表上=${liveOnList.javaClass.name}）"
+                )
+            }
         }
 
         val st = stateOf(adapter)
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
-        val full = readData(adapter) ?: return
+        val full = readData(adapter) ?: return noteApplySkip("读不到适配器的 data 字段（${adapter.javaClass.name}）")
         val active = env.config.stgStockFilter && filtersBy(ctx).active
 
         // 功能关掉 / 三个都不勾 / 数据还没到 → 把 ListView 换回原适配器
         if (!active || full.isEmpty()) {
+            if (full.isEmpty()) noteApplySkip("宿主的 data 还是空的（先 clear 后回包的中间态）")
+            else noteApplySkip("当前没有生效的筛选条件")
             // 数据还没到（`full` 空）时什么都不动 —— 那多半是宿主「先 clear 再等回包」的中间态，
             // 照着它把计数写成 0 只、把空态亮出来，都会在下一次刷新时闪一下
             if (full.isNotEmpty()) {
@@ -533,14 +646,15 @@ class StgStockFilterFeature : Feature {
             // 审查 2026-10-17 高-3：还原判据不能只看本实例的记账表（`st.proxy`）——
             // 热重载后 ListView 上可能还挂着**旧实例**装的 FilteredAdapter，新实例的
             // 记账表是空的，只查表就永远走不到 `lv.adapter = base`，筛选残留不清。
-            // 这里补一个「现场」判据：列表上（拆掉 header 包装后）只要还挂着我们的
-            // 过滤代理（任意实例的，按类名认），就还原成全量适配器。
+            // 这里补两个「现场」判据：① 本实例的 [proxiedLists] 记账（身份，不依赖类名）；
+            // ② 类名兜底（跨实例，见 [isFilteredAdapter]）。
             val liveOnList = unwrapHeaderAdapter(lv.adapter)
-            if (st.proxy != null || isFilteredAdapter(liveOnList)) {
+            if (st.proxy != null || isProxiedOnList(lv, liveOnList) || isFilteredAdapter(liveOnList)) {
                 runCatching { lv.adapter = base }
                     .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
                 st.proxy = null
                 st.snap = null
+                synchronized(proxiedLists) { proxiedLists.remove(lv) }
                 StgFilterBridge.publish(null)
                 lastSummary = null
                 GLog.i("筛选股票：筛选未生效，已还原全量（${full.size} 只）")
@@ -600,17 +714,22 @@ class StgStockFilterFeature : Feature {
         if (proxy == null) {
             val p = FilteredAdapter(base, rows)
             st.proxy = p
-            runCatching { lv.adapter = p }
-                .onFailure {
-                    GLog.w("筛选股票：装过滤代理失败", it)
-                    st.proxy = null
-                }
+            runCatching {
+                lv.adapter = p
+                synchronized(proxiedLists) { proxiedLists[lv] = ProxyRecord(p, base) }
+            }.onFailure {
+                GLog.w("筛选股票：装过滤代理失败", it)
+                st.proxy = null
+                synchronized(proxiedLists) { proxiedLists.remove(lv) }
+            }
         } else {
             proxy.update(rows)
             if (unwrapHeaderAdapter(lv.adapter) !== proxy) {
                 // 宿主自己 setAdapter 过一次 → 代理被顶掉，重装
-                runCatching { lv.adapter = proxy }
-                    .onFailure { GLog.w("筛选股票：重装过滤代理失败", it) }
+                runCatching {
+                    lv.adapter = proxy
+                    synchronized(proxiedLists) { proxiedLists[lv] = ProxyRecord(proxy, base) }
+                }.onFailure { GLog.w("筛选股票：重装过滤代理失败", it) }
             }
         }
 
@@ -638,8 +757,13 @@ class StgStockFilterFeature : Feature {
         }
     }
 
+    /** `data` 字段的解析结果也按适配器类缓存（[itemAt] 的兜底分支与 [readData] 都要用） */
     private fun readData(adapter: Any): List<Any>? {
-        val f = Reflect.findField(adapter.javaClass, DATA_FIELD) ?: return null
+        val f = synchronized(dataFieldCache) {
+            dataFieldCache.getOrPut(adapter.javaClass) {
+                Slot(Reflect.findField(adapter.javaClass, DATA_FIELD))
+            }
+        }.value ?: return null
         @Suppress("UNCHECKED_CAST")
         return runCatching { f.get(adapter) as? List<Any> }.getOrNull()
     }
@@ -768,12 +892,21 @@ class StgStockFilterFeature : Feature {
     /** ① 列标题行：普通 View，翻 `visibility` 即可。按**当前状态**判断，不记标志位 */
     private fun hideColTitle(act: Activity, lv: ListView) {
         runCatching {
-            val id = act.resources.viewIdOrZero(StgStockFilterTargets.COL_TITLE_ID)
+            val id = colTitleId(act)
             val col = if (id != 0) lv.findViewById<View>(id) else null
             if (col == null || col.visibility == View.GONE) return
             col.visibility = View.GONE
             GLog.i("筛选股票：列标题行（名称 / 最新价 / 涨跌幅）已收起")
         }.onFailure { GLog.w("筛选股票：收列标题行失败", it) }
+    }
+
+    /** 列标题行的资源 id（解析一次就缓存；空态期间每轮都要用） */
+    private fun colTitleId(act: Activity): Int {
+        var id = colTitleIdCache
+        if (id != 0) return id
+        id = act.resources.viewIdOrZero(StgStockFilterTargets.COL_TITLE_ID)
+        if (id != 0) colTitleIdCache = id
+        return id
     }
 
     /** ② 风险提示：从列表上摘下来 */
@@ -798,7 +931,7 @@ class StgStockFilterFeature : Feature {
     /** [hideListChrome] 的对偶：把两件配件放回去 */
     private fun restoreListChrome(act: Activity, lv: ListView) {
         runCatching {
-            val id = act.resources.viewIdOrZero(StgStockFilterTargets.COL_TITLE_ID)
+            val id = colTitleId(act)
             val col = if (id != 0) lv.findViewById<View>(id) else null
             if (col != null && col.visibility != View.VISIBLE) {
                 col.visibility = View.VISIBLE
@@ -947,10 +1080,27 @@ class StgStockFilterFeature : Feature {
     /** 同一个原因只记一次 —— `ensureClickRemap` 每帧都会被调到，不这样会刷屏 */
     @Volatile private var lastSkipReason: String? = null
 
+    /** [applyFilter] 上一次的早退原因（同款去重） */
+    @Volatile private var lastApplySkip: String? = null
+
     private fun noteSkip(reason: String) {
         if (lastSkipReason == reason) return
         lastSkipReason = reason
         GLog.w("筛选股票：暂时没装行点击回映射 —— $reason")
+    }
+
+    /**
+     * [applyFilter] 早退的原因（同一原因只记一条，口径同 [noteSkip]）。
+     *
+     * 为什么要记：这条链路上的早退**全部是静默的**，而用户看到的现象是
+     * 「点了确定、列表没反应」—— 2026-10-19 排查这个现象时，光看日志无法分辨
+     * 是「没找到列表」「读不到 data」还是「适配器不是同一个」，只能靠临时加日志重编。
+     * 留下这条诊断后，用户导出的日志里直接就有原因。
+     */
+    private fun noteApplySkip(reason: String) {
+        if (lastApplySkip == reason) return
+        lastApplySkip = reason
+        GLog.w("筛选股票：本轮筛选没生效 —— $reason")
     }
 
     /**
@@ -971,8 +1121,8 @@ class StgStockFilterFeature : Feature {
         val lv = findListView(act) ?: return noteSkip("找不到列表控件")
         var adapter = unwrapHeaderAdapter(lv.adapter) ?: return noteSkip("列表还没有 adapter")
         // 列表上可能是我们的过滤代理 —— 认它包着的那个原适配器
-        // （热重载后可能是旧实例的代理，`is FilteredAdapter` 认不出，按类名拆包）
-        adapter = unwrapProxy(adapter) ?: return noteSkip("过滤代理取不到原适配器")
+        // （本实例按 [proxiedLists] 身份判、热重载后按类名拆包，见 [unwrapOnList]）
+        adapter = unwrapOnList(lv, adapter) ?: return noteSkip("过滤代理取不到原适配器")
         if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) {
             return noteSkip("adapter 不是目标：${adapter.javaClass.name}")
         }
@@ -1044,9 +1194,13 @@ class StgStockFilterFeature : Feature {
     private fun unwrapHeaderAdapter(a: Any?): Any? {
         if (a == null) return null
         if (a.javaClass.name == "android.widget.HeaderViewListAdapter") {
-            return runCatching {
-                a.javaClass.getMethod("getWrappedAdapter").invoke(a)
-            }.getOrNull()
+            // 拆包方法的解析结果按类缓存（这条路径在每次 getView 上，见 onGetView）
+            val m = synchronized(headerUnwrapCache) {
+                headerUnwrapCache.getOrPut(a.javaClass) {
+                    Slot(Reflect.findMethod(a.javaClass, "getWrappedAdapter"))
+                }
+            }.value ?: return null
+            return runCatching { m.invoke(a) }.getOrNull()
         }
         return a
     }
@@ -1099,8 +1253,9 @@ class StgStockFilterFeature : Feature {
 
     /** 涨跌幅：先读数据项字段（实测 `zdf`，BigDecimal），再退回行内文案记录 */
     private fun percentOf(adapter: Any, item: Any, cam: String?): Double? {
-        for (f in StgStockFilterTargets.PERCENT_FIELDS) {
-            val v = Reflect.readField(item, f) ?: continue
+        val fields = fieldsOf(item.javaClass)
+        for (f in fields.percent) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } ?: continue
             val d = when (v) {
                 is Number -> v.toDouble()
                 is String -> v.toDoubleOrNull()
@@ -1129,8 +1284,8 @@ class StgStockFilterFeature : Feature {
     private fun liveAdapter(act: Activity): Any? {
         val lv = findListView(act) ?: return null
         val a = unwrapHeaderAdapter(lv.adapter) ?: return null
-        // 列表上可能是我们的过滤代理（热重载后也可能是旧实例的）—— 拆包取原适配器
-        return unwrapProxy(a)
+        // 列表上可能是我们的过滤代理（本实例按身份认、热重载后按类名认）—— 拆包取原适配器
+        return unwrapOnList(lv, a)
     }
 
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
@@ -1163,7 +1318,7 @@ class StgStockFilterFeature : Feature {
         lastSummary = null
         ensureClickRemap()
         GLog.i("筛选股票：筛选条件已生效（${StgFilterPanel.describe(applied)}）")
-        val a = liveAdapter(activity) ?: return
+        val a = liveAdapter(activity) ?: return noteApplySkip("拿不到当前列表在用的适配器")
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
     }
@@ -1191,8 +1346,19 @@ class StgStockFilterFeature : Feature {
         return runCatching { row.findViewById<View>(id) as? TextView }.getOrNull()
     }
 
+    /**
+     * 第 [position] 行的数据项。
+     *
+     * `getItem(int)` 的解析结果按适配器类缓存（规则 2.1）—— 这条路径在**每行**
+     * 都要走一次（[recordRowPercent]），原先每行都要沿继承链找一遍方法。
+     */
     private fun itemAt(adapter: Any, position: Int): Any? {
-        Reflect.findMethod(adapter.javaClass, "getItem", Int::class.javaPrimitiveType!!)?.let { m ->
+        val m = synchronized(getItemCache) {
+            getItemCache.getOrPut(adapter.javaClass) {
+                Slot(Reflect.findMethod(adapter.javaClass, "getItem", Int::class.javaPrimitiveType!!))
+            }
+        }.value
+        if (m != null) {
             runCatching { m.invoke(adapter, position) }.getOrNull()?.let { return it }
         }
         return readData(adapter)?.let { pick(it, position) }
@@ -1203,23 +1369,31 @@ class StgStockFilterFeature : Feature {
         return null
     }
 
+    /**
+     * 条目上的「代码.市场」（实测是 `cam`）。
+     *
+     * 每行都要跑（记兜底 + 判类别），所以候选字段走 [fieldsOf] 的按类缓存 ——
+     * 原先每个候选名一次 `Reflect.readField`（= 一次继承链 `getDeclaredField` 试错），
+     * 一趟最多 8 次，全部在 `getView` 的路径上。
+     */
     private fun codeAndMarket(item: Any?): String? {
         if (item == null) return null
-        for (f in StgStockFilterTargets.CAM_FIELDS) {
-            val v = Reflect.readField(item, f) as? String
+        val fields = fieldsOf(item.javaClass)
+        for (f in fields.cam) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? String
             if (!v.isNullOrEmpty()) return v
         }
         var code: String? = null
-        for (f in StgStockFilterTargets.CODE_FIELDS) {
-            val v = Reflect.readField(item, f) as? String
+        for (f in fields.code) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? String
             if (!v.isNullOrEmpty()) {
                 code = v
                 break
             }
         }
         if (code == null) return null
-        for (f in StgStockFilterTargets.MARKET_FIELDS) {
-            val v = Reflect.readField(item, f) ?: continue
+        for (f in fields.market) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } ?: continue
             val s = v.toString()
             if (s.isNotEmpty()) return "$code.$s"
         }

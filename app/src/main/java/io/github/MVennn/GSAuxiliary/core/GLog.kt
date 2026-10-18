@@ -89,6 +89,17 @@ object GLog {
         else -> true
     }
 
+    /**
+     * 当前等级下 DEBUG / INFO 会不会真的打出来。
+     *
+     * 热路径（每帧 / 每次布局回调 / 每行）上的日志要先问一句再拼字符串 ——
+     * Kotlin 的字符串模板在**调用前**就求值，`GLog.d("…${x}…")` 即使被等级挡掉，
+     * 那份字符串也已经造出来了（还有 `toString` / 资源反查之类藏在插值里的开销）。
+     * 判据本身就是一次 volatile 读，比一次字符串分配便宜得多。
+     */
+    val isDebug: Boolean get() = enabled(Log.DEBUG)
+    val isInfo: Boolean get() = enabled(Log.INFO)
+
     private fun emit(priority: Int, msg: String, tr: Throwable?) {
         if (!enabled(priority)) return
 

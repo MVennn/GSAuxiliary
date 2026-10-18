@@ -98,6 +98,14 @@ class AiStareQuickConfigFeature : Feature {
     /** [Bridge.diag] 限频间隔：1 秒最多放行 1 条 */
     private val DIAG_MIN_INTERVAL_MS = 1000L
 
+    /** [Bridge.toast] 限频：上次放行的时间戳 / 最小间隔（同 [lastDiagAtMs] 的口径） */
+    @Volatile
+    private var lastToastAtMs = 0L
+    private val TOAST_MIN_INTERVAL_MS = 500L
+
+    /** [Bridge.toast] 单条提示最大长度（Toast 本身不适合长文，也防页面刷屏） */
+    private val TOAST_MAX_LEN = 60
+
     /**
      * 取数编排（通道顺序 / 降级 / 缓存都在里面）。
      *
@@ -332,10 +340,27 @@ class AiStareQuickConfigFeature : Feature {
             GLog.i("一键配置JS：${msg.take(DIAG_MAX_LEN)}")
         }
 
-        /** JS 要一条提示 —— 走**安卓原生 Toast**（页面关了它还在） */
+        /**
+         * JS 要一条提示 —— 走**安卓原生 Toast**（页面关了它还在）。
+         *
+         * 与 [saved] / [manage] 同款 URL 守卫 + 与 [diag] 同款限频（2026-10-19）：
+         * 桥挂在宿主**全部** HybirdWebView 上，任意 H5 的第三方脚本都调得到它 ——
+         * 不限频的话「主线程 post + Toast IPC + 一条 INFO 日志」能被无限刷。
+         * 价格页自己的提示（取数失败 / 已套用…）都在价格页里调，守卫不会误伤。
+         *
+         * 守卫必须**在主线程**跑：`WebView.getUrl()` 是主线程 API，在 JavaBridge 线程
+         * 上取到的是空串（[apply] 的注释里记过这个坑），那会把价格页自己的提示也挡掉。
+         */
         @JavascriptInterface
         fun toast(msg: String) {
-            nativeToast(msg)
+            val now = System.currentTimeMillis()
+            if (now - lastToastAtMs < TOAST_MIN_INTERVAL_MS) return
+            lastToastAtMs = now
+            val text = msg.take(TOAST_MAX_LEN)
+            mainHandler.post {
+                if (!pricePageGuarded("toast")) return@post
+                nativeToast(text)
+            }
         }
 
         /**

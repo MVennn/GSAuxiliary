@@ -234,6 +234,57 @@ abstract class PageSyncFeature : Feature {
 
     // ------------------------------------------------------------------ 状态
 
+    /**
+     * 一个页面（`decorView`）上的全部调度状态。
+     *
+     * ## 为什么合并成一个对象（2026-10-19）
+     *
+     * 这些字段原先散在 12 张 `Collections.synchronizedMap(WeakHashMap<View, …>)` 里，
+     * 于是**每一帧**的 [onPreDraw] 要抢 3 次锁 + 做 3 次表操作、每次布局回调要查更多张表，
+     * 而且时间戳存进 `Map<View, Long>` 必然**装箱**一个 `Long`。合并之后每趟只查一张表、
+     * 一次锁，字段都是原生类型（`Int` / `Long` / `Boolean`），不再装箱。
+     *
+     * 键仍然是 `decorView`（弱引用），所以宿主重建页面时整份状态自然回收（规则 1.4）。
+     */
+    private class PageState {
+        /** 上一帧观察到的改动计数；[UNSET] = 还没记过（按「没动过」处理） */
+        var mutAtLastFrame = UNSET
+
+        /** 已连拦帧数 / 第一次拦帧的时刻 / 静默期截止时刻 */
+        var heldFrames = 0
+        var heldSince = 0L
+        var holdMutedUntil = 0L
+
+        /** 上次跑 [sync] 的时刻 / 上次认出来了没有 / 连续认不出来的次数 */
+        var lastRunAt = 0L
+        var lastScanOk = true
+        var missScans = 0
+
+        /** 是否已有一次「延后同步」排队（限速时只延迟、不重复排队） */
+        var deferredScan = false
+
+        /**
+         * 上一次同步**真动了视图**的时刻（动作限速窗口的起点，[actionCooldownMs]）。
+         *
+         * 判据是现成的：一轮 [sync] 前后 [mutations] 涨了（[noteChange] 或记账工具的计数），
+         * 和首帧屏障「界面被动过」用的是同一个信号。只在有动作时写入 —— 空闲轮不开窗口
+         * （宿主之后真改了视图要立刻响应）。窗口内进来的布局回调由 [deferSync] 补跑，不走丢。
+         */
+        var lastActionAt = 0L
+
+        /** 上次报告时间 / 已报告次数 */
+        var lastReportAt = 0L
+        var reportCount = 0
+
+        /** 进入本页的时刻（[startupHoldMs] 的起点，见 [onPreDraw]） */
+        var enteredAt = 0L
+
+        companion object {
+            /** [mutAtLastFrame] 的「还没记过」哨兵（改动计数从 0 起，-1 不会撞上） */
+            const val UNSET = -1
+        }
+    }
+
     /** 页面（`decorView`）→ 已挂的全局布局回调 */
     private val layoutWatchers =
         Collections.synchronizedMap(WeakHashMap<View, ViewTreeObserver.OnGlobalLayoutListener>())
@@ -242,37 +293,12 @@ abstract class PageSyncFeature : Feature {
     private val paintGates =
         Collections.synchronizedMap(WeakHashMap<View, ViewTreeObserver.OnPreDrawListener>())
 
-    /** 页面 → 上一帧观察到的改动计数（首帧屏障的判据） */
-    private val mutAtLastFrame = Collections.synchronizedMap(WeakHashMap<View, Int>())
+    /** 页面 → 调度状态（见 [PageState]） */
+    private val states = Collections.synchronizedMap(WeakHashMap<View, PageState>())
 
-    /** 页面 → 已连拦帧数 / 第一次拦帧的时刻 / 静默期截止时刻 */
-    private val heldFrames = Collections.synchronizedMap(WeakHashMap<View, Int>())
-    private val heldSince = Collections.synchronizedMap(WeakHashMap<View, Long>())
-    private val holdMutedUntil = Collections.synchronizedMap(WeakHashMap<View, Long>())
-
-    /** 页面 → 上次跑 [sync] 的时刻 / 上次认出来了没有 / 连续认不出来的次数 */
-    private val lastRunAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
-    private val lastScanOk = Collections.synchronizedMap(WeakHashMap<View, Boolean>())
-    private val missScans = Collections.synchronizedMap(WeakHashMap<View, Int>())
-
-    /** 页面 → 是否已有一次「延后同步」排队（限速时只延迟、不重复排队） */
-    private val deferredScan = Collections.synchronizedMap(WeakHashMap<View, Boolean>())
-
-    /**
-     * 页面 → 上一次同步**真动了视图**的时刻（动作限速窗口的起点，[actionCooldownMs]）。
-     *
-     * 判据是现成的：一轮 [sync] 前后 [mutations] 涨了（[noteChange] 或记账工具的计数），
-     * 和首帧屏障「界面被动过」用的是同一个信号。只在有动作时写入 —— 空闲轮不开窗口
-     * （宿主之后真改了视图要立刻响应）。窗口内进来的布局回调由 [deferSync] 补跑，不走丢。
-     */
-    private val lastActionAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
-
-    /** 页面 → 上次报告时间 / 已报告次数 */
-    private val lastReportAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
-    private val reportCounts = Collections.synchronizedMap(WeakHashMap<View, Int>())
-
-    /** 页面 → 进入本页的时刻（[startupHoldMs] 的起点，见 [onPreDraw]） */
-    private val enteredAt = Collections.synchronizedMap(WeakHashMap<View, Long>())
+    /** 取（必要时新建）某个页面的调度状态 */
+    private fun stateOf(root: View): PageState =
+        synchronized(states) { states.getOrPut(root) { PageState() } }
 
     /** 资源 id 是否已经预热过（进程内一次就够，之后每个页面 resume 都不用再跑） */
     private var warmed = false
@@ -353,8 +379,11 @@ abstract class PageSyncFeature : Feature {
 
     /** 解析本功能用到的 id 名（幂等，解析结果有缓存） */
     private fun warmIds(activity: Activity) {
+        // 先判 warmed 再读 idNames：后者的实现是「把几组候选数组拼起来」的表达式 getter，
+        // 预热过一次之后每次 resume 再拼一遍纯属白分配（2026-10-19）
+        if (warmed) return
         val names = idNames
-        if (names.isEmpty() || warmed) return
+        if (names.isEmpty()) return
         runCatching {
             val hit = ViewIds.idsFor(activity, idPkg).warm(names)
             warmed = true
@@ -365,10 +394,13 @@ abstract class PageSyncFeature : Feature {
     /** 挂上两个回调（每个 `decorView` 只挂一次），并把本页的失配计数清零 */
     private fun attach(env: FeatureEnv, activity: Activity, root: View) {
         // 每次进入本页都重来一轮：上一次「认不出来」的账不该记到这一次
-        synchronized(missScans) { missScans[root] = 0 }
-        synchronized(lastScanOk) { lastScanOk.remove(root) }
-        // 「启动窗口」的起点：进这一页的时刻（首帧屏障的宽档预算用它，见 onPreDraw）
-        synchronized(enteredAt) { enteredAt[root] = SystemClock.uptimeMillis() }
+        val st = stateOf(root)
+        synchronized(states) {
+            st.missScans = 0
+            st.lastScanOk = true
+            // 「启动窗口」的起点：进这一页的时刻（首帧屏障的宽档预算用它，见 onPreDraw）
+            st.enteredAt = SystemClock.uptimeMillis()
+        }
 
         val ref = WeakReference(activity)
 
@@ -395,7 +427,7 @@ abstract class PageSyncFeature : Feature {
                 }
             }
             // 进入本页时以「当前状态」为已呈现 —— 页面刚要画，还没东西改过
-            synchronized(mutAtLastFrame) { mutAtLastFrame[root] = mutations }
+            synchronized(states) { st.mutAtLastFrame = mutations }
             paintGates[root] = gate
             runCatching { root.viewTreeObserver.addOnPreDrawListener(gate) }
                 .onFailure {
@@ -427,24 +459,35 @@ abstract class PageSyncFeature : Feature {
         if (!switchedOn(env.config)) return
         if (activity.isFinishing || activity.isDestroyed) return
 
+        val st = stateOf(root)
         val now = SystemClock.uptimeMillis()
+        val followUp = needsFollowUp
+        // 一次锁把这一趟要用的状态读完（原先每张表各锁一次）
+        var actedAt = 0L
+        var last = 0L
+        var miss = 0
+        var missing = false
+        synchronized(states) {
+            actedAt = st.lastActionAt
+            last = st.lastRunAt
+            miss = st.missScans
+            missing = !st.lastScanOk
+        }
         // 动作限速：有待收敛的下一趟（多招状态机）就不进这道闸 —— 它要按「改一趟、量一趟」推进
-        if (!needsFollowUp) {
-            val actedAt = synchronized(lastActionAt) { lastActionAt[root] ?: 0L }
+        if (!followUp) {
             val actWait = actionCooldownMs - (now - actedAt)
             if (actWait > 0) {
                 deferSync(env, activity, root, actWait)
-                GLog.d(
-                    "$id：${activity.javaClass.simpleName} 刚同步过且有改动，" +
-                        "本趟改到 ${actWait}ms 后补跑（不走丢）"
-                )
+                if (GLog.isDebug) {
+                    GLog.d(
+                        "$id：${activity.javaClass.simpleName} 刚同步过且有改动，" +
+                            "本趟改到 ${actWait}ms 后补跑（不走丢）"
+                    )
+                }
                 return
             }
         }
         // 认不出限速：连续认不出来才生效（多招状态机也照常限速 —— 认不出时更该慢下来）
-        val last = synchronized(lastRunAt) { lastRunAt[root] ?: 0L }
-        val miss = synchronized(missScans) { missScans[root] ?: 0 }
-        val missing = synchronized(lastScanOk) { lastScanOk[root] == false }
         if (missing && miss >= missScanThreshold) {
             val missWait = layoutThrottleMs - (now - last)
             if (missWait > 0) {
@@ -463,15 +506,16 @@ abstract class PageSyncFeature : Feature {
      * 收益来自「窗口内只跑一趟」，而不是「把这一趟扔掉」。
      */
     private fun deferSync(env: FeatureEnv, activity: Activity, root: View, delayMs: Long) {
-        val queued = synchronized(deferredScan) {
-            if (deferredScan[root] == true) true else {
-                deferredScan[root] = true
+        val st = stateOf(root)
+        val queued = synchronized(states) {
+            if (st.deferredScan) true else {
+                st.deferredScan = true
                 false
             }
         }
         if (queued) return
         root.postDelayed({
-            synchronized(deferredScan) { deferredScan[root] = false }
+            synchronized(states) { st.deferredScan = false }
             if (!switchedOn(env.config)) return@postDelayed
             if (activity.isFinishing || activity.isDestroyed) return@postDelayed
             runCatching { runSync(env, activity, root, fromLayout = true) }
@@ -481,7 +525,8 @@ abstract class PageSyncFeature : Feature {
 
     /** 跑一次 [sync]，记下结果 */
     private fun runSync(env: FeatureEnv, activity: Activity, root: View, fromLayout: Boolean) {
-        synchronized(lastRunAt) { lastRunAt[root] = SystemClock.uptimeMillis() }
+        val st = stateOf(root)
+        synchronized(states) { st.lastRunAt = SystemClock.uptimeMillis() }
         // 审查 2026-10-17：拿 sync 前后的改动计数差判断「这一轮有没有实际动作」——
         // 与首帧屏障判「界面被动过」是同一个信号（noteChange / 记账工具的计数）
         val mutBefore = mutations
@@ -489,19 +534,18 @@ abstract class PageSyncFeature : Feature {
             GLog.w("$id：同步失败", it)
             true
         }
-        if (mutations != mutBefore) {
-            synchronized(lastActionAt) { lastActionAt[root] = SystemClock.uptimeMillis() }
+        val n = synchronized(states) {
+            if (mutations != mutBefore) st.lastActionAt = SystemClock.uptimeMillis()
+            st.lastScanOk = done
+            if (done) {
+                st.missScans = 0
+                0
+            } else {
+                st.missScans += 1
+                st.missScans
+            }
         }
-        synchronized(lastScanOk) { lastScanOk[root] = done }
-        if (done) {
-            synchronized(missScans) { missScans[root] = 0 }
-            return
-        }
-        val n = synchronized(missScans) {
-            val v = (missScans[root] ?: 0) + 1
-            missScans[root] = v
-            v
-        }
+        if (done) return
         // 报告只走布局回调这条链：它触发时页面一定在屏幕上，快照才是「用户正看着的那一页」
         if (fromLayout) {
             if (n >= missScanThreshold) maybeReport(activity, root)
@@ -523,41 +567,55 @@ abstract class PageSyncFeature : Feature {
     private fun onPreDraw(env: FeatureEnv, activity: Activity, root: View): Boolean {
         if (activity.isFinishing || activity.isDestroyed) return true
 
+        val st = stateOf(root)
         val mut = mutations
-        val seen = synchronized(mutAtLastFrame) {
-            val prev = mutAtLastFrame[root] ?: mut
-            mutAtLastFrame[root] = mut
+        val seen = synchronized(states) {
+            val prev = st.mutAtLastFrame
+            st.mutAtLastFrame = mut
             prev
         }
-        if (mut == seen || !switchedOn(env.config)) {
+        if (mut == seen || seen == PageState.UNSET || !switchedOn(env.config)) {
             // 这一帧可以画：连拦计数与「第一次拦帧的时刻」一起归零，
-            // 否则下一个「改动的瞬间」会因为 since 是很久以前而立刻误判预算用尽
-            synchronized(heldFrames) { heldFrames[root] = 0 }
-            synchronized(heldSince) { heldSince.remove(root) }
+            // 否则下一个「改动的瞬间」会因为 since 是很久以前而立刻误判预算用尽。
+            // 只在真的留过账时才写（本函数**每一帧**都跑，空写表是白扔的结构操作）
+            synchronized(states) {
+                if (st.heldFrames != 0) st.heldFrames = 0
+                if (st.heldSince != 0L) st.heldSince = 0L
+            }
             return true
         }
 
         val now = SystemClock.uptimeMillis()
-        val muted = synchronized(holdMutedUntil) { (holdMutedUntil[root] ?: 0L) > now }
-        val held = synchronized(heldFrames) { heldFrames[root] ?: 0 }
-        val since = synchronized(heldSince) { heldSince[root] ?: now }
+        val muted: Boolean
+        val held: Int
+        val since: Long
+        val entered: Long
+        synchronized(states) {
+            muted = st.holdMutedUntil > now
+            held = st.heldFrames
+            since = if (st.heldSince != 0L) st.heldSince else now
+            entered = if (st.enteredAt != 0L) st.enteredAt else now
+        }
 
         if (muted) {
-            synchronized(heldFrames) { heldFrames[root] = 0 }
-            synchronized(heldSince) { heldSince.remove(root) }
+            synchronized(states) {
+                st.heldFrames = 0
+                st.heldSince = 0L
+            }
             return true
         }
         // 两档预算：启动窗口内（启动图还盖着）宽一点，让「多招状态机」一次走完；
         // 窗口外用户正看着，最多拦 steadyHeldFrames 帧 —— 见各常量的注释。
-        val entered = synchronized(enteredAt) { enteredAt[root] ?: now }
         val startup = now - entered <= startupHoldMs
         val frameBudget = if (startup) maxHeldFrames else steadyHeldFrames
         val timeBudget = if (startup) maxHoldWindowMs else steadyHoldWindowMs
         if (held >= frameBudget || now - since > timeBudget) {
             // 预算到头了：放行这一帧，并静默一段时间（宿主真在每帧改布局的话不能一直拦）
-            synchronized(heldFrames) { heldFrames[root] = 0 }
-            synchronized(heldSince) { heldSince.remove(root) }
-            synchronized(holdMutedUntil) { holdMutedUntil[root] = now + holdMuteMs }
+            synchronized(states) {
+                st.heldFrames = 0
+                st.heldSince = 0L
+                st.holdMutedUntil = now + holdMuteMs
+            }
             GLog.w(
                 "$id：首帧屏障连拦 $held 帧仍未稳定，先放行这一帧并静默 ${holdMuteMs}ms" +
                     "（界面已按当前状态显示；宿主可能在每帧改布局）"
@@ -565,27 +623,31 @@ abstract class PageSyncFeature : Feature {
             return true
         }
 
-        if (held == 0) synchronized(heldSince) { heldSince[root] = now }
-        synchronized(heldFrames) { heldFrames[root] = held + 1 }
-        GLog.d("$id：界面刚被改过，拦下第 ${held + 1} 帧不画（等布局稳定后一次画出来）")
+        synchronized(states) {
+            if (held == 0) st.heldSince = now
+            st.heldFrames = held + 1
+        }
+        if (GLog.isDebug) GLog.d("$id：界面刚被改过，拦下第 ${held + 1} 帧不画（等布局稳定后一次画出来）")
         return false
     }
 
     /** 报告「认不出来」：限频 + 限量 + 附一份当前页面的视图树快照 */
     private fun maybeReport(activity: Activity, root: View) {
+        val st = stateOf(root)
         val now = SystemClock.uptimeMillis()
-        val last = synchronized(lastReportAt) { lastReportAt[root] ?: 0L }
-        if (now - last < reportCooldownMs) return
-        val count = synchronized(reportCounts) { reportCounts[root] ?: 0 }
-        if (count >= maxReports) return
-
-        synchronized(reportCounts) { reportCounts[root] = count + 1 }
-        synchronized(lastReportAt) { lastReportAt[root] = now }
-        synchronized(missScans) { missScans[root] = 0 }
+        val count: Int
+        synchronized(states) {
+            if (now - st.lastReportAt < reportCooldownMs) return
+            if (st.reportCount >= maxReports) return
+            st.reportCount += 1
+            st.lastReportAt = now
+            st.missScans = 0
+            count = st.reportCount
+        }
 
         val page = activity.javaClass.name
         GLog.w(
-            "$id：在 $page 上认不出目标控件（第 ${count + 1} 次报告）——" +
+            "$id：在 $page 上认不出目标控件（第 $count 次报告）——" +
                 "可能是宿主改版，也可能是当前不在目标页"
         )
         if (!dumpOnMiss) return
@@ -614,18 +676,7 @@ abstract class PageSyncFeature : Feature {
         for ((v, g) in gates) {
             runCatching { v.viewTreeObserver.removeOnPreDrawListener(g) }
         }
-        synchronized(mutAtLastFrame) { mutAtLastFrame.clear() }
-        synchronized(heldFrames) { heldFrames.clear() }
-        synchronized(heldSince) { heldSince.clear() }
-        synchronized(holdMutedUntil) { holdMutedUntil.clear() }
-        synchronized(lastRunAt) { lastRunAt.clear() }
-        synchronized(lastScanOk) { lastScanOk.clear() }
-        synchronized(missScans) { missScans.clear() }
-        synchronized(deferredScan) { deferredScan.clear() }
-        synchronized(lastActionAt) { lastActionAt.clear() }
-        synchronized(lastReportAt) { lastReportAt.clear() }
-        synchronized(reportCounts) { reportCounts.clear() }
-        synchronized(enteredAt) { enteredAt.clear() }
+        synchronized(states) { states.clear() }
         restore()
     }
 }

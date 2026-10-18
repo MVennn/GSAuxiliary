@@ -331,6 +331,14 @@ FeatureSpec(
 > **新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
 > 本表，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`。
 
+### 第 5 步：合入前自检
+
+过一遍 [编码纪律](CODE-RULES.md) §8 的清单（install 与还原成对、热重载可识别、
+限速延后不丢弃、热路径无未缓存反射与计算型 getter、早退有原因日志……）——
+每条都对应一个真机踩过的坑，尤其 **§1.2.1**（拿自己的类名当判据会被 R8 打穿）
+与 **§2.5~2.7**（热路径上的日志 / 状态 / 钩子参数）。改动涉及真机行为时，
+按 [RELEASE.md](RELEASE.md) §0.1 出 release 包 + 真机验证再提交。
+
 ## 二级页 / 全屏页的导航条（小白条）沉浸
 
 只要页面是「二级页」（走 `SettingsActivity.SubScreen`）或任何自绘全屏页，

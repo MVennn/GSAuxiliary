@@ -18,6 +18,7 @@ import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.PageSyncFeature
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import io.github.MVennn.GSAuxiliary.util.ViewIds
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -1234,10 +1235,18 @@ class StockDetailBarFeature : PageSyncFeature() {
         return found
     }
 
-    /** 单次解析（不缓存）：用于「两个形态各一个」的候选 id */
+    /**
+     * 按名字解析资源 id —— 走 [ViewIds.idsFor] 的进程级缓存（且这些名字在进页面时已被 [idNames] 预热）。
+     *
+     * ⚠️ 这里**曾经**刻意不缓存（2026-10-19 改）：理由是「两个形态各一个候选 id，
+     * 一槽一位的 [IdKey] 存不下两个」。但那让**每次布局回调**都要按名字扫资源表 ——
+     * `findMoreText` 2 个候选 × `boxOf` 2 个候选，分页器最多 3 份底栏，一趟十几次
+     * `Resources.getIdentifier`（按名字扫全表，比一次哈希查表贵好几个数量级）。
+     * `IdCache` 是**按名字分槽**的（命中还进进程级表），不存在抢槽的问题。
+     */
     private fun resolveIdByName(context: Context, name: String): Int =
         runCatching {
-            context.resources.getIdentifier(name, "id", StockDetailBarTargets.TARGET_PKG)
+            ViewIds.idsFor(context, StockDetailBarTargets.TARGET_PKG).of(name)
         }.getOrDefault(0)
 
     private enum class IdKey(val names: Array<String>) {

@@ -22,8 +22,9 @@ import kotlin.math.max
 /**
  * 「导航条取色 + 上色」的纯工具层。
  *
- * 只依赖 Android 框架，**不碰任何钩子、不持任何状态** ——
- * 全部的调度与记账在 `NavBarBlendFeature` 里。
+ * 只依赖 Android 框架，**不碰任何钩子**；唯一的可变状态是取色时复用的那个
+ * `Rect` 缓冲（[rectScratch]，只在主线程的布局回调里用）。全部的调度与记账在
+ * `NavBarBlendFeature` 里。
  *
  * ## 三件事
  *
@@ -93,7 +94,7 @@ object NavBarTint {
     // ---------------------------------------------------------------- 取色 ① 结构合成
 
     /**
-     * 结构合成取色：**同步**、零分配、首帧就能给结果。
+     * 结构合成取色：**同步**、首帧就能给结果（不再逐帧分配 `Rect`，见 [coveringChild]）。
      *
      * 做法是从 `decor` 起**逐层下钻**，每一层只挑「覆盖取色带、且宽度够」的
      * 那个子视图（[coveringChild]），直到没有更合适的为止。得到的是一条
@@ -125,7 +126,13 @@ object NavBarTint {
         return if (Color.alpha(acc) >= NavBarTargets.MIN_ALPHA) acc else null
     }
 
-    /** [cur] 的子视图里「覆盖取色带且最宽」的那一个；没有返回 null */
+    /**
+     * [cur] 的子视图里「覆盖取色带且最宽」的那一个；没有返回 null。
+     *
+     * 逐层逐子项量位置用的是**同一个** `Rect`（[rectScratch]）—— 这条链最多
+     * [NavBarTargets.MAX_CHAIN_DEPTH] 层、每层若干子项，每次量都新分配一个
+     * `Rect` 的话一趟就是几十个（2026-10-19）。
+     */
     private fun coveringChild(decor: View, cur: View, band: Band): View? {
         val g = cur as? ViewGroup ?: return null
         val self = UiClean.rectIn(decor, cur)?.width() ?: cur.width
@@ -135,7 +142,7 @@ object NavBarTint {
         for (i in 0 until g.childCount) {
             val c = g.getChildAt(i)
             if (!UiClean.visibleOnScreen(c)) continue
-            val r = UiClean.rectIn(decor, c) ?: continue
+            val r = UiClean.rectIn(decor, c, rectScratch) ?: continue
             if (r.bottom <= band.top || r.top >= band.bottom) continue
             val w = r.width()
             if (w >= minW && w > bestW) {
@@ -145,6 +152,9 @@ object NavBarTint {
         }
         return best
     }
+
+    /** [coveringChild] 复用的测量缓冲（只在主线程的布局回调里用，见 [structural]） */
+    private val rectScratch = Rect()
 
     // ---------------------------------------------------------------- 取色 ② 像素校准
 

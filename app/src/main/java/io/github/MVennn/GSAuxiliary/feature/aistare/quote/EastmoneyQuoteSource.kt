@@ -96,7 +96,10 @@ class EastmoneyQuoteSource : QuoteSource {
         val data = JSONObject(text).optJSONObject("data") ?: return null
         val echoCode = data.optString("f57").takeIf { it.isNotEmpty() && it != "null" }
         if (echoCode != null && echoCode != expectCode) {
-            GLog.w("一键配置取数：东财返回的代码（$echoCode）≠ 请求的（$expectCode），丢弃")
+            GLog.w(
+                "一键配置取数：东财返回的代码（${LogMask.code(echoCode)}）" +
+                    "≠ 请求的（${LogMask.code(expectCode)}），丢弃",
+            )
             return null
         }
         val latest = price(data, "f43")

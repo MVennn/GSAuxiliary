@@ -134,6 +134,12 @@ object UiClean {
     fun rectIn(root: View, v: View): Rect? = ViewIds.rectIn(root, v)
 
     /**
+     * 同 [rectIn]，但把结果写进调用方给的 [out] —— 热路径上复用一个 `Rect`，
+     * 不再「每个子项一个 `Rect`」（实现见 [ViewIds.rectIn]）。
+     */
+    fun rectIn(root: View, v: View, out: Rect): Rect? = ViewIds.rectIn(root, v, out)
+
+    /**
      * 一行里宽度和 [ref] 相近的其它格子。
      *
      * 用在「底栏去掉一项之后，剩下的项要重新铺满整行」——

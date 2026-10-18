@@ -27,6 +27,18 @@
 # 功能实现由 FeatureManager 直接构造，保留以防被误裁
 -keep class * implements io.github.MVennn.GSAuxiliary.feature.Feature { *; }
 
+# 过滤代理（策略详情「筛选股票」装到 ListView 上的适配器代理）：
+# 类名与 getTarget() 是**跨实例识别**的判据 —— 热重载后新实例要靠它们认出
+# 旧实例留在列表上的代理（见 CODE-RULES 1.2 与 StgStockFilterFeature.unwrapProxy）。
+# 2026-10-19 真机定位：模块自己也开 R8，这条类名被混淆成 `f2.m`，
+# 于是「类名里含 FilteredAdapter」这条判据连**自己刚装的**代理都认不出
+# —— 表现为「按『确定』筛选不生效、退出重进才生效」。
+# 注意：同实例的识别已改为身份直判（不依赖名字），这条 keep 保的是跨实例那条路。
+-keepnames class io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature$FilteredAdapter
+-keepclassmembers class io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature$FilteredAdapter {
+    public android.widget.ListAdapter getTarget();
+}
+
 # 宿主类名/字段名全部是运行时反射查的（见 util/Reflect.kt），
 # 规则里不需要列出宿主；保留行号信息便于排查崩溃堆栈
 -keepattributes SourceFile,LineNumberTable

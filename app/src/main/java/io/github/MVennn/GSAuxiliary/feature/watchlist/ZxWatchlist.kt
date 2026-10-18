@@ -33,7 +33,17 @@ object ZxWatchlist {
     @Volatile private var stkGrpMap: Field? = null
     @Volatile private var mapFailed = false
 
+    /**
+     * 绑定宿主的 `ClassLoader`。
+     *
+     * **幂等**（2026-10-19 起）：同一个 `ClassLoader` 上重复调用直接返回 ——
+     * 本类被两个功能各自 `init` 一次（自选高亮 / 筛选股票），而重置会**击穿共享的
+     * 反射缓存**：运行中打开另一个开关触发补装时，已解析好的 `Method` / `Field`
+     * 会被清掉，下一次判定要重跑一次 `Class.forName` + 继承链搜索。
+     * 换了 `ClassLoader`（热重载）才需要真的重解析，那时仍然照常清空。
+     */
     fun init(cl: ClassLoader) {
+        if (cl === classLoader) return
         classLoader = cl
         isBelong = null
         isBelongFailed = false

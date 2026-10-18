@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.QuickConfigEngine
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import java.math.BigDecimal
@@ -72,7 +73,7 @@ class QuoteFetcher(private val host: HostQuoteSource?) {
         val needs = needsOf(scheme)
         GLog.i(
             "一键配置取数：方案「${scheme.name}」需要" +
-                "快照=${needs.snapshot} 日K=${needs.kline}（$code.$market）",
+                "快照=${needs.snapshot} 日K=${needs.kline}（${LogMask.stock(code, market)}）",
         )
 
         val sources = ArrayList<QuoteSource>(4)

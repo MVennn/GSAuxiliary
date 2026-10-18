@@ -60,6 +60,9 @@ class HomeBannerFeature : UiCleanFeature() {
 
     private var lastHidden: WeakReference<View>? = null
 
+    /** 底栏「首页」那一格（[homeTabState] 的缓存，宿主重建底栏后自动失效） */
+    private var homeCell: WeakReference<View>? = null
+
     override fun applyTo(env: FeatureEnv, activity: Activity): Boolean {
         if (alreadyHidden(lastHidden?.get())) return true
 
@@ -82,21 +85,28 @@ class HomeBannerFeature : UiCleanFeature() {
             }
         }
 
-        // ② 结构：快捷入口网格 → 它下面那条横幅。
+        // ② 先判 Tab 态，不在首页就整段跳过下面那趟全树 walk（2026-10-19 优化）。
         //
-        //    认不出网格要先分「不在首页」还是「在首页但认不出」——两者在视图树上长得一样
-        //    （切走之后首页那块整棵被摘掉），但含义完全不同，见 HomeBannerTargets：
-        //      · 不在首页 Tab → 这页本来就没有横幅，返回 true（无事可做，不报校准快照）；
-        //      · 在首页 / 判不出来 → 返回 false，让基类重试、必要时打视图树快照。
-        val grid = findEntryGrid(root, ids)
-        if (grid == null) {
-            if (homeTabState(root, ids) == false) {
-                // 排查「首页横幅怎么没藏」时看这条：不是认不出，是当时不在首页 Tab
-                GLog.d("$id：底栏「首页」未选中（当前不在首页 Tab），本页没有横幅")
-                return true
-            }
-            return false                                        // 在首页 / 判不出来：认不出，交基类报告
+        //    「不在首页」这一支原先要等 [findEntryGrid] 全树走完（还要对每个
+        //    「像入口网格」的容器逐子项再走两遍）才轮到 [homeTabState] 判 ——
+        //    而切走 Tab 之后首页那块被宿主整棵摘掉，于是**每次布局回调**都要
+        //    白走一趟千级节点的遍历。判据本身有「底栏那一格」的缓存，很便宜。
+        //
+        //    顺序上仍在 ① 之后：候选 id 直取不受 Tab 限制（首页视图还在树上时照藏，
+        //    见 pending 记录「首页该藏的照藏」）。
+        if (homeTabState(root, ids) == false) {
+            // 排查「首页横幅怎么没藏」时看这条：不是认不出，是当时不在首页 Tab。
+            // 这条链每次布局回调都会走到（切走 Tab 之后首页那块整棵被摘掉），
+            // 所以先问一句等级再拼字符串（见 GLog.isDebug）
+            if (GLog.isDebug) GLog.d("$id：底栏「首页」未选中（当前不在首页 Tab），本页没有横幅")
+            return true
         }
+
+        // ③ 结构：快捷入口网格 → 它下面那条横幅。
+        //
+        //    走到这里只可能是「在首页」或「判不出来」，两者都交基类重试
+        //    （判不出来时宁可多报一条校准日志，也不要静默漏掉首页那一块）。
+        val grid = findEntryGrid(root, ids) ?: return false
         val banner = findBannerAfter(grid) ?: return true
         patcher.hide(banner, "首页横幅（快捷入口下方）")
         lastHidden = WeakReference(banner)
@@ -109,12 +119,21 @@ class HomeBannerFeature : UiCleanFeature() {
      * 判据是底栏「首页」那一格的选中态（真机实测随 Tab 切换翻转，见
      * [HomeBannerTargets.HOME_TAB_ID_CANDIDATES]）。**判不出来时不下结论** ——
      * 调用方按「可能在首页」处理：宁可多报一条校准日志，也不要静默漏掉首页那一块。
+     *
+     * 本函数在**每次布局回调**上跑，所以认到的格子记进 [homeCell]：
+     * 底栏在 decor 尾部，`findViewById` 接近整棵树，而格子的选中态只是一次字段读。
+     * 宿主重建底栏时旧格子 `detach`，缓存自动失效（判据里带 `isAttachedToWindow`）。
      */
     private fun homeTabState(root: View, ids: IdCache): Boolean? {
+        val cached = homeCell?.get()
+        if (cached != null && cached.isAttachedToWindow && cached.isShown) {
+            return cached.isSelected || cached.isActivated
+        }
         val id = ids.firstOf(HomeBannerTargets.HOME_TAB_ID_CANDIDATES)
         if (id == 0) return null
         val cell = root.findViewById<View>(id) ?: return null
         if (!cell.isShown) return null        // 底栏不在（子页盖着 / 还没铺开）→ 别下结论
+        homeCell = WeakReference(cell)
         return cell.isSelected || cell.isActivated
     }
 

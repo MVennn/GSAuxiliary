@@ -3,6 +3,10 @@ package io.github.MVennn.GSAuxiliary.feature.market
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import android.view.View
 import io.github.MVennn.GSAuxiliary.feature.uiclean.IdCache
+import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean
+import java.lang.ref.WeakReference
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * 「行情市场」三个功能共用的定位常量。
@@ -92,12 +96,54 @@ object MarketTargets {
         "container_a_stock",
     )
 
-    /** 行情市场页是否在屏幕上 */
-    fun onMarketPage(root: View, ids: IdCache): Boolean =
-        PAGE_ANCHOR_ID_CANDIDATES.any { name ->
-            val rid = ids.of(name)
-            rid != 0 && root.findViewById<View>(rid)?.isShown == true
+    /**
+     * 行情市场页是否在屏幕上。
+     *
+     * ## 为什么不是「三个候选各一次 `findViewById`」（2026-10-19 优化）
+     *
+     * 这道门禁跑在**每次布局回调**上，而三个功能各查一遍 —— 不在行情页时
+     * 三个候选全部 miss，一次 `findViewById` 未命中就是**整棵 decor 的遍历**，
+     * 于是 3 功能 × 3 候选 = **9 次全树遍历/回调**（首页滚动时每帧都付）。
+     * 现在改成：
+     *
+     *  - **快路径**：上次命中的锚点还在树上且可见 → 直接判「在」（0 次遍历）。
+     *    锚点随宿主重建自然失效（`isAttachedToWindow`），不依赖我们的记账；
+     *  - **慢路径**：**一趟遍历同时判三个候选 id**（按 id 命中才查 `isShown`，
+     *    避免对每个节点走一遍父链）。
+     *
+     * 判据与原先等价：任一锚点 id 对应的可见视图存在 ⇔ 行情市场页在屏幕上。
+     * 比原先**略宽**的一点是「同 id 有多个视图时逐个判可见」（原先只判
+     * `findViewById` 返回的第一个）—— 分页器每页各带一份视图时，这更贴近事实。
+     */
+    fun onMarketPage(root: View, ids: IdCache): Boolean {
+        val cached = synchronized(anchors) { anchors[root]?.get() }
+        if (cached != null && cached.isAttachedToWindow && cached.isShown) return true
+
+        val want = IntArray(PAGE_ANCHOR_ID_CANDIDATES.size)
+        for (i in want.indices) want[i] = ids.of(PAGE_ANCHOR_ID_CANDIDATES[i])
+
+        var hit: View? = null
+        UiClean.walk(root) { v ->
+            val id = v.id
+            if (id != 0 && want.contains(id) && v.isShown) {
+                hit = v
+                true
+            } else {
+                false
+            }
         }
+        val found = hit
+        if (found == null) {
+            synchronized(anchors) { anchors.remove(root) }
+            return false
+        }
+        synchronized(anchors) { anchors[root] = WeakReference(found) }
+        return true
+    }
+
+    /** `decorView -> 上次命中的锚点`（三个功能共享；弱引用键 + 弱引用值，见规则 1.4） */
+    private val anchors =
+        Collections.synchronizedMap(WeakHashMap<View, WeakReference<View>>())
 
     /** 整页的纵向容器：每个版块是它的一个子项（隐藏版块时要连子项一起处理） */
     const val PAGE_LIST_ID = "rv_markets_hs"

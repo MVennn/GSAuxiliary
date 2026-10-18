@@ -33,17 +33,25 @@ object ViewIds {
         (v as? TextView)?.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
 
     /** [v] 在 [root] 坐标系里的矩形；不是后代或还没布局时返回 null */
-    fun rectIn(root: View, v: View): Rect? {
-        val r = Rect()
+    fun rectIn(root: View, v: View): Rect? = rectIn(root, v, Rect())
+
+    /**
+     * 同 [rectIn]，但把结果写进调用方给的 [out]。
+     *
+     * 热路径上（如 `NavBarTint.coveringChild` 逐层逐子项量位置）用同一个 `Rect`
+     * 反复量，就不再是「每个子项一个 `Rect`」。返回 `null` 表示量不出来 ——
+     * 此时 [out] 的内容无意义，调用方不要读。
+     */
+    fun rectIn(root: View, v: View, out: Rect): Rect? {
         // 注意：View.getDrawingRect 是 void（把结果写进参数里），不是返回布尔
-        v.getDrawingRect(r)
-        if (r.width() <= 0 || r.height() <= 0) return null
-        if (root === v) return r
+        v.getDrawingRect(out)
+        if (out.width() <= 0 || out.height() <= 0) return null
+        if (root === v) return out
         // offsetDescendantRectToMyCoords 定义在 ViewGroup 上（它要按自己的坐标系换算）
         val group = root as? ViewGroup ?: return null
         return runCatching {
-            group.offsetDescendantRectToMyCoords(v, r)
-            r
+            group.offsetDescendantRectToMyCoords(v, out)
+            out
         }.getOrNull()
     }
 
@@ -108,18 +116,29 @@ object ViewIds {
  *
  * ## 缓存分两层，因为命中与未命中不一样
  *
- *  - **命中**（解析出非 0）：写进 [HITS]，**进程级共享** —— 同一个包里的 id
- *    与配置、与哪个 `Context` 都无关，一次拿到就永远有效。
+ *  - **命中**（解析出非 0）：写进 [HITS] 里**本包**那张表，**进程级共享** ——
+ *    同一个包里的 id 与配置、与哪个 `Context` 都无关，一次拿到就永远有效。
  *  - **未命中**（返回 0）：只写进本实例的 `misses`。理由：0 有可能是**时机问题**
  *    而不是真的不存在 —— 名字是在启动早期（启动图那会儿）被 [warm] 预解析的，
  *    那时万一资源还没装配完，进程级缓存会把「这次没查到」永久钉死。
  *    所以未命中按 `Context` 各记一份，换个页面还会再试一次，代价只是一次函数调用。
+ *
+ * ## 命中表按包分表（2026-10-19）
+ *
+ * 原先命中表是「`"包名/资源名"` → id」一张全局表，于是**每次查表都要先拼一次字符串**
+ * 再抢一次全局锁 —— 而查表本身就在布局回调的热路径上（`firstOf` 一趟按候选顺序查十几个名字）。
+ * 改成「包名 → (资源名 → id)」两层：构造期取一次本包那张表的引用（本类的 `pkg` 是不可变的），
+ * 之后查表直接用名字做键，锁也落在本包那张表上，不再跨包互斥。
  *
  * 反查（id → 名字）走 `getResourceEntryName`，供 [ViewIds.dump] 输出可读的名字。
  */
 class IdCache(context: Context, private val pkg: String) {
 
     private val res = (context.applicationContext ?: context).resources
+
+    /** 本包在进程级共享的命中表；构造期取一次引用，之后查表不再拼串、不再抢全局锁 */
+    private val hits: HashMap<String, Int> =
+        synchronized(HITS) { HITS.getOrPut(pkg) { HashMap() } }
 
     /** 本 `Context` 上查不到的 id 名（见类注释：未命中不跨 `Context` 共享） */
     private val misses = HashMap<String, Int>()
@@ -131,10 +150,10 @@ class IdCache(context: Context, private val pkg: String) {
      * 所以启动路径上的解析一定要提前做掉 —— 见 [warm]。
      */
     fun of(name: String): Int {
-        synchronized(HITS) { HITS["$pkg/$name"] }?.let { return it }
+        synchronized(hits) { hits[name] }?.let { return it }
         synchronized(misses) { misses[name] }?.let { return it }
         val id = runCatching { res.getIdentifier(name, "id", pkg) }.getOrDefault(0)
-        if (id != 0) synchronized(HITS) { HITS["$pkg/$name"] = id }
+        if (id != 0) synchronized(hits) { hits[name] = id }
         else synchronized(misses) { misses[name] = 0 }
         return id
     }
@@ -168,7 +187,7 @@ class IdCache(context: Context, private val pkg: String) {
         if (id == 0) null else runCatching { res.getResourceEntryName(id) }.getOrNull()
 
     private companion object {
-        /** `"包名/资源名" -> id`，进程级共享（只存命中的） */
-        val HITS = HashMap<String, Int>()
+        /** `包名 -> (资源名 -> id)`，进程级共享（只存命中的） */
+        val HITS = HashMap<String, HashMap<String, Int>>()
     }
 }

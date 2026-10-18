@@ -50,9 +50,15 @@ class HostQuoteSource : QuoteSource {
      */
     private val INSTANCE_PROVIDERS: List<(String, String) -> Any?> = emptyList()
 
-    /** 由 Feature 挂在 StockInfo 构造器上的钩子回调（记录最近实例） */
+    /**
+     * 由 Feature 挂在 StockInfo 构造器上的钩子回调（记录最近实例）。
+     *
+     * 第一行先比「还是不是上次那个对象」：宿主行情刷新时构造很频繁，
+     * 而这是**宿主自己的构造路径**，能省一次 `WeakReference` 分配就省（2026-10-19）。
+     */
     fun noteInstance(obj: Any?) {
         if (obj == null) return
+        if (lastStockInfo?.get() === obj) return
         lastStockInfo = WeakReference(obj)
     }
 

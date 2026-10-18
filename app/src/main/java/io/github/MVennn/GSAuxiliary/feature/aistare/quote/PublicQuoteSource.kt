@@ -120,7 +120,10 @@ class PublicQuoteSource : QuoteSource {
 
         val echoCode = parts.getOrNull(2)?.trim()
         if (!echoCode.isNullOrEmpty() && echoCode != expectCode) {
-            GLog.w("一键配置取数：腾讯返回的代码（$echoCode）≠ 请求的（$expectCode），丢弃")
+            GLog.w(
+                "一键配置取数：腾讯返回的代码（${LogMask.code(echoCode)}）" +
+                    "≠ 请求的（${LogMask.code(expectCode)}），丢弃",
+            )
             return null
         }
 

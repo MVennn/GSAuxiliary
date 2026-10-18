@@ -97,9 +97,15 @@ class WatchlistFeature : Feature {
                     .setId(hookId)
                     .intercept { chain ->
                         val result = chain.proceed()
-                        // 钩子里的异常绝不能影响目标 App
-                        runCatching { onGetView(env, chain.thisObject, chain.args, result) }
-                            .onFailure { GLog.w("getView 后处理异常", it) }
+                        // 钩子里的异常绝不能影响目标 App。
+                        // 先判「是不是目标适配器」再取参数：钩子挂在**基类**上，
+                        // 全 App 所有列表的每一行都会进来，非目标列表不该付
+                        // 「物化整条参数表」的钱（`chain.args` 返回 List，我们只要第 0 个 —— 2026-10-19）
+                        val self = chain.thisObject
+                        if (self != null && WatchlistTargets.isTargetAdapter(self.javaClass.name)) {
+                            runCatching { onGetView(env, self, (chain.getArg(0) as? Int) ?: -1, result) }
+                                .onFailure { GLog.w("getView 后处理异常", it) }
+                        }
                         result
                     }
             )
@@ -212,11 +218,8 @@ class WatchlistFeature : Feature {
         return a
     }
 
-    private fun onGetView(env: FeatureEnv, adapter: Any?, args: List<Any?>, result: Any?) {
-        if (adapter == null) return
-        if (!WatchlistTargets.isTargetAdapter(adapter.javaClass.name)) return
-
-        val position = args.getOrNull(0) as? Int ?: return
+    private fun onGetView(env: FeatureEnv, adapter: Any, position: Int, result: Any?) {
+        if (position < 0) return
         val row = result as? View ?: return
         val nameTv = findNameView(row) ?: return
 
