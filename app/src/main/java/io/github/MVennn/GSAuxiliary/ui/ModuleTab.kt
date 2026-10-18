@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +30,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.FrameworkBridge
@@ -209,11 +209,16 @@ private data class FrameworkInfo(
  *    > `ClipKt.clip(modifier, shape)`（`javap -c` 逆 `SquircleBackgroundKt` 确认），
  *    > 所以**不需要自己再包一层裁剪**，超出卡片范围的部分会被自动切掉。
  *
- * ## 三态与配色
+ * ## 三态与配色（绿 / 红 / 灰）
  *
- * 三种状态（已激活 / 未激活 / 未连接）只靠文案与图标形状区分，**不上状态色**：
- * 卡面是彩色光场，再叠一层绿 / 红会互相打架。颜色统一取关于页那套 ——
- * 标题 [heroAccent]、副行 [heroCaption]，图标跟着标题同色（[StatusCardIconAlpha] 压成水印）。
+ * | 状态 | 条件 | 主色 |
+ * |---|---|---|
+ * | 已激活 | 连上框架服务，且作用域非空、版本可读 | [StatusActiveColor] 绿 |
+ * | 未激活 | 连上框架服务，但作用域为空 / 信息读不出来 | `colorScheme.error` |
+ * | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
+ *
+ * 三处同一来源：标题用主色、版本与 API 用主色降透明度、图标再用主色压到
+ * [StatusCardIconAlpha] 当水印。**改深浅只动 `accent` 一处**。
  *
  * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），是**大号线框图形**：
  * 3.2.1 一度做成关于页 mark 那种玻璃板，被否掉了（这张卡要的是水印，不是一块实心玻璃）。
@@ -228,18 +233,17 @@ private fun OverviewStatusCard(
     api: String,
     modifier: Modifier = Modifier,
 ) {
-    // 3.2.1 定稿：这张卡**不再用状态色**（标题、图标都取关于页那套色）。
-    // 状态靠三行文案本身表达（已激活 / 未激活 / 未连接），颜色交给光场。
     val darkTheme = LocalDarkTheme.current
-    val surface = MiuixTheme.colorScheme.surface
-
-    // 光场采样源：与关于页完全同一条链路 —— 先把卡面光场录进 backdrop，
-    // 图标那块玻璃才有东西可采（`drawRect(surface)` 打底，玻璃在渐变还没画上来时
-    // 也是干净的，而不是透出卡片下面的东西）。
-    val cardBackdrop = rememberLayerBackdrop {
-        drawRect(surface)
-        drawContent()
+    // 三态配色（绿 / 红 / 灰）：**所有颜色都从这一个 accent 派生** ——
+    // 标题用原色、副行与图标按同一色降透明度。改「有多深」只动这一个变量。
+    val accent = when (state) {
+        FrameworkState.Active -> StatusActiveColor
+        FrameworkState.Inactive -> MiuixTheme.colorScheme.error
+        FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
     }
+    // 副行色：同一个状态色降透明度（深色 0.62 / 浅色 0.58，与关于页版本号同口径）
+    val subColor = accent.copy(alpha = if (darkTheme) 0.62f else 0.58f)
+    val surface = MiuixTheme.colorScheme.surface
 
     // 动画时间：只在绘制阶段被读取（`fieldClock` 是个 lambda），推进靠
     // withFrameNanos 累加 —— 每帧只有这层光场重绘，概览页不会跟着重组。
@@ -312,7 +316,7 @@ private fun OverviewStatusCard(
                 time = fieldClock,
                 darkTheme = darkTheme,
                 alpha = alwaysVisible,
-                backdrop = cardBackdrop,
+                // 不再录 backdrop：图标已回退成普通矢量，没有东西要采样它了
                 fadeBottom = false,
                 modifier = Modifier.matchParentSize(),
             )
@@ -334,7 +338,7 @@ private fun OverviewStatusCard(
                     } else {
                         AppIcons.ErrorCircle
                     },
-                    tint = heroAccent(darkTheme).copy(alpha = StatusCardIconAlpha),
+                    tint = accent.copy(alpha = StatusCardIconAlpha),
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .offset(x = iconShift)
@@ -356,20 +360,23 @@ private fun OverviewStatusCard(
             ) {
                 Text(
                     text = title,
-                    color = heroAccent(darkTheme),
+                    color = accent,
                     fontSize = StatusCardTitleSize,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.height(6.dp))
+                // 标题与版本贴得近一点：这两行是「一句主信息 + 它的补充」，
+                // 空太多会读成两块
+                Spacer(Modifier.height(2.dp))
                 Text(
                     text = version,
-                    color = heroCaption(darkTheme),
+                    color = subColor,
                     fontSize = StatusCardVersionSize,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = api,
-                    color = heroCaption(darkTheme),
+                    color = subColor,
                     fontSize = StatusCardApiSize,
                 )
             }
@@ -394,16 +401,25 @@ private fun OverviewStatusCard(
 private val StatusCardMinHeight = 148.dp
 
 /**
- * 状态卡三行文字的字号：24 / 14 / 15 等比放大 1.25 倍（3.2.1）。
+ * 状态卡三行文字的字号（3.2.1 定稿）。
  *
- * 三行的相对大小不变 —— 用户要的是「整块更醒目」，不是重新排轻重。
+ * 先按 1.25 倍整体放大到 30 / 18 / 19，再按用户反馈微调：主标题再大一档并加粗到
+ * Bold（状态是这张卡的主信息），版本行加粗到 SemiBold（它与标题是同一句话的
+ * 两段），API 行收小一档 —— 它是附注，不该和版本行同重。
  */
-private val StatusCardTitleSize = 30.sp
+private val StatusCardTitleSize = 34.sp
 private val StatusCardVersionSize = 18.sp
-private val StatusCardApiSize = 19.sp
+private val StatusCardApiSize = 16.sp
 
 /** 图标与文字同色时的透明度：它是水印，不能和标题一样重 */
 private const val StatusCardIconAlpha = 0.30f
+
+/**
+ * 「已激活」的绿色（2.17.1 由 `0xFF1AAE6A` 加深到 `0xFF0E8A52`）。
+ *
+ * 原来的中绿在浅色卡面上偏亮，标题读起来发飘；加深一档之后标题稳下来。
+ */
+private val StatusActiveColor = Color(0xFF0E8A52)
 
 /** 文字挤到没地方时，图标最少露出这个比例（再少就认不出图形了） */
 private const val StatusCardIconMinVisible = 0.25f

@@ -244,12 +244,12 @@ Miuix 基础件拼的。
 
 所以 `ModuleTab.kt` 里按 Miuix 的视觉规范自绘了一个等效实现。
 
-> **3.2.1 起这张卡就是「缩小版的关于」**：卡面直接用关于页的 `AboutHeroBackground`
-> （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光），
-> 文字用 `heroAccent` / `heroCaption`（关于页名称与版本号那两个颜色常量），
-> 字号按原比例整体放大 1.25 倍（24/14/15 → **30 / 18 / 19sp**）。
-> **不要**再给它压一层半透明底色 —— 彩色光场上压一层灰，光感就没了。
-> 三态**不上色**：卡面已经是彩色光场，再叠绿 / 红会互相打架，状态靠文案说。
+> **3.2.1 起这张卡是「缩小版的关于」**：卡面直接用关于页的 `AboutHeroBackground`
+> （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光）。
+> **不要**再压半透明底色：彩色光场上压一层灰，光感就没了。
+>
+> 文字与图标仍走**三态配色**（绿 / 红 / 灰），且全部由同一个 `accent` 派生：
+> 标题用原色、版本与 API 降透明度、图标再压到 0.30 当水印。
 
 ```kotlin
 Card(
@@ -259,37 +259,38 @@ Card(
     BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
         AboutHeroBackground(                        // 关于页背景本体
             time = fieldClock, darkTheme = darkTheme, alpha = alwaysVisible,
-            backdrop = cardBackdrop, fadeBottom = false,
-            modifier = Modifier.matchParentSize(),
+            fadeBottom = false, modifier = Modifier.matchParentSize(),
         )
-        // 图标：大号线框图形，颜色跟标题同色（0.30 压成水印），不上状态色。
-        // 放 matchParentSize 里不参与测量，调尺寸不撑高卡片。
-        TintedIcon(
+        TintedIcon(                                 // 大号线框图形，颜色跟标题
             imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
-            tint = heroAccent(darkTheme).copy(alpha = 0.30f),
+            tint = accent.copy(alpha = 0.30f),
             modifier = Modifier.align(Alignment.CenterEnd).offset(x = iconShift)
                 .padding(end = 16.dp).size(StatusCardIconSize),
         )
         Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
-            标题(heroAccent, 30sp, SemiBold) / 版本(heroCaption, 18sp) / API(heroCaption, 19sp)
+            标题(accent, Bold, 34sp) / 版本(subColor, SemiBold, 18sp) / API(subColor, 16sp)
         }
     }
 }
 
-private val StatusCardMinHeight = 148.dp    // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
-private val StatusCardIconSize = 132.dp     // 2.17.2：260 → 132
-private val StatusCardIconEndPadding = 16.dp // 与文字起始边距对称
+private val StatusCardMinHeight = 148.dp     // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
+private val StatusCardTitleSize = 34.sp      // 3.2.1：30 → 34，并加粗到 Bold
+private val StatusCardVersionSize = 18.sp    // 与标题是同一句话的两段，SemiBold
+private val StatusCardApiSize = 16.sp        // API 是附注，收小一档、常规字重
+private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
 ```
 
-**图标让位**（3.2.1）：先量后放 —— `TextMeasurer` 在布局前量出三行里最宽的那行，
-算出还剩多少横向空间：够就整颗露出，不够往右推出去、最少留四分之一
-（`StatusCardIconMinVisible`）。测量在组合期做且 `remember` 缓存，首帧即最终位置。
+**行距**：标题与版本 2dp（原 6dp），版本与 API 也 2dp —— 前两行是一句主信息加补充。
 
-| 状态 | 条件 | 图标 |
+**图标让位**：`TextMeasurer` 在布局前量出三行最宽的那行，剩余空间够就整颗露出、
+不够往右推出去、最少留四分之一（`StatusCardIconMinVisible`）；测量 `remember` 缓存，首帧即终态。
+
+| 状态 | 条件 | `accent` |
 |---|---|---|
-| 已激活 | 连上框架服务，作用域非空、版本可读 | `AppIcons.CheckCircle` |
-| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `AppIcons.ErrorCircle` |
-| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `AppIcons.ErrorCircle` |
+| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 |
+| 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` |
+| 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` |
+
 #### 3.1.1 2.9.1：纵向拉长 + 图标「只露左上四分之一」
 
 用户要求「容器框纵向拉长，长度约为当前高度的一半；右侧图标放大，放到右下角，
