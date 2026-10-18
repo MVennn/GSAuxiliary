@@ -138,6 +138,31 @@ internal fun AboutHeroBackground(
 }
 
 /**
+ * 只画「流动光场」这一层：不带底边渐隐、不录 backdrop、不跟滚动。
+ *
+ * 关于页 Hero 用它铺满首屏；概览页的 LSPosed 状态卡把它压进卡面，
+ * 于是两张卡是同一套调色板与同一条时间轴（用户说的「用关于页的元素赋能」）。
+ *
+ * @param time 动画时间（秒），**只在绘制阶段读取**
+ */
+@Composable
+internal fun HeroLightField(
+    time: () -> Float,
+    darkTheme: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier) {
+        val t = time()
+        drawAboutGradientField(
+            animationTime = t,
+            colors = animatedGradientColors(t, darkTheme),
+            fieldSize = size,
+            sampleOrigin = Offset.Zero,
+        )
+    }
+}
+
+/**
  * Hero 前景：染色 mark + 名称 + 版本 + 定位语。
  *
  * @param progress 0（完全可见）→ 1（滚出视野），控制淡出与缩小；只在绘制阶段读取
@@ -296,7 +321,7 @@ private fun AboutMark(
  * @param sampleOrigin 采样原点偏移（原版给 textureBlur 用；本实现恒为 [Offset.Zero]，
  *   保留参数是为了与上游源码逐行对照）
  */
-private fun DrawScope.drawAboutGradientField(
+internal fun DrawScope.drawAboutGradientField(
     animationTime: Float,
     colors: List<Color>,
     fieldSize: Size,
@@ -388,7 +413,7 @@ private fun strengthenGradientColor(color: Color): Color {
  * 顺序刻意做成 1 → 0 → 1 → 2 的折返，而不是 0 → 1 → 2 → 0 的循环：
  * 折返两端共用同一块调色板，接缝处不会突然跳色。
  */
-private fun animatedGradientColors(
+internal fun animatedGradientColors(
     animationTime: Float,
     dark: Boolean,
 ): List<Color> {

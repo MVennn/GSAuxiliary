@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,7 +15,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -230,6 +234,28 @@ private fun OverviewStatusCard(
         FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
     }
 
+    // --- 关于页同款流动光场（3.2.1 起） ---
+    //
+    // 用户要求「用关于页的元素赋能这张卡」：同一套调色板、同一条时间轴
+    // （两处都走 AboutHero 的 animatedGradientColors），但不带底边渐隐、不录 backdrop。
+    //
+    // 时间只在**绘制阶段**读（`fieldClock` 是个 lambda），推进靠 withFrameNanos 累加 ——
+    // 于是每帧只有卡片这一层重绘，概览页不会跟着重组。
+    val darkTheme = LocalDarkTheme.current
+    val fieldTime = remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var previous = 0L
+        while (true) {
+            withFrameNanos { frame ->
+                if (previous != 0L) {
+                    fieldTime.floatValue += (frame - previous) / 1_000_000_000f
+                }
+                previous = frame
+            }
+        }
+    }
+    val fieldClock = remember(fieldTime) { { fieldTime.floatValue } }
+
     Card(
         modifier = modifier,
         // 内边距改由文字列自己加：装饰图标要溢出到卡片角外，不能被 Card 的内边距挡住
@@ -244,6 +270,24 @@ private fun OverviewStatusCard(
                 .fillMaxWidth()
                 .heightIn(min = StatusCardMinHeight),
         ) {
+            // --- 卡面底：流动光场 + 一层半透明的页面底色 ---
+            //
+            // 光场直接铺满卡面（Card 的 squircle 会裁掉溢出的部分）；上面再压一层
+            // `surface @ 0.52` —— 彩色光场上直接放深色字，浅色主题里对比不够，
+            // 压一层底色后三行文字的可读性与原来一致，光场只剩「流动的底色」。
+            Box(Modifier.matchParentSize()) {
+                HeroLightField(
+                    time = fieldClock,
+                    darkTheme = darkTheme,
+                    modifier = Modifier.matchParentSize(),
+                )
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.52f)),
+                )
+            }
+
             // --- 右侧装饰图标：完整显示，垂直居中（2.17.2 定稿） ---
             //
             // 2.9.1 ~ 2.17.1 一直走「裁切弧」路线：图标顶到右下角、只露左上一块，
@@ -287,7 +331,8 @@ private fun OverviewStatusCard(
                 Text(
                     text = title,
                     color = accent,
-                    fontSize = 22.sp,
+                    // 关于页的字面节奏：主字大而重、副行小一档（视觉上同一套排版语言）
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(6.dp))
@@ -296,7 +341,7 @@ private fun OverviewStatusCard(
                     // 与下一行的 API 用同一档颜色（2.17.1）：原来走 onBackgroundVariant，
                     // 两行灰度不一致，看着像两个层级
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 16.sp,
+                    fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(

@@ -242,12 +242,14 @@ LSPosed 模块页顶部那张卡（绿色「已激活」+ 一枚大对勾）看�
 但**没有**「状态卡 / Hero 卡」这一类复合组件 —— LSPosed 那张卡也是它自己用
 Miuix 基础件拼的。
 
-所以 `ModuleTab.kt` 里按 Miuix 的视觉规范自绘了一个等效实现：
+所以 `ModuleTab.kt` 里按 Miuix 的视觉规范自绘了一个等效实现。
 
+> **3.2.1 起卡面垫了关于页同款流动光场**（`HeroLightField` —— 同一套调色板、同一条
+> 时间轴，只是不带底边渐隐），上面压一层 `surface @ 0.52` 保证三行文字可读；
+> 字号按关于页的节奏调成 24 / 15 / 14sp（主字更大、副行更小）。
 ```kotlin
 Card(
-    // 内边距改由文字列自己加 —— 装饰图标要与卡边留出距离、贴到卡片边缘之外的范围，
-    // 不能被 Card 的内边距挡住
+    // 内边距由文字列自己加：装饰图标不能被 Card 的内边距挡住
     insideMargin = PaddingValues(0.dp),
     colors = CardDefaults.defaultColors(
         color = accent.copy(alpha = 0.14f),        // 卡面：主色 14% 透明度
@@ -255,9 +257,7 @@ Card(
     ),
 ) {
     Box(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
-        // 2.9.3 关键：装饰图标放进 matchParentSize 容器 —— 它不参与父级尺寸测量，
-        // 卡片高度只由「文字内容 + min 高度」决定，调图标尺寸不会撑高卡片。
-        // 2.17.2：图标画在文字下层（先声明），窄屏 / 大字号下碰到也只是水印垫底。
+        // 图标放 matchParentSize（不参与测量，调尺寸不会撑高卡片），且画在文字下层。
         Box(Modifier.matchParentSize()) {
             Icon(
                 AppIcons.CheckCircle | ErrorCircle,
