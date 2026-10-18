@@ -31,8 +31,13 @@ import java.lang.ref.WeakReference
  *
  * ## 认不出来时
  *
- *  - **认不到快捷入口网格** → 返回 `false`，交给基类重试；重试窗口用尽后由基类
- *    打一条警告 + 一份当前页面的视图树快照（校准入口）。
+ *  - **不在首页 Tab**（行情 / 自选 / 交易 / 账户盖着这一页）→ 认定这页本来就没有横幅，
+ *    返回 `true` 不再重试。判据是底栏「首页」那一格的选中态，见
+ *    [HomeBannerTargets.HOME_TAB_ID_CANDIDATES] —— 切走之后首页那块视图会整棵从树上摘掉，
+ *    不区分的话「这页没有横幅」会被当成「认不出」，
+ *    于是用户日志里周期性多出警告 + 视图树快照（2026-10-19 修）。
+ *  - **在首页（或判不出来）却认不到快捷入口网格** → 返回 `false`，交给基类重试；
+ *    重试窗口用尽后由基类打一条警告 + 一份当前页面的视图树快照（校准入口）。
  *  - **网格认到了、附近却没有「像横幅」的块** → 认定这页本来就没有横幅，
  *    返回 `true` 不再重试（不刷屏）。
  *
@@ -50,6 +55,7 @@ class HomeBannerFeature : UiCleanFeature() {
     /** 预热用：本功能会查的全部 id 名（在进入任意页面时提前解析，见 [UiCleanFeature.idNames]） */
     override val idNames = HomeBannerTargets.BANNER_ID_CANDIDATES +
         HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES +
+        HomeBannerTargets.HOME_TAB_ID_CANDIDATES +
         arrayOf(HomeBannerTargets.HOME_ENTRY_ITEM_ID)
 
     private var lastHidden: WeakReference<View>? = null
@@ -77,13 +83,39 @@ class HomeBannerFeature : UiCleanFeature() {
         }
 
         // ② 结构：快捷入口网格 → 它下面那条横幅。
-        //    认不出「快捷入口」= 还没铺开或不在首页 → 返回 false 让基类重试
-        //    （重试窗口用尽后会打视图树快照，那就是校准入口）。
-        val grid = findEntryGrid(root, ids) ?: return false
+        //
+        //    认不出网格要先分「不在首页」还是「在首页但认不出」——两者在视图树上长得一样
+        //    （切走之后首页那块整棵被摘掉），但含义完全不同，见 HomeBannerTargets：
+        //      · 不在首页 Tab → 这页本来就没有横幅，返回 true（无事可做，不报校准快照）；
+        //      · 在首页 / 判不出来 → 返回 false，让基类重试、必要时打视图树快照。
+        val grid = findEntryGrid(root, ids)
+        if (grid == null) {
+            if (homeTabState(root, ids) == false) {
+                // 排查「首页横幅怎么没藏」时看这条：不是认不出，是当时不在首页 Tab
+                GLog.d("$id：底栏「首页」未选中（当前不在首页 Tab），本页没有横幅")
+                return true
+            }
+            return false                                        // 在首页 / 判不出来：认不出，交基类报告
+        }
         val banner = findBannerAfter(grid) ?: return true
         patcher.hide(banner, "首页横幅（快捷入口下方）")
         lastHidden = WeakReference(banner)
         return true
+    }
+
+    /**
+     * 当前 Tab 是不是首页：`true` 是、`false` 不是、`null` 判不出来。
+     *
+     * 判据是底栏「首页」那一格的选中态（真机实测随 Tab 切换翻转，见
+     * [HomeBannerTargets.HOME_TAB_ID_CANDIDATES]）。**判不出来时不下结论** ——
+     * 调用方按「可能在首页」处理：宁可多报一条校准日志，也不要静默漏掉首页那一块。
+     */
+    private fun homeTabState(root: View, ids: IdCache): Boolean? {
+        val id = ids.firstOf(HomeBannerTargets.HOME_TAB_ID_CANDIDATES)
+        if (id == 0) return null
+        val cell = root.findViewById<View>(id) ?: return null
+        if (!cell.isShown) return null        // 底栏不在（子页盖着 / 还没铺开）→ 别下结论
+        return cell.isSelected || cell.isActivated
     }
 
     // ------------------------------------------------------------------ 定位

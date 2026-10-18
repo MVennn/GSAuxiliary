@@ -105,7 +105,8 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 `Resources.getIdentifier` 是**按名字扫资源表**，不便宜。所以每个页面 resume 时
 （第一个 resume 的页面通常就是启动图，那一两秒主线程正好闲着）就把本功能用到的
 全部 id 名解析掉（`PageSyncFeature.idNames` → `IdCache.warm`），等真正要改界面时只剩哈希查表。
-实测日志：`home_banner_hide：预热资源 id 5/28（在 MainAct 上做，省首帧的查表）`。
+实测日志（3.2.0 时期，候选数组增删后数字会变）：
+`home_banner_hide：预热资源 id 5/28（在 MainAct 上做，省首帧的查表）`。
 
 id 缓存分两层：**命中**写进进程级共享表（id 与配置、与哪个 `Context` 都无关）；
 **未命中**只记在当前 `Context` 上 —— 启动早期资源万一还没装配完，
@@ -200,6 +201,7 @@ if (stillAttached(lastGroup?.get())) return true
 ② 结构：
      a. 认「快捷入口网格」——可见、子项 ≥ 6、每项「图标 + 文字」、整块 ≤ 240dp
      b. 从网格往上爬最多 3 层，每层看「网格后面第一个可见兄弟」是不是横幅
+③ 认不到网格时先看「在不在首页 Tab」再决定算不算异常（见下）
 ```
 
 **为什么要先认网格再找横幅**：首页上「像横幅的块」不止一个（顶部搜索条、
@@ -208,7 +210,21 @@ if (stillAttached(lastGroup?.get())) return true
 **「像横幅」的判据**（保守优先）：高度 40~200dp、宽度 ≥ 父容器 60%、
 里面有 `ImageView`、**有效文案不超过 2 条**。文案一多就不是横幅而是内容区。
 
-> 保守是刻意的：藏错一块内容比不藏严重得多。认不出来就什么都不做。
+**认不到网格 ≠ 一定出错**（2026-10-19 修）：首页与行情 / 自选 / 交易 / 账户同属
+`MainAct`，**切走之后首页那块视图整棵从树上摘掉** —— 真机实测在行情 Tab 上
+`rv_home_func` / `ll_top` / `home_func_icon` 全都查不到，和「宿主改版」在视图树上
+一模一样。不区分的话每轮会话都会在用户日志里留 3 条警告 + 3 份视图树快照。
+所以先看底栏「首页」那一格（`HOME_TAB_ID_CANDIDATES`，实测 `cb_main_tab_home`）的
+选中态：**没选中 = 不在首页 → 返回 `true`（这页本来就没有横幅）**；
+选中或判不出来（id 解析不到 / 底栏不在）→ 照旧返回 `false` 交基类重试并打校准快照。
+
+> 保守是刻意的：藏错一块内容比不藏严重得多。认不出来就什么都不做 ——
+> 但「认不出来」必须真的是认不出来，不能把「这页没有它」也算进去。
+
+> **同源问题另记**：行情市场那三个功能（`market_*`）也会在**目标被 RecyclerView
+> 回收掉、或 `MainAct` 被详情页盖住**时把「这页这会儿没有它」判成「认不出」，
+> 一并留警告 + 快照。那是另一条判据（「页面在不在前台 / 目标是不是滚出去了」），
+> 待定口径，见 `.work/notes/pending-push.md` 的遗留观察。
 
 ### 3.3 隐藏滚动横幅 + 快捷入口（`MarketBannerFeature`）
 
@@ -345,6 +361,7 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 | 底栏根容器 | `DockCleanTargets.DOCK_ID_CANDIDATES` |
 | 首页横幅 | `HomeBannerTargets.BANNER_ID_CANDIDATES` |
 | 首页快捷入口 | `HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES` |
+| 底栏「首页」那一格（判当前 Tab） | `HomeBannerTargets.HOME_TAB_ID_CANDIDATES` |
 | 行情市场滚动横幅 | `MarketTargets.MARQUEE_BAR_ID_CANDIDATES` |
 | 行情市场快捷入口 | `MarketTargets.QUICK_ENTRY_ID_CANDIDATES` |
 | 板块分组容器 | `MarketTargets.SECTOR_GROUP_ID_CANDIDATES` |

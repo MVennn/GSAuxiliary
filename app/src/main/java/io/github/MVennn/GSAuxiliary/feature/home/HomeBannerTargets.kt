@@ -114,6 +114,36 @@ object HomeBannerTargets {
      */
     const val HOME_ENTRY_ITEM_ID = "home_func_icon"
 
+    /**
+     * 底栏「首页」那一格的 id（候选）—— 用来回答「**当前 Tab 是不是首页**」。
+     *
+     * ## 为什么需要它（2026-10-19 真机）
+     *
+     * 首页与行情 / 自选 / 交易 / 账户**同属 `MainAct`，靠 Tab 切换**（见 [PAGES]）。
+     * 切走之后首页那一块视图会**整棵从树上摘掉** —— 真机实测在行情 Tab 上
+     * `rv_home_func` / `ll_top` / `home_func_icon` 全都查不到，和「宿主改版了」
+     * 在视图树上一模一样。
+     *
+     * 于是「认不到快捷入口网格」有两种完全不同的含义，必须分开（否则用户日志里
+     * 会周期性多出「认不出目标控件 + 视图树快照」）：
+     *
+     *  - **不在首页 Tab** → 这页本来就没有横幅，`applyTo` 返回 `true`（无事可做）；
+     *  - **在首页却认不出** → 返回 `false`，照旧累计次数并打视图树快照（校准入口）。
+     *
+     * ## 判据怎么来的
+     *
+     * 8.6.0 底栏六格是 `cb_main_tab_home` / `_quotes` / `_zx` / `_trade` / `_money` / `_mine`
+     * （结构图见 `DockCleanTargets`）。真机核对：首页 Tab 上 `cb_main_tab_home` 的
+     * `isSelected` 为真、行情 Tab 上为假（`uiautomator dump` 的 `selected` 属性同步翻转）。
+     *
+     * 候选数组只留实测名 + 少量命名兜底；**一个都解析不到时不下结论**，
+     * 调用方按「可能在首页」处理 —— 宁可多报一条校准日志，也不要静默漏掉首页。
+     */
+    val HOME_TAB_ID_CANDIDATES = arrayOf(
+        "cb_main_tab_home",
+        "cb_main_tab_main", "tab_home", "main_tab_home", "ll_tab_home",
+    )
+
     /** 至少这么多格才算「快捷入口」 */
     const val MIN_ENTRY_ITEMS = 6
 
