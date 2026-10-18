@@ -149,6 +149,13 @@ android {
         buildConfig = true
     }
 
+    // 只打包中英文：依赖库（androidx / Compose / Miuix）自带几十种语言，
+    // 全量进包对中文用户毫无用处。资源裁剪（shrinkResources）删不掉它们 ——
+    // 那些字符串被库自身引用，是「用得到但用户永远看不到」的那一类。
+    androidResources {
+        localeFilters += listOf("zh", "en")
+    }
+
     packaging {
         resources {
             excludes += setOf(

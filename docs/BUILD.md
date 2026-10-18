@@ -149,6 +149,11 @@ buildTypes {
 **2.12.1 时期实测**（历史参考）：类数 3 068、`classes.dex` 2.57 MB、release APK 1.43 MB
 （比 2.4.0 略涨是因为此后新增了两个功能与自绘弹层 / 液态玻璃组件，属正常增长）。
 
+**语言资源只打中英**（`androidResources { localeFilters += listOf("zh", "en") }`）：
+androidx / Compose / Miuix 自带几十种语言，`shrinkResources` 删不掉它们（库自身引用）。
+3.2.0 后实测 APK 1 628 KB → 1 504 KB（-124 KB）。新增语言时记得往 `localeFilters` 里加，
+否则 `values-xx` 会被无声丢掉（应用内语言只有中 / 英两档，加之前先确认是否真需要）。
+
 **keep 规则的底线**（`app/proguard-rules.pro`）：凡是「R8 从代码里看不出、
 但运行期确实会被反射/系统调用」的入口都必须显式 keep，目前包括 ——
 
