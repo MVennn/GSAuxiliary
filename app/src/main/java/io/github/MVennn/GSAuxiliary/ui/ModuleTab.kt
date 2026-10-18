@@ -218,8 +218,7 @@ private data class FrameworkInfo(
  * | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
  *
  * **状态色只换背景那层流光**（[lightFieldPalettesFrom] 由主色派生整套调色板）；
- * 前景文字与图标不跟着染色 —— 它们取关于页那套 [heroAccent] / [heroCaption]，
- * 压在任何色系的淡彩上都能读。
+ * 前景文字与图标保持中性：深色白、浅色黑，副行与图标按同一色降透明度。
  *
  * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），是**大号线框图形**：
  * 3.2.1 一度做成关于页 mark 那种玻璃板，被否掉了（这张卡要的是水印，不是一块实心玻璃）。
@@ -245,10 +244,10 @@ private fun OverviewStatusCard(
     val fieldPalettes = remember(accent, darkTheme) {
         lightFieldPalettesFrom(accent, darkTheme)
     }
-    // 前景文字不跟状态色走，取关于页那套（名称色 + 同名色降透明度）——
-    // 背景已经带色了，文字再染色会糊成一片；关于页的紫 / 浅紫压在绿光上最稳。
-    val titleColor = heroAccent(darkTheme)
-    val subColor = heroCaption(darkTheme)
+    // 前景文字：深色白、浅色黑（3.2.1 定稿）。背景流光已经带色，文字保持中性
+    // 最干净，压在任何色系上都不打架；副行仍按关于页那套「同色降透明度」派生。
+    val titleColor = if (darkTheme) Color.White else Color.Black
+    val subColor = titleColor.copy(alpha = if (darkTheme) 0.62f else 0.58f)
     val surface = MiuixTheme.colorScheme.surface
 
     // 动画时间：只在绘制阶段被读取（`fieldClock` 是个 lambda），推进靠

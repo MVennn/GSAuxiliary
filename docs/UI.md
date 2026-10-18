@@ -248,8 +248,8 @@ Miuix 基础件拼的。
 > （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光）。
 > **不要**再压半透明底色：彩色光场上压一层灰，光感就没了。
 >
-> **配色分两层**：三态色（绿 / 红 / 灰）只染**背景流光**；前景文字与图标取关于页
-> 那套（`heroAccent` / `heroCaption`）。背景已经带色了，文字再染色会糊成一片。
+> **配色分两层**：三态色（绿 / 红 / 灰）只染**背景流光**；前景文字与图标保持中性 ——
+> 深色白、浅色黑，副行与图标按同一色降透明度。背景已经带色，文字再染色会糊。
 
 ```kotlin
 Card(
@@ -265,12 +265,12 @@ Card(
         )
         TintedIcon(                                 // 大号线框图形，跟标题同色
             imageVector = if (active) AppIcons.CheckCircle else AppIcons.ErrorCircle,
-            tint = heroAccent(darkTheme).copy(alpha = 0.30f),
+            tint = titleColor.copy(alpha = 0.30f),
             modifier = Modifier.align(Alignment.CenterEnd).offset(x = iconShift)
                 .padding(end = 16.dp).size(StatusCardIconSize),
         )
         Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
-            标题(heroAccent, Bold, 34sp) / 版本(heroCaption, SemiBold, 18sp) / API(heroCaption, 16sp)
+            标题(titleColor, Bold, 34sp) / 版本(subColor, SemiBold, 18sp) / API(subColor, 16sp)
         }
     }
 }
@@ -287,7 +287,7 @@ private val StatusCardIconSize = 132.dp      // 2.17.2：260 → 132
 
 | 状态 | 条件 | 流光主色（背景） | 文字与图标 |
 |---|---|---|---|
-| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 | `heroAccent` / `heroCaption` |
+| 已激活 | 连上框架服务，作用域非空、版本可读 | `Color(0xFF0E8A52)` 绿 | 深色白 / 浅色黑 |
 | 未激活 | 连上框架服务，但作用域为空 / 信息读不出 | `colorScheme.error` | 同上 |
 | 未连接 | 拿不到框架服务（没装 / 没启用 / 服务已断开） | `colorScheme.onBackgroundVariant` | 同上 |
 
