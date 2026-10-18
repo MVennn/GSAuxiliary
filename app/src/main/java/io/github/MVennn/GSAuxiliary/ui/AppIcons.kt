@@ -318,18 +318,24 @@ internal object AppIcons {
      * 即标准的圆近似常数 4/3·tan(π/8)）画出来的圆在视觉上和真圆无法区分，
      * 又能被校验脚本完整解析，所以这里统一用贝塞尔。
      */
+    /**
+     * 「大对勾」的路径（24×24 网格）。
+     *
+     * 圆：中心 (12,12)、半径 9.4，四段三次贝塞尔顺时针闭合；勾：左下 → 拐点 → 右上。
+     *
+     * 提成常量是因为概览页状态卡要把**同一个图形**挖进玻璃底板
+     * （[HeroGlassGlyph] 收的是路径字符串，不是 ImageVector）——
+     * 两处共用一条字符串，改图不会只改到半边。
+     */
+    internal const val CheckCirclePath: String = "M12,2.6 " +
+        "C17.19,2.6 21.4,6.81 21.4,12 " +
+        "C21.4,17.19 17.19,21.4 12,21.4 " +
+        "C6.81,21.4 2.6,17.19 2.6,12 " +
+        "C2.6,6.81 6.81,2.6 12,2.6 Z " +
+        "M7.2,12.4 l3.2,3.2 l6.4,-6.8"
+
     val CheckCircle: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        strokedIcon(
-            name = "CheckCircle",
-            // 圆：中心 (12,12)、半径 9.4，四段三次贝塞尔顺时针闭合；
-            // 勾：左下 → 拐点 → 右上
-            pathData = "M12,2.6 " +
-                "C17.19,2.6 21.4,6.81 21.4,12 " +
-                "C21.4,17.19 17.19,21.4 12,21.4 " +
-                "C6.81,21.4 2.6,17.19 2.6,12 " +
-                "C2.6,6.81 6.81,2.6 12,2.6 Z " +
-                "M7.2,12.4 l3.2,3.2 l6.4,-6.8",
-        )
+        strokedIcon(name = "CheckCircle", pathData = CheckCirclePath)
     }
 
     /**
@@ -339,15 +345,15 @@ internal object AppIcons {
      * 因为 `PathParser` 里零长度线段在部分渲染器上不会画出来。
      * 圆的画法与 [CheckCircle] 相同（三次贝塞尔近似，理由见该处注释）。
      */
+    /** 「大感叹号」的路径（同网格）；与 [CheckCirclePath] 一样两处共用 */
+    internal const val ErrorCirclePath: String = "M12,2.6 " +
+        "C17.19,2.6 21.4,6.81 21.4,12 " +
+        "C21.4,17.19 17.19,21.4 12,21.4 " +
+        "C6.81,21.4 2.6,17.19 2.6,12 " +
+        "C2.6,6.81 6.81,2.6 12,2.6 Z " +
+        "M12,7.2 l0,5.6 M12,16.5 l0,0.2"
+
     val ErrorCircle: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
-        strokedIcon(
-            name = "ErrorCircle",
-            pathData = "M12,2.6 " +
-                "C17.19,2.6 21.4,6.81 21.4,12 " +
-                "C21.4,17.19 17.19,21.4 12,21.4 " +
-                "C6.81,21.4 2.6,17.19 2.6,12 " +
-                "C2.6,6.81 6.81,2.6 12,2.6 Z " +
-                "M12,7.2 l0,5.6 M12,16.5 l0,0.2",
-        )
+        strokedIcon(name = "ErrorCircle", pathData = ErrorCirclePath)
     }
 }

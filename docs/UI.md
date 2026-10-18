@@ -244,49 +244,53 @@ Miuix 基础件拼的。
 
 所以 `ModuleTab.kt` 里按 Miuix 的视觉规范自绘了一个等效实现。
 
-> **3.2.1 起卡面垫了关于页同款流动光场**（`HeroLightField` —— 同一套调色板、同一条
-> 时间轴，只是不带底边渐隐），上面压一层 `surface @ 0.52` 保证三行文字可读；
-> 字号按关于页的节奏调成 24 / 15 / 14sp（主字更大、副行更小）。
+> **3.2.1 起这张卡就是「缩小版的关于」**：卡面直接用关于页的 `AboutHeroBackground`
+> （同一份代码，只关掉底边渐隐 —— 卡片是封闭表面，渐隐只会吃掉下半张的光），
+> 文字用 `heroAccent` / `heroCaption`（关于页名称与版本号那两个颜色常量），
+> 右侧图标用 `HeroGlassGlyph`（与关于页 mark 共用 `GlassPlate`：采样卡面光场 →
+> 模糊 → 按状态染色 → 把对勾 / 感叹号用 `BlendMode.Clear` 挖成负空间）。
+> **不要**再给它压一层半透明底色 —— 彩色光场上压一层灰，光感就没了。
+> 字号仍是 24 / 15 / 14sp。
+
 ```kotlin
 Card(
-    // 内边距由文字列自己加：装饰图标不能被 Card 的内边距挡住
-    insideMargin = PaddingValues(0.dp),
-    colors = CardDefaults.defaultColors(
-        color = accent.copy(alpha = 0.14f),        // 卡面：主色 14% 透明度
-        contentColor = MiuixTheme.colorScheme.onBackground,
-    ),
+    insideMargin = PaddingValues(0.dp),            // 图标要贴到卡边
+    colors = CardDefaults.defaultColors(color = MiuixTheme.colorScheme.surface),
 ) {
     Box(Modifier.fillMaxWidth().heightIn(min = StatusCardMinHeight)) {
-        // 图标放 matchParentSize（不参与测量，调尺寸不会撑高卡片），且画在文字下层。
-        Box(Modifier.matchParentSize()) {
-            Icon(
-                AppIcons.CheckCircle | ErrorCircle,
-                tint = accent.copy(alpha = 0.30f), // 2.17.1：0.16 → 0.30
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)    // 2.17.2：完整显示，右侧垂直居中
-                    .padding(end = StatusCardIconEndPadding)
-                    .size(StatusCardIconSize),
+        AboutHeroBackground(                        // 关于页背景本体
+            time = fieldClock, darkTheme = darkTheme, alpha = alwaysVisible,
+            backdrop = cardBackdrop, fadeBottom = false,
+            modifier = Modifier.matchParentSize(),
+        )
+        Box(Modifier.matchParentSize()) {           // 图标不参与测量，调尺寸不撑高卡片
+            HeroGlassGlyph(                         // 玻璃底板 + 挖空图形
+                backdrop = cardBackdrop,
+                pathData = if (active) AppIcons.CheckCirclePath else AppIcons.ErrorCirclePath,
+                tint = accent.copy(alpha = 0.62f),  // accent 只染玻璃，不再垫卡面
+                modifier = Modifier.align(Alignment.CenterEnd).size(StatusCardIconSize),
             )
         }
-        Column(Modifier.align(Alignment.CenterStart).padding(horizontal = 16.dp)) {
-            标题(22sp) / 版本(16sp) / API(15sp)                // 2.9.2：字号上调一档
+        // 右内边距 = 图标宽度 + 边距：玻璃板不透明，文字不能钻到它下面
+        Column(Modifier.align(Alignment.CenterStart).padding(start = 16.dp, end = 148.dp)) {
+            标题(heroAccent, 24sp) / 版本(heroCaption, 14sp) / API(heroCaption, 15sp)
         }
     }
 }
 
 private val StatusCardMinHeight = 148.dp    // 2.9.3 起这才是卡片真实高度（见 §3.1.3）
 private val StatusCardIconSize = 132.dp     // 2.17.2：260 → 132，不再裁切
-private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文字起始边距对称
+private val StatusCardIconEndPadding = 16.dp // 与文字起始边距对称
 ```
 
-| 状态 | 主色 | 图标 |
+| 状态 | 玻璃底板染色 | 挖空图形 |
 |---|---|---|
-| 已激活（连上框架，作用域非空、信息可读） | `Color(0xFF0E8A52)` 绿 | `AppIcons.CheckCircle` |
-| 未激活（连上框架，但作用域为空 / 信息读不出） | `MiuixTheme.colorScheme.error` | `AppIcons.ErrorCircle` |
-| 未连接（拿不到框架服务） | `MiuixTheme.colorScheme.onBackgroundVariant` | `AppIcons.ErrorCircle` |
+| 已激活（连上框架，作用域非空、信息可读） | `Color(0xFF0E8A52)` 绿 | `AppIcons.CheckCirclePath` |
+| 未激活（连上框架，但作用域为空 / 信息读不出） | `MiuixTheme.colorScheme.error` | `AppIcons.ErrorCirclePath` |
+| 未连接（拿不到框架服务） | `MiuixTheme.colorScheme.onBackgroundVariant` | `AppIcons.ErrorCirclePath` |
 
-卡面用主色 14% 透明度而不是实色，深浅色主题下都不用另外配一套。
-
+状态色**只染玻璃底板**：卡面是彩色光场，标题再跟状态色走两边互相打架；三态的区别
+落在底板颜色与文案上，文字保持关于页的紫 / 浅紫。
 #### 3.1.1 2.9.1：纵向拉长 + 图标「只露左上四分之一」
 
 用户要求「容器框纵向拉长，长度约为当前高度的一半；右侧图标放大，放到右下角，
@@ -305,10 +309,6 @@ private val StatusCardIconEndPadding = 16.dp // 2.17.2：距右缘 16dp，与文
 > （`javap -c` 逆 `miuix-squircle` 的 `SquircleBackgroundKt` 确认），
 > 超出卡片范围的内容会被自动切掉 —— 这也是为什么 `insideMargin` 必须置 0：
 > 否则图标会被内边距提前裁一刀，露出来的就不止四分之一了。
-
-> 露出来的其实是「圆的左上弧线」：24×24 视口里，圆心 (12,12)、半径 9.4，
-> 左上象限（x<12, y<12）只包含顶部到左端的弧；勾的端点 (7.2,12.4) 恰好在
-> y=12 之外，所以看不到勾。落在角落里就是一段干净的装饰弧线。
 
 #### 3.1.2 2.9.2：字号上调 + 图标放大并向左上微调
 

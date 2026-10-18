@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -23,10 +25,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -92,6 +97,8 @@ internal val AboutBackgroundFadeDistance = 389.dp
  * @param time 动画时间（秒），**在绘制阶段读取**
  * @param darkTheme 当前配色是否深色（决定调色板）
  * @param alpha 整体不透明度，由滚动量算出；同样只在绘制阶段读取
+ * @param fadeBottom 底边是否渐隐进页面底色。关于页要（下面还有内容要接），
+ *   概览页那张状态卡不要 —— 卡片是封闭表面，渐隐只会把下半张的光吃掉
  */
 @Composable
 internal fun AboutHeroBackground(
@@ -100,6 +107,7 @@ internal fun AboutHeroBackground(
     alpha: () -> Float,
     modifier: Modifier = Modifier,
     backdrop: LayerBackdrop? = null,
+    fadeBottom: Boolean = true,
 ) {
     Canvas(
         modifier = modifier
@@ -124,6 +132,7 @@ internal fun AboutHeroBackground(
             sampleOrigin = Offset.Zero,
         )
         // 底边渐隐进页面底色（原版 0.68 处才开始收口）
+        if (!fadeBottom) return@Canvas
         drawRect(
             brush = Brush.verticalGradient(
                 colorStops = arrayOf(
@@ -133,31 +142,6 @@ internal fun AboutHeroBackground(
                 ),
             ),
             blendMode = BlendMode.DstIn,
-        )
-    }
-}
-
-/**
- * 只画「流动光场」这一层：不带底边渐隐、不录 backdrop、不跟滚动。
- *
- * 关于页 Hero 用它铺满首屏；概览页的 LSPosed 状态卡把它压进卡面，
- * 于是两张卡是同一套调色板与同一条时间轴（用户说的「用关于页的元素赋能」）。
- *
- * @param time 动画时间（秒），**只在绘制阶段读取**
- */
-@Composable
-internal fun HeroLightField(
-    time: () -> Float,
-    darkTheme: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Canvas(modifier) {
-        val t = time()
-        drawAboutGradientField(
-            animationTime = t,
-            colors = animatedGradientColors(t, darkTheme),
-            fieldSize = size,
-            sampleOrigin = Offset.Zero,
         )
     }
 }
@@ -188,8 +172,8 @@ internal fun AboutHeroContent(
         verticalArrangement = Arrangement.Center,
     ) {
         // mark 与名称必须同色：一颗彩色的标配一行白字，会像从两个界面上抠下来的
-        val accent = if (darkTheme) HeroAccentDark else HeroAccentLight
-        val caption = accent.copy(alpha = if (darkTheme) 0.62f else 0.58f)
+        val accent = heroAccent(darkTheme)
+        val caption = heroCaption(darkTheme)
         Column(
             modifier = Modifier.graphicsLayer { translationY = AboutHeroContentOffset.toPx() },
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -220,6 +204,62 @@ internal fun AboutHeroContent(
 }
 
 /**
+ * 玻璃底板：采样 [backdrop]（一块已录进光场的图层）→ 模糊 → 染一层色，
+ * 再把 [glyph] 里的图形用 `BlendMode.Clear` 挖成负空间。
+ *
+ * 这就是关于页 mark 的全部做法，抽出来是为了让**概览页的状态卡用同一份代码**：
+ * 底板形状可以换（mark 是 22dp 圆角方块）、挖的图形可以换（mark 是上升弧线，
+ * 状态卡是空心对勾 / 感叹号），但玻璃的来源、模糊半径、染色方式都是同一套。
+ *
+ * 采样不到（[backdrop] 为空）或系统不支撑（API < 31）时退回渐变 ——
+ * 后者的理由见 [MarkFallbackDark] 的注释：库在 SDK < 31 时不会应用模糊与
+ * vibrancy，只剩染色，那看起来就是一块半透明色块，不如直接用渐变。
+ */
+@Composable
+private fun GlassPlate(
+    darkTheme: Boolean,
+    backdrop: LayerBackdrop?,
+    tint: Color,
+    corner: Dp,
+    modifier: Modifier = Modifier,
+    fallback: List<Color>? = null,
+    glyph: DrawScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(corner)
+    val usable = backdrop != null && Build.VERSION.SDK_INT >= 31
+    Box(
+        modifier = modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .then(
+                    if (usable) {
+                        Modifier.drawBackdrop(
+                            backdrop = backdrop,
+                            shape = { shape },
+                            effects = {
+                                vibrancy()
+                                blur(MarkBlur.toPx())
+                            },
+                            // 不要高光：底板本身就是一块圆角玻璃，加描边会变成两条边
+                            highlight = null,
+                            onDrawSurface = { drawRect(tint) },
+                        )
+                    } else {
+                        Modifier.background(
+                            Brush.linearGradient(
+                                fallback ?: if (darkTheme) MarkFallbackDark else MarkFallbackLight,
+                            ),
+                        )
+                    },
+                ),
+        )
+        Canvas(modifier = Modifier.matchParentSize(), onDraw = glyph)
+    }
+}
+
+/**
  * mark：实心圆角方块，用负空间挖出一道上升的弧线和顶端的箭镞。
  *
  * ## 为什么它是玻璃，而不是一块纯色
@@ -229,12 +269,7 @@ internal fun AboutHeroContent(
  * 变成「背景的强对比版本」，看着就像一块透光的玻璃，而不是贴上去的色块。
  *
  * miuix 0.9.4 的 `miuix-blur` 拿不到（本项目锁 0.9.3），这里用项目里已有的
- * backdrop 库达成同一件事：采样 Hero 光场 → 模糊 → 叠一层染色。
- * 采样不到（backdrop 为空）时退回浅色渐变，至少不会画成空白。
- *
- * 绘制顺序（同一离屏图层内）：
- *   1. 玻璃：`drawBackdrop` 采样 + 模糊 + 染色
- *   2. 图形：`BlendMode.Clear` 抠出负空间
+ * backdrop 库达成同一件事：采样 Hero 光场 → 模糊 → 叠一层染色（见 [GlassPlate]）。
  *
  * 图形坐标与启动器前景同一套（见 ic_launcher_foreground.xml 的注释），
  * 连线宽都是同一份常量 —— 这样关于页的 mark 和桌面上的图标是同一颗标。
@@ -247,66 +282,89 @@ private fun AboutMark(
     modifier: Modifier = Modifier,
 ) {
     // 圆角按启动器图标同一比例（24/108 = 22.2%），mark 才和桌面那颗图标是一颗标
-    val shape = RoundedCornerShape(22)
-    val tint = if (darkTheme) MarkTintDark else MarkTintLight
-    Box(
-        modifier = modifier.graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen },
+    GlassPlate(
+        darkTheme = darkTheme,
+        backdrop = backdrop,
+        tint = if (darkTheme) MarkTintDark else MarkTintLight,
+        corner = 22.dp,
+        modifier = modifier,
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .then(
-                    if (backdrop != null) {
-                        Modifier.drawBackdrop(
-                            backdrop = backdrop,
-                            shape = { shape },
-                            effects = {
-                                vibrancy()
-                                blur(MarkBlur.toPx())
-                            },
-                            // 不要高光：mark 本身就是一块圆角玻璃，加描边会变成两条边
-                            highlight = null,
-                            onDrawSurface = { drawRect(tint) },
-                        )
-                    } else {
-                        Modifier.background(
-                            Brush.linearGradient(if (darkTheme) MarkFallbackDark else MarkFallbackLight),
-                        )
-                    },
-                ),
+        val unit = size.minDimension / MarkCanvasUnits
+        // 一笔从右下扫上去的弧线 + 顶端的实心箭镞。早期的「涨—跌—涨」折线在
+        // 挖空形态下会多出一个 V 形回踩，放大后看着像个歪勾；一根弧线只有一次
+        // 转向，负空间越简单越像「标识」，所以换成了这一笔。
+        val curve = Path().apply {
+            moveTo(33.08f * unit, 75.39f * unit)
+            quadraticTo(67.4f * unit, 75.39f * unit, 67.4f * unit, 50.94f * unit)
+        }
+        drawPath(
+            path = curve,
+            color = Color.Transparent,
+            style = Stroke(width = MarkCurveStroke * unit, cap = StrokeCap.Round),
+            blendMode = BlendMode.Clear,
         )
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val unit = size.minDimension / MarkCanvasUnits
-            // 一笔从右下扫上去的弧线 + 顶端的实心箭镞。早期的「涨—跌—涨」折线在
-            // 挖空形态下会多出一个 V 形回踩，放大后看着像个歪勾；一根弧线只有一次
-            // 转向，负空间越简单越像「标识」，所以换成了这一笔。
-            val curve = Path().apply {
-                moveTo(33.08f * unit, 75.39f * unit)
-                quadraticTo(67.4f * unit, 75.39f * unit, 67.4f * unit, 50.94f * unit)
-            }
+        val head = Path().apply {
+            moveTo(67.4f * unit, 29.79f * unit)
+            lineTo(57.06f * unit, 50.94f * unit)
+            lineTo(77.74f * unit, 50.94f * unit)
+            close()
+        }
+        drawPath(head, color = Color.Transparent, blendMode = BlendMode.Clear)
+        // 描边把三个尖角磨圆，尺度与弧线的圆头一致
+        drawPath(
+            path = head,
+            color = Color.Transparent,
+            style = Stroke(width = MarkTriStroke * unit, join = StrokeJoin.Round),
+            blendMode = BlendMode.Clear,
+        )
+    }
+}
+
+/**
+ * 玻璃底板上挖一个**线框图标**（24×24 网格的描边图形），给概览页状态卡用。
+ *
+ * 与 [AboutMark] 同一块玻璃、同一种挖法，只是挖的图形换成调用方给的路径：
+ * 状态卡要表达「已激活 / 未激活 / 未连接」，把对勾或感叹号直接挖进底板，
+ * 既是关于页那套视觉，又保住了状态语义（[tint] 再按状态染色）。
+ *
+ * @param pathData 24×24 网格上的描边路径（来自 [AppIcons] 的常量，别另抄一份）
+ */
+@Composable
+internal fun HeroGlassGlyph(
+    darkTheme: Boolean,
+    backdrop: LayerBackdrop?,
+    pathData: String,
+    tint: Color,
+    fallback: List<Color>,
+    strokeWidth: Float = 1.6f,
+    corner: Dp = 33.dp,
+    modifier: Modifier = Modifier,
+) {
+    val path = remember(pathData) { PathParser().parsePathString(pathData).toPath() }
+    GlassPlate(
+        darkTheme = darkTheme,
+        backdrop = backdrop,
+        tint = tint,
+        corner = corner,
+        modifier = modifier,
+        fallback = fallback,
+    ) {
+        // 路径是 24 单位网格，缩放到实际边长后再按同比例描边，
+        // 挖出来的线宽才与图形本身的比例一致
+        val unit = size.minDimension / GlyphCanvasUnits
+        scale(unit, unit, pivot = Offset.Zero) {
             drawPath(
-                path = curve,
+                path = path,
                 color = Color.Transparent,
-                style = Stroke(width = MarkCurveStroke * unit, cap = StrokeCap.Round),
-                blendMode = BlendMode.Clear,
-            )
-            val head = Path().apply {
-                moveTo(67.4f * unit, 29.79f * unit)
-                lineTo(57.06f * unit, 50.94f * unit)
-                lineTo(77.74f * unit, 50.94f * unit)
-                close()
-            }
-            drawPath(head, color = Color.Transparent, blendMode = BlendMode.Clear)
-            // 描边把三个尖角磨圆，尺度与弧线的圆头一致
-            drawPath(
-                path = head,
-                color = Color.Transparent,
-                style = Stroke(width = MarkTriStroke * unit, join = StrokeJoin.Round),
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 blendMode = BlendMode.Clear,
             )
         }
     }
 }
+
+/** 状态卡图标所在的网格边长（[AppIcons] 的 24dp 网格） */
+private const val GlyphCanvasUnits = 24f
 
 // ---------------------------------------------------------------------------
 // 绘制（以下函数复刻自 HyperIsland 的 AboutPage.kt，参数名保持一致便于对照）
@@ -456,6 +514,18 @@ private val MarkBlur = 16.dp
 /** 名称与版本：深色下浅蓝紫，浅色下深紫红 —— mark 的染色也取这两套 */
 private val HeroAccentDark = Color(0xFFC4C0FF)
 private val HeroAccentLight = Color(0xFF5E2550)
+
+/**
+ * 关于页的名称色（深色浅蓝紫 / 浅色深紫红）。
+ *
+ * 概览页那张状态卡是「缩小版的关于」：卡面光场、标题色、副行色都取这里，
+ * 所以两页的配色永远同一份 —— 改色只改上面两个常量。
+ */
+internal fun heroAccent(dark: Boolean): Color = if (dark) HeroAccentDark else HeroAccentLight
+
+/** 副行色：名称色降透明度（关于页版本号同款 0.62 / 0.58） */
+internal fun heroCaption(dark: Boolean): Color =
+    heroAccent(dark).copy(alpha = if (dark) 0.62f else 0.58f)
 
 /**
  * mark 叠在模糊背景上的染色。

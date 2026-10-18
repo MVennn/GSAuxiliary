@@ -1,7 +1,6 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import android.os.Build
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,13 +25,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.FrameworkBridge
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -182,7 +181,11 @@ private data class FrameworkInfo(
  * `ProgressIndicator` / `Snackbar` / `Tooltip` … 都在，但**没有**「状态卡 / Hero 卡」
  * 这一类复合组件；LSPosed 那张卡也是它自己用 Miuix 基础件拼出来的。
  * 所以这里按 Miuix 的视觉规范自绘一个等效实现：
- * `Card`（自定义配色）+ 左侧三行文字 + 右下角一枚超大的装饰图标。
+ * `Card` + 左侧三行文字 + 右侧一块超大的装饰图标。
+ *
+ * **3.2.1 起这张卡就是「缩小版的关于」**：卡面光场、文字配色、图标玻璃全部复用
+ * [AboutHeroBackground] / [heroAccent] / [heroCaption] / [HeroGlassGlyph]，
+ * 一行视觉代码都没有另写 —— 关于页改什么，这张卡跟着改什么。
  *
  * ## 版式调整
  *
@@ -212,10 +215,12 @@ private data class FrameworkInfo(
  *  | 未激活 | 连上框架服务，但作用域为空 / 信息读不出来 | `colorScheme.error` |
  *  | 未连接 | 拿不到框架服务（没装 LSPosed、模块没启用、服务已断开） | `colorScheme.onBackgroundVariant` |
  *
- * 三处用色都从同一个 `accent` 派生：卡面 `alpha = 0.14`、装饰图标 [StatusCardIconAlpha]、
- * 标题用原色。所以「加深」只要动这一个变量。
+ * **3.2.1 起色只用一处**：`accent` 只染右侧那块玻璃底板的染色层，卡面不再是
+ * 「状态色 @0.14」而是关于页的流动光场，标题与副行改用 [heroAccent] / [heroCaption]
+ * —— 三态的区别落在底板颜色与文案上，文字本身保持关于页的紫／浅紫。
  *
- * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释）。
+ * 图标走 [AppIcons] 自绘（不引图标库，理由见该文件注释），图形本身挖进玻璃底板
+ * （[HeroGlassGlyph]），与关于页 mark 同一块玻璃、同一种挖法。
  *
  * @param state 三态之一，决定配色与右侧图标
  */
@@ -227,21 +232,26 @@ private fun OverviewStatusCard(
     api: String,
     modifier: Modifier = Modifier,
 ) {
-    // 卡面取低透明度，深浅色主题下都能用
+    // 状态色只用来**染玻璃底板**（对勾那块玻璃），文字取关于页那套配色 ——
+    // 卡面是彩色光场，标题再跟状态色走就会互相打架。
     val accent = when (state) {
         FrameworkState.Active -> StatusActiveColor
         FrameworkState.Inactive -> MiuixTheme.colorScheme.error
         FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
     }
-
-    // --- 关于页同款流动光场（3.2.1 起） ---
-    //
-    // 用户要求「用关于页的元素赋能这张卡」：同一套调色板、同一条时间轴
-    // （两处都走 AboutHero 的 animatedGradientColors），但不带底边渐隐、不录 backdrop。
-    //
-    // 时间只在**绘制阶段**读（`fieldClock` 是个 lambda），推进靠 withFrameNanos 累加 ——
-    // 于是每帧只有卡片这一层重绘，概览页不会跟着重组。
     val darkTheme = LocalDarkTheme.current
+    val surface = MiuixTheme.colorScheme.surface
+
+    // 光场采样源：与关于页完全同一条链路 —— 先把卡面光场录进 backdrop，
+    // 图标那块玻璃才有东西可采（`drawRect(surface)` 打底，玻璃在渐变还没画上来时
+    // 也是干净的，而不是透出卡片下面的东西）。
+    val cardBackdrop = rememberLayerBackdrop {
+        drawRect(surface)
+        drawContent()
+    }
+
+    // 动画时间：只在绘制阶段被读取（`fieldClock` 是个 lambda），推进靠
+    // withFrameNanos 累加 —— 每帧只有这层光场重绘，概览页不会跟着重组。
     val fieldTime = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         var previous = 0L
@@ -255,66 +265,57 @@ private fun OverviewStatusCard(
         }
     }
     val fieldClock = remember(fieldTime) { { fieldTime.floatValue } }
+    // 卡片不跟滚动，恒为全亮（关于页那个参数是给滚动淡出用的）
+    val alwaysVisible = remember { { 1f } }
 
     Card(
         modifier = modifier,
-        // 内边距改由文字列自己加：装饰图标要溢出到卡片角外，不能被 Card 的内边距挡住
+        // 内边距改由文字列自己加：装饰图标要贴到卡片边缘，不能被 Card 的内边距挡住
         insideMargin = PaddingValues(0.dp),
-        colors = CardDefaults.defaultColors(
-            color = accent.copy(alpha = 0.14f),
-            contentColor = MiuixTheme.colorScheme.onBackground,
-        ),
+        // 卡面底色就是页面底色：卡片的形由光场给出，不再垫一层状态色
+        colors = CardDefaults.defaultColors(color = surface),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = StatusCardMinHeight),
         ) {
-            // --- 卡面底：流动光场 + 一层半透明的页面底色 ---
+            // --- 卡面：关于页那套流动光场（同一份代码，不是另写一遍） ---
             //
-            // 光场直接铺满卡面（Card 的 squircle 会裁掉溢出的部分）；上面再压一层
-            // `surface @ 0.52` —— 彩色光场上直接放深色字，浅色主题里对比不够，
-            // 压一层底色后三行文字的可读性与原来一致，光场只剩「流动的底色」。
-            Box(Modifier.matchParentSize()) {
-                HeroLightField(
-                    time = fieldClock,
-                    darkTheme = darkTheme,
-                    modifier = Modifier.matchParentSize(),
-                )
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.52f)),
-                )
-            }
+            // `AboutHeroBackground` 是 Hero 背景本体，这里只是关掉底边渐隐：
+            // 关于页下面还有内容要接，卡片是封闭表面，渐隐只会把下半张的光吃掉。
+            // 关掉之后光场铺满卡面，Card 的 squircle 会把溢出的部分裁掉。
+            AboutHeroBackground(
+                time = fieldClock,
+                darkTheme = darkTheme,
+                alpha = alwaysVisible,
+                backdrop = cardBackdrop,
+                fadeBottom = false,
+                modifier = Modifier.matchParentSize(),
+            )
 
-            // --- 右侧装饰图标：完整显示，垂直居中（2.17.2 定稿） ---
+            // --- 右侧装饰图标：关于页 mark 的做法，挖进同一块玻璃 ---
             //
-            // 2.9.1 ~ 2.17.1 一直走「裁切弧」路线：图标顶到右下角、只露左上一块，
-            // 且一版比一版大 —— 2.17.1 到 260dp / 内缩 60dp 后弧线盖满整条卡片右缘，
-            // 看着像一条乱入的曲线，认不出是个对勾。2.17.2 改回**完整显示**：
-            // 132dp（卡片 148dp 高，上下各留 8dp）、右侧垂直居中、距右缘
-            // [StatusCardIconEndPadding] —— 对齐 LSPosed 那张「已激活 + 大对勾」
-            // 卡的原始版式，图标是图标，不再是切出来的弧。
+            // 玻璃底板采样卡面光场 → 模糊 → 按状态染色，再把对勾 / 感叹号用
+            // `BlendMode.Clear` 挖成负空间（`HeroGlassGlyph`，与 mark 共用 GlassPlate）。
+            // 图形取自 AppIcons 的路径常量，与列表里那份图标是同一个图形。
             //
-            // 仍放在 `matchParentSize` 容器里：`matchParentSize` 的节点**不参与父级
-            // 尺寸测量**，卡片高度只由文字内容 + [StatusCardMinHeight] 决定，
-            // 以后再怎么调图标尺寸都不会把卡片撑高（2.9.1 / 2.9.2 的教训见
-            // [StatusCardMinHeight] 的注释）。
-            //
-            // 图标**画在文字下层**（先声明）：万一窄屏 / 大字号下文字延长线碰到
-            // 图标，也是 0.30 透明度的水印垫底，不会盖住文字。
+            // 尺寸 132dp 对 148dp 的卡高正好上下各留 8dp；放在 matchParentSize
+            // 容器里不参与测量，所以调图标尺寸不会把卡片撑高。
             Box(Modifier.matchParentSize()) {
-                // TintedIcon：`Icon(imageVector, tint = ...)` 的染色在本机不生效
-                // （图标一律画成占位黑），见 Widgets.kt 的注释 —— 这个绿对勾
-                // 因此一直是一块黑水印
-                TintedIcon(
-                    imageVector = if (state == FrameworkState.Active) {
-                        AppIcons.CheckCircle
+                HeroGlassGlyph(
+                    darkTheme = darkTheme,
+                    backdrop = cardBackdrop,
+                    pathData = if (state == FrameworkState.Active) {
+                        AppIcons.CheckCirclePath
                     } else {
-                        AppIcons.ErrorCircle
+                        AppIcons.ErrorCirclePath
                     },
-                    tint = accent.copy(alpha = StatusCardIconAlpha),
+                    tint = accent.copy(alpha = if (darkTheme) 0.55f else 0.62f),
+                    fallback = listOf(
+                        accent.copy(alpha = 0.86f),
+                        accent.copy(alpha = 0.52f),
+                    ),
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = StatusCardIconEndPadding)
@@ -322,31 +323,37 @@ private fun OverviewStatusCard(
                 )
             }
 
-            // --- 左侧三行文字：垂直居中（2.9.2 起字号整体上调一档） ---
+            // --- 左侧三行文字：垂直居中，字号与节奏照旧 ---
+            //
+            // 配色按关于页来：标题用 heroAccent（与关于页名称同一个常量），
+            // 版本与 API 两行用 heroCaption（名称色降透明度，关于页版本号同款）。
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .padding(start = 16.dp, end = 16.dp),
+                    // 右侧留出图标那块玻璃的整个宽度：它现在是**不透明的玻璃板**
+                    // （以前是 0.30 的水印，文字压上去也无所谓），文字不能钻到下面去。
+                    // 中文三行都很短，英文最长的「Not activated」约 144dp，172dp 放得下。
+                    .padding(
+                        start = 16.dp,
+                        end = StatusCardIconSize + StatusCardIconEndPadding,
+                    ),
             ) {
                 Text(
                     text = title,
-                    color = accent,
-                    // 关于页的字面节奏：主字大而重、副行小一档（视觉上同一套排版语言）
+                    color = heroAccent(darkTheme),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = version,
-                    // 与下一行的 API 用同一档颜色（2.17.1）：原来走 onBackgroundVariant，
-                    // 两行灰度不一致，看着像两个层级
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = heroCaption(darkTheme),
                     fontSize = 14.sp,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = api,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = heroCaption(darkTheme),
                     fontSize = 15.sp,
                 )
             }
@@ -377,13 +384,6 @@ private val StatusCardMinHeight = 148.dp
  * 卡面底色（同一颜色 `alpha = 0.14`）几乎看不出变化。
  */
 private val StatusActiveColor = Color(0xFF0E8A52)
-
-/**
- * 右侧装饰图标的透明度（2.9.1 起为 0.16，2.17.1 提到 0.30）。
- *
- * 0.16 在浅色卡面上几乎糊成一片 —— 提到 0.30 图标读得清，又不会盖过左侧文字。
- */
-private const val StatusCardIconAlpha = 0.30f
 
 /**
  * 右侧装饰图标的尺寸（2.9.2 由 150dp 放大到 170dp，2.17.1 再到 260dp，
