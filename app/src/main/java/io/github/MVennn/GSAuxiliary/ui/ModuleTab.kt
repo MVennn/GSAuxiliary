@@ -261,8 +261,15 @@ private fun OverviewStatusCard(
         FrameworkState.Inactive -> MiuixTheme.colorScheme.error
         FrameworkState.Disconnected -> MiuixTheme.colorScheme.onBackgroundVariant
     }
-    val fieldPalettes = remember(accent, darkTheme) {
-        lightFieldPalettesFrom(accent, darkTheme)
+    // 深色下光场用主色（深绿），浅色下换成那颗亮绿：主色的蓝相太重，兑白之后
+    // 是灰蓝绿，跟 LSPosed 浅色卡那种清亮的薄荷色对不上。
+    val fieldAccent = if (state == FrameworkState.Active && !darkTheme) {
+        StatusActiveIconColor
+    } else {
+        accent
+    }
+    val fieldPalettes = remember(fieldAccent, darkTheme) {
+        lightFieldPalettesFrom(fieldAccent, darkTheme)
     }
     // 前景文字：深色白、浅色黑（3.2.1 定稿）。背景流光已经带色，文字保持中性
     // 最干净，压在任何色系上都不打架；副行仍按关于页那套「同色降透明度」派生。
@@ -337,9 +344,9 @@ private fun OverviewStatusCard(
             val iconDrop = with(density) {
                 (iconSizePx * StatusCardIconDropFraction).toDp()
             }
-            // 深色下「已激活」用亮绿（参照图那颗 #6ACF73），#0E8A52 压在深绿光场上
-            // 只剩一档明度差，看着像没亮
-            val iconColor = if (state == FrameworkState.Active && darkTheme) {
+            // 「已激活」图标一律用亮绿 #6ACF73（参照图深浅两张卡都是这颗色），
+            // #0E8A52 在深色光场上只有一档明度差、在浅色卡上又发黑
+            val iconColor = if (state == FrameworkState.Active) {
                 StatusActiveIconColor
             } else {
                 accent
@@ -461,11 +468,11 @@ private val StatusActiveIconColor = Color(0xFF6ACF73)
 /**
  * 图标向下探出卡片底边的比例（同样参照那张卡）。
  *
- * 0.34 时和参照图几乎重合，但**勾的尾巴被卡片底边切掉一截**（168dp 的图标下发
- * 「勾」最低点在 16.5/24 处，探太多就压到线外）。收到 0.28：光圆仍被底边切掉
- * 约 29dp，勾完整可见，上沿落在卡高 30% 处。
+ * 0.34 时和参照图几乎重合，但**勾的尾巴被卡片底边切掉一截**（168dp 的图标里
+ * 「勾」最低点在 16.5/24 处，探太多就压到线外）。收到 0.24：勾底离卡边还有 12dp，
+ * 光圆底仍被切掉约 22dp（右下角的出血还在），上沿落在卡高 26% 处。
  */
-private const val StatusCardIconDropFraction = 0.28f
+private const val StatusCardIconDropFraction = 0.24f
 
 /** 图标默认露出多少（其余吃到卡片右缘外，与 LSPosed 那张卡一致） */
 private const val StatusCardIconDefaultVisible = 0.75f
