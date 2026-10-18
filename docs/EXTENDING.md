@@ -266,6 +266,15 @@ FeatureSpec(
 )
 ```
 
+> **目录里一行 ≠ 一个功能。** 一个 `Feature` 可以承载多个开关（例如「智能盯盘」
+> 的「跳过保存确认」「空数据保存」都挂在 `AiStareQuickConfigFeature` 上，共用同一份
+> 注入脚本）。这时有两条硬要求：
+>
+> 1. `FEATURE_CATALOG` 里每个开关都算一行，但 `FeatureManager.features` **只登记一次**；
+> 2. **`isEnabled` 的 or 链必须覆盖这个功能下的全部开关位** —— 漏一个就是「界面上有开关、
+>    底下不装钩子」的假开关（3.2.0 的「跳过保存确认」就是这么废掉的，见
+>    [CHANGELOG](../CHANGELOG.md) 未发布段）。
+>
 > 当前只存在八个分类资源：`category_login`（登录）、
 > `category_strategy`（策略页）、
 > `category_stock_detail`（股票详情页）、`category_aistare`（智能盯盘）、`category_dock`（底栏）、
