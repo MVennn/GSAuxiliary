@@ -124,6 +124,11 @@ jobs:
       - name: 静态不变量扫描
         run: python3 tools/ci/check_invariants.py
 
+      - name: 发版说明覆盖核对
+        # `docs/RELEASE.md` 的覆盖率红线：本版全部改动必须进说明。
+        # 这条规矩之前没有自动检查 —— 靠人记，结果通常是「想起来才补」。
+        run: python3 tools/ci/check_release_notes.py
+
       - name: 死代码扫描
         # 查「顶层符号谁都没调用」与「只在测试里被调用」——
         # 这项目栽过好几次「名义上存在、实际不生效」（or 链漏一位、锚点没有调用点、
