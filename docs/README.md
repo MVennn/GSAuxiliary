@@ -40,6 +40,7 @@
 | [BUILD.md](BUILD.md) | 构建指南：环境、依赖版本为什么钉死、签名、CI 构建与产物自查 |
 | [RELEASE.md](RELEASE.md) | 发布清单：**交付规则正本（§0.1）**、双仓库发版、Release 说明格式、发版前检查 |
 | [VERSIONING.md](VERSIONING.md) | 版本命名规范：三段式进位规则，**版本晋升正本（§1）** |
+| [REVIEW-2026-10.md](REVIEW-2026-10.md) | 第四轮审查：修掉的缺陷、**五轮独立复核的经验**、装上的自动化防护（单测 / 静态检查 / 变异测试） |
 | [MAINTENANCE.md](MAINTENANCE.md) | 收尾大扫除：磁盘垃圾 / 死代码 / 文档一致性清理，红线清单 |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 排错手册：按「现象 → 步骤 → 原因 / 解法」组织的排查流程 |
 | [CODE-RULES.md](CODE-RULES.md) | 编码纪律：两轮代码审查（2026-10-17）与注入性能排查（2026-10-19）提炼的必守规则与新功能自检清单，写代码前后各过一遍 |
