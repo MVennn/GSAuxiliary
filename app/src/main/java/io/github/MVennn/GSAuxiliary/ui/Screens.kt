@@ -111,6 +111,12 @@ internal fun HomeScaffold(
     // 板块页里「跨页面存活」的长任务（备份 / 恢复 / 导出日志）用这个作用域：
     // 它挂在 HomeScaffold 上，切板块不会把它取消。
     val hostScope = rememberCoroutineScope()
+    // 这三个长任务的忙标记与结果也挂在这一层（**用 remember，不用 rememberSaveable**）：
+    // 声明在 SettingsTab 里的话，它会注册进 SaveableStateProvider(tab) 的子 registry ——
+    // 切板块时 Compose 给子 registry 拍一次快照，任务跑完写回的是已被移出组合的旧 state，
+    // 切回来还原旧快照 → 「备份」「恢复」两行**永久置灰**、结果永远不显示。
+    // 详见 BackupUiState 的注释。
+    val backupUiState = remember { BackupUiState() }
 
     // 两个「选择类」设置项（深色模式 / 语言）与重置确认
     // 都走自绘弹窗，宿主统一在这里渲染（见 ui/AppDialog.kt）。
@@ -345,7 +351,7 @@ internal fun HomeScaffold(
                                                     onOpenFeatureDetail(if (second) spec.id + "#2" else spec.id)
                                                 },
                                             )
-                                            Tab.SETTINGS -> SettingsTab(hostScope = hostScope)
+                                            Tab.SETTINGS -> SettingsTab(hostScope = hostScope, uiState = backupUiState)
                                             Tab.ABOUT -> AboutTab(
                                                 onOpenDisclaimer = onOpenDisclaimer,
                                                 onOpenNotice = onOpenNotice,

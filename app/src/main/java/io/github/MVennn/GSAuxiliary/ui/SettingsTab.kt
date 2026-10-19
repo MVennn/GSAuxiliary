@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -100,6 +99,16 @@ internal fun SettingsTab(
      * 协程静默消失，文件可能没写出、提示也不会出现（审查第三轮）。
      */
     hostScope: CoroutineScope,
+    /**
+     * 备份 / 恢复 / 导出日志的忙标记与结果，由 [HomeScaffold] 持有。
+     *
+     * ⚠️ **不能**声明在本页里：本页挂在 `SaveableStateProvider(tab)` 下，
+     * 切板块时 Compose 会给子 registry 做一次**快照**，而任务跑在 `hostScope`
+     * （切板块不取消）里 —— 任务跑完写回的是已被移出组合的旧 state，
+     * 切回来还原的是旧快照 → 「备份」「恢复」两行**永久置灰**、结果永不显示。
+     * 详见 [BackupUiState] 的注释。
+     */
+    uiState: BackupUiState,
 ) {
     val ctx = LocalContext.current
     val scope = hostScope
@@ -107,12 +116,10 @@ internal fun SettingsTab(
     val dialogs = LocalDialogController.current
 
     // 备份 / 恢复的结果提示（热重载的结果走 Toast，不占用这里）。
-    // 三个标记都用 rememberSaveable：配合 HomeScaffold 的 SaveableStateProvider，
-    // 切走再回来还能看到「正在…」或结果，不会被重置成空白。
-    var actionResult by rememberSaveable { mutableStateOf("") }
-    var busy by rememberSaveable { mutableStateOf(false) }
+    val actionResult = uiState.actionResult
+    val busy = uiState.busy
     // 导出日志自己的忙标记：它可能挂起几秒等 root 授权，与备份/恢复互不影响
-    var exportingLog by rememberSaveable { mutableStateOf(false) }
+    val exportingLog = uiState.exportingLog
 
     // --- 预取带占位符的文案：回调（非 Composable）里没法再调 stringResource ---
     val backupSuccessFmt = stringResource(R.string.backup_success)
@@ -163,8 +170,8 @@ internal fun SettingsTab(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        actionResult = ""
+        uiState.busy = true
+        uiState.actionResult = ""
         scope.launch {
             val msg = withContext(Dispatchers.IO) {
                 runCatching {
@@ -175,8 +182,8 @@ internal fun SettingsTab(
                     String.format(backupSuccessFmt, uri.lastPathSegment ?: uri.toString())
                 }.getOrElse { String.format(backupFailedFmt, it.message ?: it.javaClass.simpleName) }
             }
-            actionResult = msg
-            busy = false
+            uiState.actionResult = msg
+            uiState.busy = false
         }
     }
 
@@ -185,8 +192,8 @@ internal fun SettingsTab(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        actionResult = ""
+        uiState.busy = true
+        uiState.actionResult = ""
         scope.launch {
             val msg = withContext(Dispatchers.IO) {
                 runCatching {
@@ -197,8 +204,8 @@ internal fun SettingsTab(
                     String.format(restoreSuccessFmt, count)
                 }.getOrElse { String.format(restoreFailedFmt, it.message ?: it.javaClass.simpleName) }
             }
-            actionResult = msg
-            busy = false
+            uiState.actionResult = msg
+            uiState.busy = false
         }
     }
 
@@ -216,7 +223,7 @@ internal fun SettingsTab(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        exportingLog = true
+        uiState.exportingLog = true
         scope.launch {
             val msg = withContext(Dispatchers.IO) {
                 runCatching {
@@ -233,7 +240,7 @@ internal fun SettingsTab(
                     )
                 }.getOrElse { String.format(logExportFailedFmt, it.message ?: it.javaClass.simpleName) }
             }
-            exportingLog = false
+            uiState.exportingLog = false
             Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show()
         }
     }
