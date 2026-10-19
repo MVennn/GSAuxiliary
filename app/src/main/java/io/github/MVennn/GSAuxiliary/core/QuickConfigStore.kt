@@ -92,7 +92,15 @@ object QuickConfigStore {
         val defaultId: String,
         val schemes: List<Scheme>,
     ) {
-        /** 默认方案（defaultId 失效时回落第一个） */
+        /**
+         * 默认方案（defaultId 失效时回落第一个）。
+         *
+         * ⚠️ **这不是实际生效的那个** —— 实际生效的是 [defaultId] 指向的方案
+         * （见 `AiStareQuickConfigFeature` 里 `s.id == data.defaultId` 的判定）。
+         * 本属性的语义是「**同时**标了默认标记、且 id 匹配」，
+         * 与实际口径**不一致** —— 留着容易让人以为有两套默认方案。
+         * 它只被测试用到，生产代码走 `defaultId`。
+         */
         val default: Scheme?
             get() = schemes.firstOrNull { it.id == defaultId && it.isDefault }
                 ?: schemes.firstOrNull { it.isDefault }
@@ -141,6 +149,15 @@ object QuickConfigStore {
     private fun decodeOrNull(json: String): Data? {
         return runCatching {
             val root = JSONObject(json)
+            // ⚠️ **版本号要读**（`encode` 一直在写 `"v"`，但解析侧从来不读 ——
+            // 于是「格式变了」这件事没有任何闸门，将来改结构时老数据会被当新数据解析，
+            // 而且**症状是静默的**：值悄悄变了，没有任何报错）。
+            // 现在版本对不上就记一条日志（不阻断 —— 老数据仍按 v1 解析，
+            // 因为 v1 的结构是已知的；真要改结构时在这里加分支）。
+            val version = root.optInt("v", FORMAT_VERSION)
+            if (version != FORMAT_VERSION) {
+                GLog.w("一键配置：方案 JSON 版本 $version 与当前 $FORMAT_VERSION 不同，按 v$FORMAT_VERSION 解析")
+            }
             val schemesJson = root.optJSONArray("schemes") ?: return@runCatching null
             val schemes = ArrayList<Scheme>()
             // 同一 id 只留第一份。3.1.0 的「上移 / 下移」有个写入缺陷（见 QuickConfigScreen
@@ -206,9 +223,16 @@ object QuickConfigStore {
             terms.add(Term(source, param))
         }
         if (terms.isEmpty()) return null
-        val agg = o.optString("agg").takeIf {
-            it == AGG_MAX || it == AGG_MIN || it == AGG_AVG
-        } ?: AGG_MAX
+        // ⚠️ **聚合口径不认识时丢弃整个槽，不要静默回落成 `AGG_MAX`**：
+        // 回落 = 用户存的「取平均」被无声改成「取最大」→ **算出来的价不一样**，
+        // 而症状只有「价格好像有点怪」，根本查不到是这里。
+        // 与「未知的 source」同款处理（那一项也是直接丢弃这个取值项）。
+        val rawAgg = o.optString("agg")
+        val agg = rawAgg.takeIf { it == AGG_MAX || it == AGG_MIN || it == AGG_AVG }
+        if (agg == null) {
+            GLog.w("一键配置：取值项的聚合口径「$rawAgg」不认识，这个槽已丢弃（不静默回落）")
+            return null
+        }
         return Slot(agg, terms)
     }
 
