@@ -178,8 +178,15 @@ jobs:
 
       # ---------------------------------------------------------- 构建与校验
 
-      - name: 构建 release
-        run: ./gradlew --no-daemon --console=plain assembleRelease
+      - name: 静态不变量扫描
+        # 2 秒就能判对错 —— 别等构建完五分钟才发现是个低级违规
+        run: python3 tools/ci/check_invariants.py
+
+      - name: 构建 release（含单元测试）
+        # 单测与构建**共用 compileReleaseKotlin 的产物**，边际成本 ≈ 数秒。
+        # 发版必须先过单测：四轮审查每轮「优化」都引入了新 bug，
+        # 这一层是提交前的最后一道自动闸。
+        run: ./gradlew --no-daemon --console=plain assembleRelease :app:testReleaseUnitTest
 
       - name: 校验产物红线
         env:

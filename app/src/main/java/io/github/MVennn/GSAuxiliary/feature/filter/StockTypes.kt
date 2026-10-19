@@ -35,16 +35,20 @@ object StockTypes {
     const val WKB = 1 shl 3
     const val ST = 1 shl 4
 
+    /** 某一类型行对应的位（非类型行返回 0） */
+    fun bitOf(row: FilterRow): Int = when (row) {
+        FilterRow.CYB -> CYB
+        FilterRow.KCB -> KCB
+        FilterRow.BZA -> BZA
+        FilterRow.WKB -> WKB
+        FilterRow.ST -> ST
+        else -> 0
+    }
+
     /** 位掩码里有没有某一行对应的类型 */
     fun has(types: Int, row: FilterRow): Boolean {
-        val bit = when (row) {
-            FilterRow.CYB -> CYB
-            FilterRow.KCB -> KCB
-            FilterRow.BZA -> BZA
-            FilterRow.WKB -> WKB
-            FilterRow.ST -> ST
-            else -> return false
-        }
+        val bit = bitOf(row)
+        if (bit == 0) return false
         return types and bit != 0
     }
 

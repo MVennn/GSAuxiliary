@@ -171,6 +171,24 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+
+    // ---------------------------------------------------------------------
+    // 单元测试
+    //
+    // 为什么有它：这个项目做过的四轮审查，**每一轮"优化"都引入了新 bug**
+    // （限速丢回调、R8 打穿类名判据、改判定语义…），而当时**没有任何自动化手段**
+    // 能在提交前抓住它们 —— 全靠真机人工验兜底。
+    // 单测能覆盖其中一大类「纯逻辑」的错误（配置口径、筛选语义、打码、缓存 key）。
+    //
+    // isReturnDefaultValues = true：让 android.util.Log 等 stub 方法返回默认值
+    // 而不是抛 "Stub!"。这样 core/LogMask、core/ConfigSnapshot 这些
+    // 不依赖 Android 的类可以直接单测，**不需要 Robolectric**。
+    // ---------------------------------------------------------------------
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 kotlin {
@@ -221,4 +239,25 @@ dependencies {
     // 必须停在 1.x：2.0.1 依赖 Compose 1.12，而 Compose 1.12 要求 AGP ≥ 9.1，
     // 与本项目锁定的 AGP 8.10.1 冲突（详见 docs/BUILD.md）。1.0.6 只要求 Compose 1.10.3。
     implementation("io.github.kyant0:backdrop:1.0.6")
+
+    // ---------------------------------------------------------------------
+    // 测试依赖（**只进测试，不进包**）
+    //
+    // ⚠️ 这三个都是**纯 JVM jar，没有 AAR 元数据** → 不会进 `checkDebugAarMetadata`
+    // 的门槛判定 → 完全绕开「Miuix 0.9.3 / AGP 8.10.1 / Compose 1.10.3」这条
+    // 被反复警告的雷区（规则 6.1 / 6.2）。
+    //
+    // ❌ **不要引 Robolectric**：它运行期要下载 `android-all-instrumented` 制品，
+    // **没有匹配 compileSdk 37 的版本 → 直接跑不起来**；每个 SDK 一份 ~100MB，
+    // CI 首次运行极慢；它自带的 android-all 还会引入另一套 `android.*` 实现，
+    // 掩盖真实依赖问题。本项目真正需要的只是「Log.println 不抛异常」
+    // （isReturnDefaultValues = true 解决）和「SharedPreferences 可替换」
+    // （手写 fake 更可控）。
+    // ❌ 不要用 testDebugUnitTest：会额外编译一整个 debug 变体，
+    // 破坏 CI「只编 release」的既有约定。testReleaseUnitTest 与 assembleRelease
+    // **共用 compileReleaseKotlin 的产物**，CI 边际成本 ≈ 数秒。
+    // ---------------------------------------------------------------------
+    testImplementation(kotlin("test"))
+    // android.jar 里的 org.json 是 stub（抛 "Stub!"）→ 换成真实现
+    testImplementation("org.json:json:20250107")
 }

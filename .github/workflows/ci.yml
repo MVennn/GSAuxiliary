@@ -111,6 +111,19 @@ jobs:
         id: ver
         run: python3 tools/ci/version.py >> "$GITHUB_OUTPUT"
 
+      # ------------------------------------------------------------------
+      # 静态不变量扫描 —— **最先跑**：2 秒就能判对错，别浪费 5 分钟构建。
+      #
+      # 它把文档里写死的规矩变成能跑的检查（Miuix Overlay 禁用、关键状态
+      # rememberSaveable、自己的类名当判据要有 proguard keep、功能开关不是
+      # 假开关、宿主标识用候选数组、中英资源键对齐、日志不得出现裸代码）。
+      #
+      # 四轮审查每一轮「优化」都引入了新 bug，而当时全靠真机人工验兜底 ——
+      # 这一层是**源码级**的，不需要设备也不需要构建。
+      # ------------------------------------------------------------------
+      - name: 静态不变量扫描
+        run: python3 tools/ci/check_invariants.py
+
       # ⚠️ 这一步不能省：`GS_KEYSTORE_BASE64` 是**密钥库本体**，而 Gradle 要的是
       # **文件路径**（`GS_KEYSTORE_PATH`）。少这一步，构建就悄悄退回 debug 签名 ——
       # 而下面的红线校验又会因为「配了密钥」要求 release 包不是 debug 签名，
@@ -128,6 +141,23 @@ jobs:
           fi
           echo "[OK] keystore 与密码 / 别名匹配"
           echo "GS_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: 跑单元测试
+        # testReleaseUnitTest 与 assembleRelease **共用 compileReleaseKotlin 的产物**，
+        # 边际成本 ≈ 数秒。覆盖的是「纯逻辑」那一半的正确性：
+        # 配置指纹、筛选语义真值表、日志打码、配置键对齐。
+        run: ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest
+
+      - name: 确认真的跑了测试
+        # 防「测试目录被误删 → 任务成功但一条没跑 → 假绿」
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          fs = glob.glob("app/build/test-results/testReleaseUnitTest/*.xml")
+          n = sum(int(ET.parse(f).getroot().get("tests")) for f in fs)
+          print(f"[OK] 跑了 {n} 条用例")
+          assert n > 0, "一条用例都没跑 —— 测试源码集可能整目录被删了"
+          PY
 
       - name: 构建
         run: |
