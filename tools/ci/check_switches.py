@@ -164,6 +164,29 @@ def main():
         if k not in defaults:
             problems.append("[没默认值] 功能开关「%s」没有出厂默认值 —— 「重置模块」清不掉它" % k)
 
+    # ⑥ 调试通道的列与值必须等长
+    #
+    # `DebugConfigProvider.query()` 用 `MatrixCursor.addRow` —— 它要求
+    # 「列数 == 值数」，不等就抛 `IllegalArgumentException`，
+    # **整个 adb 调试通道就读不出配置**（而那是排障的主要入口）。
+    # 这条曾经真的坏过（补了列忘了补值，28 列 vs 15 值）。
+    provider = os.path.join(SRC, "app", "DebugConfigProvider.kt")
+    if os.path.exists(provider):
+        ptext = read(provider)
+        cm = re.search(r"val columns = arrayOf\((.*?)\n        \)", ptext, re.S)
+        vm = re.search(r"val values = arrayOf<Any>\((.*?)\n        \)", ptext, re.S)
+        if cm and vm:
+            n_cols = len(re.findall(r"COL_\w+", cm.group(1)))
+            n_vals = len(
+                [l for l in vm.group(1).split("\n") if "ModulePreferences" in l or "raw" in l or "backend" in l]
+            )
+            if n_cols != n_vals:
+                problems.append(
+                    "[调试通道会崩] `DebugConfigProvider.query()` 的列数(%d)与值数(%d)不等 —— "
+                    "`MatrixCursor.addRow` 会抛 IllegalArgumentException，"
+                    "整个 adb 调试通道读不出配置" % (n_cols, n_vals)
+                )
+
     if not problems:
         print(
             "[OK] 功能开关全链路一致：%d 个目录行 / %d 个功能键 / %d 个快照字段 / %d 个快照键"
