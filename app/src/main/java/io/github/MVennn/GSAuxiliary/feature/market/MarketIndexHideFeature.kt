@@ -97,24 +97,21 @@ class MarketIndexHideFeature : UiCleanFeature() {
         val byId = ids.firstOf(MarketTargets.INDEX_OVERVIEW_ID_CANDIDATES)
         if (byId != 0) {
             val v = root.findViewById<View>(byId)
-            if (v != null && v.isShown && isIndexOverview(v, itemId)) return v
+            // ⚠️ **`#ll_content` 只当「辅助确认」，不当必要条件** ——
+            // 宿主改版把它改名了的话，拿它当必要条件就等于**整个功能废掉**；
+            // 而 `#rv_index` 已经是足够特异的锚点了（行情页只有这一处叫这个名字）。
+            // 确认失败时**照样用**，只是多一层结构兜底在后面接着。
+            if (v != null && v.isShown && (itemId == 0 || v.findViewById<View>(itemId) != null)) {
+                return v
+            }
+            // 名字对上了但内容不像 → 再用结构判据确认一次
+            if (v != null && v.isShown && looksLikeIndexList(v, itemId)) return v
         }
 
         // 兜底：结构判据 —— 横向的、子项够多、每项有文案、整块不高的列表
         return UiClean.find(root) { v ->
             v is ViewGroup && v.isShown && looksLikeIndexList(v, itemId)
         }
-    }
-
-    /**
-     * 确认「这就是指数概览」。
-     *
-     * 能解析到 `#ll_content` 时看它在不在子树里（最可靠）；
-     * 解析不到 → 退回结构判据。
-     */
-    private fun isIndexOverview(v: View, itemId: Int): Boolean {
-        if (itemId != 0) return v.findViewById<View>(itemId) != null
-        return looksLikeIndexList(v, 0)
     }
 
     /**
