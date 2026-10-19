@@ -414,6 +414,7 @@ class WatchlistFeature : Feature {
             }
         }
 
+        // 判定走纯函数（可单测）：当前色是我们染上去的预设色 → 那它不是「原色」
         if (!isPresetColor(cur)) {
             originalColors[tv] = cur
             // ③ 也记到视图上（热重载后的新实例读得到）
