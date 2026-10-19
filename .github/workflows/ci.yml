@@ -124,6 +124,13 @@ jobs:
       - name: 静态不变量扫描
         run: python3 tools/ci/check_invariants.py
 
+      - name: 功能开关全链路校验
+        # 一个功能开关要在五处同时存在：ConfigKeys 常量 + DEFAULTS、FEATURE_KEYS、
+        # SNAPSHOT_KEYS、ConfigSnapshot 字段、FeatureCatalog 的一行。
+        # 缺任何一处的症状都难查（改了开关没反应、没日志）——
+        # 而「一个 Feature 承载多个开关」时，最容易漏的就是 FEATURE_KEYS 与 isEnabled 那一处。
+        run: python3 tools/ci/check_switches.py
+
       - name: 宿主契约校验
         # 双向校验「代码里认宿主的东西」与「契约清单」：
         # 代码里有而清单里没有 → 忘了登记；清单里有而代码里没了 → 清单失效。
