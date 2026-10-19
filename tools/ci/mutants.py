@@ -111,8 +111,9 @@ def run_tests():
     """跑单测，返回是否全过。"""
     # ⚠️ Windows 控制台是 GBK，Gradle 的输出可能含非 UTF-8 字节 ——
     #    不加 errors="replace" 的话，subprocess 的解码线程会直接抛 UnicodeDecodeError。
+    # ⚠️ Windows 上 `.bat` 不能直接 exec —— 必须经 `cmd /c`。
     r = subprocess.run(
-        ["./gradlew.bat", ":app:testReleaseUnitTest", "--console=plain", "-q"],
+        ["cmd", "/c", "gradlew.bat", ":app:testReleaseUnitTest", "--console=plain", "-q"],
         cwd=ROOT,
         capture_output=True,
         timeout=1800,
