@@ -60,6 +60,23 @@ internal object HttpTransport {
         charset: Charset = Charsets.UTF_8,
         attempts: Int = 2,
         tag: String = "",
+    ): String? = get(url, connectTimeoutMs, readTimeoutMs, charset, attempts, tag) { URL(it).openConnection() as HttpURLConnection }
+
+    /**
+     * [open] 可注入的版本 —— **只给测试用**（生产路径走上面那个重载，行为完全一样）。
+     *
+     * 为什么要留这个接缝：`disconnect()` 的时机只有三条规则，而它们全都是
+     * 「什么时候该断 / 什么时候不该断」—— 不注入假连接就没法在 JVM 上验证
+     * （真机上「连接没复用」表现为「取数慢一点」，很难归因）。
+     */
+    internal fun get(
+        url: String,
+        connectTimeoutMs: Int = 4000,
+        readTimeoutMs: Int = 5000,
+        charset: Charset = Charsets.UTF_8,
+        attempts: Int = 2,
+        tag: String = "",
+        open: (String) -> HttpURLConnection,
     ): String? {
         val tries = attempts.coerceAtLeast(1)
         var lastError: Throwable? = null
@@ -67,7 +84,7 @@ internal object HttpTransport {
         for (attempt in 1..tries) {
             var retryable = true
             try {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                val conn = open(url).apply {
                     requestMethod = "GET"
                     this.connectTimeout = connectTimeoutMs
                     this.readTimeout = readTimeoutMs
@@ -77,6 +94,17 @@ internal object HttpTransport {
                     setRequestProperty("Accept", "*/*")
                     setRequestProperty("User-Agent", USER_AGENT)
                 }
+                // ⚠️ **成功且把响应体读干净时不能 disconnect** ——
+                // 那样连接回不了 keep-alive 池，每个请求都要重走一遍 TCP + TLS 握手
+                // （移动网络一次 1~3 个 RTT，100~600ms）。取数一只股票要打两个接口
+                // （快照 + 日 K），每只多付 0.2~1.2s。
+                //
+                // **其余情况一律断开**（socket 泄漏的风险都在这些路径上）：
+                //  · 状态码不是 2xx —— 错误页的 body 我们不读，不读干净就不能复用；
+                //  · body 超了 4 MB 上限（`readCapped` 返回 null）—— 没读完；
+                //  · 空响应；
+                //  · 抛异常（连接超时 / 读超时 / DNS 失败）。
+                var reusable = false
                 try {
                     val code = conn.responseCode
                     if (code !in 200..299) {
@@ -88,12 +116,14 @@ internal object HttpTransport {
                         if (bytes == null || bytes.isEmpty()) {
                             lastError = IOException("空响应")
                         } else {
+                            // 读干净了 → 连接可以回池复用
+                            reusable = true
                             return String(bytes, charset)
                         }
                     }
                 } finally {
-                    // close() 只关流，不断开连接 —— 必须显式 disconnect
-                    runCatching { conn.disconnect() }
+                    // close() 只关流，不断开连接 —— 要复用就别 disconnect
+                    if (!reusable) runCatching { conn.disconnect() }
                 }
             } catch (t: Throwable) {
                 lastError = t

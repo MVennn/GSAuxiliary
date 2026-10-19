@@ -56,11 +56,17 @@ object StockFilterStore {
             .getOrNull()
     }
 
-    /** 面板里每一行的落盘键（`filter_<key>`，与 2.16.1 的三个键同名） */
-    private fun keyOf(row: FilterRow) = "filter_${row.key}"
+    /**
+     * 面板里每一行的落盘键（`filter_<key>`，与 2.16.1 的三个键同名）。
+     *
+     * 抽成 `internal` 的顶层函数是为了能**单测** —— 键名错了的后果很隐蔽：
+     * 策略页与行情页共用这一份状态（见上面的 `cached` 注释），
+     * 键一旦对不上，两边就各读各的，表现为「在一个面板改了条件，另一个面板不跟着变」。
+     */
+    internal fun keyOf(row: FilterRow) = "filter_${row.key}"
 
     /** 出厂值：方向 false、类型 true */
-    private fun defaultOf(row: FilterRow) = row.isType
+    internal fun defaultOf(row: FilterRow) = row.isType
 
     fun load(ctx: Context): StockFilters {
         cached?.let { return it }
