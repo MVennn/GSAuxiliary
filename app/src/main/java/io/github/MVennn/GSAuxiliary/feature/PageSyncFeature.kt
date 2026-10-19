@@ -473,27 +473,30 @@ abstract class PageSyncFeature : Feature {
             miss = st.missScans
             missing = !st.lastScanOk
         }
-        // 动作限速：有待收敛的下一趟（多招状态机）就不进这道闸 —— 它要按「改一趟、量一趟」推进
-        if (!followUp) {
-            val actWait = actionCooldownMs - (now - actedAt)
-            if (actWait > 0) {
-                deferSync(env, activity, root, actWait)
+        // 限速决策走 [SyncGate]（纯函数，可单测）——
+        // 它是本项目最贵的一条教训的所在地（规则 2.3：延后不丢弃），
+        // 抽出来之后「把 Defer 写成 Drop」这种改错当场就能被测出来。
+        when (val d = SyncGate.decide(
+            now = now,
+            lastActionAt = actedAt,
+            lastRunAt = last,
+            missScans = miss,
+            lastScanOk = !missing,
+            followUp = followUp,
+            actionCooldownMs = actionCooldownMs,
+            layoutThrottleMs = layoutThrottleMs,
+            missScanThreshold = missScanThreshold,
+        )) {
+            is SyncGate.Decision.Defer -> {
+                deferSync(env, activity, root, d.delayMs)
                 if (GLog.isDebug) {
                     GLog.d(
-                        "$id：${activity.javaClass.simpleName} 刚同步过且有改动，" +
-                            "本趟改到 ${actWait}ms 后补跑（不走丢）"
+                        "$id：${activity.javaClass.simpleName} 本趟延后 ${d.delayMs}ms 补跑（不走丢）"
                     )
                 }
                 return
             }
-        }
-        // 认不出限速：连续认不出来才生效（多招状态机也照常限速 —— 认不出时更该慢下来）
-        if (missing && miss >= missScanThreshold) {
-            val missWait = layoutThrottleMs - (now - last)
-            if (missWait > 0) {
-                deferSync(env, activity, root, missWait)
-                return
-            }
+            SyncGate.Decision.Run -> Unit
         }
         runSync(env, activity, root, fromLayout = true)
     }
