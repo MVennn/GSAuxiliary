@@ -487,6 +487,11 @@ aapt2 dump resources "$APK" | grep -E "ic_launcher_(background|foreground|monoch
   跟触控区同高的格子、只让**宽度**在 40 ↔ 0 之间动，行高在两种状态下一致。
   竖排的 `shrinkVertically` 没这问题（它把高度动到 0 才离场）
 
+- **想让一个控件「只撑高度、不显示」时，光把文字设成透明不够**（3.3.0 顶栏改版踩到）：
+  透明文字**仍然在语义树里** —— 读屏会把同一行念两遍（高度尺里的那个 + 真标题）。
+  还要加 `Modifier.clearAndSetSemantics {}` 把它整个从语义树里摘掉。
+  另外透明文字**照样参与测量**（这正是要的：高度保留），所以「透明 + 清语义」
+  才是「只当高度尺」的完整做法（见 [UI.md §1.0.2](UI.md#102-顶栏只留标题副标题只撑高度33x)）
 - **`TextField` 默认背景是 `secondaryContainer`，不是卡片色**（2.9.4）：
   想要「与卡片一致」必须显式传
   `colors = TextFieldDefaults.textFieldColors(backgroundColor = surfaceContainer, labelColor = onSurfaceSecondary)`；

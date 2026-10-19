@@ -243,15 +243,22 @@ private fun GlassPlate(
                                 vibrancy()
                                 blur(MarkBlur.toPx())
                             },
-                            // 不要高光：底板本身就是一块圆角玻璃，加描边会变成两条边
+                            // 不要高光：底板本身就是一块圆角玻璃，加描边会变成两条边。
+                            // 投影也必须显式关掉：库的默认投影（24dp 模糊 / 黑 10%）会被
+                            // 外层 88dp 的离屏层裁在方框内，只在四个圆角死角露出来，
+                            // 看着像一圈半透明黑（见 Glass.kt 同一现象的注释）。
                             highlight = null,
+                            shadow = null,
                             onDrawSurface = { drawRect(tint) },
                         )
                     } else {
+                        // 兜底也要走圆角形状：不带 shape 的 background 会铺满整块方框，
+                        // API < 31 上 mark 会变成一颗没有圆角的实心方块。
                         Modifier.background(
-                            Brush.linearGradient(
+                            brush = Brush.linearGradient(
                                 fallback ?: if (darkTheme) MarkFallbackDark else MarkFallbackLight,
                             ),
+                            shape = shape,
                         )
                     },
                 ),

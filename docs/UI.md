@@ -115,6 +115,25 @@ Box(根容器，铺 MiuixTheme.colorScheme.surface)
 - **可预测返回时一级菜单就在二级页下方**（第 1 层常驻），不再是黑底
 - 两层各自铺背景，切换过程**不会闪白**（原先 `SizeTransform(clip = false)` 会露窗口底色）
 
+### 1.0.2 顶栏只留标题，副标题只撑高度（3.3.0）
+
+一级页的顶栏**只显示居中的标题**；各板块原先那行副标题
+（「环境概览 / 功能菜单 / …」）**不再显示**，但它原先撑起的高度**要保留** ——
+否则所有板块的顶部留白都会跳一下。
+
+做法（`ui/Glass.kt` 的 `TopBarContent`）：把原来的 `SmallTopAppBar` 当**高度尺** ——
+`titleColor` / `subtitleColor` 全透明、`clearAndSetSemantics {}` 清掉语义，
+只让它参与测量；真正的标题再叠在它上方（扣掉状态栏 inset 后）居中。
+
+> **为什么要清语义**：高度尺里的文字虽然透明，但**读屏仍会念出来** ——
+> 同一行标题会被念两遍。`clearAndSetSemantics {}` 把它从语义树里摘掉。
+
+> ⚠️ **副标题文案本身没删**：`R.string.subtitle_*` 还在，也仍被传进来 ——
+> 它现在只当高度尺用。将来若要恢复显示，把 `TopBarContent` 换回 `SmallTopAppBar` 即可。
+
+玻璃形态（`GlassTopBar`）与纯色形态（非玻璃分支）走的是**同一个** `TopBarContent`，
+差别只在 `barColor`：玻璃传透明（玻璃在下面一层），纯色传 `colorScheme.surface`。
+
 ### 1.0.0 三级页为什么单独一层（3.1.0）
 
 3.1.0 只有一条进度，三级页（方案编辑）直接顶掉二级页的内容，于是：

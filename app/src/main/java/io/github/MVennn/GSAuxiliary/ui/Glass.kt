@@ -4,18 +4,28 @@ import android.os.Build
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -23,6 +33,9 @@ import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.shadow.Shadow
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TopAppBarDefaults
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.abs
 
 /**
@@ -184,6 +197,53 @@ internal fun dockScrollConnection(
 }
 
 /**
+ * 顶栏内容：只显示居中的标题，但高度仍按「标题 + 副标题」的旧排版算。
+ *
+ * 副标题（各板块的「环境概览 / 功能菜单 / …」）不再显示，可它原先撑起的高度
+ * 要保留 —— 顶栏整体高度不变、标题在剩余空间里垂直居中。做法是把原来的
+ * [SmallTopAppBar] 当高度尺：文字全部透明、语义清空，只让它参与测量；
+ * 真正的标题再叠在它上方（扣掉状态栏 inset 后）居中。
+ *
+ * @param subtitleForHeight 只用于撑高度的旧副标题文案，不会显示
+ * @param barColor 顶栏底色；玻璃形态传透明（玻璃在下面一层），纯色形态传 surface
+ */
+@Composable
+internal fun TopBarContent(
+    title: String,
+    subtitleForHeight: String,
+    modifier: Modifier = Modifier,
+    barColor: Color = Color.Transparent,
+) {
+    Box(modifier) {
+        SmallTopAppBar(
+            title = title,
+            subtitle = subtitleForHeight,
+            color = barColor,
+            // 只当高度尺：文字透明 + 语义清空，既不显形也不被读屏重复朗读
+            titleColor = Color.Transparent,
+            subtitleColor = Color.Transparent,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.padding(horizontal = TopAppBarDefaults.TitlePadding),
+                color = MiuixTheme.colorScheme.onSurface,
+                fontSize = MiuixTheme.textStyles.title3.fontSize,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
  * 液态玻璃顶栏 —— 代替纯色的 `SmallTopAppBar`。
  *
  * 结构：一层铺满的玻璃（`drawBackdrop`）+ 一层**底色透明**的 `SmallTopAppBar`，
@@ -209,7 +269,7 @@ internal fun GlassTopBar(
     backdrop: LayerBackdrop,
     effect: Boolean,
     title: String,
-    subtitle: String,
+    subtitleForHeight: String,
     modifier: Modifier = Modifier,
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
@@ -240,10 +300,9 @@ internal fun GlassTopBar(
                 ),
         )
         Column {
-            SmallTopAppBar(
+            TopBarContent(
                 title = title,
-                subtitle = subtitle,
-                color = Color.Transparent,
+                subtitleForHeight = subtitleForHeight,
             )
             extra()
         }

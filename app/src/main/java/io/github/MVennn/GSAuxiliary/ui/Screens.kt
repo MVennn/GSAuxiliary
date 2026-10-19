@@ -257,10 +257,14 @@ internal fun HomeScaffold(
                             backdrop = backdrop,
                             effect = glassEffect,
                             title = title,
-                            subtitle = subtitle,
+                            subtitleForHeight = subtitle,
                         )
                     } else {
-                        SmallTopAppBar(title = title, subtitle = subtitle)
+                        TopBarContent(
+                            title = title,
+                            subtitleForHeight = subtitle,
+                            barColor = MiuixTheme.colorScheme.surface,
+                        )
                     }
                 }
             },
