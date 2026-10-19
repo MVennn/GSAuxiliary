@@ -67,14 +67,32 @@ class StgSelectAllFeature : Feature {
 
     @Volatile private var countIdCache = 0
 
-    /** 已挂过 TextWatcher 的按钮（弱引用，避免泄漏） */
-    private val watchedButtons =
-        Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<TextView, Boolean>()))
+    /** 已挂过 TextWatcher 的按钮 → 我们挂的 watcher（弱引用，避免泄漏） */
+    /**
+     * 「取消」按钮 → 我们挂的 TextWatcher。
+     *
+     * 弱引用是防泄漏，但**光有弱引用不够** —— watcher 的闭包持有 [FeatureEnv]，
+     * 闭包持有 env → env 持有 feature 实例 → 旧实例被宿主视图钉住不能回收。
+     * 所以关开关时要把 watcher **摘掉**（见 [unwatch]），而不是只让它被 GC。
+     */
+    private val watchers =
+        Collections.synchronizedMap(WeakHashMap<TextView, TextWatcher>())
 
-    /** 已包裹过行点击监听的 ListView */
-    /** 已包过行点击监听的 ListView → 我们装的 wrapper（弱引用，防泄漏） */
+    /** 已包裹过行点击监听的 ListView → 我们装的 wrapper（弱引用，防泄漏） */
+    /**
+     * 已包过行点击监听的 ListView → [Wrap]（弱引用，防泄漏）。
+     *
+     * [Wrap] 里**必须存下宿主的 original**：包装时把它捕获进闭包后就没人拿得到了，
+     * 而摘包装时需要把它放回去 —— 否则宿主的行点击就永久失联。
+     */
     private val wrappedLists =
-        Collections.synchronizedMap(WeakHashMap<ListView, AdapterView.OnItemClickListener>())
+        Collections.synchronizedMap(WeakHashMap<ListView, Wrap>())
+
+    /** 一次行点击包装：我们的 wrapper + 宿主的原监听 */
+    private class Wrap(
+        val wrapper: AdapterView.OnItemClickListener,
+        val original: AdapterView.OnItemClickListener?,
+    )
 
     /** 「取消」按钮 → 我们注入的「全选 / 反选」按钮（弱引用） */
     private val injected =
@@ -136,7 +154,7 @@ class StgSelectAllFeature : Feature {
 
     /** 给「取消」按钮挂上（幂等的）TextWatcher，观察多选态切换 */
     private fun ensureWatcher(env: FeatureEnv, btn: TextView) {
-        if (!watchedButtons.add(btn)) return
+        if (watchers.containsKey(btn)) return
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -146,7 +164,21 @@ class StgSelectAllFeature : Feature {
             }
         }
         btn.addTextChangedListener(watcher)
+        watchers[btn] = watcher
         GLog.i("策略全选：已观察多选按钮的文案变化")
+    }
+
+    /**
+     * 摘掉按钮上的 watcher。
+     *
+     * 关开关时必须调：watcher 的闭包持有 [FeatureEnv] → 持有旧 feature 实例，
+     * 不摘的话旧实例被宿主的「取消」按钮钉住，既回收不掉，
+     * 也会在按钮文案变化时继续跑一遍已废弃的逻辑。
+     */
+    private fun unwatch(btn: TextView) {
+        val w = synchronized(watchers) { watchers.remove(btn) } ?: return
+        runCatching { btn.removeTextChangedListener(w) }
+            .onFailure { GLog.w("全选：摘掉文案监听失败", it) }
     }
 
     // ------------------------------------------------------------------ 核心
@@ -362,7 +394,8 @@ class StgSelectAllFeature : Feature {
      */
     private fun ensureRowClickWatcher(env: FeatureEnv, lv: ListView) {
         val existing = itemClickListener(lv)
-        if (existing != null && wrappedLists[lv] === existing) return   // 已经包过且没被换掉
+        val known = wrappedLists[lv]
+        if (existing != null && known != null && known.wrapper === existing) return   // 已经包过且没被换掉
         // 走到这里：要么原来没有监听，要么宿主换了新的 —— 都直接包现挂的这个
         val original = existing
         val wrapper = AdapterView.OnItemClickListener { parent, view, position, id ->
@@ -373,8 +406,22 @@ class StgSelectAllFeature : Feature {
             }
         }
         runCatching { lv.onItemClickListener = wrapper }
-            .onSuccess { wrappedLists[lv] = wrapper }
+            // original 一并存下：摘包装时要把宿主的监听放回去，否则它永久失联
+            .onSuccess { wrappedLists[lv] = Wrap(wrapper, original) }
             .onFailure { GLog.w("全选：包裹行点击监听失败", it) }
+    }
+
+    /**
+     * 摘掉我们包在 ListView 上的行点击监听，把宿主原本的监听放回去。
+     *
+     * 关开关时必须调：不摘的话宿主的行点击永远多一层转发，
+     * 而且热重载后新实例的 [wrappedLists] 是空的 → 判据不成立 → **再包一层**，
+     * N 次热重载 = N 层转发链（链无限增长，且每次都转发给上一层的 wrapper）。
+     */
+    private fun unwrapRowClick(lv: ListView) {
+        val w = synchronized(wrappedLists) { wrappedLists.remove(lv) } ?: return
+        runCatching { lv.onItemClickListener = w.original }
+            .onFailure { GLog.w("全选：还原行点击监听失败", it) }
     }
 
     /** 读宿主原本挂在 ListView 上的 `OnItemClickListener`（`AdapterView.getOnItemClickListener` 是隐藏 API） */
@@ -390,6 +437,13 @@ class StgSelectAllFeature : Feature {
         if (cfg.stgSelectAll) return
         val anchors = synchronized(injected) { injected.keys.toList() }
         for (a in anchors) removeInjected(a)
+        // ⚠️ 按钮撤了还不够：watcher 与行点击 wrapper 也得摘（规则 1.1：install 落下的
+        // 每一笔都要能撤掉）。原先只摘按钮 → 宿主的行点击**永久**多一层转发，
+        // 「取消」按钮也**永久**挂着一个 watcher（闭包持有 env → 钉住旧实例）。
+        val watched = synchronized(watchers) { watchers.keys.toList() }
+        for (b in watched) unwatch(b)
+        val wrapped = synchronized(wrappedLists) { wrappedLists.keys.toList() }
+        for (lv in wrapped) unwrapRowClick(lv)
     }
 
     // ------------------------------------------------------------ 样式克隆

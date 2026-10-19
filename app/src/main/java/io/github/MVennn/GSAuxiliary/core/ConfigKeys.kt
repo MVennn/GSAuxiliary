@@ -480,6 +480,32 @@ object ConfigKeys {
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
     )
 
+    /**
+     * **进配置快照的键** —— 目标进程真正会读的那些。
+     *
+     * 与 [ALL_KEYS] 的差集是「只属于模块 App 自己进程」的键
+     * （桌面图标 / 液态玻璃 / 玻璃效果 / 语言 / 深色模式 / 可预测返回）：
+     * 它们走同一个 remote preferences 分组，所以改一下也会给目标进程推一条变更通知，
+     * 而目标进程**根本不需要知道**（`ConfigSnapshot` 里没有它们）。
+     *
+     * 用途：`ConfigSource` 收到变更通知时先用它挡一道 —— 不是快照键就直接返回，
+     * 省掉一次「全量读 24 个远端键 + 构造快照 + 算指纹」（指纹里还有 O(n) 的方案 JSON 哈希）。
+     *
+     * ⚠️ **只增不减**：新增配置键时，若它要进 [ConfigSnapshot]，必须同时加进这里，
+     * 否则目标进程**收不到**它的变更（会被这道挡掉）。判定口径见 `docs/EXTENDING.md`：
+     * 「[ConfigSnapshot] 只放目标进程要读的键」。
+     */
+    val SNAPSHOT_KEYS: Set<String> = setOf(
+        ENABLED, COLOR, SCOPE_STRATEGY, LOG_LEVEL,
+        STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
+        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER,
+        NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
+        AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
+        AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
+        AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
+    )
+
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
     val DEFAULTS: Map<String, Any> = mapOf(
         ENABLED to DEFAULT_ENABLED,

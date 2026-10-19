@@ -34,6 +34,12 @@ class ConfigSource(private val xposed: XposedInterface) {
 
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            // 非快照键（主题 / 语言 / 玻璃 / 桌面图标 / 可预测返回）**目标进程不需要知道**
+            // —— 它们走同一个 remote preferences 分组，改一下也会推一条通知过来。
+            // 直接挡掉，省掉一次「全量读 24 个远端键 + 构造快照 + 算指纹」
+            // （指纹里还含 O(n) 的方案 JSON 哈希）。
+            // key 为 null = 框架整批推送，那一包里什么键都可能有，不能挡。
+            if (key != null && key !in ConfigKeys.SNAPSHOT_KEYS) return@OnSharedPreferenceChangeListener
             val fresh = read()
             // 指纹只取一次，避免比对两侧各算一遍
             val freshFingerprint = fresh.fingerprint
