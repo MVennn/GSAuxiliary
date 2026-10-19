@@ -136,7 +136,9 @@ jobs:
         # 代码里有而清单里没有 → 忘了登记；清单里有而代码里没了 → 清单失效。
         # 宿主升级后靠它知道「哪个候选名可能已经不管用了」——
         # 否则只能等用户在真机上发现「这个功能不生效了」再回头猜。
-        run: python3 tools/ci/check_contract.py
+        # 带上宿主类名快照：能**确认**哪些候选名现在还认得到。
+        # （dump 覆盖不全，所以「不在里面」只提示不报错 —— 详见 tools/contract/dump/README.md）
+        run: python3 tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271-classes.txt
 
       # ⚠️ 这一步不能省：`GS_KEYSTORE_BASE64` 是**密钥库本体**，而 Gradle 要的是
       # **文件路径**（`GS_KEYSTORE_PATH`）。少这一步，构建就悄悄退回 debug 签名 ——

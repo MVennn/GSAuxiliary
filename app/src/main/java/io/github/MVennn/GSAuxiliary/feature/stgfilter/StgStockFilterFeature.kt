@@ -18,6 +18,7 @@ import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.filter.Category
 import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
+import io.github.MVennn.GSAuxiliary.feature.filter.CodeMarketParts
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
@@ -783,9 +784,14 @@ class StgStockFilterFeature : Feature {
             // 类型行的下标用预计算的序号（原���每项 5 次 `indexOf` 线性查找）。
             val fields = fieldsOf(item.javaClass)
             val cam = codeAndMarket(item, fields)
-            val dot = cam?.indexOf('.') ?: -1
-            val code = if (dot > 0) cam!!.substring(0, dot) else null
-            val market = if (dot > 0 && dot < cam!!.length - 1) cam!!.substring(dot + 1) else null
+            // ⚠️ 切分走 [CodeMarketParts]（生产代码与单测**共用**）——
+            // 口径必须与 `StockTypes.byCodeAndMarket(cam, name)`（2 参重载）逐字等价：
+            //   · 有点 → code = 点前、market = 点后；
+            //   · **无点 → 整串当 code、market = null**（不是 code = null！）——
+            //     差这一点的后果是「代码前缀判定（创业板 / 科创板 / 北证A）整段失效」，
+            //     宿主 `codeAndMarket` 出现「只有代码没市场号」的中间态时就会踩到
+            //     （`StockInfo` 是构造后填充的，部分填充是真实存在的形态）。
+            val (code, market) = CodeMarketParts.split(cam)
             val inZx = isInWatchlist(code, market)
             val pct = percentOf(adapter, item, cam, fields)
             when (StockFilters.categoryOf(inZx, pct)) {

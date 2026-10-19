@@ -90,6 +90,60 @@ class StockTypesTest {
         assertEquals(b, a)
     }
 
+    @Test
+    fun `没有市场号时 整串当代码 - 代码前缀判定不能失效`() {
+        // ⚠️ **这条是 2026-10-20 复核时补的**：
+        // 「纯重构」那批把切分提前到了调用点，于是「无点」的情形从
+        // 「整串当代码」变成了「code = null」→ **代码前缀判定整段失效**
+        // （创业板 / 科创板 / 北证A 全部分不出来，只剩 ST 位）。
+        //
+        // 宿主的 `codeAndMarket` 出现「只有代码没市场号」的中间态是真实存在的
+        // （`StockInfo` 是构造后填充的），所以这个口径必须钉死。
+        //
+        // ⚠️ **测的是 [CodeMarketParts]** —— 生产代码（`StgStockFilterFeature`）
+        // 与本测试**共用**它。上一版测试只测 `StockTypes` 的 2 参重载，
+        // 而生产代码早就不走那条路了 → **测试形同虚设**（真出问题时没红）。
+        val (code, market) = CodeMarketParts.split("301666")
+        assertEquals("301666", code, "没有市场号时整串都要当代码")
+        assertNull(market, "没有市场号时 market 是 null")
+        assertTrue(
+            StockTypes.has(StockTypes.byCodeAndMarket(code, market, null), FilterRow.CYB),
+            "只有代码没有市场号时，创业板的前缀判定仍然要生效",
+        )
+
+        val (kcbCode, kcbMarket) = CodeMarketParts.split("688121")
+        assertTrue(
+            StockTypes.has(StockTypes.byCodeAndMarket(kcbCode, kcbMarket, null), FilterRow.KCB),
+            "只有代码没有市场号时，科创板的前缀判定仍然要生效",
+        )
+
+        val (bzaCode, bzaMarket) = CodeMarketParts.split("920575")
+        assertTrue(
+            StockTypes.has(StockTypes.byCodeAndMarket(bzaCode, bzaMarket, null), FilterRow.BZA),
+            "只有代码没有市场号时，北证A的前缀判定仍然要生效",
+        )
+    }
+
+    @Test
+    fun `切分口径 与 StockTypes 的 2 参重载 逐字等价`() {
+        // 「生产代码切的」与「StockTypes 自己切的」必须一致 ——
+        // 不一致就说明有一边的口径漂了（前车之鉴第 3 条）。
+        val samples = listOf(
+            "301666.1", "688121.2", "920575.5", "600000.2", "000001.1",
+            "301666", "688121", "920575", "", "301666.",
+        )
+        for (cam in samples) {
+            val (code, market) = CodeMarketParts.split(cam)
+            val byParts = StockTypes.byCodeAndMarket(code, market, null)
+            val byWhole = StockTypes.byCodeAndMarket(cam, null)
+            assertEquals(
+                byWhole,
+                byParts,
+                "「$cam」的两种切法结果不同 —— 口径漂了",
+            )
+        }
+    }
+
     // ------------------------------------------------------------------ 市场号推断
 
     @Test

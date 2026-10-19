@@ -364,9 +364,14 @@ class AiStareCardDetailFeature : Feature {
      * 这是**诊断日志**（定位字段名用），不该进用户的导出件，DEBUG 档才打。
      */
     private fun dumpItemOnce(item: Any) {
+        // ⚠️ **等级判断必须在「标记已打过」之前**（2026-10-20 复核时发现）：
+        // 反过来的话，默认 INFO 档下第一次遇到某类 item 时标记已经被记下、但日志没打；
+        // 之后用户把等级调到 DEBUG 再进这一页，**那一类 item 永远不会再打**了 ——
+        // 而这条日志恰恰就是「定位字段名用的诊断日志」，用户的使用顺序正是
+        // 「先遇到问题、再开 DEBUG 看」。所以这里先问等级，再记标记。
+        if (!GLog.isDebug) return
         val name = item.javaClass.name
         if (!dumpedItemClasses.add(name)) return
-        if (!GLog.isDebug) return
         val fields = runCatching {
             item.javaClass.declaredFields
                 .filterNot { java.lang.reflect.Modifier.isStatic(it.modifiers) }

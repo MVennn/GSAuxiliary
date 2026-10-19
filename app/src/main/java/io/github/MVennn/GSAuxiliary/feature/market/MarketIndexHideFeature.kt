@@ -110,9 +110,40 @@ class MarketIndexHideFeature : UiCleanFeature() {
         }
 
         // 兜底：结构判据 —— 横向的、子项够多、每项有文案、整块不高的列表
-        return UiClean.find(root) { v ->
-            v is ViewGroup && v.isShown && looksLikeIndexList(v, itemId)
+        //
+        // ⚠️ **兜底范围必须收窄到「行情页那几行」**（2026-10-20 复核时发现的）：
+        // 原来是在**整棵 decor** 里找第一个像的 —— 而行情页顶部那排
+        // `RadioGroup #rg_a_stock`（沪深京 / 创业板 / 科创板 / 北交所）**恰好满足
+        // 全部四条判据**（4 项、每项有文字、RadioButton 不是 ViewGroup 所以不像入口格、
+        // 整块约 38dp 在上限内），而且它在 DFS 里**比 `#rv_index` 更靠前** ——
+        // 于是会把「板块切换器」整排收起，用户在行情页少了那四个页签，
+        // 而日志里只有一句「已收起指数概览」，**认错了也看不出来**。
+        //
+        // 现在兜底只在**「行情页那几行」里**找 —— 也就是实测的「行1」，
+        // 范围小了一个数量级，认错的可能也小一个数量级。
+        val rows = marketRows(root, ids)
+        for (row in rows) {
+            val v = row.findViewById<View>(byId)
+            if (v != null && v.isShown && looksLikeIndexList(v, itemId)) return v
         }
+        return null
+    }
+
+    /**
+     * 行情页那几行（`#rv_markets_hs` 的直接子项）—— 实测「行1 = 指数概览」。
+     *
+     * 只在这个范围里找，认错的可能就小得多（见上面那条注释）。
+     */
+    private fun marketRows(root: View, ids: IdCache): List<ViewGroup> {
+        val listId = ids.of(MarketTargets.PAGE_LIST_ID)
+        if (listId == 0) return emptyList()
+        val rv = root.findViewById<ViewGroup>(listId) ?: return emptyList()
+        val out = ArrayList<ViewGroup>(rv.childCount)
+        for (i in 0 until rv.childCount) {
+            val c = rv.getChildAt(i) as? ViewGroup ?: continue
+            out.add(c)
+        }
+        return out
     }
 
     /**

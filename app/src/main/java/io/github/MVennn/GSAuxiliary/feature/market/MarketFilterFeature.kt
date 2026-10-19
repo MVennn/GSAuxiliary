@@ -70,14 +70,32 @@ class MarketFilterFeature : UiCleanFeature() {
      * 撤包装时要把 original 放回去，否则宿主自己的「确定」行为永久失联
      * （`StockFilterPanelUi.wrapClick` 现在会把它返回给我们）。
      */
+    /**
+     * 我们包过「确定」按钮的那些 → **宿主原本的监听**。
+     *
+     * ⚠️ **value 必须是弱引用**（`docs/CODE-RULES.md` 规则 1.4）：
+     * 宿主那个匿名监听强引用着外层 Dialog，而 Dialog 持有 okBtn（也就是 key）——
+     * value→key 的强引用会让 `WeakHashMap` 的**弱键形同虚设**，条目永不回收，
+     * 每开一次筛选面板就泄漏一个 Dialog（**泄漏在宿主进程里**）。
+     */
     private val wrappedOkButtons =
-        Collections.synchronizedMap(WeakHashMap<TextView, View.OnClickListener>())
+        Collections.synchronizedMap(
+            WeakHashMap<TextView, WeakReference<View.OnClickListener>>(),
+        )
 
     /**
      * 最近一次注入过的那个面板（弱引用）。
      *
      * 有了它，关开关时能**立刻**把三行从正开着的面板里撤掉 ——
      * 不用等用户下次打开面板才发现「三行还在」。
+     */
+    /**
+     * 最近一次**认出过**的宿主筛选面板（弱引用）。
+     *
+     * 注意是「认出过」而不是「注入过」—— 开关一关，注入块撤了但**面板还在屏上**，
+     * 这时用户再把开关打开，得能找回那个面板重新注入（不然「开→关→开」之后
+     * 面板里一直没有那三行，用户以为开关没生效）。
+     * 弱引用不会泄漏：面板被宿主回收后这里自动变 null。
      */
     @Volatile private var injectedPanel: WeakReference<ViewGroup>? = null
 
@@ -111,6 +129,13 @@ class MarketFilterFeature : UiCleanFeature() {
         if (!cfg.marketStockFilter) {
             injectedPanel?.get()?.let { removeInjected(it) }
             restoreOkButtons()
+        } else {
+            // ⚠️ **「开」也要处理**（2026-10-20 复核时发现的不对称）：
+            // 用户把行情筛选面板**开着** → 切到模块 App 打开这个开关 → 回到宿主，
+            // 面板里**没有**那三行 → 用户以为开关没生效（得关掉面板重开）。
+            // 而「关」是立刻生效的 —— 行为不对称。
+            // maybeInject 内部已有「已有注入块 → 只刷新勾选态」的幂等分支，直接复用。
+            injectedPanel?.get()?.let { injectInto(env, it) }
         }
         super.onConfigChanged(env, cfg)
     }
@@ -149,9 +174,19 @@ class MarketFilterFeature : UiCleanFeature() {
         return methods.size
     }
 
+    /** 面板还在屏上时（比如用户中途改了开关）也走这条路 */
     private fun maybeInject(env: FeatureEnv, dialog: Dialog) {
         val panel = dialogPanel(dialog) ?: return
+        injectInto(env, panel)
+    }
+
+    /** 真正的注入逻辑 —— 收的是**面板内容视图**（`dialogPanel` 的结果） */
+    private fun injectInto(env: FeatureEnv, panel: ViewGroup) {
         val res = panel.resources
+
+        // 认出面板就记住它（**不管有没有注入**）—— 开关一关内容撤了、面板还在屏上，
+        // 用户再打开开关时要能找回这个面板重新注入。
+        injectedPanel = WeakReference(panel)
 
         // 幂等：宿主可能复用同一个 Dialog 实例，重复 show 时只刷新勾选态
         val existing = panel.findViewWithTag<View>(FilterPanelIds.TAG_INJECTED_BLOCK)
@@ -223,8 +258,7 @@ class MarketFilterFeature : UiCleanFeature() {
             StockFilterStore.save(panel.context, applied)
             GLog.i("$id：筛选条件已生效（${summaryOf(applied)}）")
         }
-        if (original != null) wrappedOkButtons[okBtn] = original
-        injectedPanel = WeakReference(panel)
+        if (original != null) wrappedOkButtons[okBtn] = WeakReference(original)
 
         GLog.i("$id：已在宿主筛选面板里注入「${FilterRow.SECTION_DIRECTION}」三行（面板标题「$title」）")
     }
@@ -243,7 +277,8 @@ class MarketFilterFeature : UiCleanFeature() {
         runCatching { (block.parent as? ViewGroup)?.removeView(block) }
             .onFailure { GLog.w("$id：撤掉注入块失败", it) }
         restoreOkButtons()
-        injectedPanel = null
+        // ⚠️ **不清 `injectedPanel`** —— 面板还在屏上（只是内容撤了），
+        // 用户再打开开关时要能找回它重新注入。
         GLog.i("$id：已撤掉面板里的「${FilterRow.SECTION_DIRECTION}」注入块")
     }
 
@@ -254,7 +289,14 @@ class MarketFilterFeature : UiCleanFeature() {
             wrappedOkButtons.clear()
             list
         }
-        for ((btn, original) in entries) {
+        for ((btn, originalRef) in entries) {
+            val original = originalRef.get()
+            if (original == null) {
+                // 弱引用被清了 —— 说明宿主自己把那个监听换掉了（它持有那个监听）。
+                // 这时我们**不需要**再放回去：宿主要的已经是新的那个了。
+                GLog.d("$id：「确定」按钮的原监听已被宿主换掉，无需还原")
+                continue
+            }
             runCatching { btn.setOnClickListener(original) }
                 .onFailure { GLog.w("$id：还原「确定」按钮监听失败", it) }
         }
@@ -353,8 +395,17 @@ class MarketFilterFeature : UiCleanFeature() {
      */
     private class RowViews(val code: TextView, val percent: TextView?)
 
+    /**
+     * 行视图 → 它那行的「代码 / 涨跌幅」两个 TextView。
+     *
+     * ⚠️ **value 必须是弱引用**（规则 1.4）：`RowViews` 里的 TextView 是行视图的子视图，
+     * 它的 `mParent` 指向行视图（也就是 key）—— value→key 的强引用会让弱键**形同虚设**，
+     * 每滚出一屏就泄漏一整棵行视图子树（**泄漏在宿主进程里**）。
+     */
     private val rowViewsCache =
-        Collections.synchronizedMap(WeakHashMap<View, RowViews>())
+        Collections.synchronizedMap(
+            WeakHashMap<View, WeakReference<RowViews>>(),
+        )
 
     /**
      * 取一行的「代码」TextView（判定是不是股票行）与「涨跌幅」TextView。
@@ -364,11 +415,11 @@ class MarketFilterFeature : UiCleanFeature() {
      * 涨跌幅取不到时按「读不到涨跌幅」处理（`parsePercent(null)` = null = 平盘）。
      */
     private fun rowViews(row: View, codeId: Int, percentId: Int): RowViews? {
-        rowViewsCache[row]?.let { return it }
+        rowViewsCache[row]?.get()?.let { return it }
         val codeTv = row.findViewById<TextView>(codeId) ?: return null
         val pctTv = row.findViewById<TextView>(percentId)
         val v = RowViews(codeTv, pctTv)
-        rowViewsCache[row] = v
+        rowViewsCache[row] = WeakReference(v)
         return v
     }
 

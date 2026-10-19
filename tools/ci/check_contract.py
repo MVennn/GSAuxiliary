@@ -224,7 +224,20 @@ def static_check(contract):
 
 
 def host_check(contract, dump_path):
-    """对照探针 dump：清单里的宿主标识还在不在。"""
+    """对照探针 dump：清单里的宿主标识还在不在。
+
+    ⚠️ **dump 必须覆盖「宿主全部类」，否则结果没有意义** ——
+    探针（`com.wb.probe`）是**按需 dump 某个类**的，一次 dump 往往只覆盖一个页面
+    （实测：dump 个股详情页的 K 线区时，只有 20/29 个契约类名出现在里面，
+    剩下 9 个只是**没被那次 dump 扫到**，并不是失效了）。
+
+    所以这里的判定分两级：
+      - **「在」** → 确认有效（说明这个候选名现在还认得到）；
+      - **「不在」** → **只提示、不报错**（dump 覆盖不全时无法区分「失效」与「没扫到」）。
+
+    真正要判「失效」，得先对宿主做一次**全量**类遍历（探针的 `CLASS` 逐个来，
+    或者用 `aapt2`/dex 工具扫一遍宿主的 classes.dex）。
+    """
     if not dump_path:
         return None
     if not os.path.exists(dump_path):
@@ -233,16 +246,22 @@ def host_check(contract, dump_path):
     with open(dump_path, "r", encoding="utf-8", errors="replace") as f:
         dump = f.read()
     problems = []
+    missing = []
     for e in contract["entries"]:
         if e["kind"] != "class":
             continue
         # 简单名也认（dump 里可能是全名也可能是简名）
         simple = e["value"].rsplit(".", 1)[-1]
         if e["value"] not in dump and simple not in dump:
-            problems.append(
-                "[宿主已改] %s 的 `%s` = \"%s\" —— 在 dump 里找不到，"
-                "宿主改版后这个候选可能已失效" % (e["owner"], e["symbol"], e["value"])
-            )
+            missing.append(e)
+    if missing:
+        # ⚠️ **只提示，不报错** —— dump 覆盖不全时无法区分「宿主改名了」与「这次没扫到」。
+        # 真的失效了会表现为「用户在真机上发现这个功能不生效」，那时候再逐个核对。
+        print("[!] 有 %d 个契约类名没在 dump 里出现 —— **这不代表失效**，"
+              "只说明这份 dump 没覆盖到它们（探针是按需 dump 某个类的）：" % len(missing))
+        for e in missing:
+            print("      %s 的 `%s` = \"%s\"" % (e["owner"], e["symbol"], e["value"]))
+        print("    要真正判定失效，需要对宿主做一次**全量**类遍历。")
     return problems
 
 

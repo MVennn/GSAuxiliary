@@ -19,7 +19,13 @@
 
 - 目录里有、但 `FeatureManager` 里**没有任何 Feature** 的 `isEnabled`/`switchedOn` 引用它
   → **假开关**（界面上有、底下不装钩子，第三轮 H1 的真事）；
-- `FeatureManager` 里登记的 Feature 数 vs 目录行数 —— 差值应当能由「一个 Feature 承载多个开关」解释。
+- 每个功能键都要有**出厂默认值** —— 否则「重置模块」清不掉它。
+
+## 与 `check_invariants.py` 的分工
+
+「键有没有出现在某个 `isEnabled` 链上」由 `check_invariants.py` 查（它按 Feature 逐个解析），
+本脚本查的是**目录行 ↔ 配置键 ↔ 快照字段**这条链路 —— 两者合起来才覆盖
+「一个 Feature 承载多个开关」这种最容易出错的形态。
 
 ## 为什么单独一个脚本
 

@@ -66,7 +66,7 @@ class ConfigSnapshotFingerprintTest {
         variants.forEachIndexed { i, v ->
             assertNotEquals(baseFp, v.fingerprint, "第 $i 个布尔项翻转后指纹没变")
         }
-        // 22 个变体两两不同
+        // 全部变体两两不同
         variants.map { it.fingerprint }.let { fps ->
             assertEquals(fps.size, fps.toSet().size, "不同配置算出了相同指纹")
         }
@@ -105,7 +105,7 @@ class ConfigSnapshotFingerprintTest {
     @Test
     fun `多键同时变化 指纹也不能撞`() {
         val b = base()
-        // 穷举 21 个布尔项的全部 2^21 组合里挑若干组做两两比较 ——
+        // 穷举全部布尔项的两两组合做比较 ——
         // 2^21 = 209 万组，逐一比对太慢，这里用「所有子集指纹互不相同」的等价形式：
         // 任取 3 个布尔项翻转，其指纹与「另一组 3 个」不能相同。
         val names = listOf(
@@ -114,9 +114,12 @@ class ConfigSnapshotFingerprintTest {
             "marketSectorCompact", "marketOverviewCompact", "marketStockFilter", "navBarBlend",
             "ipoDialogClean", "aistareQuickEnabled", "aiStareSkipSaveConfirm", "aiStareEmptySave",
             "aiStareCardDetail", "aiStareSaveBackToStock", "aiStarePickScheme",
+            // ⚠️ 新加的两个开关（2026-10-20）—— 别忘了加。
+            // 漏了就是「守卫形同虚设」：改动不会红，而症状是「改了开关没反应」。
+            "watchlistBold", "marketIndexHide",
         )
         val seen = HashMap<Int, String>()
-        // 遍历所有 1 位与 2 位的组合（22 + 231 = 253 组）
+        // 遍历所有 1 位与 2 位的组合
         for (i in names.indices) {
             check1(b, names, i, seen)
             for (j in i + 1 until names.size) {
@@ -171,6 +174,8 @@ class ConfigSnapshotFingerprintTest {
                 "aiStareCardDetail" -> v.copy(aiStareCardDetail = !v.aiStareCardDetail)
                 "aiStareSaveBackToStock" -> v.copy(aiStareSaveBackToStock = !v.aiStareSaveBackToStock)
                 "aiStarePickScheme" -> v.copy(aiStarePickScheme = !v.aiStarePickScheme)
+                "watchlistBold" -> v.copy(watchlistBold = !v.watchlistBold)
+                "marketIndexHide" -> v.copy(marketIndexHide = !v.marketIndexHide)
                 else -> error("未知字段 ${names[i]}")
             }
         }

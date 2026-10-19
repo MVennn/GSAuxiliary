@@ -18,6 +18,7 @@ import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.util.Density
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -75,8 +76,17 @@ class StgSelectAllFeature : Feature {
      * 闭包持有 env → env 持有 feature 实例 → 旧实例被宿主视图钉住不能回收。
      * 所以关开关时要把 watcher **摘掉**（见 [unwatch]），而不是只让它被 GC。
      */
+    /**
+     * 「取消」按钮 → 我们挂的 TextWatcher。
+     *
+     * ⚠️ **value 必须是弱引用**（规则 1.4）：watcher 的闭包捕获了 `btn`（也就是 key）——
+     * value→key 的强引用会让弱键**形同虚设**，条目永不回收，
+     * 每个策略详情页的「取消」按钮都泄漏一个 TextView（连带 Activity）。
+     */
     private val watchers =
-        Collections.synchronizedMap(WeakHashMap<TextView, TextWatcher>())
+        Collections.synchronizedMap(
+            WeakHashMap<TextView, WeakReference<TextWatcher>>(),
+        )
 
     /** 已包裹过行点击监听的 ListView → 我们装的 wrapper（弱引用，防泄漏） */
     /**
@@ -154,7 +164,7 @@ class StgSelectAllFeature : Feature {
 
     /** 给「取消」按钮挂上（幂等的）TextWatcher，观察多选态切换 */
     private fun ensureWatcher(env: FeatureEnv, btn: TextView) {
-        if (watchers.containsKey(btn)) return
+        if (watchers[btn]?.get() != null) return
         val watcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -164,7 +174,7 @@ class StgSelectAllFeature : Feature {
             }
         }
         btn.addTextChangedListener(watcher)
-        watchers[btn] = watcher
+        watchers[btn] = WeakReference(watcher)
         GLog.i("策略全选：已观察多选按钮的文案变化")
     }
 
@@ -176,7 +186,7 @@ class StgSelectAllFeature : Feature {
      * 也会在按钮文案变化时继续跑一遍已废弃的逻辑。
      */
     private fun unwatch(btn: TextView) {
-        val w = synchronized(watchers) { watchers.remove(btn) } ?: return
+        val w = synchronized(watchers) { watchers.remove(btn) }?.get() ?: return
         runCatching { btn.removeTextChangedListener(w) }
             .onFailure { GLog.w("全选：摘掉文案监听失败", it) }
     }
