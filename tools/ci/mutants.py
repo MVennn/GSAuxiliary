@@ -39,10 +39,15 @@ TEST = os.path.join(ROOT, "app", "src", "test", "java", "io", "github", "MVennn"
 # (相对路径, 要改的原文, 改成什么, 说明)
 MUTANTS = [
     (
+        # ⚠️ 这个变异要能**真的造出碰撞**，否则测试抓不到它（变异体本身设计错了）。
+        # 原来的加权求和里，`homeBannerHide`(2137) + `marketBannerHide`(2221)
+        # 恰好等于 `dockClean`(2011) + `marketSectorCompact`(2347) = 4358。
+        # 这里把「异或位掩码」换成「按位序号加权求和」，并让两个开关共用同一个乘数 ——
+        # 于是「开这两个」与「开那两个」的指纹相同 → 变更被静默丢弃。
         "core/ConfigSnapshot.kt",
         "            if (b) h = h xor bit",
         "            if (b) h = h + bit * 2137",
-        "指纹：位掩码改回加权和（会重新引入碰撞）",
+        "指纹：位掩码改回加权和（位序号不同→同一组开关仍会碰撞）",
     ),
     (
         "feature/SyncGate.kt",

@@ -50,6 +50,20 @@ class TypefacePlanTest {
     }
 
     @Test
+    fun `当前已经是加粗态 绝不能把加粗后的记成原字重`() {
+        // ⚠️ **这条是 2026-10-20 变异测试补上的**（原来没有，守卫有洞）：
+        // 视图已经是**加粗后的**状态（RecyclerView 复用 / 热重载后新实例接手），
+        // 这时如果把当前字重记成「原字重」，还原时就会撤不回普通字重 ——
+        // 症状是「关掉加粗开关，那些名字还一直粗着」。
+        val d = decide(current = TypefacePlan.STYLE_BOLD, recorded = null, wantBold = true)
+        assertIs<TypefacePlan.Decision.Set>(d)
+        assertTrue(
+            !d.recordOriginal,
+            "当前已经是加粗态，绝不能把它记成原字重 —— 否则还原时撤不回去",
+        )
+    }
+
+    @Test
     fun `当前已经是加粗态 不用再设`() {
         val d = decide(current = TypefacePlan.STYLE_BOLD, recorded = TypefacePlan.STYLE_NORMAL, wantBold = true)
         assertIs<TypefacePlan.Decision.Set>(d)
