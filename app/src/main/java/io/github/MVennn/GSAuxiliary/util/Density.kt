@@ -23,4 +23,14 @@ object Density {
     /** 同 [dp]；dp 常量本身是 `Float`（如 `GAP_DP = 10f`）时用这个重载 */
     fun dp(v: View, value: Float): Int =
         (value * v.resources.displayMetrics.density + 0.5f).toInt()
+
+    /**
+     * [v] 所在屏幕密度下的 px → dp（与 [dp] 互逆）。
+     *
+     * 用来把「实测高度（px）」换算成 dp 再跟一个 dp 阈值比 ——
+     * 判据写在 dp 上才不受屏幕密度影响（同一个 229px 在 416dpi 与 560dpi 的设备上
+     * 分别是 88dp 与 82dp）。
+     */
+    fun pxToDp(v: View, px: Int): Int =
+        (px / v.resources.displayMetrics.density + 0.5f).toInt()
 }

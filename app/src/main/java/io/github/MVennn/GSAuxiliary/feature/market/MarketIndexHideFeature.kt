@@ -9,6 +9,7 @@ import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.uiclean.IdCache
 import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean
 import io.github.MVennn.GSAuxiliary.feature.uiclean.UiCleanFeature
+import io.github.MVennn.GSAuxiliary.util.Density
 import java.lang.ref.WeakReference
 
 /**
@@ -124,7 +125,6 @@ class MarketIndexHideFeature : UiCleanFeature() {
     private fun looksLikeIndexList(v: View, itemId: Int): Boolean {
         val g = v as? ViewGroup ?: return false
         val n = g.childCount
-        if (n < MarketTargets.MIN_INDEX_ITEMS) return false
 
         var labels = 0
         for (i in 0 until n) {
@@ -135,18 +135,21 @@ class MarketIndexHideFeature : UiCleanFeature() {
                 labels++
             }
         }
-        if (labels < n - 1) return false
 
         // 快捷入口（「图标 + 文字」）也是横向多格，排除掉
         var entries = 0
         for (i in 0 until n) if (UiClean.looksLikeEntryItem(g.getChildAt(i))) entries++
-        if (entries >= n - 1) return false
 
-        // 整块不能太高（实测 229px ≈ 88dp；指数概览是顶上一小条）
+        // 判据本身是纯函数（[IndexShape]）—— 认错版块的代价很大（收起了不该收的东西），
+        // 而这种错在真机上只能靠肉眼比对，所以把判据抽出来单测。
         val h = UiClean.heightOf(v)
-        if (h > 0 && h > UiClean.dp(v, MarketTargets.MAX_INDEX_OVERVIEW_HEIGHT_DP)) return false
-
-        return true
+        val heightDp = if (h > 0) Density.pxToDp(v, h) else 0
+        return IndexShape.looksLikeIndexOverview(
+            childCount = n,
+            labeledCount = labels,
+            entryItemCount = entries,
+            totalHeightDp = heightDp,
+        )
     }
 
     // ------------------------------------------------------------------ 定位行1
