@@ -424,6 +424,19 @@ class WatchlistFeature : Feature {
         return ConfigKeys.FALLBACK_NORMAL_COLOR
     }
 
+    /**
+     * 这个颜色是不是「我们染上去的高亮色」？
+     *
+     * 用途：判断当前读到的颜色该不该被记成「宿主原本的颜色」——
+     * 记错了的话，还原时会退回到硬编码的兜底色，**宿主自己的颜色被顶掉**。
+     *
+     * 为什么这样判断是安全的（2026-10-20 复核时确认过）：
+     * 预设色全是**高饱和**的橙 / 黄 / 红 / 蓝（`0xFFFF8000` / `0xFFFFA000` /
+     * `0xFFFF3B30` / `0xFF3482FF`），而宿主策略列表的名称色是**中性深灰**
+     * （`0xFF212634`，原版 XML 默认值）—— 两边撞不上。
+     * 唯一的边缘情况是「用户把高亮色设成跟宿主原色一模一样」，
+     * 那时认不出来、还原成同一个颜色 —— **结果仍然是对的**。
+     */
     private fun isPresetColor(color: Int): Boolean =
         ConfigKeys.PRESET_COLORS.any { it == color }
 

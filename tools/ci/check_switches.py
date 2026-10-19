@@ -164,7 +164,32 @@ def main():
         if k not in defaults:
             problems.append("[没默认值] 功能开关「%s」没有出厂默认值 —— 「重置模块」清不掉它" % k)
 
-    # ⑥ 调试通道的列与值必须等长
+    # ⑥ 每个登记进 ALL_KEYS 的键，都必须归到「功能键」或「功能参数」两类之一
+    #
+    # ⚠️ 漏了会怎样：「重置模块」只清这两类（见 `ModulePreferences.writeFeatureDefaults`），
+    # 漏归的键**重置时清不掉** —— 用户点了「重置模块」，那个开关还开着。
+    # 而它不在功能目录里、也不在任何 Feature 的 isEnabled 链上，
+    # 前几条检查都发现不了（它们查的是「目录行 ↔ 键」，不是「所有键 ↔ 归类」）。
+    # ⚠️ **模块级设置是故意不归这两类的** —— 「重置模块」**不该**动它们
+    # （桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
+    # 它们靠「既不在 FEATURE_KEYS 也不在 FEATURE_PARAM_KEYS」与「进了快照」两条区分：
+    # 功能键会进快照，模块级设置不会。
+    # ⚠️ **日志等级是例外** —— 它既不进功能键也不进参数键，**但进快照**
+    #（目标进程用它控制日志等级，见 `ConfigKeys` 的类注释）。
+    MODULE_LEVEL_ONLY = {"LOG_LEVEL"}
+    classified = set(feature_keys) | set(param_keys)
+    for k in all_keys:
+        if k in classified or k in MODULE_LEVEL_ONLY:
+            continue
+        # 进快照的才是「功能相关」的；不进的必然是模块级设置（正确）
+        if k in snap_keys:
+            problems.append(
+                "[重置清不掉] 键「%s」进了快照（目标进程会读它）却既不在 "
+                "`ConfigKeys.FEATURE_KEYS` 也不在 `ConfigKeys.FEATURE_PARAM_KEYS` —— "
+                "「重置模块」只清这两类，它会被漏掉" % k
+            )
+
+    # ⑦ 调试通道的列与值必须等长
     #
     # `DebugConfigProvider.query()` 用 `MatrixCursor.addRow` —— 它要求
     # 「列数 == 值数」，不等就抛 `IllegalArgumentException`，
