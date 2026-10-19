@@ -136,6 +136,8 @@
 
     <string name="feature_market_sector_switch">Sectors on one row</string>
 
+    <string name="feature_market_index_hide_switch">Hide index overview</string>
+
     <string name="feature_market_overview_switch">Optimize overview height</string>
 
     <string name="feature_market_filter_switch">Add "Gainers/Losers/Watchlist" filters</string>

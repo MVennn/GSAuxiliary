@@ -1,15 +1,16 @@
 # 界面精简（底栏 / 首页 / 行情市场）实现方案
 
 > 目标：把主界面上**用不到的东西去掉、把太高的东西压矮** ——
-> 底栏少一格、首页少一条横幅、行情市场页少两条横幅、板块六项压成三项、市场概览整体压矮。
+> 底栏少一格、首页少一条横幅、行情市场页少两条横幅、板块六项压成三项、市场概览整体压矮、
+> 行情页顶部的指数概览整块收起。
 >
-> 与项目里其它功能最大的不同：这五个功能**不改交互、不改数据，只改界面结构**，
+> 与项目里其它功能最大的不同：这六个功能**不改交互、不改数据，只改界面结构**，
 > 所以实现路线是「**认出现成的视图 → 隐藏 / 压缩**」，而不是「造一个新视图塞进去」。
 > 这条路线对资源 id 的依赖低得多，可以大量依赖结构与文案特征。
 
 ---
 
-## 1. 五个功能一览
+## 1. 六个功能一览
 
 | # | 分区 | 功能（卡片上的名字） | 配置键 | 实现类 |
 |---|---|---|---|---|
@@ -18,6 +19,7 @@
 | 3 | 行情市场 | 隐藏滚动横幅与快捷入口 | `market_banner_hide` | `feature/market/MarketBannerFeature.kt` |
 | 4 | 行情市场 | 板块显示单行 | `market_sector_compact` | `feature/market/MarketSectorCompactFeature.kt` |
 | 5 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | `feature/market/MarketOverviewCompactFeature.kt` |
+| 6 | 行情市场 | 隐藏 指数概览 | `market_index_hide` | `feature/market/MarketIndexHideFeature.kt` |
 
 定位常量分别落在 `DockCleanTargets.kt` / `HomeBannerTargets.kt` / `MarketTargets.kt`。
 
@@ -167,7 +169,7 @@ if (stillAttached(lastGroup?.get())) return true
 
 ---
 
-## 3. 五个功能各自的认法
+## 3. 六个功能各自的认法
 
 ### 3.1 底栏移除「理财」（`DockCleanFeature`）
 
@@ -309,6 +311,37 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 
 > 目标 App 是梆梆加固的，静态反编译拿不到 `R.id`，所有资源 id 都只能**运行时**拿。
 > 本项目的容错模式是「候选名 + 多级兜底」，所以校准 = **往候选数组里加一项**。
+
+### 3.6 隐藏指数概览（`MarketIndexHideFeature`）
+
+行情 tab（市场 → A股）最上面那一行是**指数概览**（上证 / 深证 / 北证50 …），占 229px。
+关掉它，下面的「市场概览」直接顶上，一屏能多看一屏。
+
+**实测结构**（8.6.0）：
+
+```
+HorizontalRecyclerView #rv_markets_hs          ← 整页的纵向容器（每个版块 = 一个子项）
+  [行1] LinearLayout  0,0-1080,229            ← 指数概览（**本功能收的就是它**）
+    RecyclerView #rv_index → LinearLayout #ll_content ×4（上证 / 深证 / 北证50 …）
+  [行2] LinearLayout  0,229-1080,925          ★ 市场概览
+```
+
+**为什么收「行1」而不是收 `#rv_index`**（与 §3.3 的横幅同一套理由）：
+
+- 版块的内边距都在子项上，只藏 `#rv_index` 会留下行1 那段间距；
+- 子项才是 `RecyclerView` 的直接子视图 —— 它的 `LayoutManager` 不判 `visibility`，
+  会把所有已挂上的子项照样测一遍摆一遍，只设 `GONE` 照样占地方；
+  必须用 `ViewPatcher.collapse`（高度归零 + `GONE`）连高度一起收掉。
+
+行1 没有 id，所以从 `#rv_index` 往上爬到「父级是列表」的那一层（`itemOf`）。
+爬不到就退回 `#rv_index` 自己 —— 宁可收得少一点，也别收错。
+
+**怎么认**：先按候选 id 找 `#rv_index`，用 `#ll_content`（每一项的容器）确认
+「这确实是指数概览」；id 认不到时退回结构判据 —— 找「横向的、子项 ≥ 3、
+每项都有文案、整块不高于 140dp」的列表，并**排除「图标 + 文字」网格**
+（快捷入口也是横向多格，见 §3.3）。
+
+认不到就**什么都不做**（返回 `false` 交给基类重试），不猜。
 
 ### 4.1 先看日志
 
@@ -532,7 +565,7 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
    （`#avf_hotpoint`）。用视图标志位扫过全树，这一页**没有任何**
    `ellipsize = MARQUEE` 的 `TextView` —— 初版「找跑马灯文字」那条路在真机上
    永远认不出来，只能按 id。
-2. **四个目标版块都是 `#rv_markets_hs` 的子项**：`RecyclerView` 的 `LayoutManager`
+2. **五个目标版块都是 `#rv_markets_hs` 的子项**：`RecyclerView` 的 `LayoutManager`
    不判 `visibility`，只设 `GONE` 会留下等高空档 → 必须用 `ViewPatcher.collapse`
    （高度归零 + `GONE`）连高度一起收。
 3. **板块是 3 列 × 2 行共 6 格**：「只留三项」= 留一整行 = 容器限高到
@@ -540,6 +573,8 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 
 | 常量 | 真机实测值（已排在候选数组最前） |
 |---|---|
+| `MarketTargets.INDEX_OVERVIEW_ID_CANDIDATES` | `rv_index` |
+| `MarketTargets.INDEX_ITEM_ID` | `ll_content` |
 | `MarketTargets.HOT_BAR_ID_CANDIDATES` | `avf_hotpoint` |
 | `MarketTargets.QUICK_ENTRY_ID_CANDIDATES` | `rv_entra` |
 | `MarketTargets.QUICK_ENTRY_ITEM_ID` | `item_marktes_entra` |

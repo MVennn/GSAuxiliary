@@ -81,6 +81,8 @@
 
     <string name="feature_market_sector_switch">板块显示单行</string>
 
+    <string name="feature_market_index_hide_switch">隐藏 指数概览</string>
+
     <string name="feature_market_overview_switch">市场概览高度优化</string>
 
     <string name="feature_market_filter_switch">增加 涨跌与自选 筛选项</string>

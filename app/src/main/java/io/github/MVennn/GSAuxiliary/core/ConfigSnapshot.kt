@@ -32,6 +32,8 @@ data class ConfigSnapshot(
     val marketBannerHide: Boolean,
     /** 行情市场板块由六项压缩为三项 */
     val marketSectorCompact: Boolean,
+    /** 行情市场顶部的「指数概览」整块收起 */
+    val marketIndexHide: Boolean,
     /** 行情市场「市场概览」整体压矮，柱状图一并压缩 */
     val marketOverviewCompact: Boolean,
     /** 行情市场「沪深京A」筛选面板增加「涨跌与自选」三行，并按它们筛排行榜 */
@@ -97,6 +99,7 @@ data class ConfigSnapshot(
         mix(homeBannerHide)
         mix(marketBannerHide)
         mix(marketSectorCompact)
+        mix(marketIndexHide)
         mix(marketOverviewCompact)
         mix(marketStockFilter)
         mix(navBarBlend)
@@ -129,6 +132,7 @@ data class ConfigSnapshot(
             homeBannerHide = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,
             marketBannerHide = ConfigKeys.DEFAULT_MARKET_BANNER_HIDE,
             marketSectorCompact = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,
+            marketIndexHide = ConfigKeys.DEFAULT_MARKET_INDEX_HIDE,
             marketOverviewCompact = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
             marketStockFilter = ConfigKeys.DEFAULT_MARKET_STOCK_FILTER,
             navBarBlend = ConfigKeys.DEFAULT_NAV_BAR_BLEND,

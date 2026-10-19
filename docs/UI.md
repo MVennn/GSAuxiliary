@@ -420,7 +420,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前**十七个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**十八个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
 > **口径说明**：这里的「十七个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
@@ -445,6 +445,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 行情市场 | 隐藏 滚动横幅与快捷入口 | `market_banner_hide` | 无 |
 | 行情市场 | 板块显示单行 | `market_sector_compact` | 无 |
 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | 无 |
+| 行情市场 | 隐藏 指数概览 | `market_index_hide` | 无 |
 | 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |

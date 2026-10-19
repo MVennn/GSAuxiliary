@@ -282,6 +282,17 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
+    // 「隐藏 指数概览」：行情页顶部那一行（上证 / 深证 / 北证50）整块收起
+    FeatureSpec(
+        id = "market_index_hide",
+        categoryRes = R.string.category_market,
+        switchTitleRes = R.string.feature_market_index_hide_switch,
+        // 无副标题：「隐藏 指数概览」已经说清了藏的是什么
+        enableKey = ConfigKeys.MARKET_INDEX_HIDE,
+        defaultEnabled = ConfigKeys.DEFAULT_MARKET_INDEX_HIDE,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
     // 「增加 涨跌与自选 筛选项」：宿主筛选面板里追加三行，并按其筛排行榜
     FeatureSpec(
         id = "market_stock_filter",

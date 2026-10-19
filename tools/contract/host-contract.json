@@ -525,6 +525,42 @@
     {
       "kind": "id",
       "owner": "MarketTargets.kt",
+      "symbol": "INDEX_ITEM_ID",
+      "value": "ll_content"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "INDEX_OVERVIEW_ID_CANDIDATES",
+      "value": "ll_index"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "INDEX_OVERVIEW_ID_CANDIDATES",
+      "value": "ll_index_content"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "INDEX_OVERVIEW_ID_CANDIDATES",
+      "value": "ll_market_index"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "INDEX_OVERVIEW_ID_CANDIDATES",
+      "value": "rv_index"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "INDEX_OVERVIEW_ID_CANDIDATES",
+      "value": "rv_index_content"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
       "symbol": "OVERVIEW_CHART_AREA_ID",
       "value": "fl_content"
     },

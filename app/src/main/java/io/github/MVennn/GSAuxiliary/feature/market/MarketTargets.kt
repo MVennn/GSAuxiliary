@@ -148,6 +148,31 @@ object MarketTargets {
     /** 整页的纵向容器：每个版块是它的一个子项（隐藏版块时要连子项一起处理） */
     const val PAGE_LIST_ID = "rv_markets_hs"
 
+    // ------------------------------------------------------------ 功能 0：指数概览
+
+    /**
+     * 指数概览容器（候选）。
+     *
+     * 8.6.0 实测：**行1**（`rv_markets_hs` 的第 0 个子项，0,0-1080,229）里的
+     * `RecyclerView #rv_index` → `LinearLayout #ll_content` ×4（上证 / 深证 / 北证50 …）。
+     *
+     * ⚠️ **候选名放的是 `#rv_index`（内层容器），不是行1 本身** ——
+     * 行1 没有 id，只能靠「父是列表」往上爬（见 `MarketIndexHideFeature.itemOf`）。
+     */
+    val INDEX_OVERVIEW_ID_CANDIDATES = arrayOf(
+        "rv_index",
+        "ll_index", "ll_index_content", "rv_index_content", "ll_market_index",
+    )
+
+    /** 指数概览里每一项的 id（确认「这就是指数概览」，不是别的横向列表） */
+    const val INDEX_ITEM_ID = "ll_content"
+
+    /** 指数概览至少这么多项才算它（实测 4 项：上证 / 深证 / 北证50 / …） */
+    const val MIN_INDEX_ITEMS = 3
+
+    /** 指数概览整块的高度上限（dp）—— 实测 229px（416dpi 下约 88dp），留余量 */
+    const val MAX_INDEX_OVERVIEW_HEIGHT_DP = 140
+
     // ------------------------------------------------------------ 功能 1：滚动横幅 + 快捷入口
 
     /**

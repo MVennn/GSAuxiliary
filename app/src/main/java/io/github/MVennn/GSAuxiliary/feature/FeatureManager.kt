@@ -13,6 +13,7 @@ import io.github.MVennn.GSAuxiliary.feature.home.HomeBannerFeature
 import io.github.MVennn.GSAuxiliary.feature.ipoclean.IpoDialogCleanFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketBannerFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketFilterFeature
+import io.github.MVennn.GSAuxiliary.feature.market.MarketIndexHideFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketOverviewCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketSectorCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.navbar.NavBarBlendFeature
@@ -57,6 +58,7 @@ class FeatureManager(private val env: FeatureEnv) {
         MarketSectorCompactFeature(),
         MarketOverviewCompactFeature(),
         MarketFilterFeature(),
+        MarketIndexHideFeature(),
         NavBarBlendFeature(),
         IpoDialogCleanFeature(),
         AiStareQuickConfigFeature(),
@@ -165,6 +167,7 @@ class FeatureManager(private val env: FeatureEnv) {
         marketSectorCompact = false,
         marketOverviewCompact = false,
         marketStockFilter = false,
+        marketIndexHide = false,
         navBarBlend = false,
         ipoDialogClean = false,
         aistareQuickEnabled = false,
