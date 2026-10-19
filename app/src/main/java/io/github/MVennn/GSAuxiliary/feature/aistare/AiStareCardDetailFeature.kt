@@ -16,6 +16,8 @@ import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.reflect.Field
+import java.lang.reflect.Method
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -82,6 +84,14 @@ class AiStareCardDetailFeature : Feature {
     /** 已经打过诊断日志的 item 类名（每个数据类只打一次） */
     private val dumpedItemClasses =
         Collections.synchronizedSet(HashSet<String>())
+
+    /** 适配器类 → 条目访问路径（按类缓存，规则 2.1；解析失败也缓存） */
+    private val adapterAccessors =
+        Collections.synchronizedMap(WeakHashMap<Class<*>, ItemAccess>())
+
+    /** 条目类 → code/market 字段访问路径（按类缓存，规则 2.1；解析失败也缓存） */
+    private val itemAccessors =
+        Collections.synchronizedMap(WeakHashMap<Class<*>, CamAccess>())
 
     /** 资源 id 缓存（0 = 还没解析） */
     @Volatile private var listIdCache = -1
@@ -183,8 +193,17 @@ class AiStareCardDetailFeature : Feature {
                             .setId("$id:getView:$name")
                             .intercept { chain ->
                                 val result = chain.proceed()
-                                runCatching { onGetView(env, chain.thisObject, chain.args, result) }
-                                    .onFailure { GLog.w("我的盯盘：getView 后处理异常", it) }
+                                // ⚠️ **先判目标再取参**（规则 2.7）：`chain.args` 会把整条参数表
+                                // 物化成一个 List，而这个钩子落在 `BaseQuickAdapter` 上
+                                // （宿主的 AIStareMyStareAdapter 自己没实现 getView），
+                                // **全 App 所有列表的每一行**都会走到这里。
+                                // 原来在 onGetView 内部才判目标 → 非目标列表的每一行也白付这次物化。
+                                runCatching {
+                                    val self = chain.thisObject
+                                    if (self != null && knownAdapters.contains(self)) {
+                                        onGetView(env, self, chain.getArg(0) as? Int ?: -1, result)
+                                    }
+                                }.onFailure { GLog.w("我的盯盘：getView 后处理异常", it) }
                                 result
                             },
                     )
@@ -203,9 +222,9 @@ class AiStareCardDetailFeature : Feature {
         if (!hooked) GLog.w("我的盯盘卡片：${adapter.javaClass.name} 继承链上没有可挂的 getView")
     }
 
-    private fun onGetView(env: FeatureEnv, adapter: Any?, args: List<Any?>, result: Any?) {
+    private fun onGetView(env: FeatureEnv, adapter: Any?, position: Int, result: Any?) {
         if (adapter == null || !knownAdapters.contains(adapter)) return
-        val position = args.getOrNull(0) as? Int ?: return
+        if (position < 0) return
         val row = result as? View ?: return
 
         val card = row.findViewById<View>(cardId(row)) ?: return
@@ -261,17 +280,47 @@ class AiStareCardDetailFeature : Feature {
         return camOf(item)
     }
 
+    /**
+     * 条目的「代码.市场」字段访问路径：按条目类解析一次、终身复用。
+     *
+     * 规则 2.1：`Reflect.findField` 沿继承链逐个 `getDeclaredField` 试错、
+     * 未命中靠抛异常（填栈），而这里**每行**都要跑 —— 列表滚动 / 刷新重绑时反复触发。
+     * 按类缓存之后，每行只剩「对已解析的 `Field` 做一次 `get`」，继承链不再重扫。
+     *
+     * 解析失败**也要缓存**（同 `WatchlistFeature.camAccessOf` 的做法），
+     * 否则候选名全不对时每行都要重扫一遍继承链。
+     */
+    private class CamAccess(
+        val camFields: List<Field>,
+        val codeFields: List<Field>,
+        val marketFields: List<Field>,
+    )
+
+    private fun camAccessOf(cls: Class<*>): CamAccess {
+        synchronized(itemAccessors) {
+            itemAccessors[cls]?.let { return it }
+            val acc = CamAccess(
+                camFields = AiStareCardDetailTargets.CAM_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+                codeFields = AiStareCardDetailTargets.CODE_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+                marketFields = AiStareCardDetailTargets.MARKET_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+            )
+            itemAccessors[cls] = acc
+            return acc
+        }
+    }
+
     private fun camOf(item: Any?): String? {
         if (item == null) return null
+        val acc = camAccessOf(item.javaClass)
 
-        for (f in AiStareCardDetailTargets.CAM_FIELDS) {
-            val v = Reflect.readField(item, f) as? String
+        for (f in acc.camFields) {
+            val v = runCatching { f.get(item) }.getOrNull() as? String
             if (!v.isNullOrEmpty()) return v
         }
 
         var code: String? = null
-        for (f in AiStareCardDetailTargets.CODE_FIELDS) {
-            val v = Reflect.readField(item, f)?.toString()
+        for (f in acc.codeFields) {
+            val v = runCatching { f.get(item) }.getOrNull()?.toString()
             if (!v.isNullOrEmpty()) {
                 code = v
                 break
@@ -279,8 +328,8 @@ class AiStareCardDetailFeature : Feature {
         }
         if (code == null) return null
 
-        for (f in AiStareCardDetailTargets.MARKET_FIELDS) {
-            val v = Reflect.readField(item, f) ?: continue
+        for (f in acc.marketFields) {
+            val v = runCatching { f.get(item) }.getOrNull() ?: continue
             val s = v.toString()
             if (s.isNotEmpty()) return "$code.$s"
         }
@@ -354,17 +403,43 @@ class AiStareCardDetailFeature : Feature {
         return v.take(40)
     }
 
+    /**
+     * 适配器的条目访问路径：按适配器类解析一次、终身复用（宿主类不会换，无需失效）。
+     *
+     * 规则 2.1 同上：原先每行都 `Reflect.findMethod` 沿继承链逐级试错，
+     * 每级 miss 构造一个 `NoSuchMethodException`（**含栈回溯**）——
+     * 一条 3~4 级的继承链 ≈ 每行 6~8 个异常对象。
+     */
+    private class ItemAccess(
+        val getItem: Method?,
+        val listMethods: List<Method>,
+        val listFields: List<Field>,
+    )
+
+    private fun itemAccessOf(cls: Class<*>): ItemAccess {
+        synchronized(adapterAccessors) {
+            adapterAccessors[cls]?.let { return it }
+            val acc = ItemAccess(
+                getItem = Reflect.findMethod(cls, "getItem", Int::class.javaPrimitiveType!!),
+                listMethods = listOf("getData", "getItems", "getList")
+                    .mapNotNull { Reflect.findMethod(cls, it) },
+                listFields = AiStareCardDetailTargets.DATA_FIELDS.mapNotNull { Reflect.findField(cls, it) },
+            )
+            adapterAccessors[cls] = acc
+            return acc
+        }
+    }
+
     private fun itemAt(adapter: Any, position: Int): Any? {
-        Reflect.findMethod(adapter.javaClass, "getItem", Int::class.javaPrimitiveType!!)?.let { m ->
+        val acc = itemAccessOf(adapter.javaClass)
+        acc.getItem?.let { m ->
             runCatching { m.invoke(adapter, position) }.getOrNull()?.let { return it }
         }
-        for (mn in arrayOf("getData", "getItems", "getList")) {
-            Reflect.findMethod(adapter.javaClass, mn)?.let { m ->
-                pick(runCatching { m.invoke(adapter) }.getOrNull(), position)?.let { return it }
-            }
+        for (m in acc.listMethods) {
+            pick(runCatching { m.invoke(adapter) }.getOrNull(), position)?.let { return it }
         }
-        for (fn in AiStareCardDetailTargets.DATA_FIELDS) {
-            pick(Reflect.readField(adapter, fn), position)?.let { return it }
+        for (f in acc.listFields) {
+            pick(runCatching { f.get(adapter) }.getOrNull(), position)?.let { return it }
         }
         return null
     }

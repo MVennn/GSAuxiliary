@@ -777,18 +777,26 @@ class StgStockFilterFeature : Feature {
         val typeHits = IntArray(FilterRow.TYPE_ROWS.size)
         for ((i, item) in full.withIndex()) {
             // 一只股票的两个维度一次算清：方向类别（自选优先 / 平盘独立）+ 类型位掩码
-            val cam = codeAndMarket(item)
-            val inZx = isInWatchlist(cam)
-            val pct = percentOf(adapter, item, cam)
+            //
+            // ⚠️ **纯重构，判定一字未变**：把每项要算 3 次的 fieldsOf 合成 1 次、
+            // 「代码.市场」只切一次（原来自选判定切一遍、类型判定又切一遍）、
+            // 类型行的下标用预计算的序号（原���每项 5 次 `indexOf` 线性查找）。
+            val fields = fieldsOf(item.javaClass)
+            val cam = codeAndMarket(item, fields)
+            val dot = cam?.indexOf('.') ?: -1
+            val code = if (dot > 0) cam!!.substring(0, dot) else null
+            val market = if (dot > 0 && dot < cam!!.length - 1) cam!!.substring(dot + 1) else null
+            val inZx = isInWatchlist(code, market)
+            val pct = percentOf(adapter, item, cam, fields)
             when (StockFilters.categoryOf(inZx, pct)) {
                 Category.ZX -> zx++
                 Category.UP -> up++
                 Category.DOWN -> down++
                 Category.FLAT -> flat++
             }
-            val types = typesOf(item, cam)
+            val types = typesOf(item, code, market, fields)
             for (row in FilterRow.TYPE_ROWS) {
-                if (StockTypes.has(types, row)) typeHits[typeIndex(row)]++
+                if (StockTypes.has(types, row)) typeHits[row.typeIndex]++
             }
             if (f.keepsDirection(inZx, pct) && f.keepsTypes(types)) {
                 keep.add(item)
@@ -848,7 +856,7 @@ class StgStockFilterFeature : Feature {
         val summary = buildString {
             append("全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat")
             for (row in FilterRow.TYPE_ROWS) {
-                append(" / ").append(row.label).append(' ').append(typeHits[typeIndex(row)])
+                append(" / ").append(row.label).append(' ').append(typeHits[row.typeIndex])
             }
             append("）")
         }
@@ -1234,6 +1242,17 @@ class StgStockFilterFeature : Feature {
     private fun ensureClickRemap() {
         val act = trackedActivity() ?: return noteSkip("没有 trackedActivity")
         val lv = findListView(act) ?: return noteSkip("找不到列表控件")
+
+        // ⚠️ **「已经包过」的判定提到最前**（纯重排，判定条件一字未改）：
+        // 这条在**每一行**的 getView 里都会走一遍，而它原本在链尾 ——
+        // 走到那里要付出：一次 header 拆包的反射调用 + 一次 synchronized 查表
+        // + 一次类名比较 + 一次反射读字段。而 99% 的情况下它只是发现
+        // 「监听器还是我们装的」然后原样返回。
+        // ⚠️ **必须保留 `existing != null`**：若 existing 与 wrappedLists[lv] 都是 null，
+        // `null === null` 为真 → 会**永远不再包裹** → 宿主点行没反应。
+        val existing = itemClickListener(lv)
+        if (existing != null && wrappedLists[lv] === existing) return   // 已经包过
+
         var adapter = unwrapHeaderAdapter(lv.adapter) ?: return noteSkip("列表还没有 adapter")
         // 列表上可能是我们的过滤代理 —— 认它包着的那个原适配器
         // （本实例按 [proxiedLists] 身份判、热重载后按类名拆包，见 [unwrapOnList]）
@@ -1241,9 +1260,6 @@ class StgStockFilterFeature : Feature {
         if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) {
             return noteSkip("adapter 不是目标：${adapter.javaClass.name}")
         }
-
-        val existing = itemClickListener(lv)
-        if (existing != null && wrappedLists[lv] === existing) return   // 已经包过
 
         if (existing == null) {
             // 宿主没走 ListView 的行点击（比如它自己给每行设了 OnClickListener），
@@ -1353,11 +1369,15 @@ class StgStockFilterFeature : Feature {
     // ------------------------------------------------------------------ 类别 / 类型判定
 
     /** 在自选里吗（`code.market` 是宿主自己的口径，与「自选高亮」同源地判） */
-    private fun isInWatchlist(cam: String?): Boolean {
-        if (cam == null) return false
-        val dot = cam.indexOf('.')
-        if (dot <= 0) return false
-        return ZxWatchlist.isInWatchlist(cam.substring(0, dot), cam.substring(dot + 1))
+    /**
+     * 自选判定（`code` / `market` 已切好，不再重复 substring）。
+     *
+     * 切分口径与原先**一字不差**：分隔点必须在第一位之后、且后面还有内容
+     * （原 `dot <= 0` 判 false；末尾那个点会让 market 为空串 → 下面判 false）。
+     */
+    private fun isInWatchlist(code: String?, market: String?): Boolean {
+        if (code == null || code.isEmpty() || market == null || market.isEmpty()) return false
+        return ZxWatchlist.isInWatchlist(code, market)
     }
 
     /**
@@ -1369,8 +1389,7 @@ class StgStockFilterFeature : Feature {
      *
      * 字段解析走 [fieldsOf] 的按类缓存，不进热路径的继承链扫描。
      */
-    private fun typesOf(item: Any, cam: String?): Int {
-        val fields = fieldsOf(item.javaClass)
+    private fun typesOf(item: Any, code: String?, market: String?, fields: ItemFields): Int {
         var types = StockTypes.NONE
         for ((f, bit) in fields.typeFlags) {
             val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? Boolean ?: continue
@@ -1384,15 +1403,11 @@ class StgStockFilterFeature : Feature {
                 break
             }
         }
-        return types or StockTypes.byCodeAndMarket(cam, name)
+        return types or StockTypes.byCodeAndMarket(code, market, name)
     }
 
-    /** 类型行在 [typeHits] 里的下标（0..4，与 [FilterRow.TYPE_ROWS] 同序） */
-    private fun typeIndex(row: FilterRow): Int = FilterRow.TYPE_ROWS.indexOf(row)
-
     /** 涨跌幅：先读数据项字段（实测 `zdf`，BigDecimal），再退回行内文案记录 */
-    private fun percentOf(adapter: Any, item: Any, cam: String?): Double? {
-        val fields = fieldsOf(item.javaClass)
+    private fun percentOf(adapter: Any, item: Any, cam: String?, fields: ItemFields): Double? {
         for (f in fields.percent) {
             val v = f?.let { runCatching { it.get(item) }.getOrNull() } ?: continue
             val d = when (v) {
@@ -1515,7 +1530,12 @@ class StgStockFilterFeature : Feature {
      */
     private fun codeAndMarket(item: Any?): String? {
         if (item == null) return null
-        val fields = fieldsOf(item.javaClass)
+        return codeAndMarket(item, fieldsOf(item.javaClass))
+    }
+
+    /** [fields] 已解析好时用这个（同一趟里只解析一次） */
+    private fun codeAndMarket(item: Any?, fields: ItemFields): String? {
+        if (item == null) return null
         for (f in fields.cam) {
             val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? String
             if (!v.isNullOrEmpty()) return v

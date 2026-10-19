@@ -81,6 +81,14 @@ class MarketFilterFeature : UiCleanFeature() {
      */
     @Volatile private var injectedPanel: WeakReference<ViewGroup>? = null
 
+    /**
+     * 上一轮有没有收起过行。
+     *
+     * 用途：方向筛选关掉时**要还原**之前收起的行（否则行会一直藏着）。
+     * 只在「确实藏过」时才遍历还原 —— 稳态下（没藏过）连遍历都省掉。
+     */
+    @Volatile private var hadHiddenRows = false
+
     override val idNames = MarketTargets.PAGE_ANCHOR_ID_CANDIDATES + arrayOf(
         MarketFilterTargets.RANKING_LIST_ID,
         MarketFilterTargets.RANKING_CODE_ID,
@@ -297,36 +305,90 @@ class MarketFilterFeature : UiCleanFeature() {
         val rv = root.findViewById<ViewGroup>(listId) ?: return true
 
         val f = filters(activity)
+        // 不筛方向时一行都不用动 —— 直接返回，连遍历都省掉
+        if (!f.directionFiltering) {
+            if (hadHiddenRows) {
+                hadHiddenRows = false
+                restoreAllRows(rv)
+            }
+            return true
+        }
+
         var rows = 0
         var hidden = 0
+        // 整趟只算一次那句解释（Kotlin 实参在调用前求值，原先每行都拼一次）
+        val reason = collapseReason(f)
         for (i in 0 until rv.childCount) {
             val child = rv.getChildAt(i) ?: continue
-            if (child.findViewById<View>(codeId) == null) continue   // 不是股票行
+            val views = rowViews(child, codeId, percentId) ?: continue   // 不是股票行
             rows++
-            if (keepRow(child, f, codeId, percentId)) {
+            if (keepRow(views, f)) {
                 if (isCollapsed(child)) patcher.restore(child)
             } else {
                 hidden++
-                patcher.collapse(child, "排行榜行（${summaryOf(f)}）")
+                patcher.collapse(child, reason)
             }
         }
+        hadHiddenRows = hidden > 0
         if (rows >= MarketFilterTargets.RANKING_MIN_ROWS && hidden > 0 && GLog.isDebug) {
             GLog.d("$id：排行榜 $rows 行 → 收起 $hidden 行（${summaryOf(f)}）")
         }
         return true
     }
 
+    /** 把之前收起的行全部还原（方向筛选关掉时用） */
+    private fun restoreAllRows(rv: ViewGroup) {
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i) ?: continue
+            if (isCollapsed(child)) patcher.restore(child)
+        }
+    }
+
+    /**
+     * 一行里的两个 TextView（代码 / 涨跌幅）。
+     *
+     * **只缓存视图引用，绝不缓存文本**：文本随行情刷新变，缓存它 = 拿旧涨跌幅 = 改判定语义。
+     * 键是**行视图对象本身**（弱引用）—— 列表复用时行视图会被换掉内容，
+     * 但它身上的那两个 TextView 引用不变，所以复用是安全的。
+     */
+    private class RowViews(val code: TextView, val percent: TextView?)
+
+    private val rowViewsCache =
+        Collections.synchronizedMap(WeakHashMap<View, RowViews>())
+
+    /**
+     * 取一行的「代码」TextView（判定是不是股票行）与「涨跌幅」TextView。
+     *
+     * ⚠️ **是不是股票行只看代码那个**（与原判定一致）：涨跌幅那个可能不存在，
+     * 用它当判据会让这一行不再被收起/还原 —— 那是行为变化，不能顺手改。
+     * 涨跌幅取不到时按「读不到涨跌幅」处理（`parsePercent(null)` = null = 平盘）。
+     */
+    private fun rowViews(row: View, codeId: Int, percentId: Int): RowViews? {
+        rowViewsCache[row]?.let { return it }
+        val codeTv = row.findViewById<TextView>(codeId) ?: return null
+        val pctTv = row.findViewById<TextView>(percentId)
+        val v = RowViews(codeTv, pctTv)
+        rowViewsCache[row] = v
+        return v
+    }
+
+    /**
+     * 收起行时写在日志里的那句解释。
+     *
+     * ⚠️ **整趟算一次**：Kotlin 的实参在调用前求值，原先每行都拼一次
+     * `"排行榜行（${summaryOf(f)}）"` —— 每帧每行一次 String 分配，
+     * 而 `ViewPatcher.collapse` 内部的日志是等级保护的（规则 2.5），
+     * 拼串却在调用点已经发生，等级调到「关闭」也省不掉。
+     */
+    private fun collapseReason(f: StockFilters): String = "排行榜行（${summaryOf(f)}）"
+
     /** 这一行该不该留下（只判「涨跌与自选」；类型那五行是宿主自己筛的） */
-    private fun keepRow(row: View, f: StockFilters, codeId: Int, percentId: Int): Boolean {
-        if (!f.directionFiltering) return true
-        val code = textOf(row, codeId)
-        val percent = parsePercent(textOf(row, percentId))
+    private fun keepRow(views: RowViews, f: StockFilters): Boolean {
+        val code = views.code.text?.toString()
+        val percent = parsePercent(views.percent?.text?.toString())
         val inZx = ZxWatchlist.isInWatchlist(code, StockTypes.marketOf(code))
         return f.keepsDirection(inZx, percent)
     }
-
-    private fun textOf(row: View, id: Int): String? =
-        runCatching { row.findViewById<View>(id) as? TextView }.getOrNull()?.text?.toString()
 
     private fun isCollapsed(v: View): Boolean =
         v.visibility == View.GONE && v.layoutParams?.height == 0

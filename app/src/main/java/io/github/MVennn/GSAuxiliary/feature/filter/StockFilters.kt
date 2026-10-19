@@ -128,6 +128,16 @@ enum class FilterRow(val key: String, val label: String) {
     /** 是不是「股票类型」那一组（面板分组 / 行情侧宿主自己的五行的同步都按它分） */
     val isType: Boolean get() = this in TYPE_ROWS
 
+    /**
+     * 在 [TYPE_ROWS] 里的下标（0..4）。
+     *
+     * 用途：筛选时按类型统计命中数要按下标直接写数组。
+     * 原先用的是 `TYPE_ROWS.indexOf(row)` —— 那是**线性查找**（还要分配一个迭代器），
+     * 而它在最内层循环里每项调 5 次（每项 5 次 `indexOf` + 5 个迭代器）。
+     * 这里在枚举初始化时算好一次，**下标与 [TYPE_ROWS] 的顺序天然一致**。
+     */
+    val typeIndex: Int by lazy { TYPE_ROWS.indexOf(this) }
+
     companion object {
         /** 涨跌与自选组（策略侧原有的三项） */
         val DIRECTION_ROWS = listOf(UP, DOWN, ZX)
