@@ -124,6 +124,13 @@ jobs:
       - name: 静态不变量扫描
         run: python3 tools/ci/check_invariants.py
 
+      - name: 宿主契约校验
+        # 双向校验「代码里认宿主的东西」与「契约清单」：
+        # 代码里有而清单里没有 → 忘了登记；清单里有而代码里没了 → 清单失效。
+        # 宿主升级后靠它知道「哪个候选名可能已经不管用了」——
+        # 否则只能等用户在真机上发现「这个功能不生效了」再回头猜。
+        run: python3 tools/ci/check_contract.py
+
       # ⚠️ 这一步不能省：`GS_KEYSTORE_BASE64` 是**密钥库本体**，而 Gradle 要的是
       # **文件路径**（`GS_KEYSTORE_PATH`）。少这一步，构建就悄悄退回 debug 签名 ——
       # 而下面的红线校验又会因为「配了密钥」要求 release 包不是 debug 签名，

@@ -1,0 +1,958 @@
+{
+  "schema": 1,
+  "host": {
+    "package": "com.guosen.android",
+    "versionName": "8.6.0",
+    "versionCode": 271
+  },
+  "entries": [
+    {
+      "kind": "class",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "ACTIVITY",
+      "value": "com.guosen.quotation.aistare.ui.AIStareIndexAct"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "ACTIVITY_PREFIX",
+      "value": "com.guosen.quotation.aistare.ui."
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "cam"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CLS_INTENT_STOCK_INFO",
+      "value": "com.guosen.android.quotes.data.IntentStockInfo"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "data"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "list"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "KEY_ADAPTER",
+      "value": "adapter_key"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_market"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "STOCK_FRAG_CLASS",
+      "value": "com.guosen.quotation.ui.StockFragAct"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "TARGET_ADAPTERS",
+      "value": "com.guosen.quotation.aistare.adapter.AIStareMyStareAdapter"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareQuickConfigTargets.kt",
+      "symbol": "PAGE_ACTIVITY",
+      "value": "com.guosen.quotation.aistare.ui.AIStareWebView"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareQuickConfigTargets.kt",
+      "symbol": "WEBVIEW_CLIENT_FALLBACK",
+      "value": "com.guosen.commonui.webview.HybirdWebView$4"
+    },
+    {
+      "kind": "class",
+      "owner": "AiStareQuickConfigTargets.kt",
+      "symbol": "WEBVIEW_CLIENT_PREFIX",
+      "value": "com.guosen.commonui.webview.HybirdWebView$"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "bottom_bar"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "bottom_nav"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "bottom_tab"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "fl_main_tab"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_bottom"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_bottom_bar"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_bottom_nav"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_main_bottom"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_main_bottom_bar"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_main_tab"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_navigation"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_tab"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "ll_tab_bar"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "main_bottom"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "DOCK_ID_CANDIDATES",
+      "value": "tab_bar"
+    },
+    {
+      "kind": "class",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "PAGES",
+      "value": "com.guosen.app.goldsun.ui.MainAct"
+    },
+    {
+      "kind": "id",
+      "owner": "DockCleanTargets.kt",
+      "symbol": "REMOVE_ITEM_ID_CANDIDATES",
+      "value": "cb_main_tab_money"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "banner_home"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "banner_view"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "fl_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "home_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "iv_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "iv_home_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "layout_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "ll_ad_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "ll_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "ll_home_ad"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "ll_home_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "rl_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "view_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "BANNER_ID_CANDIDATES",
+      "value": "vp_banner"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_ENTRY_ITEM_ID",
+      "value": "home_func_icon"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_TAB_ID_CANDIDATES",
+      "value": "cb_main_tab_home"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_TAB_ID_CANDIDATES",
+      "value": "cb_main_tab_main"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_TAB_ID_CANDIDATES",
+      "value": "ll_tab_home"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_TAB_ID_CANDIDATES",
+      "value": "main_tab_home"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "HOME_TAB_ID_CANDIDATES",
+      "value": "tab_home"
+    },
+    {
+      "kind": "class",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "PAGES",
+      "value": "com.guosen.app.goldsun.ui.MainAct"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "grid_home_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "grid_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "gv_home_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "gv_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "home_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_home_entries"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_home_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_home_quick"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_quick_entries"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_quick_entry"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "rv_home_func"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "rv_home_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "HomeBannerTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "rv_home_quick_entry"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_FIELD_LATEST",
+      "value": "zxj"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_FIELD_OPEN",
+      "value": "jrkp"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_FIELD_OPEN",
+      "value": "m_jrkp"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_FIELD_PREV_CLOSE",
+      "value": "m_zrsp"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_FIELD_PREV_CLOSE",
+      "value": "zrsp"
+    },
+    {
+      "kind": "class",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_KX_GROUP_VIEW",
+      "value": "com.guosen.quotation.logicview.KXChartGroupView"
+    },
+    {
+      "kind": "class",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_KX_ITEM",
+      "value": "com.guosen.android.quotes.data.kx.KXChartItem"
+    },
+    {
+      "kind": "class",
+      "owner": "IpoCleanTargets.kt",
+      "symbol": "CLS_IPO_ALERT_DIALOG",
+      "value": "com.guosen.commonui.dialog.IpoAlertDialog"
+    },
+    {
+      "kind": "class",
+      "owner": "IpoCleanTargets.kt",
+      "symbol": "CLS_MAIN_ACT",
+      "value": "com.guosen.app.goldsun.ui.MainAct"
+    },
+    {
+      "kind": "class",
+      "owner": "IpoCleanTargets.kt",
+      "symbol": "CLS_POP_ALERT",
+      "value": "com.guosen.commonui.dialog.PopAlert"
+    },
+    {
+      "kind": "class",
+      "owner": "MarketFilterTargets.kt",
+      "symbol": "DIALOG_CLASS",
+      "value": "com.guosen.quotation.ui.dialog.FilterDiaglog"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketFilterTargets.kt",
+      "symbol": "RANKING_CODE_ID",
+      "value": "tv_item_zxg_code"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketFilterTargets.kt",
+      "symbol": "RANKING_LIST_ID",
+      "value": "rv_markets_hs"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketFilterTargets.kt",
+      "symbol": "RANKING_PERCENT_ID",
+      "value": "tv_item_zxg_data"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "avf_hotpoint"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "avf_notice"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "ll_hotpoint"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "ll_marquee"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "ll_notice"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "HOT_BAR_ID_CANDIDATES",
+      "value": "ll_scroll_notice"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "OVERVIEW_CHART_AREA_ID",
+      "value": "fl_content"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "OVERVIEW_CHART_ID_CANDIDATES",
+      "value": "dxpg_chart_view"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "OVERVIEW_CHART_ID_CANDIDATES",
+      "value": "jlr_chart_view"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "OVERVIEW_CHART_ID_CANDIDATES",
+      "value": "zdfb_chart_view"
+    },
+    {
+      "kind": "class",
+      "owner": "MarketTargets.kt",
+      "symbol": "PAGES",
+      "value": "com.guosen.app.goldsun.ui.MainAct"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "PAGE_ANCHOR_ID_CANDIDATES",
+      "value": "container_a_stock"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "PAGE_ANCHOR_ID_CANDIDATES",
+      "value": "ptr_markets_hs"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "PAGE_ANCHOR_ID_CANDIDATES",
+      "value": "rv_markets_hs"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "PAGE_LIST_ID",
+      "value": "rv_markets_hs"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "grid_market_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "gv_market_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "gv_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_hq_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_market_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_market_quick"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "ll_quick_entry"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "rv_entra"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ID_CANDIDATES",
+      "value": "rv_market_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "QUICK_ENTRY_ITEM_ID",
+      "value": "item_marktes_entra"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "bk_list"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "gv_bk"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "ll_bk"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "ll_bk_list"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "ll_sector_list"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "rv_bk"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_GROUP_ID_CANDIDATES",
+      "value": "vp_bk_content"
+    },
+    {
+      "kind": "id",
+      "owner": "MarketTargets.kt",
+      "symbol": "SECTOR_ITEM_ID",
+      "value": "tv_item_bkhq_overview_name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "ACTION_TO_MIDDLE",
+      "value": "router_ai_stk_detail"
+    },
+    {
+      "kind": "class",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CLS_ENGINE_ACT",
+      "value": "com.guosen.engine.process.EngineAct"
+    },
+    {
+      "kind": "class",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CLS_INTENT_STOCK_INFO",
+      "value": "com.guosen.android.quotes.data.IntentStockInfo"
+    },
+    {
+      "kind": "class",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CLS_STG_DETAIL",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "KEY_ADAPTER",
+      "value": "adapter_key"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CANCEL_BUTTON_ID_CANDIDATES",
+      "value": "tv_stg_add_zxg"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CHECKBOX_ID_CANDIDATES",
+      "value": "ct_item"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "COUNT_ID_CANDIDATES",
+      "value": "tv_bottom_zxg_num"
+    },
+    {
+      "kind": "class",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "WATCH_ACTIVITIES",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "class",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CLS_BASE_QUICK_ADAPTER",
+      "value": "com.guosen.commonui.adapter.BaseQuickAdapter"
+    },
+    {
+      "kind": "class",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CLS_STOCK_INFO",
+      "value": "com.guosen.android.quotes.data.StockInfo"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "COL_TITLE_ID",
+      "value": "ll_top"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "LAYOUT_DETAIL",
+      "value": "act_ai_stk_stg_detail"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "LAYOUT_EMPTY",
+      "value": "empty_ai_stk"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "MENU_ANCHOR_ID",
+      "value": "tv_del_stg"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "MENU_EDIT_NAME_ID",
+      "value": "tv_edit_name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "m_name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_zdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "percent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "zdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_ID_CANDIDATES",
+      "value": "tv_item_stk_percent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "RES_NUM_ID_CANDIDATES",
+      "value": "tv_stg_res_num"
+    },
+    {
+      "kind": "class",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "TARGET_ADAPTERS",
+      "value": "com.guosen.quotation.adapter.aistk.AIStkAdapter"
+    },
+    {
+      "kind": "class",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "WATCH_ACTIVITIES",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "BOTTOM_BAR_ID_CANDIDATES",
+      "value": "stk_detial_bottom_bar"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MENU_GRID_ID_CANDIDATES",
+      "value": "gv_stk_bottom"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MENU_ITEM_TEXT_ID_CANDIDATES",
+      "value": "tv_item_gv_menu"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MORE_BOX_ID_CANDIDATES",
+      "value": "fl_bottom_index_more"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MORE_BOX_ID_CANDIDATES",
+      "value": "fl_more"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MORE_TEXT_ID_CANDIDATES",
+      "value": "iv_bottom_index_more"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "MORE_TEXT_ID_CANDIDATES",
+      "value": "iv_bottom_more"
+    },
+    {
+      "kind": "class",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "WATCH_ACTIVITIES",
+      "value": "com.guosen.quotation.ui.StockFragAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "ZX_ID_CANDIDATES",
+      "value": "tv_bottom_index_change_zx"
+    },
+    {
+      "kind": "id",
+      "owner": "StockDetailBarTargets.kt",
+      "symbol": "ZX_ID_CANDIDATES",
+      "value": "tv_bottom_zx"
+    },
+    {
+      "kind": "class",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CLS_BASE_QUICK_ADAPTER",
+      "value": "com.guosen.commonui.adapter.BaseQuickAdapter"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "NAME_ID_CANDIDATES",
+      "value": "tv_item_stk_name"
+    },
+    {
+      "kind": "class",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "RESUME_REPAINT_ACTIVITIES",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "class",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "TARGET_ADAPTERS",
+      "value": "com.guosen.quotation.adapter.aistk.AIStkAdapter"
+    }
+  ]
+}
