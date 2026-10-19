@@ -124,6 +124,12 @@ jobs:
       - name: 静态不变量扫描
         run: python3 tools/ci/check_invariants.py
 
+      - name: 死代码扫描
+        # 查「顶层符号谁都没调用」与「只在测试里被调用」——
+        # 这项目栽过好几次「名义上存在、实际不生效」（or 链漏一位、锚点没有调用点、
+        # 调试通道补了列忘了补值）。`hygiene.py` 只查文件内的 private 成员，跨文件的漏网。
+        run: python3 tools/ci/check_dead_symbols.py
+
       - name: 功能开关全链路校验
         # 一个功能开关要在五处同时存在：ConfigKeys 常量 + DEFAULTS、FEATURE_KEYS、
         # SNAPSHOT_KEYS、ConfigSnapshot 字段、FeatureCatalog 的一行。
