@@ -11,6 +11,8 @@ package io.github.MVennn.GSAuxiliary.core
 data class ConfigSnapshot(
     val enabled: Boolean,
     val color: Int,
+    /** 自选股名称加粗（与「自选股高亮」是两个独立开关） */
+    val watchlistBold: Boolean,
     val scopeStrategy: Boolean,
     /** 日志等级，见 [LogLevel]；模块 App 与目标进程共用同一个值 */
     val logLevel: Int,
@@ -89,6 +91,7 @@ data class ConfigSnapshot(
             bit = bit shl 1
         }
         mix(enabled)
+        mix(watchlistBold)
         mix(scopeStrategy)
         mix(stgDirectQuote)
         mix(stgQuoteSwipe)
@@ -121,6 +124,7 @@ data class ConfigSnapshot(
         val DEFAULT = ConfigSnapshot(
             enabled = ConfigKeys.DEFAULT_ENABLED,
             color = ConfigKeys.DEFAULT_COLOR,
+            watchlistBold = ConfigKeys.DEFAULT_WATCHLIST_BOLD,
             scopeStrategy = ConfigKeys.DEFAULT_SCOPE_STRATEGY,
             logLevel = ConfigKeys.DEFAULT_LOG_LEVEL,
             stgDirectQuote = ConfigKeys.DEFAULT_STG_DIRECT_QUOTE,

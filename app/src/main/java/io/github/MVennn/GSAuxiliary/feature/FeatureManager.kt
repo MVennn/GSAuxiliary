@@ -168,6 +168,7 @@ class FeatureManager(private val env: FeatureEnv) {
         marketOverviewCompact = false,
         marketStockFilter = false,
         marketIndexHide = false,
+        watchlistBold = false,
         navBarBlend = false,
         ipoDialogClean = false,
         aistareQuickEnabled = false,

@@ -53,6 +53,8 @@
     <string name="feature_ipo_clean_switch">Hide IPO dialog</string>
 
     <string name="feature_watchlist_switch">Watchlist highlight</string>
+
+    <string name="feature_watchlist_bold_switch">Bold watchlist names</string>
     <string name="feature_detail_entry">Highlight settings</string>
 
     <string name="feature_stg_direct_switch">Direct standard quote</string>

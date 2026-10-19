@@ -328,4 +328,18 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         detailEntryRes = R.string.feature_detail_entry,
         // 无入口副标题：「高亮颜色设置」已经说清进去做什么，不再列一遍里面的项目
     ),
+
+    // 「自选股名称加粗」：**与上面那个高亮共用同一个 Feature**
+    // （`WatchlistFeature` 承载两个开关）—— 所以 `FeatureManager` 里**不新增**一行，
+    // 但 `isEnabled` 的 or 链必须同时覆盖 `ENABLED` 与 `WATCHLIST_BOLD` 两个位
+    // （漏一个就是假开关，见 docs/EXTENDING.md §3 第 4 步）。
+    FeatureSpec(
+        id = "watchlist_bold",
+        categoryRes = R.string.category_display,
+        switchTitleRes = R.string.feature_watchlist_bold_switch,
+        // 无副标题：与上面那个高亮是同一批行上的另一种强调方式
+        enableKey = ConfigKeys.WATCHLIST_BOLD,
+        defaultEnabled = ConfigKeys.DEFAULT_WATCHLIST_BOLD,
+        // 无二级入口：加粗没有可调参数
+    ),
 )

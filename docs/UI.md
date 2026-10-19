@@ -420,7 +420,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前**十八个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**十九个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
 > **口径说明**：这里的「十七个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
@@ -449,6 +449,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
+| 显示 | 自选股名称加粗 | `watchlist_bold` | 无 |
 
 > 上表第二列写的是卡片上的功能名，即 `switchTitleRes`（与 `docs/NAMING.md` §5 的
 > 对照表逐字一致）。

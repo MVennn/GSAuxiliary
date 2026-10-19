@@ -34,6 +34,19 @@ object ConfigKeys {
     const val COLOR = "color"
 
     /**
+     * 自选股名称**加粗**（策略详情页）。
+     *
+     * 与 [ENABLED]（自选股高亮）是**两个独立开关** —— 用户可能只想加粗不要颜色，
+     * 也可能只要颜色不要加粗。
+     *
+     * ⚠️ 它们**共用同一个 Feature**（`WatchlistFeature`）—— 所以
+     * `FeatureManager` 里**只登记一次**，而 `isEnabled` 的 or 链必须
+     * **同时**覆盖这两个位（漏一个就是「界面上有开关、底下不装钩子」的假开关，
+     * 见 `docs/EXTENDING.md` §3 第 4 步）。
+     */
+    const val WATCHLIST_BOLD = "watchlist_bold"
+
+    /**
      * 是否已阅读并同意免责声明。
      *
      * 只用于模块自己的界面（首次启动的同意弹窗）。
@@ -384,6 +397,7 @@ object ConfigKeys {
     const val DEFAULT_MARKET_BANNER_HIDE = false
     const val DEFAULT_MARKET_SECTOR_COMPACT = false
     const val DEFAULT_MARKET_INDEX_HIDE = false
+    const val DEFAULT_WATCHLIST_BOLD = false
     const val DEFAULT_MARKET_OVERVIEW_COMPACT = false
 
     /**
@@ -444,7 +458,7 @@ object ConfigKeys {
 
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
-        ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
+        ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
         STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
@@ -466,7 +480,7 @@ object ConfigKeys {
      */
     val FEATURE_KEYS =
         arrayOf(
-            ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+            ENABLED, WATCHLIST_BOLD, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
             NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -504,7 +518,7 @@ object ConfigKeys {
      * 「[ConfigSnapshot] 只放目标进程要读的键」。
      */
     val SNAPSHOT_KEYS: Set<String> = setOf(
-        ENABLED, COLOR, SCOPE_STRATEGY, LOG_LEVEL,
+        ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
         STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
@@ -517,6 +531,7 @@ object ConfigKeys {
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
     val DEFAULTS: Map<String, Any> = mapOf(
         ENABLED to DEFAULT_ENABLED,
+        WATCHLIST_BOLD to DEFAULT_WATCHLIST_BOLD,
         COLOR to DEFAULT_COLOR,
         SCOPE_STRATEGY to DEFAULT_SCOPE_STRATEGY,
         STG_DIRECT_QUOTE to DEFAULT_STG_DIRECT_QUOTE,

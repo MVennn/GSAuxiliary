@@ -222,7 +222,7 @@ onHotReloaded(param)
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
-| **自选高亮** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor` | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)） |
+| **自选高亮 + 名称加粗** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor`（高亮）/ `setTypeface`（加粗） | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色与旧字重（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)）。⚠️ **这个 Feature 承载两个开关**（`enabled` 高亮 / `watchlist_bold` 加粗）—— `FeatureManager` 里**只登记一次**，但 `isEnabled` 的 or 链必须**同时**覆盖两个位，漏一个就是「界面上有开关、底下不装钩子」的假开关（第三轮 H1 的真事） |
 | **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态）+ 包裹宿主 `OnItemClickListener` | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型 | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效 |
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后**换掉适配器 `data` 字段**（真删不是藏），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
@@ -251,7 +251,7 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（16 个 Feature 实现 / 18 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
+> **当前状态（16 个 Feature 实现 / 19 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
 > 挂钩子改行为 10 个 + 界面精简 5 个。
 >
 > **口径说明**：「17 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
@@ -427,7 +427,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
-| **功能总开关** | `FEATURE_KEYS` 全表（18 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简六项 / `MARKET_STOCK_FILTER` / `MARKET_INDEX_HIDE` / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` | 目标进程 | ✅ | **一律 `false`** |
+| **功能总开关** | `FEATURE_KEYS` 全表（19 个键）：`ENABLED` / `WATCHLIST_BOLD` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简六项 / `MARKET_STOCK_FILTER` / `MARKET_INDEX_HIDE` / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` | 目标进程 | ✅ | **一律 `false`** |
 | **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 

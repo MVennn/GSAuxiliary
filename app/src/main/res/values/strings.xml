@@ -54,6 +54,8 @@
     <string name="feature_ipo_clean_switch">隐藏 新股申购 弹窗</string>
 
     <string name="feature_watchlist_switch">自选股高亮</string>
+
+    <string name="feature_watchlist_bold_switch">自选股名称加粗</string>
     <string name="feature_detail_entry">高亮颜色设置</string>
 
     <string name="feature_stg_direct_switch">直达标准行情</string>

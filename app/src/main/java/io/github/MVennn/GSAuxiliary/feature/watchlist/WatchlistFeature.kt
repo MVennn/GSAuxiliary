@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.watchlist
 
 import android.app.Activity
+import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -37,6 +38,15 @@ class WatchlistFeature : Feature {
     private val originalColors =
         Collections.synchronizedMap(WeakHashMap<TextView, Int>())
 
+    /**
+     * 记录每个名称 TextView 第一次见到的「原始 Typeface」，用于还原。
+     *
+     * 与 [originalColors] 同一套道理：RecyclerView 复用视图，
+     * 换一批数据后要把加粗撤掉 —— 没有原 Typeface 就还原不回去。
+     */
+    private val originalTypefaces =
+        Collections.synchronizedMap(WeakHashMap<TextView, Typeface>())
+
     /** 见过的适配器（弱引用），配置变化时用它触发列表重绘 */
     private val seenAdapters =
         Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<Any, Boolean>()))
@@ -59,7 +69,13 @@ class WatchlistFeature : Feature {
 
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
-    override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.enabled
+    /**
+     * ⚠️ **or 链必须同时覆盖两个开关位**（`enabled` 与 `watchlistBold`）——
+     * 这个 Feature 承载**两个**开关（高亮 / 加粗），而 `FeatureManager` 里只登记它一次。
+     * 漏一位就是「界面上有开关、底下不装钩子」的**假开关**
+     * （`docs/EXTENDING.md` §3 第 4 步；真事：第三轮 H1「跳过保存确认」）。
+     */
+    override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.enabled || cfg.watchlistBold
 
     // ------------------------------------------------------------------ 安装
 
@@ -190,14 +206,12 @@ class WatchlistFeature : Feature {
             val nameTv = findNameView(row) ?: continue
             val dataPos = pos - headerCount
 
-            val inWatchlist = if (cfg.enabled && cfg.scopeStrategy) judge(adapter, dataPos) else false
-            val target = if (inWatchlist) cfg.color else originalColor(nameTv)
-            runCatching {
-                val colors = nameTv.textColors
-                if (colors == null || colors.defaultColor != target) {
-                    nameTv.setTextColor(target)
-                }
-            }.onFailure { GLog.w("重绘名称失败 pos=$dataPos", it) }
+            val inWatchlist = if (needsSelfCheck(cfg) && cfg.scopeStrategy) {
+                judge(adapter, dataPos)
+            } else {
+                false
+            }
+            applyStyle(cfg, nameTv, inWatchlist, "重绘名称失败 pos=$dataPos")
         }
     }
 
@@ -227,19 +241,77 @@ class WatchlistFeature : Feature {
         observeConfig(env.config, allowRefresh = true)
 
         val cfg = env.config
-        val inWatchlist = if (cfg.enabled && cfg.scopeStrategy) {
+        val inWatchlist = if (needsSelfCheck(cfg) && cfg.scopeStrategy) {
             judge(adapter, position)
         } else {
             false
         }
 
-        // 注意：关闭开关时也要显式还原原色，
-        // 否则 RecyclerView 复用视图上残留的高亮色不会自己消失。
-        val target = if (inWatchlist) cfg.color else originalColor(nameTv)
+        // 注意：关闭开关时也要显式还原原色 / 原字重，
+        // 否则 RecyclerView 复用视图上残留的高亮色与加粗不会自己消失。
+        applyStyle(cfg, nameTv, inWatchlist, "设置名称样式失败")
+    }
+
+    /**
+     * 这一轮要不要真的去问「是不是自选」。
+     *
+     * 两个开关都关时**不用问** —— 反正结果是「不是自选」，直接还原即可，
+     * 省掉一次反射调用（`judge` 里有 `itemAt` + `codeAndMarket` + 反射 invoke）。
+     */
+    private fun needsSelfCheck(cfg: ConfigSnapshot): Boolean = cfg.enabled || cfg.watchlistBold
+
+    /**
+     * 把「高亮色 + 加粗」一起应用到名称 TextView 上。
+     *
+     * 两个开关**互相独立**：
+     *  - [ConfigSnapshot.enabled] —— 自选股名称染成 [ConfigSnapshot.color]；
+     *  - [ConfigSnapshot.watchlistBold] —— 自选股名称加粗。
+     *
+     * 任一关掉，对应的那一项就要**还原**（颜色回原色 / 字重回原字重）——
+     * RecyclerView 复用视图，残留的样式不会自己消失。
+     */
+    private fun applyStyle(
+        cfg: ConfigSnapshot,
+        nameTv: TextView,
+        inWatchlist: Boolean,
+        failMsg: String,
+    ) {
+        // ---- 颜色 ----
+        val target = if (inWatchlist && cfg.enabled) cfg.color else originalColor(nameTv)
         runCatching {
             val colors = nameTv.textColors
             if (colors == null || colors.defaultColor != target) {
                 nameTv.setTextColor(target)
+            }
+        }.onFailure { GLog.w(failMsg, it) }
+
+        // ---- 字重 ----
+        applyBold(nameTv, inWatchlist && cfg.watchlistBold)
+    }
+
+    /**
+     * 加粗 / 还原字重。
+     *
+     * 记原 Typeface 的时机很讲究：**只在第一次见到、且当前不是加粗态时记** ——
+     * 记晚了就记下了「加粗后的」那个字重，还原时撤不回去
+     * （与 [originalColor] 同一套道理）。
+     */
+    private fun applyBold(tv: TextView, bold: Boolean) {
+        val cur = runCatching { tv.typeface }.getOrNull()
+        if (bold) {
+            if (!originalTypefaces.containsKey(tv) && cur != null && cur.style != Typeface.BOLD) {
+                originalTypefaces[tv] = cur
+            }
+            val base = originalTypefaces[tv] ?: cur ?: return
+            if (cur?.style != Typeface.BOLD) {
+                runCatching { tv.typeface = Typeface.create(base, Typeface.BOLD) }
+                    .onFailure { GLog.w("加粗名称失败", it) }
+            }
+        } else {
+            val orig = originalTypefaces.remove(tv) ?: return
+            if (cur != orig) {
+                runCatching { tv.typeface = orig }
+                    .onFailure { GLog.w("还原名称字重失败", it) }
             }
         }
     }

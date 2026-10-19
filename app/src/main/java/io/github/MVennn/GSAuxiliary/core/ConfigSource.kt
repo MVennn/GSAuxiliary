@@ -92,6 +92,7 @@ class ConfigSource(private val xposed: XposedInterface) {
             ConfigSnapshot(
                 enabled = p.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED),
                 color = p.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
+                watchlistBold = p.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD),
                 scopeStrategy = p.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY),
                 logLevel = p.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
                 stgDirectQuote = p.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE),
