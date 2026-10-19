@@ -298,21 +298,31 @@ class WatchlistFeature : Feature {
      */
     private fun applyBold(tv: TextView, bold: Boolean) {
         val cur = runCatching { tv.typeface }.getOrNull()
-        if (bold) {
-            if (!originalTypefaces.containsKey(tv) && cur != null && cur.style != Typeface.BOLD) {
-                originalTypefaces[tv] = cur
+        val curStyle = cur?.style
+        val recorded = originalTypefaces[tv]?.style
+
+        // 决策走 [TypefacePlan]（纯逻辑，可单测）——
+        // 「记原字重的时机」是这个功能最隐蔽的坑：记晚了就记下了加粗后的那个，
+        // 还原时撤不回去（整行一直粗着）。
+        when (val d = TypefacePlan.decide(curStyle, recorded, bold)) {
+            is TypefacePlan.Decision.Set -> {
+                if (d.recordOriginal && cur != null) originalTypefaces[tv] = cur
+                if (curStyle != d.style) {
+                    val base = originalTypefaces[tv] ?: cur
+                    if (base != null) {
+                        runCatching { tv.typeface = Typeface.create(base, d.style) }
+                            .onFailure { GLog.w("加粗名称失败", it) }
+                    }
+                }
             }
-            val base = originalTypefaces[tv] ?: cur ?: return
-            if (cur?.style != Typeface.BOLD) {
-                runCatching { tv.typeface = Typeface.create(base, Typeface.BOLD) }
-                    .onFailure { GLog.w("加粗名称失败", it) }
+            is TypefacePlan.Decision.Restore -> {
+                val orig = originalTypefaces.remove(tv)
+                if (orig != null && cur != orig) {
+                    runCatching { tv.typeface = orig }
+                        .onFailure { GLog.w("还原名称字重失败", it) }
+                }
             }
-        } else {
-            val orig = originalTypefaces.remove(tv) ?: return
-            if (cur != orig) {
-                runCatching { tv.typeface = orig }
-                    .onFailure { GLog.w("还原名称字重失败", it) }
-            }
+            TypefacePlan.Decision.None -> Unit
         }
     }
 
