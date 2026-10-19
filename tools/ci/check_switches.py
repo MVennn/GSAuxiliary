@@ -105,6 +105,48 @@ def main():
 
     problems = []
 
+    # ⓪ **目录里的每一行，它的键都必须出现在某个 Feature 的判定链上**
+    #
+    # 这是「**假开关**」的定义：界面上有这一行、用户能点开，
+    # 但底下没有 Feature 去读它 → 功能永远不生效。
+    # 真事：第三轮 H1「跳过保存确认」—— `isEnabled` 的 or 链漏了那个位。
+    #
+    # 查法：扫所有 feature/ 下的源码，把 `isEnabled(cfg)` / `switchedOn(cfg)`
+    # 的表达式里出现的 `cfg.<字段>` 收集起来（字段名 = 键常量名的驼峰形式）。
+    feature_dir = os.path.join(SRC, "feature")
+    judged = set()
+    if os.path.isdir(feature_dir):
+        for dirpath, _dirnames, filenames in os.walk(feature_dir):
+            for fn in filenames:
+                if not fn.endswith(".kt"):
+                    continue
+                ftext = read(os.path.join(dirpath, fn))
+                lines = ftext.splitlines()
+                for i, ln in enumerate(lines):
+                    if not re.search(r"\b(?:isEnabled|switchedOn)\s*\(", ln):
+                        continue
+                    # 表达式可能**跨行**（`= \n  cfg.a || cfg.b`）——
+                    # 从这一行往后看 6 行，把里面的 cfg.<字段> 都收进来。
+                    window = "\n".join(lines[i:i + 6])
+                    for fld in re.findall(r"cfg\.([A-Za-z0-9_]+)", window):
+                        # ⚠️ **忽略大小写** —— 键常量名与快照字段名的风格并不统一：
+                        # 常量 `AISTARE_EMPTY_SAVE` ↔ 字段 `aiStareEmptySave`（中间多一个大写 S）。
+                        # 严格按驼峰化比对会把它判成「没有判定链」→ 误报。
+                        judged.add(fld.lower())
+
+    def camel_of(const_name):
+        parts = const_name.lower().split("_")
+        return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+    for k in catalog_keys:
+        field = camel_of(k).lower()
+        if field not in judged:
+            problems.append(
+                "[假开关] 功能页的「%s」这一行，它的键**没有出现在任何 Feature 的 "
+                "isEnabled / switchedOn 链上** —— 界面上能点、底下不装钩子，"
+                "功能永远不会生效（第三轮 H1 就是这样）" % k
+            )
+
     # ① 目录行 ↔ FEATURE_KEYS
     for k in catalog_keys:
         if k not in feature_keys:
@@ -163,6 +205,25 @@ def main():
     for k in feature_keys:
         if k not in defaults:
             problems.append("[没默认值] 功能开关「%s」没有出厂默认值 —— 「重置模块」清不掉它" % k)
+
+    # ⑥⑤ `DEFAULTS` 的键集必须等于 `ALL_KEYS` 的键集
+    #
+    # `ALL_KEYS` 是「会被备份 / 恢复 / 重置覆盖的全部配置键」。
+    # 一个键有了默认值却不在 ALL_KEYS 里 → **备份不带它、恢复也还原不了它**
+    # （用户备份一次再恢复，那个设置就丢了 —— 而界面上看不出任何异常）。
+    defaults = set(re.findall(r"([A-Z][A-Z0-9_]+)\s+to\s+DEFAULT_", read(KEYS)))
+    only_defaults = defaults - set(all_keys)
+    only_all = set(all_keys) - defaults
+    for k in sorted(only_defaults):
+        problems.append(
+            "[备份不带它] 键「%s」有出厂默认值，却不在 `ConfigKeys.ALL_KEYS` 里 —— "
+            "备份 / 恢复都不带它（用户备份一次再恢复，那个设置就没了）" % k
+        )
+    for k in sorted(only_all):
+        problems.append(
+            "[没有默认值] 键「%s」在 `ConfigKeys.ALL_KEYS` 里，却没有出厂默认值 —— "
+            "备份文件的 `defaults` 会缺它" % k
+        )
 
     # ⑥ 每个登记进 ALL_KEYS 的键，都必须归到「功能键」或「功能参数」两类之一
     #
