@@ -338,7 +338,8 @@ Term（取值项）
 | 北交所（含新代码段 920） | `4` / `8` / `920` | 30% |
 | 指数 / 无涨跌幅标的 | — | 判失败（不编名义价） |
 
-> **这张表只是兜底**（DOM 通道才会用到）。主路径的涨跌停价直接取行情接口给的
+> **这张表只是兜底**（**宿主通道与 DOM 通道**会用到 —— 这两个通道给不出官方涨跌停价）。
+> 腾讯 / 东财两条通道直接用行情接口给的官方价。主路径的涨跌停价直接取行情接口给的
 > **官方字段**（腾讯 47/48、东财 f51/f52）—— 接口返回 `-1`（新股上市首日、
 > 退市整理期、停牌）时该项判失败，而不是编一个名义价。
 >
@@ -389,7 +390,7 @@ Term（取值项）
 | 类别 | 谁需要 | 形态 |
 |---|---|---|
 | **实时快照** | `latest` `prevClose` `open` `dayHigh` `dayLow` `limitUp` `limitDown` | 一个 `(最新, 昨收, 今开, 高, 低, 名称)` 的元组 |
-| **日 K 序列** | `highN` `lowN` `highCloseN` `lowCloseN` `maN` | 最近 ≥ 250 根 `(日期, 开, 高, 低, 收)`，按时间升序 |
+| **日 K 序列** | `highN` `lowN` `highCloseN` `lowCloseN` `maN` `historyHigh` `historyLow` | 最近 ≥ 250 根 `(日期, 开, 高, 低, 收)`，按时间升序 |
 
 `upPct`/`downPct`/`prevUpPct`/`prevDownPct`/`fixed` **不需要取数**，纯算术。
 `cost` 走宿主持仓数据。
@@ -488,12 +489,14 @@ QuoteRepository
 
 ### 5.4 缓存与刷新
 
-- **日K**：按 `code.market` 缓存 5 分钟（`LruCache`，容量 16）。盯盘设置是低频动作，
+- **日K**：按 `code.market` 缓存 5 分钟（**容量 16 的表，整表淘汰** —— 第 17 只股票会把前 16 只全部重取；
+  不是 LRU）。盯盘设置是低频动作，
   5 分钟足够，避免用户连点方案时反复打接口。
 - **实时快照**：不缓存，每次套用现取（最新价必须是当下的）。
 - **网络请求**：一律在子线程（`Dispatchers.IO` / `HandlerThread`），
   结果回主线程再 `evaluateJavascript`（WebView 的 JS 求值必须在它自己的线程上）。
-- **超时**：3 秒。超时按「该项失败」处理，走 §5.2 的降级链。
+- **超时**：连接 4 秒 / 读取 5 秒（日 K 8 秒）。超时按「该项失败」处理，走 §5.2 的降级链。
+  （§8 的风险表里写的是「4~8 秒超时」，以那处为准 —— 本条原先写「3 秒」是错的。）
 
 ---
 
@@ -590,8 +593,10 @@ QuoteRepository
 |---|---|
 | `core/QuickConfigStore.kt`（新增） | 方案数据模型 + JSON 编解码 + 容错（坏 JSON 回落出厂、未知 source 只丢该项）+ H5 拉起模块 App 的 Intent 契约常量 |
 | `core/QuickConfigCatalog.kt`（新增） | 取值项目录（§4.2 那张表）：id / 分类 / 参数约束；展示名在 `strings.xml` 的 `quick_term_names`（按下标对应） |
-| `core/QuickConfigEngine.kt`（新增） | 取值项计算（纯函数）：BigDecimal、涨停表（前缀 + ST）、区间校验；`QuoteSnapshot` / `QuoteBar` 数据类也在这里（取数层产出、引擎消费） |
-| `feature/aistare/AiStareQuickConfigTargets.kt`（新增） | 全部常量：页面 URL 片段、桥名/命名空间、配色 `#FF3A3B`、宿主行情字段候选 + 实测说明 |
+| `core/QuickConfigEngine.kt`（新增） | 取值项计算（纯函数）：BigDecimal、涨停表（前缀 + ST）、区间校验 |
+| `core/QuoteModels.kt` | `QuoteSnapshot` / `QuoteBar` 数据类（取数层产出、引擎消费）—— 已从 `QuickConfigEngine.kt` 迁出 |
+| `feature/aistare/AiStareQuickConfigTargets.kt`（新增） | 全部常量：页面 URL 片段、桥名/命名空间、配色 `#FF3A3B` |
+| `feature/aistare/quote/HostFields.kt` | 宿主行情字段候选 + 实测说明 —— 已从 `AiStareQuickConfigTargets.kt` 迁出 |
 | `feature/aistare/AiStareQuickConfigFeature.kt`（新增） | 功能本体：`setWebViewClient` 动态抓子类 → 挂 `onPageFinished` → 注入 JS + 自建 `gsaux` 桥 → 取数调度（会话锁通道）→ 回填；`StockInfo` 构造器钩子喂宿主行情缓存 |
 | `feature/aistare/AiStareJs.kt`（新增） | 注入脚本常量：找「保存」（文本+底部 1/4 双判据）→ 三等分 → 克隆改「配置」→ 弹方案层 → `fill()` 派发 input/change/blur → 方向校验 → `MutationObserver`+500ms 自检 |
 | `feature/aistare/quote/QuoteRepository.kt`（新增） | `QuoteSource` 接口（含 `supportsSnapshot` / `supportsKline` 能力声明）+ `QuoteSession`（按能力挑通道、同通道优先但不锁定、失败逐级降级 —— 2026-10-17 修正了「全局锁定」那个致命缺陷） |
@@ -642,7 +647,7 @@ QuoteRepository
 | 取数失败 | 中 | 整体放弃 + 页面顶部轻提示；**绝不写半截值** |
 | 公开行情接口限流 / 不可达 | 中 | 两家公开行情（腾讯 / 东财）+ 5 分钟日K缓存 + 4~8 秒超时 + 可恢复错误重试一次 + 逐级降级 |
 | 宿主的 `HybirdWebView` 改名 | 低 | 类名/方法名全进候选数组；`WebView` 实例还可以从 `WebViewClient` 钩子的第一个参数拿 |
-| 算错价格写进盯盘策略 | 低但严重 | 写入前做**区间校验**（`0.01 < 价 < 昨收×1.5` 且 涨到 > 跌到），越界不写并报错 |
+| 算错价格写进盯盘策略 | 低但严重 | 写入前做**区间校验**（`0.01 < 价 < 昨收×1.5` 且 涨到 > 跌到），越界不写并报错。⚠️ 含「最近前高 / 前低」的方案**上限放宽到昨收×5**（那是回撤之前的波段点，可能远在现价另一侧，腰斩股尤其明显 —— 用 1.5 倍会把合法的「涨到前高」判成算错） |
 | 影响原版稳定性 | — | 所有视图/JS 操作包 `runCatching`；非价格页的 H5 页面一个字节都不碰 |
 
 **降级链**：

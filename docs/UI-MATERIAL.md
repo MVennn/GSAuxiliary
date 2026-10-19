@@ -21,33 +21,43 @@
 两个选择项（主题设置 / 语言）与「重置」的二次确认，
 统一由 `ui/AppDialog.kt` 的 `DialogHost` 渲染。
 
-#### 两种形态（2.9.2 分化）
+#### 三种形态（2.9.2 分化；`AgreementDialogSpec` 2026-08 加入）
 
-| | `ChoiceDialogSpec`（主题 / 语言） | `ConfirmDialogSpec`（重置） |
-|---|---|---|
+| | `ChoiceDialogSpec`（主题 / 语言） | `ConfirmDialogSpec`（重置） | `AgreementDialogSpec`（首次启动免责声明） |
+|---|---|---|---|
 | 定位 | **从触发控件右中（箭头处）弹出**：优先顶边贴箭头向下展开，下方放不下翻到底边贴箭头向上展开 | **贴屏幕底部**，宽度 = 主页卡片宽（`cardPadding` = 12dp） |
 | 入场 | 以**离箭头最近的右角**为原点缩放展开（`0.80 → 1`）+ **渐显**（2.9.4）：在箭头下方 → 右上角往左下长；翻到上方 → 右下角往左上长 | 从屏幕下方**向上滑入** |
 | 出场 | 向该右角**缩回** + **渐隐**（2.9.3 补缩回、2.9.4 补渐隐） | 向**下滑出** |
 | 标题 | **没有**（2.9.2 去掉，选项本身已说明一切） | 有（居中；主标题 `title4` 18sp + Medium、副标题 15sp —— 2.9.6 定稿，调参史见 §1.3.6） |
-| 内容 | 若干选项行（选中项主色 + 对勾） | 标题 + 说明 + 「取消 / 确定」两个等宽按钮 |
+| 内容 | 若干选项行（选中项主色 + 对勾） | 标题 + 说明 + 「取消 / 确定」两个等宽按钮 | 标题 + 正文 + 「同意并继续」单按钮 |
+| 可关 | 可关 | 可关 | **不可关**（`dismissible = false`）—— 硬门槛，用户必须先同意 |
 
 `DialogController` 只维护**一个** `spec`，两种弹窗是它的两个子类型：
 
 ```kotlin
-sealed interface DialogSpec { val anchor: Rect? }
+sealed interface DialogSpec { val anchor: Rect?; val dismissible: Boolean }
 class ChoiceDialogSpec(val items: List<String>, val selectedIndex: Int, ...) : DialogSpec
 class ConfirmDialogSpec(val title: String, val message: String, ...) : DialogSpec
+class AgreementDialogSpec(...) : DialogSpec          // 首次启动的免责声明同意弹窗
 
 class DialogController {
     var spec by mutableStateOf<DialogSpec?>(null); private set
     var closing by mutableStateOf(false); private set   // 正在播「收起」动画
+    private var afterDismiss: (() -> Unit)? = null      // 「关闭之后再做」的动作队列
 
-    fun dismiss() = when (spec) {
-        null -> Unit
-        is ConfirmDialogSpec -> closing = true   // 贴底弹窗：播完下滑动画再清空
-        else -> spec = null                      // 下拉菜单：立即消失
+    // **所有形态都播退出动画** —— 选择类不再「立即置空」
+    fun dismiss(afterClose: (() -> Unit)? = null) {
+        if (spec == null) return
+        if (afterClose != null) afterDismiss = afterClose
+        closing = true
     }
-    fun finishDismiss() { spec = null; closing = false }   // 只由宿主调用
+    fun finishDismiss() {          // 只由宿主调用（动画播完）
+        spec = null
+        closing = false
+        val action = afterDismiss
+        afterDismiss = null
+        action?.invoke()
+    }
 }
 ```
 
@@ -55,7 +65,14 @@ class DialogController {
 > 早期版本关闭时先把 `spec` 置空再跑退出动画，于是渲染出一张没有内容的空卡片
 > （用户反馈的「关闭时先出现空白弹窗」）。现在退出动画期间 **`spec` 仍然保留**，
 > 动画跑完才 `finishDismiss()` 真正清空 —— 内容全程都在。
-> 选择类弹窗本来就不需要退出动画，直接置空最干净。
+>
+> **所有形态都播退出动画**（含选择类）：原先选择类「立即置空」，
+> 用户反馈「点掉之后弹窗是凭空消失的」，缺少收束感 —— 于是改成也播缩回 + 渐隐。
+>
+> **`afterDismiss` 动作队列**：`dismiss { 动作 }` 让「关闭之后再做」这件事排在
+> 动画**之后**（写配置必须排在收起动画播完之后 —— 见 `docs/UI.md` §9）。
+> 同一个弹层上点过菜单项（动作排着队）、随后又点了遮罩 / 按了返回时，
+> 排队中的那次选择**不能被丢掉** —— 所以只在传了新动作时才覆盖。
 
 ```kotlin
 // 一级页面（SettingsTab）只负责「发起」
@@ -762,8 +779,8 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `Scaffold` / `SmallTopAppBar` / `NavigationBar` / `NavigationBarItem` | Miuix | 页面骨架与默认底栏 |
 | `Card` / `SmallTitle` | Miuix | 分组容器与分组标题（`Card` 需要 `Modifier.cardPadding()`） |
 | `BasicComponent` | Miuix | 标题 + 副标题的信息行 |
-| `SwitchPreference` | Miuix | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回） |
-| `ArrowPreference` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言、备份、恢复、重置、开源链接、免责声明） |
+| `GsSwitchPreference` | **自绘** | 开关项（功能开关、桌面图标、液态玻璃、玻璃光效、可预测返回）—— 替换 Miuix 的 `SwitchPreference` |
+| `BasicComponent` | Miuix | 可点击的动作项（二级入口、主题设置 / 语言、备份、恢复、重置、开源链接、免责声明）—— 替换 Miuix 的 `ArrowPreference` |
 | `TextField` + `rememberTextFieldState` | Miuix / Compose | 方案名称与取值项的文本输入（`QuickConfigEditScreen`） |
 | `Surface` | Miuix | 长按气泡的底板 |
 | `IconButton` / `Icon` | Miuix | 返回按钮、行内图标（⋮ 动作菜单、删除取值项） |

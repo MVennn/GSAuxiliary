@@ -218,7 +218,7 @@ onHotReloaded(param)
 功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
 没有一个功能依赖另一个功能的运行结果。
 
-**挂钩子改行为 / 注入视图**（共 9 个）：
+**挂钩子改行为 / 注入视图**（共 10 个）：
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
@@ -231,6 +231,7 @@ onHotReloaded(param)
 | **新股申购提醒弹窗净化** | `IpoDialogCleanFeature` | `MainAct#showSgbDialog`（申购专用入口）+ `android.app.Dialog#show`（按类名兜底） | 两道都拦下弹窗**显示**：拦展示不拦构造，对象建了只是不 `show`，宿主后续流程照旧 | **判据收紧** —— `Dialog#show` 对**所有**弹窗生效，类全名或简名任一命中才拦，宁可漏也不能误伤宿主其它对话框（见 [FEATURE-IPO-DIALOG](FEATURE-IPO-DIALOG.md)） |
 | **智能盯盘价格页一键配置** | `AiStareQuickConfigFeature` | `WebView#setWebViewClient`（动态抓实际子类 `HybirdWebView$4`）→ 其 `onPageFinished` + `StockInfo` 构造器（宿主行情缓存） | URL 命中价格页 → 注入 JS（`addJavascriptInterface("gsaux")` 自建桥，不进宿主命令漏斗）→ 在「保存」右侧插「配置」按钮；点按钮 → 子线程取数（① 宿主 → ② 腾讯 → ③ 东财 → ④ 页面 DOM，按通道能力降级）→ `QuickConfigEngine` 算价 → `evaluateJavascript` 回填两个输入框并派发 input/change | **H5 页走脚本注入**（分界约定，见 [FEATURE-AISTARE-QUICK-CONFIG](FEATURE-AISTARE-QUICK-CONFIG.md) 附记）；取数失败**不写值**；套用后**不自动点保存**；关开关即时摘按钮（`init(enabled=false)`）。功能目录里的「跳过保存确认」「空数据保存」两个开关也由本功能实现（注入脚本的两个能力位），不单列功能行 |
 | **我的盯盘卡片跳个股详情页** | `AiStareCardDetailFeature` | `ListView#setAdapter`（命中 `#listMyStare` / `AIStareIndexAct`）→ 动态挂 adapter `getView` + `Activity.onResume` | 给「我的盯盘」卡片（`#layoutContent`）挂点击：从 adapter item 取 `codeAndMarket`，拿不到才退回「6 位代码 + 沪/深前缀猜市场」，`startActivity(quotes.stockDetail + IntentStockInfo)` 进详情页 | **不用 position 存股票**（复用会张冠李戴），用「卡片视图 → 代码.市场」弱表；编辑 / 删除是子视图自消费点击，不碰；只认沪 / 深，其余宁可不跳（见 [FEATURE-AISTARE-CARD-DETAIL](FEATURE-AISTARE-CARD-DETAIL.md)） |
+| **行情市场筛选涨跌与自选** | `MarketFilterFeature` | `Dialog#show`（**前置**注入，宿主自己的筛选面板）+ `PageSyncFeature` 骨架（改排行榜行） | 往宿主的「沪深京A」筛选面板里追加「涨跌与自选」三行（与策略详情页那颗面板**共用同一份状态与文案**），点确定落盘；按这三行把排行榜里不匹配的行**收起**（高度归零 + GONE） | **注入必须前置**（面板一 `show` 就量过尺寸，之后 `addView` 会被裁掉）；判定**只看视图**（`Dialog` 是框架类、全 App 都在弹）；关开关能**撤掉**注入的三行并把宿主「确定」的监听还原（规则 1.1）；**不碰**宿主自己的类型过滤那五行（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md)） |
 
 **界面精简**（其余 5 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
@@ -249,9 +250,13 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（14 个功能 / 16 个开关）**：上面两张表就是全部功能的现行挂载方式 —— 挂钩子 9 个
-> + 界面精简 5 个，另有「跳过保存确认」「空数据保存」两个开关由一键配置功能一并实现
-> （不单列功能行）。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
+> **当前状态（15 个 Feature 实现 / 17 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
+> 挂钩子改行为 10 个 + 界面精简 5 个。
+>
+> **口径说明**：「17 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
+> 「15 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 2 是因为
+> `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
+> 三个开关由**同一个** Feature 实现（`AiStareQuickConfigFeature`），不单列功能行。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
 > `stock_bar_entry`（底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`
@@ -354,6 +359,7 @@ data class ConfigSnapshot(
     val marketBannerHide: Boolean,       // 隐藏行情市场滚动横幅与快捷入口
     val marketSectorCompact: Boolean,    // 行情市场板块由六项压缩为三项
     val marketOverviewCompact: Boolean,  // 行情市场「市场概览」整体压矮
+    val marketStockFilter: Boolean,      // 行情市场「沪深京A」筛选面板加「涨跌与自选」三行
     val navBarBlend: Boolean,            // 手势导航条填充与紧邻界面一致的颜色
     val ipoDialogClean: Boolean,         // 新股申购提醒弹窗净化
     val aistareQuickEnabled: Boolean,    // 智能盯盘价格页「一键配置」开关
@@ -364,15 +370,25 @@ data class ConfigSnapshot(
     val aiStareSaveBackToStock: Boolean, // 保存成功后退到个股详情页（false = 只回上一页）
     val aiStarePickScheme: Boolean,      // 多方案时弹「选择方案」层（false = 直接套默认方案）
 ) {
-    val fingerprint: Int get() = …   // 稳定指纹，只在内容变化时改变
+    // 稳定指纹，只在内容变化时改变。
+    // ⚠️ 是**构造期算好的字段**，不是计算型 getter —— `getView` 每行都会读它一次，
+    //    而方案 JSON 可达几十 KB，`String.hashCode` 是 O(n) 全扫（规则 2.2）。
+    // ⚠️ 指纹是「布尔项占低位逐个异或」，**不是加权和** ——
+    //    加法里两组不同的布尔组合能凑成同一个和（如 2137+2221 == 2011+2347），
+    //    撞上时 `ConfigSource` 会判定「配置没变」→ 这次变更被**静默丢弃**。
+    val fingerprint: Int = run { … }
 }
 ```
+
+> 快照共 **24 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 30 个键
+> = 24 个进快照 + 6 个只属模块 App 进程（桌面图标 / 玻璃 / 语言 / 主题 / 可预测返回 / 日志等级）。
 
 为什么用快照而不是直接读 `SharedPreferences`：
 
 - `getView` 是热路径，快照读取是纯内存操作，零 IO
 - 配置变化时**整体替换**，天然线程安全
 - 新增配置项只需改这里 + `ConfigKeys` + 设置界面
+  （⚠️ 还要加进 `ConfigKeys.SNAPSHOT_KEYS` —— 否则目标进程**收不到**它的变更）
 
 ### 4.2 `WatchlistFeature.originalColors` — 原始色缓存
 
@@ -410,7 +426,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
-| **功能总开关** | `FEATURE_KEYS` 全表（16 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` | 目标进程 | ✅ | **一律 `false`** |
+| **功能总开关** | `FEATURE_KEYS` 全表（17 个键）：`ENABLED` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_STOCK_FILTER` / `STOCK_BAR_ENTRY` / 界面精简五项 / `MARKET_STOCK_FILTER` / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` | 目标进程 | ✅ | **一律 `false`** |
 | **功能参数** | `COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 

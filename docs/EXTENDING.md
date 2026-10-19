@@ -423,9 +423,13 @@ Scaffold { padding ->
 | 功能 | 复用 |
 |---|---|
 | 自选股名称加粗 / 字号 | `WatchlistFeature` 的 `getView` 钩子可提取为公共基类 |
-| 涨跌幅色块标记 | 同上 |
+| 涨跌幅色块标记 | 同上（行内涨跌幅控件 id 已实测：`tv_item_stk_percent`） |
 | 盘口大单数字着色 | `Reflect` + 候选名机制 |
-| K 线指标叠加（MA / 布林带） | 需要新增一组 `WatchlistTargets` 式候选常量 |
+| K 线指标叠加（MA / 布林带） | ⚠️ **难度被低估了**：宿主 K 线是**自绘控件**（`quote/HostFields.kt` 的 `KXChartGroupView` / `m_kxChartInfo` / `m_kxChartItems`），叠加指标要在宿主绘制之上**二次绘制** —— 不是「新增一组候选常量」就够；且 K 线在「更多」弹层里，得先侦察 |
+
+> **「涨跌幅色块」这类显示类功能的一个坑**：宿主可能**已经**给那个 TextView 设了背景
+> （比如涨绿跌红的色块），那时我们要改的是**叠加一层半透明**，不是替换背景。
+> 先在真机上确认宿主给了什么背景再动手。
 
 ### 5.2 中期（需要小规模基础设施）
 
@@ -435,11 +439,13 @@ Scaffold { padding ->
 | 功能级作用域 | `Feature` 加 `fun scope(pkg: String): Boolean` |
 | 配置项分组 | `ConfigKeys.GROUP` 已参数化，`ConfigSource` 支持多组 |
 | 设置界面按功能动态生成 | **已部分完成**：功能列表与开关由 `ui/FeatureCatalog.kt` 驱动； 二级菜单内容仍是每个功能手写（要彻底动态化得把参数项也描述成数据） |
-| 运行时开关单个功能 | `HookBag` 已支持按功能卸载，需要给 `Feature` 加 `uninstall` |
+| 运行时开关单个功能 | ⚠️ **原描述不成立**：`HookBag` 现在只有一个**扁平句柄表** + 一个 `unhookAll()`，**没有**按功能分组 / 按功能卸载的能力。要做这件事得先把 `HookBag` 改成按功能分组，再给 `Feature` 加 `uninstall` —— 而 `FeatureManager.onConfigChanged` 现在**只补装不卸载**（`installedIds` 只增不减），所以「关掉一个功能 → 它的钩子还在树上跑」是当前的结构性问题 |
 
 ### 5.3 远期
 
 - **`DebugConfigProvider`** 目前只是 adb 读写配置，可以扩成完整的自动化测试夹具
+  （它已经是标准 ContentProvider：`query` 返回键值矩阵、`update` 按列写回；
+  但列**硬编码且已落后** —— `ConfigKeys.FEATURE_KEYS` 里的新开关没有对应列）
 - **`ConfigSource.channel`** 是配置通道的健康状态，可在设置界面可视化
 - **热重载**已实现（`autoHotReload=true` + `onHotReloaded` 重装），可进一步做版本比对
 

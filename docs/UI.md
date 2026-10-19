@@ -13,7 +13,17 @@
 |---|---|
 | `SettingsActivity.kt` | Activity、主题 / 本地化、**两层布局**（一级底衬 / 二级滑入）、顶栏、返回与可预测返回、弹窗宿主装配 |
 | `Glass.kt` | 液态玻璃：`GlassTopBar`（顶栏，无边框 + `extra()` 插槽）、`glassSurfaceTint()`（面色）、`LocalTopInset` / `LocalDarkTheme`、`DockScrollState` + `dockScrollConnection`（下滑收起） |
-| `AppDialog.kt` | 自绘弹窗宿主 `DialogHost` + `DialogController` / `ChoiceDialogSpec` / `ConfirmDialogSpec` / `LocalDialogController`（见 §1.3） |
+| `AppDialog.kt` | 自绘弹窗的**设计说明**（只有注释，没有代码） |
+| `AppDialogHost.kt` | 自绘弹窗宿主 `DialogHost`（把 spec 渲染成浮层，见 §1.3） |
+| `AppDialogSpec.kt` | `DialogController` / `DialogSpec` / `ChoiceDialogSpec` / `ConfirmDialogSpec` / `AgreementDialogSpec` / `LocalDialogController` |
+| `AppDialogWidgets.kt` | 弹层的内部控件（标题、按钮、滚动指示条） |
+| `Routing.kt` | 路由（`Route` 枚举 + 深链）+ `MainScreen`（一级页外壳） |
+| `Screens.kt` | `HomeScaffold`（一级页的 `Scaffold` / 顶栏 / 底栏）+ `SubScreen`（二级页外壳） |
+| `GsSwitch.kt` | 自绘开关（替换 Miuix 的 `Switch` / `SwitchPreference`；拖拽量纲按密度换算） |
+| `LiquidPhysics.kt` | 液态玻璃的物理参数（拖拽惯性 / 阻尼） |
+| `AnimCurves.kt` | 动画曲线（各页共用的一套 easing） |
+| `AiStareSettingsScreens.kt` | 智能盯盘的二级 / 三级设置页（保存后返回位置、配置按钮设置） |
+| `BackupUiState.kt` | 备份 / 恢复 / 导出日志的忙标记与结果（由 `HomeScaffold` 持有，跨板块存活） |
 | `PrefState.kt` | 读取配置的 Composable（`rememberBoolPref` / `rememberLocalBoolPref` / `rememberIntPref` / `rememberStringPref` / `rememberConnected` / `rememberDarkTheme` / `rememberPredictiveBack`） |
 | `SystemBars.kt` | 系统栏沉浸：`SyncSystemBars`（图标明暗 + 窗口底色跟随**生效的**深浅色）、`LocalNavBarInset`、`Context.findActivity()` |
 | `FeatureCatalog.kt` | 功能展示元数据（`FeatureSpec` + `FEATURE_CATALOG`） |
@@ -391,24 +401,32 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前十六个功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**十七个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
+
+> **口径说明**：这里的「十七个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
+> `FeatureSpec` 条数）。它与「Feature 实现数」不是一回事 ——
+> `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
+> 三个开关由**同一个** Feature 实现（`AiStareQuickConfigFeature`），
+> 所以目录 17 行 ↔ 实现 15 个。
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
-| 策略页 | 策略直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
-| 策略页 | 策略多选全选 | `stg_select_all` | 无 |
-| 策略页 | 策略筛选股票 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
-| 股票详情页 | 底栏智能盯盘入口 | `stock_bar_entry` | 无 |
-| 智能盯盘 | 价格页一键配置 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
-| 智能盯盘 | 保存时清空盯盘 | `aistare_empty_save` | 无 |
-| 智能盯盘 | 保存后免确认 | `aistare_skip_save_confirm` | 保存后返回位置设置（`AiStareSaveBehaviorScreen`） |
+| 登录 | 隐藏 新股申购 弹窗 | `ipo_dialog_clean` | 无 |
+| 策略页 | 直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
+| 策略页 | 增加 全选 按钮 | `stg_select_all` | 无 |
+| 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
+| 股票详情页 | 增加 智能盯盘 入口 | `stock_bar_entry` | 无 |
+| 智能盯盘 | 增加 配置 按钮 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
+| 智能盯盘 | 优化确定逻辑 | `aistare_empty_save` | 无 |
+| 智能盯盘 | 无需确定保存盯盘 | `aistare_skip_save_confirm` | 保存后返回位置设置（`AiStareSaveBehaviorScreen`） |
 | 智能盯盘 | 盯盘数据卡片拓展 | `aistare_card_detail` | 无 |
-| 底栏 | 底栏隐藏理财入口 | `dock_clean` | 无 |
-| 首页 | 首页隐藏横幅 | `home_banner_hide` | 无 |
-| 行情市场 | 行情市场隐藏滚动横幅与快捷入口 | `market_banner_hide` | 无 |
-| 行情市场 | 行情市场板块显示单行 | `market_sector_compact` | 无 |
-| 行情市场 | 行情市场概览高度优化 | `market_overview_compact` | 无 |
+| 底栏 | 隐藏 理财 入口 | `dock_clean` | 无 |
+| 首页 | 隐藏 横幅 | `home_banner_hide` | 无 |
+| 行情市场 | 隐藏 滚动横幅与快捷入口 | `market_banner_hide` | 无 |
+| 行情市场 | 板块显示单行 | `market_sector_compact` | 无 |
+| 行情市场 | 市场概览高度优化 | `market_overview_compact` | 无 |
+| 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
 
@@ -444,19 +462,19 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 
 | 页面 | 层级 | 结构 |
 |---|---|---|
-| `QuickConfigScreen.kt` | 二级 | 「方案」一张卡：方案行（`ArrowPreference`：名称 + 预览 + 默认徽标 + ⋮ 菜单）+ 新建方案（主色 + 加号）+ 卡底一句口径脚注 |
+| `QuickConfigScreen.kt` | 二级 | 「方案」一张卡：方案行（名称 + 预览 + 默认徽标 + ⋮ 菜单）+ 新建方案（主色 + 加号） |
 | `QuickConfigEditScreen.kt` | **三级** | 名称卡 → 「最新涨到」「最新跌到」两张槽卡 → 提醒时效单卡 → 「操作」卡（设为默认 / 删除方案） |
 
 三件事值得记：
 
-- **卡内一律 Miuix 组件**（`ArrowPreference` / `BasicComponent` / `SwitchPreference` /
+- **卡内一律 Miuix 组件**（`BasicComponent` / `GsSwitchPreference`（自绘）/
   `IconButton`），不再手写 `Row` + `Text` + `clickable`：按压高亮、字号、内边距、
   触控目标都由组件给，手写版本每处都要自己对齐一遍。
 - **弹层锚点每个控件自己 `remember` 一份**（见 §9）。3.1.0 用共享变量接所有控件的
   `boundsInWindow`，谁最后布局完谁就是锚点 —— 点第一行的 ⋮，菜单从**最后一行**
   弹出来；编辑页点「聚合」，菜单贴在「添加取值项」上。
-- **取值项清单不摆在列表页**：18 个取值项按分组平铺比方案列表还长，而那些名字在
-  编辑页「添加取值项」的弹层里本来就有。列表页只留一句脚注（`quick_terms_note`）。
+- **取值项清单不摆在列表页**：21 个取值项按分组平铺比方案列表还长，而那些名字在
+  编辑页「添加取值项」的弹层里本来就有。列表页不摆脚注（3.2.x 起撤掉）。
 
 ---
 
