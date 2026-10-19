@@ -644,7 +644,11 @@ class StgStockFilterFeature : Feature {
         //    `setOnItemClickListener(...)`，把我们的 wrapper 顶掉 ——
         //    之后点击就按「子集下标」解释，点开的是别的股票。
         //    ensureClickRemap 自己幂等，Field 与 ListView 都有缓存，这里开销很小。
+        //    ⚠️ 外层必须有日志：装不上时行点击会按子集下标解释 → **点错股票**，
+        //    而症状对用户只是「点开的不对」，没有日志就完全查不出来
+        //    （`docs/CODE-RULES.md` §3.3：每处早退都要能自证原因）。
         runCatching { ensureClickRemap() }
+            .onFailure { GLog.w("筛选股票：行点击回映射安装失败（点行可能点错股票）", it) }
 
         // ③ 兜底补一次：条件生效、但 ListView 上没挂着我们的过滤代理。
         //    宿主可能自己 setAdapter 过一次把代理顶掉，也可能只 setAdapter 不发通知 ——
@@ -1339,6 +1343,10 @@ class StgStockFilterFeature : Feature {
                 percentByCam.getOrPut(adapter) { HashMap() }
             }
             synchronized(map) { map[cam] = pct }
+        }.onFailure {
+            // 记不上 → 这一行的涨跌幅按「平盘」归类 → 方向筛选会把它藏掉（or 反之）。
+            // 症状是「筛选结果不对」，没有日志就无从下手（§3.3）。
+            GLog.w("筛选股票：行内涨跌幅兜底记录失败（该行可能被当成平盘）", it)
         }
     }
 

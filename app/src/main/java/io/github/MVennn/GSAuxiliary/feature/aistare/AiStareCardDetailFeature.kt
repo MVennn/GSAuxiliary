@@ -241,7 +241,9 @@ class AiStareCardDetailFeature : Feature {
         }
         val dot = cam.lastIndexOf('.')
         if (dot <= 0 || dot == cam.length - 1) {
-            GLog.w("我的盯盘卡片：代码格式不认识（$cam），跳过")
+            // ⚠️ cam 是原始的「代码.市场」串，格式不认识时它就是完整 6 位代码 ——
+            // INFO 及以上不得出现完整代码（`docs/CODE-RULES.md` §3.1）
+            GLog.w("我的盯盘卡片：代码格式不认识（${LogMask.stock(cam)}），跳过")
             return
         }
         val code = cam.substring(0, dot)
@@ -304,10 +306,18 @@ class AiStareCardDetailFeature : Feature {
         return "$text.$market"
     }
 
-    /** 第一次见到某种 item 对象时，把字段名字与值打出来（定位数据字段用，永久保留成本极低） */
+    /**
+     * 第一次见到某种 item 对象时，把字段名字与值打出来（定位数据字段用）。
+     *
+     * ⚠️ **值一律打码，且整条降 DEBUG**（`docs/CODE-RULES.md` §3.1）：
+     * 这些字段里就带着 6 位股票代码（`CAM_FIELDS` / `CODE_FIELDS` 读的就是同一个 item），
+     * 而默认日志等级是 INFO —— 原先按 INFO 打，用户的关注列表会随导出日志整份外流。
+     * 这是**诊断日志**（定位字段名用），不该进用户的导出件，DEBUG 档才打。
+     */
     private fun dumpItemOnce(item: Any) {
         val name = item.javaClass.name
         if (!dumpedItemClasses.add(name)) return
+        if (!GLog.isDebug) return
         val fields = runCatching {
             item.javaClass.declaredFields
                 .filterNot { java.lang.reflect.Modifier.isStatic(it.modifiers) }
@@ -317,7 +327,7 @@ class AiStareCardDetailFeature : Feature {
                         val v = f.get(item)
                         val s = when (v) {
                             is List<*> -> "List(size=${v.size})"
-                            is String -> "\"$v\""
+                            is String -> "\"" + maskValue(v) + "\""
                             null -> "null"
                             else -> v.toString().take(40)
                         }
@@ -325,7 +335,23 @@ class AiStareCardDetailFeature : Feature {
                     }.getOrDefault("${f.name}=?")
                 }
         }.getOrDefault("?")
-        GLog.i("我的盯盘卡片：item 类 $name 字段 -> $fields")
+        GLog.d("我的盯盘卡片：item 类 $name 字段 -> $fields")
+    }
+
+    /**
+     * 字段值打码：只遮**代码形状**的字符串，别的原样（股票名不是敏感信息）。
+     *
+     * - 6 位纯数字 → [LogMask.code]（`300045` → `30****`）
+     * - 「数字.数字」→ [LogMask.stock]（`300045.1` → `30****.1`）
+     * - 其它（股票名、枚举、描述）→ 原样，但截断长度
+     */
+    private fun maskValue(v: String): String {
+        if (v.isEmpty()) return v
+        val digits = v.all { it.isDigit() }
+        if (digits && v.length == 6) return LogMask.code(v)
+        val dot = v.lastIndexOf('.')
+        if (dot > 0 && v.substring(0, dot).all { it.isDigit() }) return LogMask.stock(v)
+        return v.take(40)
     }
 
     private fun itemAt(adapter: Any, position: Int): Any? {

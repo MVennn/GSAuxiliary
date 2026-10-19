@@ -62,32 +62,57 @@ data class ConfigSnapshot(
      * 用属性初始化器在构造期算好并缓存 —— 快照本身不可变，指纹永远不变。
      * `getView` 每行都会读一次它，绝不能做成计算型 getter
      * （[aiStareQuickConfig] 的 JSON 可达几十 KB，`String.hashCode` 是 O(n) 全扫）。
+     *
+     * ## 为什么是位掩码而不是加权和
+     *
+     * 原先是「每项乘一个互不相同的质数再相加」。乘数互不相同**防不住碰撞**：
+     * 加法里两组不同的布尔组合可以凑成同一个和，例如
+     * `2137 + 2221 == 2011 + 2347`（`{首页横幅, 行情横幅}` 与 `{底栏精简, 板块压缩}`），
+     * `31 + 131 + 2741 == 2903`（`{总开关, 策略页, 新股弹窗}` 与 `{多方案选择}`）。
+     * 撞上时 `ConfigSource` 的指纹比对会**判定「没变」**，这次配置变更就被静默丢弃
+     * —— 用户改了开关但功能不变，而且**日志里一行都没有**。
+     *
+     * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
+     * （「重置模块」一次写 23 个键、恢复备份一次写 29 个键）。
+     *
+     * 改成「布尔项占低位、逐个异或」之后：**22 个布尔项之间不再有任何碰撞**
+     * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON）
+     * 再各自混一层异或，碰撞概率从「几千分之一」降到「1/2³²」。
      */
-    val fingerprint: Int =
-        ((if (enabled) 1 else 0) * 31
-                + color * 7
-                + (if (scopeStrategy) 1 else 0) * 131
-                + logLevel * 17
-                + (if (stgDirectQuote) 1 else 0) * 977
-                + (if (stgQuoteSwipe) 1 else 0) * 1231
-                + (if (stgSelectAll) 1 else 0) * 1543
-                + (if (stgStockFilter) 1 else 0) * 1789
-                + (if (stockBarEntry) 1 else 0) * 1877
-                + (if (dockClean) 1 else 0) * 2011
-                + (if (homeBannerHide) 1 else 0) * 2137
-                + (if (marketBannerHide) 1 else 0) * 2221
-                + (if (marketSectorCompact) 1 else 0) * 2347
-                + (if (marketOverviewCompact) 1 else 0) * 2467
-                + (if (marketStockFilter) 1 else 0) * 2621
-                + (if (navBarBlend) 1 else 0) * 2671
-                + (if (ipoDialogClean) 1 else 0) * 2741
-                + (if (aistareQuickEnabled) 1 else 0) * 2851
-                + (if (aiStareSkipSaveConfirm) 1 else 0) * 2887
-                + (if (aiStareEmptySave) 1 else 0) * 2909
-                + (if (aiStareCardDetail) 1 else 0) * 2927
-                + (if (aiStareSaveBackToStock) 1 else 0) * 2897
-                + (if (aiStarePickScheme) 1 else 0) * 2903
-                + aiStareQuickConfig.hashCode() * 2879)
+    val fingerprint: Int = run {
+        var h = 0
+        var bit = 1
+        fun mix(b: Boolean) {
+            if (b) h = h xor bit
+            bit = bit shl 1
+        }
+        mix(enabled)
+        mix(scopeStrategy)
+        mix(stgDirectQuote)
+        mix(stgQuoteSwipe)
+        mix(stgSelectAll)
+        mix(stgStockFilter)
+        mix(stockBarEntry)
+        mix(dockClean)
+        mix(homeBannerHide)
+        mix(marketBannerHide)
+        mix(marketSectorCompact)
+        mix(marketOverviewCompact)
+        mix(marketStockFilter)
+        mix(navBarBlend)
+        mix(ipoDialogClean)
+        mix(aistareQuickEnabled)
+        mix(aiStareSkipSaveConfirm)
+        mix(aiStareEmptySave)
+        mix(aiStareCardDetail)
+        mix(aiStareSaveBackToStock)
+        mix(aiStarePickScheme)
+        // 数值项各自混一层：黄金比例常数（Fibonacci hashing 的标准做法）
+        h = h xor (color * 0x9E3779B1.toInt())
+        h = h xor (logLevel * 0x85EBCA6B.toInt())
+        h = h xor aiStareQuickConfig.hashCode()
+        h
+    }
 
     companion object {
         val DEFAULT = ConfigSnapshot(

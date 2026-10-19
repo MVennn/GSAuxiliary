@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.aistare.quote
 
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.core.QuoteBar
 import io.github.MVennn.GSAuxiliary.core.QuoteSnapshot
 import io.github.MVennn.GSAuxiliary.util.Reflect
@@ -88,13 +89,27 @@ class HostQuoteSource : QuoteSource {
             return null
         }
         if (cam != expected) {
-            GLog.d("一键配置取数：宿主缓存的股票（$cam）不是当前页（$expected），降级")
+            GLog.d("一键配置取数：宿主缓存的股票（${LogMask.stock(cam)}）不是当前页（${LogMask.stock(expected)}），降级")
             return null
         }
         val latest = readDecimal(info, HostFields.HOST_FIELD_LATEST)
         val prevClose = readDecimal(info, HostFields.HOST_FIELD_PREV_CLOSE)
         if (latest == null || prevClose == null) {
             GLog.d("一键配置取数：宿主 StockInfo 关键字段缺失（未填充行情？）")
+            return null
+        }
+        // ⚠️ **非正价一律当「没取到」**（与腾讯 `PublicQuoteSource` / 东财同口径）。
+        // 宿主通道的 StockInfo 是**构造后填充**的：构造器刚跑完、行情还没回填时，
+        // 最新价与昨收都是 0。而引擎的**全部**写入前区间校验
+        // （`0.01 < 价 < 昨收×1.5`）都包在 `prevClose > 0` 里（`QuickConfigEngine`），
+        // prevClose = 0 时那道闸门**整段消失** —— 于是「跌到 0.00」这种无效策略
+        // 能被算出来并写进宿主盯盘。腾讯/东财结构上产不出这种快照，宿主通道是唯一的漏洞。
+        if (prevClose.signum() <= 0) {
+            GLog.d("一键配置取数：宿主 StockInfo 昨收非正（行情未回填？），降级")
+            return null
+        }
+        if (latest.signum() <= 0) {
+            GLog.d("一键配置取数：宿主 StockInfo 最新价非正（行情未回填？），降级")
             return null
         }
         return QuoteSnapshot(
