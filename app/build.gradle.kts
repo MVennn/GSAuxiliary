@@ -260,4 +260,21 @@ dependencies {
     testImplementation(kotlin("test"))
     // android.jar 里的 org.json 是 stub（抛 "Stub!"）→ 换成真实现
     testImplementation("org.json:json:20250107")
+
+    // ❌ **不引 Robolectric / Compose UI 测试**（2026-10-20 实测后的结论）：
+    //   - Robolectric 的 `android-all` 制品确实能下（compileSdk 37 无对应版本，
+    //     但可以用 `@Config(sdk = 34)` 跑），**冒烟测试能过**；
+    //   - 但要用它跑 Compose 界面（`createAndroidComposeRule`）得先解决
+    //     「Activity 解析不了」：官方 `ui-test-manifest` 是给 **debug 变体**用的，
+    //     本项目只编 release 变体，引它等于把测试 Activity 打进**正式发布包**；
+    //     自己写测试 manifest 也只在**单测源集**生效，而 Robolectric 读的是
+    //     **app 的主 manifest** —— 一路试下来成本远大于收益；
+    //   - 更根本的是：它验的是**渲染结果**，而这个项目的界面观感差异
+    //     靠的是真机（Miuix / 液态玻璃 / 深色模式），Robolectric 验不出那个；
+    //   - 结论：**界面类改动仍然只能靠真机**，自动化只覆盖纯逻辑那一半
+    //     （配置、筛选、算价、打码 —— 已在 `app/src/test/` 里）。
+    //
+    //   等哪天有了**能跑的模拟器**（要管理员装 Android Emulator hypervisor driver
+    //   或启用 WHPX），再考虑把「宿主 App 装进模拟器 + LSPosed」这条路走通 ——
+    //   那才是真正能替代真机的方案。
 }
