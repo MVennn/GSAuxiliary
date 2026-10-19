@@ -448,6 +448,54 @@ cp keystore.properties.example keystore.properties
 
 ---
 
+## 7.5 提交前的自动检查（2026-10-20 起）
+
+> 这一节是 2026-10-20 那批审查之后加的 —— 起因是**四轮审查每一轮都引入了新 bug**，
+> 而当时**没有任何自动化手段**能在提交前抓住它们，全靠真机人工验兜底。
+>
+> **本地跑法**（提交前跑一遍，全是秒级的）：
+
+| 命令 | 查什么 | 多久 |
+|---|---|---|
+| `python tools/hygiene.py` | 死代码 / 冗余资源 / 未用 import / 未引用的顶层声明 | 1s |
+| `python tools/ci/check_invariants.py` | 7 条静态不变量（见下） | 2s |
+| `python tools/ci/check_switches.py` | 功能开关全链路：目录行 ↔ 配置键 ↔ 快照字段 ↔ 出厂默认值 | 2s |
+| `python tools/ci/check_contract.py` | 宿主契约：代码里认的宿主标识 ↔ 契约清单 | 2s |
+| `cmd /c gradlew.bat :app:testReleaseUnitTest` | 109 条单元测试（纯逻辑那一半） | 5s |
+| `python tools/ci/verify_apk.py --reject-debug-cert <apk>` | 产物红线（24 项） | 2s |
+
+`check_invariants.py` 的 7 条规则：
+
+1. Miuix 的 `Overlay*` 组件禁用（一点就闪退）
+2. 关键 UI 状态用 `rememberSaveable` 而不是 `remember`（翻屏丢状态）
+3. 拿自己的类名当判据时，`proguard-rules.pro` 必须有对应的 `-keepnames`
+   （R8 打穿 —— 2026-10-19「筛选确定不生效」就是它）
+4. 功能键必须出现在某个 Feature 的 `isEnabled` 链上（假开关 —— 第三轮 H1）
+5. 宿主标识要用候选数组而不是单值（宿主升级就废）
+6. 中英 `strings.xml` 的键一一对应
+7. INFO/WARN 日志里不得出现未脱敏的 6 位代码（规则 3.1）
+
+### 变异测试：证明「单测真的在守着那条判据」
+
+`python tools/ci/mutants.py` —— 把每个判据**故意改坏一次**，确认对应的测试**真的会红**。
+11 个变异体，覆盖指纹碰撞、限速丢弃、切分口径、指数概览判据、字重还原、日志打码。
+
+> ⚠️ 它会**临时改源码**（跑完自己还原），所以要求工作区是干净的。
+> 不是 CI 的常规步骤（要跑 11 遍测试）—— 而是**改了判据之后手动跑一次**的检查清单。
+>
+> 2026-10-20 第一次跑就找出**两个真的守卫盲区**（「当前已加粗态时不能把加粗后的
+> 记成原字重」与「打码要挡住两位的代码」）。
+
+### 仍然只能靠真机的那一半
+
+**界面观感**（液态玻璃 / 深色模式 / 字体度量 / 抗锯齿）与**宿主行为**
+（视图结构、点击分发、宿主改版后的兼容）—— 自动化帮不上忙。
+2026-10-20 实测过 Robolectric：制品能下、纯 View 能跑，但**跑 Compose 界面过不去**
+（Activity 解析不了，而官方那个 AAR 是 debug 变体用的、引进 release 等于把测试 Activity
+打进正式包）。详见 `app/build.gradle.kts` 依赖处的说明。
+
+---
+
 ## 8. 在 GitHub Actions 上构建
 
 两个工作流，都在 `.github/workflows/`：
