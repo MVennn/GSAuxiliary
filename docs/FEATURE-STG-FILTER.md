@@ -1,8 +1,13 @@
 # 策略详情页「筛选股票」实现说明
 
-> 版本：**2.16.1**（`versionCode 38`） · 功能 id：`stg_stock_filter`
+> 一句话：策略详情页三点菜单里加一项「筛选股票」，点开的面板与行情页那颗漏斗**同源**，
+> 八项条件分两组（涨跌与自选 / 股票类型），筛掉的行从列表里真正移除。
+>
+> 版本：**2.18.0**（面板八行两组；2.16.1 起为三项、2.17.0 起计数与空态） · 功能 id：`stg_stock_filter`
 > 目标 App：国信金太阳 **8.6.0**（vc271） · 实测设备：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1
 > 相关代码：[`feature/stgfilter/`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgfilter/)
+> + [`feature/filter/`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/filter/)（**与行情页面板共用**的模型 / 落盘 / 面板工具）
+> 姊妹篇：[FEATURE-MARKET-FILTER.md](FEATURE-MARKET-FILTER.md)（行情页那颗面板里追加的三行 + 筛排行榜）
 
 ---
 
@@ -10,7 +15,9 @@
 
 1. 策略详情页右上角三点菜单（「修改名称」/「删除策略」）里，**「修改名称」下方**新增
    `筛选股票`；
-2. 点击弹出筛选页，页内提供 **涨家股票 / 跌家股票 / 自选股票** 三个可切换开关。
+2. 点击弹出筛选页，页内提供 **涨家股票 / 跌家股票 / 自选股票** 三个可切换开关
+   （2.18.0 起又多一组 **股票类型**：创业板 / 科创板 / 北证A / 未开板次新 / ST股，
+   与行情页「沪深京A」漏斗里的那五项同名同义，见 §四之二）。
    **勾选项之间是彼此独立的类别**：未勾选的类别、其对应股票一律不显示 ——
    例如只勾「涨家股票」时，自选里那些正在涨的股票**也不显示**；
    三个都不勾 = 不筛选（全显示）；
@@ -156,16 +163,40 @@ ConstraintLayout #itemroot（clickable, 45dp）
    （这两个库都不在模块的 classpath 里）。
 
 另外：分组折叠箭头（`tv3` 右侧那颗无 id 的 ImageView）**隐藏** —— 原版分组可折叠，
-我们这里只有固定三行，留个点了没反应的箭头是骗人。面板背景
+我们这里只有固定八行，留个点了没反应的箭头是骗人。面板背景
 `?attr/shape_half_top_round_solid_12` 若在当前主题下解析不到，用
 `theme.resolveAttribute` 自己补一次。
+
+### 2.18.0：两组八行，与行情页那颗面板共用一套
+
+```
+筛选股票                        ← tv1
+勾选后对应的条件才会生效          ← tv2
+── 涨跌与自选 ──                ← tv3（宿主那行分组头，文案改成这组）
+   涨家股票 / 跌家股票 / 自选股票
+── 股票类型 ──                  ← 克隆 tv3 的分组头（样式 + 左缩进差额）
+   创业板 / 科创板 / 北证A / 未开板次新 / ST股
+[重置] [确定]
+```
+
+| 组 | 语义（判定实现在 `feature/filter/StockFilters`） |
+|---|---|
+| 涨跌与自选 | **未勾选的类别不显示**：每只股票归到唯一一个类别（自选优先 > 涨 > 跌 > 平盘），类别没勾就看不见；三个都不勾 = 这一维不筛 |
+| 股票类型 | **有一个类型没勾就排除**：类型是并存的（`*ST卓然`（688121）既是科创板又是 ST 股），五个全勾（默认）= 这一维不筛 |
+
+两维取交集。「股票类型」的判定（字段优先、代码 / 名称兜底）见 `feature/filter/StockTypes.kt`：
+`StockInfo` 的 `isCyb` / `isKCPlate` / `isXXLD` 为 true 即认定，
+再用代码前缀（300/301、688/689、43/83/87/88/920）与名称（含 `ST`）兜底 ——
+策略页的数据源未必把这些字段填全（`isZx` 在策略页就恒为 false，同一个坑）。
+代码 / 分组头 / 建行 / 样式克隆都收进 `feature/filter/StockFilterPanelUi.kt`，
+行情页那颗面板追加三行时用的是同一批函数（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md) §四）。
 
 ### 交互
 
 | 动作 | 行为 |
 |---|---|
 | 点**整行** | 切换该项勾选（与行情页漏斗一致；勾选框本身也可点） |
-| **重置** | 三个条件全部清空 + **立即生效**（落盘 + 刷新列表）+ **面板不关** |
+| **重置** | 八项全部回到出厂（方向全不勾 + 类型全勾 = 不筛）+ **立即生效**（落盘 + 刷新列表）+ **面板不关** |
 | **确定** | 落盘 + 生效 + 关闭面板 |
 | 点面板外 / 返回 | 关闭，不改动 |
 
@@ -175,6 +206,23 @@ ConstraintLayout #itemroot（clickable, 45dp）
 ---
 
 ## 五、行过滤
+
+### ⚠️ 首帧就得是筛过的（2.18.0 修「闪几帧未筛选列表」）
+
+筛选生效时点进详情页，列表**第一帧**必须是筛过的。数据有两条到列表的路：
+
+| 路径 | 谁管 |
+|---|---|
+| 宿主 `data.clear(); data.addAll(...); notifyDataSetChanged()` | `BaseAdapter.notifyDataSetChanged` 的**前置**钩子：放行前先把过滤代理装好 |
+| 宿主把**已经填好数据**的适配器直接 `setAdapter(...)` 挂上来 | `ListView.setAdapter` 的**后置**钩子（2.18.0 加）：装完代理再让这一帧过去 |
+
+第二条原先没人管：列表先按全量布局一帧，等 `getView` 的兜底补筛（**延后一帧**）才变筛过的
+—— 肉眼就是「闪几帧未筛选的列表」（用户 2026-10-19 报的现象）。
+现在两条路都在「布局之前」把代理装好，`getView` 的兜底只留作最后一道保险。
+
+顺手还有个副作用是好的：`setAdapter` 通常发生在 `onCreate`（比 `onResume` 早），
+这个钩子会把「当前在看的 Activity / 列表」提前认下来 —— 之前只有 `onResume` 之后才认，
+宿主早于它发的通知一律够不着（早退原因 `没有 trackedActivity`）。
 
 ### 真正移除：给 ListView 套一层过滤代理
 
@@ -327,7 +375,7 @@ else               childHeightSpec = makeMeasureSpec(0, UNSPECIFIED);   // ← 0
 - **自选**：复用 `ZXWorkflow.isBelongByStock(code, market)`
   （20/20 交叉验证过的那个判定 API，与「自选高亮」同源）。
 
-### 三个开关的组合规则（**互斥类别**）
+### 方向那三个开关的组合规则（**互斥类别**）
 
 需求明确：**未勾选的类别，其股票一律不显示**。所以是"先归类、再看该类别的开关"，
 不是"几个条件取交集"：
@@ -341,6 +389,7 @@ else               childHeightSpec = makeMeasureSpec(0, UNSPECIFIED);   // ← 0
 显示(股票) = 没有任何开关勾选 ? true : 类别(股票) ∈ 已勾选的类别
 ```
 
+判定实现在 `StockFilters.keepsDirection`（类型维度见 §四之二，两维取交集）。
 实测（32 只的策略：涨 6 / 跌 12 / 自选 14 / 平盘 0；9 只的策略：涨 0 / 跌 0 / 自选 9 / 平盘 0）：
 
 | 勾选 | 32 只那组保留 | 9 只那组保留 |
@@ -469,7 +518,12 @@ RelativeLayout #container_ai_stk_detail
 ## 六、筛选状态的持久化
 
 存**目标 App 自己的** `SharedPreferences`：文件名 `gsaux_stg_filter`
-（`/data/data/com.guosen.android/shared_prefs/`），三个布尔键。
+（`/data/data/com.guosen.android/shared_prefs/`），**八个布尔键** —— 方向三项沿用
+2.16.1 的键名（老用户的状态不丢），类型五项是 2.18.0 新增、**缺省即 true**
+（老用户升级后行为不变）。
+
+落盘实现在 [`feature/filter/StockFilterStore.kt`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/filter/StockFilterStore.kt)
+（**两块面板共用**），进程级缓存也在那里：谁改谁刷，策略页与行情页不会各看各的。
 
 ### 为什么不进模块配置
 
@@ -557,8 +611,11 @@ OkHttp 钩子（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`）整�
 | 失效现象 | 改哪里 |
 |---|---|
 | 菜单里没有「筛选股票」 | `StgStockFilterTargets.MENU_ANCHOR_ID / MENU_EDIT_NAME_ID`；用 `tools/probe` 重新 dump 菜单视图树 |
-| 面板打不开 / 空面板 | `LAYOUT_FILTER_PANEL / LAYOUT_FILTER_ITEM` 与 `ID_PANEL_* / ID_ITEM_*` 候选名 |
-| 筛选不生效 | `DATA_FIELD`（适配器数据字段名 `data`）、`TARGET_ADAPTERS`、`PERCENT_FIELDS`、`PERCENT_ID_CANDIDATES` |
+| 面板打不开 / 空面板 | 布局与控件 id 常量搬到了 `feature/filter/FilterPanelIds`（两块面板共用一份）：`LAYOUT_FILTER_PANEL / LAYOUT_FILTER_ITEM`、`ID_PANEL_* / ID_ITEM_*` |
+| 面板长出来但分组头 / 行左缩进不对 | `StockFilterPanelUi.addSectionHeader` 的「缩进差额」与 `wrapWithVerticalHost` 的外边距清零（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md) §2.2） |
+| 「股票类型」那一组筛不动 | `StgStockFilterTargets.TYPE_FLAG_FIELDS`（`isCyb` / `isKCPlate` / `isXXLD`）与 `feature/filter/StockTypes.kt` 的前缀 / 名称兜底 |
+| 进详情页仍会闪一帧全量 | `ListView.setAdapter` 钩子没装上（看日志 `已挂 ListView.setAdapter`）；或宿主改用别的方式换数据（`notifyDataSetChanged` 之外的路径）—— 用 `tools/probe` 重新看数据是怎么挂上去的 |
+| 筛选不生效 | `DATA_FIELD`（适配器数据字段名 `data`）、`TARGET_ADAPTERS`、`PERCENT_FIELDS`、`PERCENT_ID_CANDIDATES`、`NAME_FIELDS` |
 | 自选判定错 | `feature/watchlist/ZxWatchlist.kt` |
 | 左上角计数不跟着筛 / 取消筛选后没还原 | `RES_NUM_ID_CANDIDATES`（实测 id `tv_stg_res_num`）；还原靠正则 `^策略个股 \d+/\d+$` 认自己写过的文案，宿主改了格式就得同步改 |
 | 筛到 0 只却是一片空白 | 空态没定位到。看日志 `找不到宿主的空态布局 empty_ai_stk`；用 `aapt2 dump xmltree` 重新找宿主的空态布局，改 `StgStockFilterTargets.LAYOUT_EMPTY` |
@@ -574,13 +631,14 @@ OkHttp 钩子（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`）整�
 筛选股票：已挂三点菜单展示点 ×5
 筛选股票：已挂 BaseAdapter.notifyDataSetChanged ×1
 筛选股票：已挂 BaseQuickAdapter.getView ×1
+筛选股票：已挂 ListView.setAdapter ×1
 筛选股票：已在三点菜单「修改名称」下方注入「筛选股票」
 筛选股票：菜单窗口原尺寸 width=… height=…（-1=MATCH_PARENT, -2=WRAP_CONTENT）
 筛选股票：菜单项高度已归一（3 项 × …px）
-筛选股票：筛选面板已打开（涨家股票=false 跌家股票=false 自选股票=false）
-筛选股票：筛选条件已生效（涨家股票=true 跌家股票=false 自选股票=false）
+筛选股票：筛选面板已打开（涨家股票=false 跌家股票=false 自选股票=false | 创业板=true 科创板=true 北证A=true 未开板次新=true ST股=true）
+筛选股票：筛选条件已生效（涨家股票=true 跌家股票=false 自选股票=false | 创业板=true …）
 筛选股票：左上角计数 → 策略个股 6/32
-筛选股票：全量 32 → 保留 6（涨 6 / 跌 12 / 自选 14 / 平盘 0）
+筛选股票：全量 32 → 保留 6（涨 6 / 跌 12 / 自选 14 / 平盘 0 / 创业板 5 / 科创板 4 / 北证A 1 / 未开板次新 0 / ST股 2）
 筛选股票：已把宿主的空态布局摆到列表下面（empty_ai_stk）
 筛选股票：列标题行（名称 / 最新价 / 涨跌幅）已收起
 筛选股票：说明及风险提示已从列表上摘下（footer）
@@ -601,4 +659,6 @@ OkHttp 钩子（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`）整�
 | **宿主改成从 adapter 取股** | 回映射建立在「宿主自己持有全量列表」这一**实测事实**上。哪天宿主改成从 adapter 取股，回映射会**反向错位**（那时应当把映射拆掉） |
 | **宿主 `setAdapter` 后不再触发 `getView`** | 代理被顶掉后靠 `getView` 兜底装回。若宿主既换了 adapter、又完全不触发 `getView`（列表为空时有可能），筛选会暂时失效 —— 日志里能看到「暂时没装行点击回映射」那一行 |
 | **涨跌幅兜底** | 数据项 `zdf` 读不到时退回 `getView` 快照，行情原地刷新后要等下一次 bind 才修正 |
-| **平盘股** | 只要开了筛选就不显示（见 §5）。若期望"三个全勾时平盘也显示"，需再加规则 |
+| **平盘股** | 只要开了方向筛选就不显示（见 §5）。若期望"三个全勾时平盘也显示"，需再加规则 |
+| ~~2.18.0 的面板八行 / 类型筛选 / 首帧不闪全量~~ | ✅ 2026-10-19 14:4x 登录后已补验：面板八行两组且缩进一致、取消勾「科创板」筛掉 688 行（`全量 20 → 保留 19`）、勾「涨家股票」在该策略（20 只全在自选）上得到 0 只 + 宿主空态、**重置**立即还原全量、录屏确认进页面**第一帧就是筛过的**（无未筛选帧）。逐项见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md) §五 表 10–16 |
+| **`StockInfo.isXXLD` = 未开板次新** | 只做过字段名层面的确认（探针 dump），运行时取值未核对；认不出就不归类，不会误伤别的股票 |

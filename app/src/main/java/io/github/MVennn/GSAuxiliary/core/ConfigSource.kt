@@ -98,6 +98,7 @@ class ConfigSource(private val xposed: XposedInterface) {
                 marketBannerHide = p.getBoolean(ConfigKeys.MARKET_BANNER_HIDE, ConfigKeys.DEFAULT_MARKET_BANNER_HIDE),
                 marketSectorCompact = p.getBoolean(ConfigKeys.MARKET_SECTOR_COMPACT, ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT),
                 marketOverviewCompact = p.getBoolean(ConfigKeys.MARKET_OVERVIEW_COMPACT, ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT),
+                marketStockFilter = p.getBoolean(ConfigKeys.MARKET_STOCK_FILTER, ConfigKeys.DEFAULT_MARKET_STOCK_FILTER),
                 navBarBlend = p.getBoolean(ConfigKeys.NAV_BAR_BLEND, ConfigKeys.DEFAULT_NAV_BAR_BLEND),
                 ipoDialogClean = p.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN),
                 aistareQuickEnabled = p.getBoolean(

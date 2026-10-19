@@ -2,9 +2,7 @@ package io.github.MVennn.GSAuxiliary.feature.stgfilter
 
 import android.app.Activity
 import android.app.Dialog
-import android.content.res.Resources
 import android.graphics.drawable.ColorDrawable
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -13,34 +11,39 @@ import android.view.Window
 import android.view.WindowManager
 import android.widget.CheckBox
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.feature.filter.FilterPanelIds
+import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterPanelUi
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
+import io.github.MVennn.GSAuxiliary.feature.filter.describe
 
 /**
  * 策略详情页的「筛选股票」面板。
  *
  * ## 「复用软件内部现有筛选组件的 UI」是怎么做到的
  *
- * 不是照着截图重画，而是**真的把目标 App 自己的布局资源拿过来 inflate**：
+ * 不是照着截图重画，而是**真的把目标 App 自己的布局资源拿过来 inflate**
+ * （外壳 `dialog_marketfliter` + 每一行 `item_market_filter`，常量见 [FilterPanelIds]）
+ * —— 与行情页「沪深京A」那颗漏斗同源，App 换肤 / 深色模式自动跟随。
  *
- *  - 面板外壳 = `res/layout/dialog_marketfliter.xml`（行情页「沪深京A」左侧漏斗点出来的那个）
- *  - 每一行 = `res/layout/item_market_filter.xml`
+ * ## 面板里有什么（2.18.0 起两组共八行）
  *
- * 于是圆角背景、标题字号、副标题底块、分隔线、行高、勾选框样式、底部两颗按钮
- * 全部与行情页那颗漏斗**同源**，App 换肤 / 深色模式也跟着走。
+ * ```
+ * 筛选股票                        ← tv1
+ * 勾选后对应的条件才会生效          ← tv2
+ * ── 涨跌与自选 ──                ← tv3（宿主那行分组头，文案改成这组）
+ *   涨家股票 / 跌家股票 / 自选股票
+ * ── 股票类型 ──                  ← 克隆 tv3 的分组头
+ *   创业板 / 科创板 / 北证A / 未开板次新 / ST股
+ * [重置] [确定]
+ * ```
  *
- * 需要改的三处（需求指定）：
- *  1. 标题 / 副标题 / 分组头文案换成「筛选股票」这套；
- *  2. `#tv_cancel` 的文案 `取消` → `重置`（`#tv_ok` 的 `确定` 原样不动）；
- *  3. 行容器原本是 `RecyclerView #rv_markets`，它的 LayoutManager 与 adapter 由 App 代码
- *     在运行时设 —— 我们只 inflate 布局拿不到那段代码，所以把它**原地换成一个垂直
- *     `LinearLayout`**（沿用同一个 `LayoutParams` 实例，`ConstraintLayout` 的约束一条不丢），
- *     再把三行塞进去。这样模块编译期也不必依赖 androidx.recyclerview。
- *
- * 分组折叠箭头（`tv3` 右边那颗无 id 的 ImageView）**隐藏**：原版那个分组可折叠，
- * 我们这里只有固定三行，留一个点了没反应的箭头是骗人。
+ * 两组条件的语义（勾选 = 什么）见 [StockFilters] 的注释：
+ * 方向是「未勾选的类别不显示」，类型是「有一个类型没勾就排除」。
  *
  * ## 文案为什么硬编码中文
  *
@@ -50,75 +53,74 @@ import io.github.MVennn.GSAuxiliary.core.GLog
  */
 internal object StgFilterPanel {
 
-    /** 面板里的三行，顺序即显示顺序 */
-    private val ROW_LABELS = arrayOf("涨家股票", "跌家股票", "自选股票")
+    private const val TAG = "筛选股票"
 
     /** 打开筛选面板。所有异常都吞掉并记日志，绝不抛给宿主。 */
-    fun show(activity: Activity, current: StgFilters, onApply: (StgFilters) -> Unit) {
+    fun show(activity: Activity, current: StockFilters, onApply: (StockFilters) -> Unit) {
         runCatching { showInner(activity, current, onApply) }
-            .onFailure { GLog.w("筛选股票：打不开筛选面板", it) }
+            .onFailure { GLog.w("$TAG：打不开筛选面板", it) }
     }
 
-    private fun showInner(activity: Activity, current: StgFilters, onApply: (StgFilters) -> Unit) {
+    private fun showInner(activity: Activity, current: StockFilters, onApply: (StockFilters) -> Unit) {
         val res = activity.resources
-        val panelLayoutId = res.layoutId(StgStockFilterTargets.LAYOUT_FILTER_PANEL)
-        val itemLayoutId = res.layoutId(StgStockFilterTargets.LAYOUT_FILTER_ITEM)
-        if (panelLayoutId == 0 || itemLayoutId == 0) {
+        val panelLayoutId = StockFilterPanelUi.layoutId(res, FilterPanelIds.LAYOUT_FILTER_PANEL)
+        if (panelLayoutId == 0) {
             GLog.w(
-                "筛选股票：找不到布局 ${StgStockFilterTargets.LAYOUT_FILTER_PANEL} / " +
-                        "${StgStockFilterTargets.LAYOUT_FILTER_ITEM}（App 版本可能已变）"
+                "$TAG：找不到布局 ${FilterPanelIds.LAYOUT_FILTER_PANEL} / " +
+                        "${FilterPanelIds.LAYOUT_FILTER_ITEM}（App 版本可能已变）"
             )
             return
         }
 
         val inflater = LayoutInflater.from(activity)
         val root = inflater.inflate(panelLayoutId, null) as? ViewGroup ?: run {
-            GLog.w("筛选股票：面板布局根不是 ViewGroup")
+            GLog.w("$TAG：面板布局根不是 ViewGroup")
             return
         }
-        ensurePanelBackground(activity, root)
+        // 标记「这张面板是我们弹的」：行情侧同样挂 Dialog.show 的功能靠它放过我们
+        // （同一份布局、同一批 id，不标记就分不清是谁的面板）
+        runCatching { root.tag = FilterPanelIds.TAG_OUR_PANEL }
+        StockFilterPanelUi.ensurePanelBackground(activity, root, TAG)
 
         // ---- 文案 ----
-        root.find<TextView>(res, StgStockFilterTargets.ID_PANEL_TITLE)?.text = "筛选股票"
-        root.find<TextView>(res, StgStockFilterTargets.ID_PANEL_SUBTITLE)?.text =
+        StockFilterPanelUi.find<TextView>(root, res, FilterPanelIds.ID_PANEL_TITLE)?.text = "筛选股票"
+        StockFilterPanelUi.find<TextView>(root, res, FilterPanelIds.ID_PANEL_SUBTITLE)?.text =
             "勾选后对应的条件才会生效"
-        root.find<TextView>(res, StgStockFilterTargets.ID_PANEL_SECTION)?.text = "筛选条件"
-        val resetBtn = root.find<TextView>(res, StgStockFilterTargets.ID_PANEL_CANCEL)
-        val okBtn = root.find<TextView>(res, StgStockFilterTargets.ID_PANEL_OK)
+        StockFilterPanelUi.find<TextView>(root, res, FilterPanelIds.ID_PANEL_SECTION)?.text =
+            FilterRow.SECTION_DIRECTION
+        val resetBtn = StockFilterPanelUi.find<TextView>(root, res, FilterPanelIds.ID_PANEL_CANCEL)
+        val okBtn = StockFilterPanelUi.find<TextView>(root, res, FilterPanelIds.ID_PANEL_OK)
         if (resetBtn == null || okBtn == null) {
-            GLog.w("筛选股票：面板里找不到 ${StgStockFilterTargets.ID_PANEL_CANCEL} / " +
-                    StgStockFilterTargets.ID_PANEL_OK)
+            GLog.w("$TAG：面板里找不到 ${FilterPanelIds.ID_PANEL_CANCEL} / ${FilterPanelIds.ID_PANEL_OK}")
             return
         }
         resetBtn.text = "重置"
-        hideSectionArrow(root)
+        StockFilterPanelUi.hideSectionArrow(root)
 
         // ---- 行容器：RecyclerView 原地换成 LinearLayout ----
-        val original = root.find<View>(res, StgStockFilterTargets.ID_PANEL_LIST)
-        val rowsHost = original?.let { swapToLinearHost(it) }
+        val original = StockFilterPanelUi.find<View>(root, res, FilterPanelIds.ID_PANEL_LIST)
+        val rowsHost = original?.let { StockFilterPanelUi.swapToLinearHost(it) }
         if (rowsHost == null) {
-            GLog.w("筛选股票：面板里找不到 ${StgStockFilterTargets.ID_PANEL_LIST}")
+            GLog.w("$TAG：面板里找不到 ${FilterPanelIds.ID_PANEL_LIST}")
             return
         }
 
-        // ---- 三行 ----
-        val n = ROW_LABELS.size
-        val state = booleanArrayOf(current.up, current.down, current.zx)
-        val boxes = arrayOfNulls<CheckBox>(n)
-        for (i in 0 until n) {
-            val item = inflater.inflate(itemLayoutId, rowsHost, false) ?: continue
-            item.find<TextView>(res, StgStockFilterTargets.ID_ITEM_NAME)?.text = ROW_LABELS[i]
-            val box = item.find<CheckBox>(res, StgStockFilterTargets.ID_ITEM_CHECK)
-            boxes[i] = box
-            box?.isChecked = state[i]
-            // 整行可点：点行即切换勾选（与行情页那颗漏斗的交互一致）
-            item.isClickable = true
-            item.setOnClickListener {
-                val b = boxes[i] ?: return@setOnClickListener
-                b.isChecked = !b.isChecked
-                state[i] = b.isChecked
+        // ---- 两组装行：方向（tv3 那组）+ 类型（克隆一个同名分组头）----
+        val state = HashMap<FilterRow, Boolean>()
+        val boxes = HashMap<FilterRow, CheckBox>()
+        for (row in FilterRow.entries) {
+            if (row == FilterRow.TYPE_ROWS.first()) {
+                StockFilterPanelUi.addSectionHeader(root, res, rowsHost, FilterRow.SECTION_TYPE, rowsHost)
             }
-            rowsHost.addView(item)
+            val checked = current[row]
+            state[row] = checked
+            val view = StockFilterPanelUi.buildRow(
+                inflater, res, rowsHost, row.label, checked,
+            ) { now -> state[row] = now }
+            if (view != null) {
+                StockFilterPanelUi.find<CheckBox>(view, res, FilterPanelIds.ID_ITEM_CHECK)
+                    ?.let { boxes[row] = it }
+            }
         }
 
         // ---- 窗口：与行情页一致，从底部往上弹 ----
@@ -134,95 +136,41 @@ internal object StgFilterPanel {
             w.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             w.setGravity(Gravity.BOTTOM)
             w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            w.setDimAmount(StgStockFilterTargets.PANEL_DIM)
+            w.setDimAmount(FilterPanelIds.PANEL_DIM)
         }
         dialog.setCanceledOnTouchOutside(true)
 
-        /** 以三行当前勾选状态为准，收集一份筛选条件 */
-        fun collect(): StgFilters {
-            for (i in 0 until n) boxes[i]?.let { state[i] = it.isChecked }
-            return StgFilters(up = state[0], down = state[1], zx = state[2])
+        /** 以当前控件状态为准收集一份条件（勾选框本身可能被直接点中） */
+        fun collect(): StockFilters {
+            var f = StockFilters.OFF
+            for (row in FilterRow.entries) {
+                val checked = boxes[row]?.isChecked ?: state[row] ?: f[row]
+                state[row] = checked
+                f = f.set(row, checked)
+            }
+            return f
         }
 
-        // 「重置」：清空三个条件并**立即生效**，面板不关
+        // 「重置」：清掉全部条件（方向全不勾 + 类型全勾 = 不筛）并**立即生效**，面板不关
         // —— 关掉就出现「重置完还想再选却得重开」的别扭
         resetBtn.setOnClickListener {
-            for (i in 0 until n) {
-                state[i] = false
-                boxes[i]?.isChecked = false
+            for (row in FilterRow.entries) {
+                state[row] = StockFilters.OFF[row]
+                boxes[row]?.isChecked = StockFilters.OFF[row]
             }
-            StgFilterStore.save(activity, StgFilters.OFF)
-            onApply(StgFilters.OFF)
+            StockFilterStore.save(activity, StockFilters.OFF)
+            onApply(StockFilters.OFF)
         }
 
         // 「确定」：保持原样 —— 落盘 + 生效 + 关闭
         okBtn.setOnClickListener {
             val f = collect()
-            StgFilterStore.save(activity, f)
+            StockFilterStore.save(activity, f)
             onApply(f)
             runCatching { dialog.dismiss() }
         }
 
         dialog.show()
-        GLog.i("筛选股票：筛选面板已打开（${describe(current)}）")
+        GLog.i("$TAG：筛选面板已打开（${current.describe()}）")
     }
-
-    // ------------------------------------------------------------------ 工具
-
-    private fun Resources.layoutId(name: String): Int =
-        runCatching { getIdentifier(name, "layout", StgStockFilterTargets.TARGET_PKG) }.getOrDefault(0)
-
-    private fun Resources.viewId(name: String): Int =
-        runCatching { getIdentifier(name, "id", StgStockFilterTargets.TARGET_PKG) }.getOrDefault(0)
-
-    private fun Resources.attrId(name: String): Int =
-        runCatching { getIdentifier(name, "attr", StgStockFilterTargets.TARGET_PKG) }.getOrDefault(0)
-
-    private inline fun <reified T : View> View.find(res: Resources, idName: String): T? {
-        val id = res.viewId(idName)
-        if (id == 0) return null
-        return runCatching { findViewById<View>(id) as? T }.getOrNull()
-    }
-
-    /**
-     * 把 [target] 从其父容器里换成同尺寸的垂直 [LinearLayout]。
-     *
-     * 关键：**沿用原 View 的 `layoutParams` 实例** —— 面板是 `ConstraintLayout`，
-     * 约束（`layout_constraintXxx`）就存在 `ConstraintLayout.LayoutParams` 里，
-     * 把同一个实例挂到新 View 上，位置 / margin / 约束一条不丢。
-     */
-    private fun swapToLinearHost(target: View): LinearLayout? {
-        val parent = target.parent as? ViewGroup ?: return null
-        val index = parent.indexOfChild(target)
-        val lp = target.layoutParams
-        parent.removeView(target)
-        val host = LinearLayout(target.context).apply {
-            orientation = LinearLayout.VERTICAL
-            if (lp != null) layoutParams = lp
-        }
-        parent.addView(host, if (index in 0..parent.childCount) index else -1)
-        return host
-    }
-
-    /** 面板背景兜底：`?attr/shape_half_top_round_solid_12` 在个别主题下解析不到时手动补一次 */
-    private fun ensurePanelBackground(activity: Activity, root: ViewGroup) {
-        if (root.background != null) return
-        val attr = activity.resources.attrId("shape_half_top_round_solid_12")
-        runCatching {
-            val tv = TypedValue()
-            if (activity.theme.resolveAttribute(attr, tv, true) && tv.resourceId != 0) {
-                root.setBackgroundResource(tv.resourceId)
-            }
-        }.onFailure { GLog.w("筛选股票：补面板背景失败", it) }
-    }
-
-    /** 隐藏分组折叠箭头（面板里唯一那颗直接挂在根上的 ImageView） */
-    private fun hideSectionArrow(root: ViewGroup) {
-        for (i in 0 until root.childCount) {
-            (root.getChildAt(i) as? ImageView)?.visibility = View.GONE
-        }
-    }
-
-    /** 调试用：把筛选状态变成一行可读文本 */
-    fun describe(f: StgFilters): String = "涨家股票=${f.up} 跌家股票=${f.down} 自选股票=${f.zx}"
 }

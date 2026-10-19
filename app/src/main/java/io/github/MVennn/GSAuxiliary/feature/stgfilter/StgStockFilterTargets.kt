@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.stgfilter
 
 import io.github.MVennn.GSAuxiliary.core.TargetApp
+import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 
 /**
  * 「策略详情页筛选股票」的定位常量。
@@ -83,25 +84,9 @@ object StgStockFilterTargets {
 
     // ------------------------------------------------------------------ 筛选面板
 
-    /** 面板布局名（注意原包拼写） */
-    const val LAYOUT_FILTER_PANEL = "dialog_marketfliter"
-
-    /** 面板里每一行的布局名 */
-    const val LAYOUT_FILTER_ITEM = "item_market_filter"
-
-    const val ID_PANEL_TITLE = "tv1"
-    const val ID_PANEL_SUBTITLE = "tv2"
-    const val ID_PANEL_SECTION = "tv3"
-    const val ID_PANEL_LIST = "rv_markets"
-    const val ID_PANEL_CANCEL = "tv_cancel"
-    const val ID_PANEL_OK = "tv_ok"
-
-    const val ID_ITEM_ROOT = "itemroot"
-    const val ID_ITEM_NAME = "name"
-    const val ID_ITEM_CHECK = "cb_checked"
-
-    /** 面板窗口：原版从屏幕底部往上弹出，这里保持一致 */
-    const val PANEL_DIM = 0.5f
+    // 面板布局 / 控件 id 不在这里了 —— 行情页那颗漏斗点出来的是**同一套布局**，
+    // 常量已收进 `feature/filter/FilterPanelIds`（策略面板与行情面板共用一份，
+    // 见 docs/FEATURE-STG-FILTER.md §四）。
 
     // ------------------------------------------------------------------ 策略股票列表
 
@@ -182,6 +167,25 @@ object StgStockFilterTargets {
     val CAM_FIELDS = arrayOf("codeAndMarket", "m_codeAndMarket")
     val CODE_FIELDS = arrayOf("m_stkCode", "code", "mCode")
     val MARKET_FIELDS = arrayOf("m_stkMarket", "market", "mMarket")
+
+    /** 数据项里「股票名称」字段候选 —— 2.18.0 起判「ST股」用（名称含 ST） */
+    val NAME_FIELDS = arrayOf("stockName", "m_stkName", "name", "m_name")
+
+    /**
+     * 数据项里的**类型布尔字段**（2.18.0 起「股票类型」筛选用）。
+     *
+     * 字段名来自探针 `dumpClassMembers(StockInfo)`（8.6.0 / vc271）：
+     * `isCyb` / `isKCPlate` / `isXXLD`。前三者是布尔，值为 true 即认定该类型
+     * （false 不代表「不是」，所以还要与代码前缀一起判 —— 见 `StockTypes`）。
+     *
+     * ⚠️ `isXXLD` 的语义（未开板次新）只做过**字段名**层面的确认，取值未核对；
+     * 认不出就不把股票归到「未开板次新」，不会误伤别的股票。
+     */
+    val TYPE_FLAG_FIELDS = arrayOf(
+        "isCyb" to StockTypes.CYB,
+        "isKCPlate" to StockTypes.KCB,
+        "isXXLD" to StockTypes.WKB,
+    )
 
     /** 列表数据项的类（实测：`AIStkAdapter#convert(BaseAdapterHelper, StockInfo)`） */
     const val CLS_STOCK_INFO = "com.guosen.android.quotes.data.StockInfo"

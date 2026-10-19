@@ -27,7 +27,8 @@
 | [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) | 个股详情页底栏「智能盯盘」快捷入口 |
 | [FEATURE-DIRECT-QUOTE.md](FEATURE-DIRECT-QUOTE.md) | 策略详情页「直达标准行情 + 左右滑动」 |
 | [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md) | 策略详情页多选栏「全选 / 反选」 |
-| [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md) | 策略详情页「筛选股票」 |
+| [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md) | 策略详情页「筛选股票」（八项两组，与行情页那颗面板共用模型） |
+| [FEATURE-MARKET-FILTER.md](FEATURE-MARKET-FILTER.md) | 行情页「涨跌与自选」筛选项 + 筛排行榜 |
 | [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md) | 隐藏 新股申购 弹窗，含真机校准手册 |
 | [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) | 手势导航条同色 |
 | [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) | 界面精简（底栏 / 首页 / 行情市场），含真机校准手册 |

@@ -138,6 +138,9 @@
 
     <string name="feature_market_overview_switch">Optimize overview height</string>
 
+    <string name="feature_market_filter_switch">Add "Gainers/Losers/Watchlist" filters</string>
+    <string name="feature_market_filter_switch_summary">In the SH/SZ/BJ A-share ranking filter panel</string>
+
     <!-- Display -->
     <string name="feature_nav_bar_switch">Match gesture bar color</string>
     <string name="feature_nav_bar_switch_summary">Picks the color of the Android gesture bar</string>

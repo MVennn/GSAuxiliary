@@ -137,6 +137,21 @@ object ConfigKeys {
     const val MARKET_OVERVIEW_COMPACT = "market_overview_compact"
 
     /**
+     * 行情市场：「沪深京A」筛选面板里增加「涨跌与自选」三行，并按它们筛排行榜。
+     *
+     * 面板是宿主自己的（`FilterDiaglog`），我们只往里追加三行（涨家股票 / 跌家股票 /
+     * 自选股票）—— 与策略详情页那颗面板共用同一份状态；
+     * 排行榜里被筛掉的行**收起**（高度归零 + GONE，见 `ViewPatcher.collapse`）。
+     *
+     * ⚠️ 与 [STG_STOCK_FILTER] 一样，三个开关的**取值本身不在这里** ——
+     * 它们由目标进程写进目标 App 自己的 `SharedPreferences`（`gsaux_stg_filter`）。
+     * 这里只留「功能总开关」。
+     *
+     * 见 [io.github.MVennn.GSAuxiliary.feature.market.MarketFilterFeature]。
+     */
+    const val MARKET_STOCK_FILTER = "market_stock_filter"
+
+    /**
      * 手势导航条（小白条）区域填充与紧邻界面一致的颜色。
      *
      * 宿主 targetSdk 30、全程非沉浸，导航条那一块由 `DecorView` 按
@@ -366,6 +381,13 @@ object ConfigKeys {
     /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
+     * 它是 2.18.0 新增的行情筛选维度（涨跌与自选），出厂默认关。
+     */
+    const val DEFAULT_MARKET_STOCK_FILTER = false
+
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
      * 它是「手势导航条同色」的总开关，出厂默认关，由用户自己按需打开。
      */
     const val DEFAULT_NAV_BAR_BLEND = false
@@ -417,8 +439,8 @@ object ConfigKeys {
         ENABLED, COLOR, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
         STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
-        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
-        IPO_DIALOG_CLEAN,
+        MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER,
+        NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
@@ -438,8 +460,8 @@ object ConfigKeys {
         arrayOf(
             ENABLED, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
-            MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, NAV_BAR_BLEND,
-            IPO_DIALOG_CLEAN,
+            MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER,
+            NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
             AISTARE_QUICK_ENABLED, AISTARE_SKIP_SAVE_CONFIRM, AISTARE_EMPTY_SAVE,
             AISTARE_CARD_DETAIL,
         )
@@ -473,6 +495,7 @@ object ConfigKeys {
         MARKET_BANNER_HIDE to DEFAULT_MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT to DEFAULT_MARKET_SECTOR_COMPACT,
         MARKET_OVERVIEW_COMPACT to DEFAULT_MARKET_OVERVIEW_COMPACT,
+        MARKET_STOCK_FILTER to DEFAULT_MARKET_STOCK_FILTER,
         NAV_BAR_BLEND to DEFAULT_NAV_BAR_BLEND,
         IPO_DIALOG_CLEAN to DEFAULT_IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED to DEFAULT_AISTARE_QUICK_ENABLED,

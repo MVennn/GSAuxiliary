@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
-import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
@@ -13,6 +12,7 @@ import android.widget.PopupWindow
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterPanelUi
 import io.github.MVennn.GSAuxiliary.util.Density
 import java.util.Collections
 import java.util.WeakHashMap
@@ -185,21 +185,9 @@ internal class StgFilterPanelBuild(private val feature: StgStockFilterFeature) {
 
     // ------------------------------------------------------------ 样式克隆
 
-    private fun cloneTextStyle(src: TextView, dst: TextView) {
-        runCatching { dst.setBackground(src.background?.constantState?.newDrawable()?.mutate()) }
-        runCatching { dst.setTextColor(src.textColors) }
-        runCatching { src.typeface?.let { dst.typeface = it } }
-        runCatching { dst.setTextSize(TypedValue.COMPLEX_UNIT_PX, src.textSize) }
-        runCatching {
-            dst.setPadding(src.paddingLeft, src.paddingTop, src.paddingRight, src.paddingBottom)
-        }
-        runCatching { dst.gravity = src.gravity }
-        runCatching { dst.includeFontPadding = src.includeFontPadding }
-        runCatching { dst.maxLines = src.maxLines }
-        runCatching { dst.minWidth = src.minWidth }
-        runCatching { dst.minHeight = src.minHeight }
-        runCatching { dst.setAllCaps(false) }
-    }
+    /** 文字样式克隆复用共享实现（面板的分组头克隆也用它，见 [StockFilterPanelUi]） */
+    private fun cloneTextStyle(src: TextView, dst: TextView) =
+        StockFilterPanelUi.cloneTextStyle(src, dst)
 
     private fun cloneParams(src: View): ViewGroup.LayoutParams {
         val lp = src.layoutParams

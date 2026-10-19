@@ -282,6 +282,18 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
+    // 「增加 涨跌与自选 筛选项」：宿主筛选面板里追加三行，并按其筛排行榜
+    FeatureSpec(
+        id = "market_stock_filter",
+        categoryRes = R.string.category_market,
+        switchTitleRes = R.string.feature_market_filter_switch,
+        // 副标题说位置：那颗漏斗平时就是个图标，不写不知道「筛选项」加在了哪
+        switchSummaryRes = R.string.feature_market_filter_switch_summary,
+        enableKey = ConfigKeys.MARKET_STOCK_FILTER,
+        defaultEnabled = ConfigKeys.DEFAULT_MARKET_STOCK_FILTER,
+        // 三个筛选项的勾选在**目标 App 自己的筛选面板**里，不在模块设置里 —— 没有二级菜单
+    ),
+
     // ---- 显示：只改看到的样子 ----
     FeatureSpec(
         id = "nav_bar_blend",

@@ -88,10 +88,12 @@
 | `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
 | `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
-| `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机） | 目标进程 |
+| `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机：方向 + 股票类型两组条件） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
 | `feature/stgfilter/StgFilterPanelBuild.kt` | 面板装配（从 Feature 本体拆出：三点菜单注入、菜单项高度归一化、面板样式复刻） | 目标进程 |
-| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterStore.kt` · `StgFilterBridge.kt` | 复用宿主筛选面板 UI + 筛选状态落盘（写目标 App 自己的 prefs）+ 筛选结果只读通道（目标进程内：`StgStockFilterFeature` 换好数据后经 `StgFilterBridge` 流向直达标准行情，解决「筛选后滑动漏股票」） | 目标进程 |
+| `feature/filter/StockFilters.kt` · `StockFilterStore.kt` · `StockTypes.kt` · `StockFilterPanelUi.kt` | **两块筛选面板共用的一套**：八项条件模型（涨跌与自选 / 股票类型两组语义）+ 落盘（目标 App 自己的 prefs，含进程级共享缓存）+ 股票类型判定 + 面板装配工具（行容器换法 / 建行 / 分组头 / 样式克隆 / 监听包装） | 目标进程 |
+| `feature/stgfilter/StgFilterPanel.kt` · `StgFilterBridge.kt` | 策略详情页那颗面板（八行两组、重置 / 确定）+ 筛选结果只读通道（目标进程内：`StgStockFilterFeature` 换好数据后经 `StgFilterBridge` 流向直达标准行情，解决「筛选后滑动漏股票」） | 目标进程 |
+| `feature/market/MarketFilterFeature.kt` · `MarketFilterTargets.kt` | **行情页「涨跌与自选」筛选**功能本体（往宿主 `FilterDiaglog` 里追加三行 + 按它们收起排行榜行）+ 定位常量 | 目标进程 |
 | `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（注入按钮 + 触发面板） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
 | `feature/stockbar/StockDetailBarMeasure.kt` | 取色 / 加宽测量（从 Feature 本体拆出：从「更多」按钮上取样式与几何尺寸） | 目标进程 |
@@ -115,7 +117,7 @@
 | `feature/market/MarketBannerFeature.kt` | **行情市场隐藏滚动横幅与快捷入口**功能本体 | 目标进程 |
 | `feature/market/MarketSectorCompactFeature.kt` | **行情市场板块六项压三项**功能本体 | 目标进程 |
 | `feature/market/MarketOverviewCompactFeature.kt` | **行情市场「市场概览」压矮**功能本体 | 目标进程 |
-| `feature/market/MarketTargets.kt` | 行情市场三个功能**共用**的定位常量 | 目标进程 |
+| `feature/market/MarketTargets.kt` | 行情市场三个功能**共用**的定位常量（筛选功能另有 `MarketFilterTargets.kt`） | 目标进程 |
 | `feature/navbar/NavBarBlendFeature.kt` | **手势导航条同色**功能本体 | 目标进程 |
 | `feature/navbar/NavBarTargets.kt` · `NavBarTint.kt` | 定位 / 调参常量 + 取色上色实现 | 目标进程 |
 

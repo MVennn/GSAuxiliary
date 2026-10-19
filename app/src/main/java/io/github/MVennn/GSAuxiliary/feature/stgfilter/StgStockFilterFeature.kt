@@ -15,6 +15,12 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import io.github.MVennn.GSAuxiliary.feature.filter.Category
+import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
+import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
+import io.github.MVennn.GSAuxiliary.feature.filter.describe
 import io.github.MVennn.GSAuxiliary.feature.watchlist.ZxWatchlist
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.reflect.Field
@@ -83,13 +89,43 @@ import java.util.WeakHashMap
  *
  * ### 状态持久化
  *
- * 见 [StgFilterStore]：存**目标 App 自己的** `SharedPreferences`
+ * 见 [StockFilterStore]：存**目标 App 自己的** `SharedPreferences`
  * （remote preferences 在目标进程是只读的，写不进去）。
  *
- * ## 三个开关的语义（**互斥类别**）
+ * ## 两条维度、两组开关（2.18.0 起与行情页「沪深京A」漏斗合并成一套）
+ *
+ * 面板里的八行分两组，语义与落盘都收在 [StockFilters] 里：
+ *
+ * ```
+ * 涨跌与自选（策略侧原有）          未勾选的类别不显示
+ *   涨家股票 / 跌家股票 / 自选股票    自选优先、平盘不属于任何类别
+ * 股票类型（行情页漏斗原有）         有一个类型没勾就排除
+ *   创业板 / 科创板 / 北证A / 未开板次新 / ST股
+ * ```
+ *
+ * 两只维度之间取**交集**；两组都不筛（方向全不勾 + 类型全勾）时列表恢复全量。
+ * 类型怎么判（代码前缀 / 名称 / 行情数据字段）见 [StockTypes]。
+ *
+ * ## 首帧不能闪全量（2.18.0 修）
+ *
+ * 筛选生效时点进详情页，列表**第一帧就得是筛过的**。数据有两条到列表的路：
+ *
+ *  - 宿主 `data.clear(); data.addAll(...); notifyDataSetChanged()` —— 挂
+ *    `BaseAdapter.notifyDataSetChanged` 的**前置**钩子，放行前先把过滤代理装好；
+ *  - 宿主把**已经填好数据**的适配器直接 `setAdapter(...)` 挂上来 —— 这条原先没人管，
+ *    列表先按全量布局一帧，等 `getView` 的兜底补筛（延后一帧）才变筛过的，
+ *    肉眼就是「闪几帧未筛选的列表」（2026-10-19 用户报的现象）。
+ *    现在挂了 `ListView.setAdapter` 的**后置**钩子：装完代理再让这一帧过去。
+ *
+ * 顺手还有个副作用是好的：`setAdapter` 在 `onCreate` 里发生时，
+ * 这个钩子会把「当前在看的 Activity / 列表」提前认下来 —— 之前只有 `onResume`
+ * 之后才认，宿主早于 `onResume` 发的通知一律够不着。
+ *
+ * ## 方向那三个开关的语义（**互斥类别**，2.16.1 起没变）
  *
  * 需求明确：**未勾选的类别、其对应股票一律不显示**。
- * 所以先把每只股票归到**唯一**一个类别，再看该类别的开关有没有勾：
+ * 所以先把每只股票归到**唯一**一个类别，再看该类别的开关有没有勾
+ * （判定实现在 [StockFilters.keepsDirection]，这里只留结论）：
  *
  * ```
  * 类别(股票) =
@@ -98,16 +134,16 @@ import java.util.WeakHashMap
  *     跌家股票  否则 zdf < 0
  *     平盘      其余（zdf == 0 或读不到）
  *
- * 显示(股票) = 没有任何开关勾选 ? true : 类别(股票) ∈ 已勾选的类别
+ * 显示(股票) = 没有任何方向开关勾选 ? 只看类型 : 类别(股票) ∈ 已勾选的类别
  * ```
  *
  * 举例（都是需求里的例子与推论）：
  *  - 只勾「涨家股票」→ 涨的要有、跌的不要、**自选里即使涨着也不要**（自选是另一个类别）；
  *  - 只勾「自选股票」→ 只有自选里的；
  *  - 勾「涨家股票 + 自选股票」→ 涨的（非自选）+ 自选里的；
- *  - 三个都不勾 → 不筛（全显示）。
+ *  - 三个都不勾 → 这个维度不筛（类型维度照旧）。
  *
- * ⚠️ **平盘股（zdf == 0）不属于任何类别**，所以只要开了筛选就看不到它 ——
+ * ⚠️ **平盘股（zdf == 0）不属于任何类别**，所以只要开了方向筛选就看不到它 ——
  * 这是"未勾选的类别不显示"的直接推论（没有"平盘"这个开关）。
  */
 class StgStockFilterFeature : Feature {
@@ -120,9 +156,6 @@ class StgStockFilterFeature : Feature {
 
     /** 缓存资源 id（0 = 还没解析过） */
     @Volatile private var percentIdCache = 0
-
-    /** 筛选状态缓存：避免每次通知都读一遍 SharedPreferences */
-    @Volatile private var cachedFilters: StgFilters? = null
 
     /**
      * 当前停在策略详情页的 Activity。
@@ -206,6 +239,9 @@ class StgStockFilterFeature : Feature {
         val code: List<Field?>,
         val market: List<Field?>,
         val percent: List<Field?>,
+        val name: List<Field?>,
+        /** 「类型布尔字段 → 类型位」候选（2.18.0 起判创业板 / 科创板 / 未开板次新） */
+        val typeFlags: List<Pair<Field?, Int>>,
     )
 
     private val itemFieldsCache = Collections.synchronizedMap(WeakHashMap<Class<*>, ItemFields>())
@@ -228,6 +264,10 @@ class StgStockFilterFeature : Feature {
                 code = StgStockFilterTargets.CODE_FIELDS.map { Reflect.findField(cls, it) },
                 market = StgStockFilterTargets.MARKET_FIELDS.map { Reflect.findField(cls, it) },
                 percent = StgStockFilterTargets.PERCENT_FIELDS.map { Reflect.findField(cls, it) },
+                name = StgStockFilterTargets.NAME_FIELDS.map { Reflect.findField(cls, it) },
+                typeFlags = StgStockFilterTargets.TYPE_FLAG_FIELDS.map { (n, bit) ->
+                    Reflect.findField(cls, n) to bit
+                },
             )
         }
     }
@@ -399,11 +439,72 @@ class StgStockFilterFeature : Feature {
         hooked += hookPopupShow(env, bag)
         hooked += hookNotifyDataSetChanged(env, bag)
         hooked += hookGetView(env, bag)
+        hooked += hookListViewSetAdapter(env, bag)
         hooked += hookActivityResume(env, bag)
 
         if (hooked == 0) {
             GLog.e("筛选股票：没有任何钩子装上（宿主类名可能已变，用 tools/probe 重新定位）")
         }
+    }
+
+    /**
+     * 挂 `android.widget.ListView#setAdapter` —— **首帧不闪全量的那一半**。
+     *
+     * 宿主把**已经填好数据**的适配器直接挂上来时（`onCreate` 里 `lvStks.adapter = ...`
+     * 是常见写法），`notifyDataSetChanged` 那条路根本不会走：列表会先按全量布局一帧
+     * （用户看到的就是「闪几帧未筛选的列表」），要等 `getView` 的兜底补筛
+     * （延后一帧）才变成筛过的。
+     *
+     * 这里用**后置**钩子：`setAdapter` 正常跑完（ListView 换掉适配器、请求布局），
+     * 紧接着把过滤代理装上去 —— 中间没有布局机会，第一帧就是筛过的。
+     *
+     * 顺带把「当前在看的 Activity / 列表」认下来：`setAdapter` 通常发生在
+     * `onCreate`，比 `onResume` 早，等于给所有钩子提前打通了上下文
+     * （原先只有 `onResume` 之后才认，宿主早于它发的通知一律够不着）。
+     *
+     * 只认 `Package` 里的候选列表类名（`isTargetAdapter`），不是目标适配器一律放过 ——
+     * 这个钩子挂在框架类上，全 App 的 ListView 都会进来。
+     */
+    private fun hookListViewSetAdapter(env: FeatureEnv, bag: HookBag): Int {
+        val cls = Reflect.loadClass("android.widget.ListView", env.classLoader) ?: return 0
+        val methods = Reflect.methodsNamed(cls, "setAdapter")
+        for (m in methods) {
+            bag.add(
+                env.xposed.hook(m)
+                    .setId("stgfilter:setAdapter")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        runCatching {
+                            val self = chain.thisObject
+                            val a = chain.getArg(0)
+                            if (self is ListView && a != null) onAdapterSet(env, self, a)
+                        }.onFailure { GLog.w("筛选股票：setAdapter 后处理异常", it) }
+                        result
+                    }
+            )
+        }
+        if (methods.isNotEmpty()) GLog.i("筛选股票：已挂 ListView.setAdapter ×${methods.size}")
+        return methods.size
+    }
+
+    /** `ListView.setAdapter` 的后处理：认页面 + 立刻把筛选追上去 */
+    private fun onAdapterSet(env: FeatureEnv, lv: ListView, adapter: Any) {
+        if (!env.config.stgStockFilter) return
+        if (!StgStockFilterTargets.isTargetAdapter(adapter.javaClass.name)) return
+        // 页面从列表自己的 Context 认（onCreate 里 setAdapter 时 onResume 还没到，
+        // trackedActivity 多半还指着上一页 —— 拿它去操作等于对着别的页面干活）
+        val act = findActivity(lv.context) ?: return
+        if (!StgStockFilterTargets.isWatchActivity(act.javaClass.name)) return
+        trackedActivityRef.set(java.lang.ref.WeakReference(act))
+        runCatching {
+            if (lv.isAttachedToWindow && lv.rootView === act.window?.decorView) {
+                trackedList.set(java.lang.ref.WeakReference(lv))
+            }
+        }
+        if (!filtersBy(act).active) return
+        // notify=false：setAdapter 自己会请求一次布局，我们不必再插一次「数据变了」
+        runCatching { applyFilter(env, adapter, notify = false) }
+            .onFailure { GLog.w("筛选股票：setAdapter 后立即筛选失败", it) }
     }
 
     /**
@@ -669,21 +770,25 @@ class StgStockFilterFeature : Feature {
         var down = 0
         var zx = 0
         var flat = 0
+        val typeHits = IntArray(FilterRow.TYPE_ROWS.size)
         for ((i, item) in full.withIndex()) {
-            when (categoryOf(adapter, item)) {
-                Cat.ZX -> {
-                    zx++
-                    if (f.zx) { keep.add(item); keptIdx.add(i) }
-                }
-                Cat.UP -> {
-                    up++
-                    if (f.up) { keep.add(item); keptIdx.add(i) }
-                }
-                Cat.DOWN -> {
-                    down++
-                    if (f.down) { keep.add(item); keptIdx.add(i) }
-                }
-                Cat.FLAT -> flat++          // 平盘不属于任何类别 → 开了筛选就不显示
+            // 一只股票的两个维度一次算清：方向类别（自选优先 / 平盘独立）+ 类型位掩码
+            val cam = codeAndMarket(item)
+            val inZx = isInWatchlist(cam)
+            val pct = percentOf(adapter, item, cam)
+            when (StockFilters.categoryOf(inZx, pct)) {
+                Category.ZX -> zx++
+                Category.UP -> up++
+                Category.DOWN -> down++
+                Category.FLAT -> flat++
+            }
+            val types = typesOf(item, cam)
+            for (row in FilterRow.TYPE_ROWS) {
+                if (StockTypes.has(types, row)) typeHits[typeIndex(row)]++
+            }
+            if (f.keepsDirection(inZx, pct) && f.keepsTypes(types)) {
+                keep.add(item)
+                keptIdx.add(i)
             }
         }
 
@@ -736,7 +841,13 @@ class StgStockFilterFeature : Feature {
         StgFilterBridge.publish(keep)
         if (notify) notifyAdapter(adapter)
 
-        val summary = "全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat）"
+        val summary = buildString {
+            append("全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat")
+            for (row in FilterRow.TYPE_ROWS) {
+                append(" / ").append(row.label).append(' ').append(typeHits[typeIndex(row)])
+            }
+            append("）")
+        }
         if (summary != lastSummary) {
             lastSummary = summary
             GLog.i("筛选股票：$summary")
@@ -1231,25 +1342,45 @@ class StgStockFilterFeature : Feature {
         }
     }
 
-    // ------------------------------------------------------------------ 类别判定
+    // ------------------------------------------------------------------ 类别 / 类型判定
 
-    private enum class Cat { UP, DOWN, ZX, FLAT }
+    /** 在自选里吗（`code.market` 是宿主自己的口径，与「自选高亮」同源地判） */
+    private fun isInWatchlist(cam: String?): Boolean {
+        if (cam == null) return false
+        val dot = cam.indexOf('.')
+        if (dot <= 0) return false
+        return ZxWatchlist.isInWatchlist(cam.substring(0, dot), cam.substring(dot + 1))
+    }
 
-    private fun categoryOf(adapter: Any, item: Any): Cat {
-        val cam = codeAndMarket(item)
-        if (cam != null) {
-            val dot = cam.indexOf('.')
-            if (dot > 0 && ZxWatchlist.isInWatchlist(cam.substring(0, dot), cam.substring(dot + 1))) {
-                return Cat.ZX                              // 自选优先：在自选里就归「自选」
+    /**
+     * 一只股票的类型位掩码（[StockTypes]）。
+     *
+     * 两条腿一起走：**数据项字段为 true 即认定**（`isCyb` / `isKCPlate` / `isXXLD`），
+     * 再用「代码 + 市场 + 名称」兜底（策略页的数据源未必把这些字段填全，
+     * 与 `isZx` 在策略页恒 false 是同一类问题）—— 见 [StockTypes] 的不确定点说明。
+     *
+     * 字段解析走 [fieldsOf] 的按类缓存，不进热路径的继承链扫描。
+     */
+    private fun typesOf(item: Any, cam: String?): Int {
+        val fields = fieldsOf(item.javaClass)
+        var types = StockTypes.NONE
+        for ((f, bit) in fields.typeFlags) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? Boolean ?: continue
+            if (v) types = types or bit
+        }
+        var name: String? = null
+        for (f in fields.name) {
+            val v = f?.let { runCatching { it.get(item) }.getOrNull() } as? String
+            if (!v.isNullOrEmpty()) {
+                name = v
+                break
             }
         }
-        val pct = percentOf(adapter, item, cam) ?: return Cat.FLAT
-        return when {
-            pct > 0.0 -> Cat.UP
-            pct < 0.0 -> Cat.DOWN
-            else -> Cat.FLAT
-        }
+        return types or StockTypes.byCodeAndMarket(cam, name)
     }
+
+    /** 类型行在 [typeHits] 里的下标（0..4，与 [FilterRow.TYPE_ROWS] 同序） */
+    private fun typeIndex(row: FilterRow): Int = FilterRow.TYPE_ROWS.indexOf(row)
 
     /** 涨跌幅：先读数据项字段（实测 `zdf`，BigDecimal），再退回行内文案记录 */
     private fun percentOf(adapter: Any, item: Any, cam: String?): Double? {
@@ -1291,7 +1422,7 @@ class StgStockFilterFeature : Feature {
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
         if (!StgStockFilterTargets.isWatchActivity(activity.javaClass.name)) return
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
-        cachedFilters = null                       // 回到本页重新读一次筛选状态
+        StockFilterStore.invalidate()              // 回到本页重新读一次筛选状态
         ensureClickRemap()
         // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
         val a = liveAdapter(activity) ?: return
@@ -1312,19 +1443,18 @@ class StgStockFilterFeature : Feature {
         }, RESUME_RECHECK_MS)
     }
 
-    internal fun onFilterApplied(env: FeatureEnv, activity: Activity, applied: StgFilters) {
+    internal fun onFilterApplied(env: FeatureEnv, activity: Activity, applied: StockFilters) {
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
-        cachedFilters = applied
         lastSummary = null
         ensureClickRemap()
-        GLog.i("筛选股票：筛选条件已生效（${StgFilterPanel.describe(applied)}）")
+        GLog.i("筛选股票：筛选条件已生效（${applied.describe()}）")
         val a = liveAdapter(activity) ?: return noteApplySkip("拿不到当前列表在用的适配器")
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
     }
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
-        cachedFilters = null
+        StockFilterStore.invalidate()
         val act = trackedActivity() ?: return
         val a = liveAdapter(act) ?: return
         runCatching { applyFilter(env, a, notify = true) }
@@ -1333,8 +1463,7 @@ class StgStockFilterFeature : Feature {
 
     // ------------------------------------------------------------------ 取值与工具
 
-    internal fun filtersBy(ctx: Context): StgFilters =
-        cachedFilters ?: StgFilterStore.load(ctx).also { cachedFilters = it }
+    internal fun filtersBy(ctx: Context): StockFilters = StockFilterStore.load(ctx)
 
     private fun percentView(row: View): TextView? {
         var id = percentIdCache

@@ -83,6 +83,9 @@
 
     <string name="feature_market_overview_switch">市场概览高度优化</string>
 
+    <string name="feature_market_filter_switch">增加 涨跌与自选 筛选项</string>
+    <string name="feature_market_filter_switch_summary">沪深京A排行榜的筛选面板里</string>
+
     <!-- 显示 -->
     <string name="feature_nav_bar_switch">手势导航条同色</string>
     <string name="feature_nav_bar_switch_summary">安卓底部小白条吸色取色</string>

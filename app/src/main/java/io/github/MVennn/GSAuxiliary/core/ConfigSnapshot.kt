@@ -34,6 +34,8 @@ data class ConfigSnapshot(
     val marketSectorCompact: Boolean,
     /** 行情市场「市场概览」整体压矮，柱状图一并压缩 */
     val marketOverviewCompact: Boolean,
+    /** 行情市场「沪深京A」筛选面板增加「涨跌与自选」三行，并按它们筛排行榜 */
+    val marketStockFilter: Boolean,
     /** 手势导航条（小白条）区域填充与紧邻界面一致的颜色 */
     val navBarBlend: Boolean,
     /** 登录后不再弹出「今日新股申购提醒」弹窗 */
@@ -76,6 +78,7 @@ data class ConfigSnapshot(
                 + (if (marketBannerHide) 1 else 0) * 2221
                 + (if (marketSectorCompact) 1 else 0) * 2347
                 + (if (marketOverviewCompact) 1 else 0) * 2467
+                + (if (marketStockFilter) 1 else 0) * 2621
                 + (if (navBarBlend) 1 else 0) * 2671
                 + (if (ipoDialogClean) 1 else 0) * 2741
                 + (if (aistareQuickEnabled) 1 else 0) * 2851
@@ -102,6 +105,7 @@ data class ConfigSnapshot(
             marketBannerHide = ConfigKeys.DEFAULT_MARKET_BANNER_HIDE,
             marketSectorCompact = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,
             marketOverviewCompact = ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT,
+            marketStockFilter = ConfigKeys.DEFAULT_MARKET_STOCK_FILTER,
             navBarBlend = ConfigKeys.DEFAULT_NAV_BAR_BLEND,
             ipoDialogClean = ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN,
             aistareQuickEnabled = ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED,
