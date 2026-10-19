@@ -134,8 +134,22 @@ class MarketFilterFeature : UiCleanFeature() {
             // 用户把行情筛选面板**开着** → 切到模块 App 打开这个开关 → 回到宿主，
             // 面板里**没有**那三行 → 用户以为开关没生效（得关掉面板重开）。
             // 而「关」是立刻生效的 —— 行为不对称。
-            // maybeInject 内部已有「已有注入块 → 只刷新勾选态」的幂等分支，直接复用。
-            injectedPanel?.get()?.let { injectInto(env, it) }
+            //
+            // ⚠️ **只注入「还在屏上」的面板**（二次复核时补的）：
+            //  ① `injectedPanel` 记的是「最近认出过的面板」，它可能已经被 dismiss
+            //     （宿主复用了同一个 Dialog 但换了内容视图时，`dialogPanel()` 要到
+            //     下次 show 才更新它）→ 往脱屏的视图里塞块，用户屏幕上什么都不会发生；
+            //  ② 面板已经 show 过之后 `addView` 会不会被裁，按本文件自己的注释
+            //     「窗口一 show 就按当时的内容量尺寸，**之后再 addView 会被裁掉**」——
+            //     所以这里能做的只是**尽力**注入 + 请求重新测量，
+            //     到底行不行要真机看（见提交说明的待验项）。
+            val panel = injectedPanel?.get()?.takeIf { it.isAttachedToWindow }
+            if (panel != null) {
+                injectInto(env, panel)
+                runCatching { panel.requestLayout() }
+            } else {
+                GLog.i("$id：筛选面板当前不在屏上，三行会在下次打开面板时注入")
+            }
         }
         super.onConfigChanged(env, cfg)
     }
@@ -393,7 +407,25 @@ class MarketFilterFeature : UiCleanFeature() {
      * 键是**行视图对象本身**（弱引用）—— 列表复用时行视图会被换掉内容，
      * 但它身上的那两个 TextView 引用不变，所以复用是安全的。
      */
-    private class RowViews(val code: TextView, val percent: TextView?)
+    /**
+     * 一行里的两个 TextView（代码 / 涨跌幅）。
+     *
+     * ⚠️ **弱持有那两个 TextView**（2026-10-20 二次复核时修正）：
+     * `TextView` 由**行视图自己**强持有（`mParent` 指向行视图），行活着它们就活着 ——
+     * 所以弱引用**不会**让缓存提前失效。
+     *
+     * 而**不能**反过来让 value 弱引用整个 `RowViews`：
+     * `RowViews` 唯一的强引用就是这个 map 的 value，而 `views` 在 `keepRow` 之后就出作用域
+     * → 立刻变垃圾 → 下一次 GC 就清掉弱引用 → **缓存命中率 ≈ 0**，
+     * 每行每帧都要重跑两次子树查找（把 8649a67 省掉的那笔开销又打回去）。
+     *
+     * 现在这样：map 的 value 强持有 `RowViews`（`RowViews` 不再强可达 key → 环断了 →
+     * 键可回收 → 条目随之清理），而 `RowViews` 弱持有两个 TextView（不构成环）。
+     */
+    private class RowViews(
+        val code: WeakReference<TextView>,
+        val percent: WeakReference<TextView>?,
+    )
 
     /**
      * 行视图 → 它那行的「代码 / 涨跌幅」两个 TextView。
@@ -403,9 +435,7 @@ class MarketFilterFeature : UiCleanFeature() {
      * 每滚出一屏就泄漏一整棵行视图子树（**泄漏在宿主进程里**）。
      */
     private val rowViewsCache =
-        Collections.synchronizedMap(
-            WeakHashMap<View, WeakReference<RowViews>>(),
-        )
+        Collections.synchronizedMap(WeakHashMap<View, RowViews>())
 
     /**
      * 取一行的「代码」TextView（判定是不是股票行）与「涨跌幅」TextView。
@@ -415,11 +445,11 @@ class MarketFilterFeature : UiCleanFeature() {
      * 涨跌幅取不到时按「读不到涨跌幅」处理（`parsePercent(null)` = null = 平盘）。
      */
     private fun rowViews(row: View, codeId: Int, percentId: Int): RowViews? {
-        rowViewsCache[row]?.get()?.let { return it }
+        rowViewsCache[row]?.let { return it }
         val codeTv = row.findViewById<TextView>(codeId) ?: return null
         val pctTv = row.findViewById<TextView>(percentId)
-        val v = RowViews(codeTv, pctTv)
-        rowViewsCache[row] = WeakReference(v)
+        val v = RowViews(WeakReference(codeTv), pctTv?.let { WeakReference(it) })
+        rowViewsCache[row] = v
         return v
     }
 
@@ -435,8 +465,8 @@ class MarketFilterFeature : UiCleanFeature() {
 
     /** 这一行该不该留下（只判「涨跌与自选」；类型那五行是宿主自己筛的） */
     private fun keepRow(views: RowViews, f: StockFilters): Boolean {
-        val code = views.code.text?.toString()
-        val percent = parsePercent(views.percent?.text?.toString())
+        val code = views.code.get()?.text?.toString()
+        val percent = parsePercent(views.percent?.get()?.text?.toString())
         val inZx = ZxWatchlist.isInWatchlist(code, StockTypes.marketOf(code))
         return f.keepsDirection(inZx, percent)
     }

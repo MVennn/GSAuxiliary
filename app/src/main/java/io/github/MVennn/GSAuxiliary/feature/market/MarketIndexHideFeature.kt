@@ -121,10 +121,20 @@ class MarketIndexHideFeature : UiCleanFeature() {
         //
         // 现在兜底只在**「行情页那几行」里**找 —— 也就是实测的「行1」，
         // 范围小了一个数量级，认错的可能也小一个数量级。
-        val rows = marketRows(root, ids)
-        for (row in rows) {
-            val v = row.findViewById<View>(byId)
-            if (v != null && v.isShown && looksLikeIndexList(v, itemId)) return v
+        //
+        // ⚠️ **兜底必须用「结构判据」而不是「按 id 找」**（2026-10-20 二次复核时发现）：
+        // 兜底存在的意义**恰恰是覆盖 id 失效的场景**（宿主改名）——
+        // 按 id 找的话，id 一失效（`byId == 0`）兜底也跟着死，
+        // 于是「宿主升级 → 功能整个静默失效」，兜底等于没有。
+        // 所以这里遍历那几行的**直接子项**，用结构判据认。
+        //
+        // 顺带把「板块切换器」也天然排除了：`#rg_a_stock` 在 `#rv_markets_hs` **之外**
+        // （它是行情 tab 顶上的那排页签），根本不在「那几行」里。
+        for (row in marketRows(root, ids)) {
+            for (i in 0 until row.childCount) {
+                val child = row.getChildAt(i) ?: continue
+                if (child.isShown && looksLikeIndexList(child, itemId)) return child
+            }
         }
         return null
     }

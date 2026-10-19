@@ -19,9 +19,13 @@
 
 原因：**探针是按需 dump 某个类的** —— 一次 dump 往往只覆盖一个页面。
 实测这份快照只覆盖了**个股详情页的 K 线区**（`KXChartGroupView` 一族），
-所以契约清单里的 29 个类名只有 **20 个**出现在里面，
-剩下 9 个（`BaseQuickAdapter` / `FilterDiaglog` / `AIStareMyStareAdapter` …）
+所以契约清单里的 29 个类名只有 **16 个**出现在里面（其中 15 个是精确全名命中、
+1 个靠简单名宽松命中），
+剩下 13 个（`BaseQuickAdapter` / `FilterDiaglog` / `AIStareMyStareAdapter` …）
 **只是没被那次 dump 扫到，不是失效了**。
+
+> ⚠️ 包前缀常量（以 `.` 结尾，如 `ACTIVITY_PREFIX`）**不参与**这项检查 ——
+> 它没有「简单名」，也不该按类名去找。
 
 所以 `check_contract.py` 对「不在 dump 里」的项**只提示、不报错** ——
 用覆盖不全的 dump 判「失效」会大量假阳性。

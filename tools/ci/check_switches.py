@@ -17,9 +17,10 @@
 
 外加两条：
 
-- 目录里有、但 `FeatureManager` 里**没有任何 Feature** 的 `isEnabled`/`switchedOn` 引用它
-  → **假开关**（界面上有、底下不装钩子，第三轮 H1 的真事）；
 - 每个功能键都要有**出厂默认值** —— 否则「重置模块」清不掉它。
+
+（「目录里有、但没有任何 Feature 引用它 → 假开关」那一条由
+`check_invariants.py` 负责 —— 它按 Feature 逐个解析 `isEnabled` 链，见下。）
 
 ## 与 `check_invariants.py` 的分工
 
@@ -51,7 +52,6 @@ SRC = os.path.join(ROOT, "app", "src", "main", "java", "io", "github", "MVennn",
 KEYS = os.path.join(SRC, "core", "ConfigKeys.kt")
 SNAP = os.path.join(SRC, "core", "ConfigSnapshot.kt")
 CATALOG = os.path.join(SRC, "ui", "FeatureCatalog.kt")
-MANAGER = os.path.join(SRC, "feature", "FeatureManager.kt")
 
 
 def read(p):
@@ -86,7 +86,6 @@ def main():
     keys = read(KEYS)
     snap = read(SNAP)
     catalog = read(CATALOG)
-    manager = read(MANAGER)
 
     all_keys = arr(keys, "ALL_KEYS")
     feature_keys = arr(keys, "FEATURE_KEYS")

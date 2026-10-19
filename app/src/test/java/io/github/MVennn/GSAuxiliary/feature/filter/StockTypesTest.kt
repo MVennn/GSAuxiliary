@@ -131,6 +131,11 @@ class StockTypesTest {
         val samples = listOf(
             "301666.1", "688121.2", "920575.5", "600000.2", "000001.1",
             "301666", "688121", "920575", "", "301666.",
+            // ⚠️ 这三个是**边界**（`dot > 0` 与 `dot >= 0` 的差别恰好落在它们身上）：
+            //   null  → 没有串；
+            //   ".1"  → 点在下标 0；
+            //   "a.b" → 非法代码（要确认两边都当普通字符串处理）。
+            null, ".1", "a.b",
         )
         for (cam in samples) {
             val (code, market) = CodeMarketParts.split(cam)

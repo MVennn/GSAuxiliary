@@ -241,8 +241,13 @@ def host_check(contract, dump_path):
     if not dump_path:
         return None
     if not os.path.exists(dump_path):
-        print("[!] dump 文件不存在：%s —— 跳过宿主存在性校验" % dump_path)
-        return []
+        # ⚠️ **报错而不是静默跳过** —— CI 里传的是硬编码路径，路径写错就静默退化，
+        # 变成「永远绿」的假检查（那还不如没有）。
+        print(
+            "[X] dump 文件不存在：%s —— 宿主存在性校验无法进行。"
+            "（它要么不存在，要么路径写错了；两种都得让人知道）" % dump_path
+        )
+        sys.exit(1)
     with open(dump_path, "r", encoding="utf-8", errors="replace") as f:
         dump = f.read()
     problems = []
@@ -250,10 +255,20 @@ def host_check(contract, dump_path):
     for e in contract["entries"]:
         if e["kind"] != "class":
             continue
+        # ⚠️ **包前缀常量不是类名**（以 "." 结尾，如 `ACTIVITY_PREFIX`）——
+        #    它没有「简单名」，也不该参与「类名还在不在」的判断。
+        if e["value"].endswith("."):
+            continue
         # 简单名也认（dump 里可能是全名也可能是简名）
         simple = e["value"].rsplit(".", 1)[-1]
-        if e["value"] not in dump and simple not in dump:
+        # ⚠️ **简单名为空必须跳过** —— 包前缀常量（如 `ACTIVITY_PREFIX =
+        # "com.guosen.quotation.aistare.ui."`）的简单名是空串，而**空串是任何文本的子串**
+        # → 不跳过的话它会「恒判为存在」，是这条检查里最隐蔽的一个假阳性。
+        if e["value"] not in dump and (not simple or simple not in dump):
             missing.append(e)
+    total = sum(1 for e in contract["entries"] if e["kind"] == "class")
+    hit = total - len(missing)
+    print("[i] dump 命中 %d/%d 个契约类名（确认这些候选名现在还认得到）" % (hit, total))
     if missing:
         # ⚠️ **只提示，不报错** —— dump 覆盖不全时无法区分「宿主改名了」与「这次没扫到」。
         # 真的失效了会表现为「用户在真机上发现这个功能不生效」，那时候再逐个核对。
