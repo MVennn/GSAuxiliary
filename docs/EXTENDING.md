@@ -444,6 +444,9 @@ Scaffold { padding ->
 ### 5.3 远期
 
 - **`DebugConfigProvider`** 目前只是 adb 读写配置，可以扩成完整的自动化测试夹具
+  （列已覆盖 `ConfigKeys.FEATURE_KEYS` 全部 19 个功能键；
+  ⚠️ **读侧（`query`）的列数组与取值数组必须同长同序** —— `MatrixCursor.addRow` 长度不等
+  会抛 `IllegalArgumentException`，整个调试通道就读不出配置了）
   （它已经是标准 ContentProvider：`query` 返回键值矩阵、`update` 按列写回；
   但列**硬编码且已落后** —— `ConfigKeys.FEATURE_KEYS` 里的新开关没有对应列）
 - **`ConfigSource.channel`** 是配置通道的健康状态，可在设置界面可视化

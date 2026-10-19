@@ -177,17 +177,14 @@ internal object StockFilterPanelUi {
                     // 已经是我们的 host 了 → 直接复用，不再包
                     return already as? LinearLayout
                 }
-                // 不是同一个 → 旧壳是过期的，先把它拆掉再重新包
-                runCatching { unwrapVerticalHost(already.findViewById<View>(0) ?: target) }
-                val stale = already.parent as? ViewGroup
-                if (stale != null) {
-                    val idx = stale.indexOfChild(already)
-                    stale.removeView(already)
-                    // 把旧壳里的原视图放回原位
-                    val inner = (already as? ViewGroup)?.getChildAt(0)
-                    if (inner != null) {
-                        stale.addView(inner, if (idx in 0..stale.childCount) idx else -1)
-                    }
+                // 不是同一个 → 旧壳是过期的，**用 `unwrapVerticalHost` 统一拆**
+                // （它负责放回原位 + 还原边距 —— 手工拆会漏掉还原，
+                //  旧行容器就会带着「已清零的外边距」回宿主面板，宿主的行偏一截）。
+                // ⚠️ 要传**旧壳里那个**行容器（`getChildAt(0)`），
+                // 传 `target` 的话它的 parent 不是那个 host → 拆不掉。
+                val staleInner = (already as? ViewGroup)?.getChildAt(0)
+                if (staleInner != null) {
+                    runCatching { unwrapVerticalHost(staleInner) }
                 }
             }
         }

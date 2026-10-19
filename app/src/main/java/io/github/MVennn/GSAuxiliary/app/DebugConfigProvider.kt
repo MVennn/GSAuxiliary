@@ -102,41 +102,61 @@ class DebugConfigProvider : ContentProvider() {
 
         val raw = ModulePreferences.all().entries.joinToString(";") { "${it.key}=${it.value}" }
 
-        return MatrixCursor(
-            arrayOf(
-                COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
-                COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
-                COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
-                COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
-                COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
-                COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
-                COL_AISTARE_CARD_DETAIL,
-                COL_DOCK_CLEAN, COL_HOME_BANNER_HIDE,
-                COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
-                COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
-                COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD,
-            )
-        ).apply {
-            addRow(
-                arrayOf<Any>(
-                    if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
-                    ModulePreferences.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
-                    if (ModulePreferences.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY)) 1 else 0,
-                    ModulePreferences.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
-                    ModulePreferences.backend().name,
-                    if (raw.isEmpty()) "(empty)" else raw,
-                    if (ModulePreferences.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
-                    if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED)) 1 else 0,
-                    ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
-                    if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE)) 1 else 0,
-                )
+        // ⚠️ **列与值必须同源**（2026-10-20 审计时发现）：
+        // 之前列数组与 `addRow` 的值是**两份手写的清单** —— 补了列忘了补值，
+        // 就成了 28 列 vs 15 值 → `MatrixCursor.addRow` 直接抛
+        // `IllegalArgumentException`（它要求长度严格相等）→ **整个调试通道读不了配置**。
+        // 现在一份表出两处，结构上不可能再错位。
+        val columns = arrayOf(
+            COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
+            COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
+            COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
+            COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
+            COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
+            COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
+            COL_AISTARE_CARD_DETAIL,
+            COL_DOCK_CLEAN, COL_HOME_BANNER_HIDE,
+            COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
+            COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
+            COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD,
+        )
+        val values = arrayOf<Any>(
+            if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
+            ModulePreferences.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
+            if (ModulePreferences.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY)) 1 else 0,
+            ModulePreferences.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
+            ModulePreferences.backend().name,
+            if (raw.isEmpty()) "(empty)" else raw,
+            if (ModulePreferences.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED)) 1 else 0,
+            ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, ConfigKeys.DEFAULT_AISTARE_EMPTY_SAVE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM, ConfigKeys.DEFAULT_AISTARE_SKIP_SAVE_CONFIRM)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_SAVE_BACK_TO_STOCK, ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_PICK_SCHEME, ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_CARD_DETAIL, ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.DOCK_CLEAN, ConfigKeys.DEFAULT_DOCK_CLEAN)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.HOME_BANNER_HIDE, ConfigKeys.DEFAULT_HOME_BANNER_HIDE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.MARKET_BANNER_HIDE, ConfigKeys.DEFAULT_MARKET_BANNER_HIDE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.MARKET_SECTOR_COMPACT, ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.MARKET_OVERVIEW_COMPACT, ConfigKeys.DEFAULT_MARKET_OVERVIEW_COMPACT)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.MARKET_STOCK_FILTER, ConfigKeys.DEFAULT_MARKET_STOCK_FILTER)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.MARKET_INDEX_HIDE, ConfigKeys.DEFAULT_MARKET_INDEX_HIDE)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.NAV_BAR_BLEND, ConfigKeys.DEFAULT_NAV_BAR_BLEND)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD)) 1 else 0,
+        )
+        // 列与值必须等长 —— `MatrixCursor.addRow` 长度不等会抛 IllegalArgumentException
+        if (columns.size != values.size) {
+            throw IllegalStateException(
+                "调试通道列数(${columns.size})与值数(${values.size})不等 —— 补的时候要两边一起补"
             )
         }
+        return MatrixCursor(columns).apply { addRow(values) }
     }
 
     override fun getType(uri: Uri): String? = null

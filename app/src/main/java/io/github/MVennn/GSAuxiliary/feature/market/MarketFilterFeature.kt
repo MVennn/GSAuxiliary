@@ -65,12 +65,6 @@ class MarketFilterFeature : UiCleanFeature() {
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketStockFilter
 
     /**
-     * 我们包过「确定」按钮的那些 → **宿主原本的点击监听**（弱引用）。
-     *
-     * 撤包装时要把 original 放回去，否则宿主自己的「确定」行为永久失联
-     * （`StockFilterPanelUi.wrapClick` 现在会把它返回给我们）。
-     */
-    /**
      * 我们包过「确定」按钮的那些 → **宿主原本的监听**。
      *
      * ⚠️ **value 必须是弱引用**（`docs/CODE-RULES.md` 规则 1.4）：

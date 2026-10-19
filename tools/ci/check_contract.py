@@ -61,8 +61,6 @@ SCHEMA = 1
 #   *_CANDIDATES（不带上面那些后缀）→ 候选数组，元素可能是类名 / id / 字段名
 #
 # 排除：我们自己模块的常量（ENTRY_TAG 之类）与数值型常量。
-ID_PAT = re.compile(r"const\s+val\s+([A-Z][A-Z0-9_]*)\s*=\s*(?:arrayOf\(|listOf\()?")
-ARRAY_OF = re.compile(r"arrayOf\s*\(\s*(.*?)\s*\)", re.S)
 STRING_LIT = re.compile(r"\"([^\"]*)\"")
 
 

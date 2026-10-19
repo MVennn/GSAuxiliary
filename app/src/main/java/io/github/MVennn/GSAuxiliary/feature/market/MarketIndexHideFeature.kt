@@ -181,11 +181,13 @@ class MarketIndexHideFeature : UiCleanFeature() {
         for (i in 0 until n) {
             val c = g.getChildAt(i) ?: return false
             if (c is ViewGroup) groupItems++
-            if (itemId != 0) {
-                if (c.findViewById<View>(itemId) != null) labels++
-            } else if (UiClean.firstLabel(c) != null) {
-                labels++
-            }
+            // ⚠️ **「有文案」不能只靠 `itemId` 判**（2026-10-20 审计时发现）：
+            // 若只认 `itemId`，那么「`itemId` 解析到了但这一项里没有它」时 labels 恒为 0
+            // → 结构判据恒不成立 → `findIndexOverview` 的「确认失败时照样用」那条分支
+            // **永远走不到**（注释承诺了、代码没做到）。
+            // 现在是「`itemId` 命中**或**这一项本身有文案」—— 两者任一即可。
+            val byId = itemId != 0 && c.findViewById<View>(itemId) != null
+            if (byId || UiClean.firstLabel(c) != null) labels++
         }
 
         // 快捷入口（「图标 + 文字」）也是横向多格，排除掉

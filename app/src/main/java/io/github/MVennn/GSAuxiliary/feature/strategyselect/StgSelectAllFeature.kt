@@ -68,7 +68,6 @@ class StgSelectAllFeature : Feature {
 
     @Volatile private var countIdCache = 0
 
-    /** 已挂过 TextWatcher 的按钮 → 我们挂的 watcher（弱引用，避免泄漏） */
     /**
      * 「取消」按钮 → 我们挂的 TextWatcher。
      *
