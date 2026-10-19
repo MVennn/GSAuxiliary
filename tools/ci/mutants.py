@@ -109,14 +109,16 @@ MUTANTS = [
 
 def run_tests():
     """跑单测，返回是否全过。"""
+    # ⚠️ Windows 控制台是 GBK，Gradle 的输出可能含非 UTF-8 字节 ——
+    #    不加 errors="replace" 的话，subprocess 的解码线程会直接抛 UnicodeDecodeError。
     r = subprocess.run(
         ["./gradlew.bat", ":app:testReleaseUnitTest", "--console=plain", "-q"],
         cwd=ROOT,
         capture_output=True,
-        text=True,
         timeout=1800,
     )
-    return r.returncode == 0, (r.stdout or "") + (r.stderr or "")
+    out = (r.stdout or b"").decode("utf-8", "replace") + (r.stderr or b"").decode("utf-8", "replace")
+    return r.returncode == 0, out
 
 
 def main():
