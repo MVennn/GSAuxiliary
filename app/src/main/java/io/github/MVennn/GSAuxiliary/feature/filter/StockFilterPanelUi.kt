@@ -181,13 +181,20 @@ internal object StockFilterPanelUi {
         clickF.get(info) as? View.OnClickListener
     }.getOrNull()
 
-    /** 把 [action] 包在 [v] 原有的点击监听**外面**（原有为空时只跑 [action]） */
-    fun wrapClick(v: View, action: (View) -> Unit) {
+    /**
+     * 把 [action] 包在 [v] 原有的点击监听**外面**（原有为空时只跑 [action]）。
+     *
+     * @return **宿主原本的监听**（没有则 null）—— 调用方必须留着它：
+     *   撤包装时要把 original 放回去，否则宿主自己的「确定」行为就永久失联。
+     *   （原先这里把它捕获进闭包就没人拿得到了，导致注入无法撤销。）
+     */
+    fun wrapClick(v: View, action: (View) -> Unit): View.OnClickListener? {
         val original = clickListener(v)
         v.setOnClickListener { view ->
             runCatching { action(view) }
             original?.let { runCatching { it.onClick(view) } }
         }
+        return original
     }
 
     /** 按宿主行布局建一行：`#name` 文案 + `#cb_checked` 勾选 + 整行可点。

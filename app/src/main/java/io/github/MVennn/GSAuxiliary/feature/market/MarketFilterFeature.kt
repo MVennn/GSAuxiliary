@@ -24,6 +24,9 @@ import io.github.MVennn.GSAuxiliary.feature.uiclean.UiClean
 import io.github.MVennn.GSAuxiliary.feature.uiclean.UiCleanFeature
 import io.github.MVennn.GSAuxiliary.feature.watchlist.ZxWatchlist
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.ref.WeakReference
+import java.util.Collections
+import java.util.WeakHashMap
 
 /**
  * 功能：**行情页「沪深京A」筛选面板里的「涨跌与自选」三行 + 按它们筛排行榜**。
@@ -61,6 +64,23 @@ class MarketFilterFeature : UiCleanFeature() {
 
     override fun switchedOn(cfg: ConfigSnapshot): Boolean = cfg.marketStockFilter
 
+    /**
+     * 我们包过「确定」按钮的那些 → **宿主原本的点击监听**（弱引用）。
+     *
+     * 撤包装时要把 original 放回去，否则宿主自己的「确定」行为永久失联
+     * （`StockFilterPanelUi.wrapClick` 现在会把它返回给我们）。
+     */
+    private val wrappedOkButtons =
+        Collections.synchronizedMap(WeakHashMap<TextView, View.OnClickListener>())
+
+    /**
+     * 最近一次注入过的那个面板（弱引用）。
+     *
+     * 有了它，关开关时能**立刻**把三行从正开着的面板里撤掉 ——
+     * 不用等用户下次打开面板才发现「三行还在」。
+     */
+    @Volatile private var injectedPanel: WeakReference<ViewGroup>? = null
+
     override val idNames = MarketTargets.PAGE_ANCHOR_ID_CANDIDATES + arrayOf(
         MarketFilterTargets.RANKING_LIST_ID,
         MarketFilterTargets.RANKING_CODE_ID,
@@ -78,6 +98,12 @@ class MarketFilterFeature : UiCleanFeature() {
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         StockFilterStore.invalidate()
+        // ⚠️ 关掉开关时**立刻**把注入到宿主面板里的东西撤掉（规则 1.1）。
+        // 面板可能正开着 —— 那就把正开着的那张也撤了，用户不用关掉重开才发现三行还在。
+        if (!cfg.marketStockFilter) {
+            injectedPanel?.get()?.let { removeInjected(it) }
+            restoreOkButtons()
+        }
         super.onConfigChanged(env, cfg)
     }
 
@@ -102,9 +128,10 @@ class MarketFilterFeature : UiCleanFeature() {
                     .setId("$id:dialogShow")
                     .intercept { chain ->
                         runCatching {
-                            if (env.config.marketStockFilter) {
-                                (chain.thisObject as? Dialog)?.let { maybeInject(it) }
-                            }
+                            // ⚠️ **无条件进来**：开关关掉时也要进来「把注入的东西撤掉」。
+                            // 原来在这里判 `env.config.marketStockFilter`，开关一关就短路，
+                            // 于是注入的三行与被包的「确定」永远撤不掉（规则 1.1）。
+                            (chain.thisObject as? Dialog)?.let { maybeInject(env, it) }
                         }.onFailure { GLog.w("$id：面板注入异常", it) }
                         chain.proceed()
                     }
@@ -114,14 +141,24 @@ class MarketFilterFeature : UiCleanFeature() {
         return methods.size
     }
 
-    private fun maybeInject(dialog: Dialog) {
+    private fun maybeInject(env: FeatureEnv, dialog: Dialog) {
         val panel = dialogPanel(dialog) ?: return
         val res = panel.resources
 
         // 幂等：宿主可能复用同一个 Dialog 实例，重复 show 时只刷新勾选态
         val existing = panel.findViewWithTag<View>(FilterPanelIds.TAG_INJECTED_BLOCK)
         if (existing != null) {
-            refreshInjected(existing, res, filters(panel.context))
+            if (env.config.marketStockFilter) {
+                refreshInjected(existing, res, filters(panel.context))
+            } else {
+                // 开关关了 → 先撤掉上一次注入的
+                removeInjected(panel)
+            }
+            return
+        }
+        // 没注入过，但开关是关的 → 把可能残留的「确定」包装撤掉（上一任实例注入的）
+        if (!env.config.marketStockFilter) {
+            restoreOkButtons()
             return
         }
 
@@ -166,7 +203,9 @@ class MarketFilterFeature : UiCleanFeature() {
 
         // 「确定」：先按我们的三行落盘 + 立即生效，再把宿主的确定原样放行
         // （宿主会应用它自己的类型过滤并关掉面板）。类型那五项是宿主自己的，保持不变。
-        StockFilterPanelUi.wrapClick(okBtn) {
+        // ⚠️ original 必须**存下来**：撤包装时要把宿主自己的监听放回去，
+        // 抓进闭包就没人拿得到了（`wrapClick` 现在会把它返回）。
+        val original = StockFilterPanelUi.wrapClick(okBtn) {
             var applied = opened
             for (row in FilterRow.DIRECTION_ROWS) {
                 val checked = boxes[row]?.isChecked ?: state[row] ?: false
@@ -176,8 +215,41 @@ class MarketFilterFeature : UiCleanFeature() {
             StockFilterStore.save(panel.context, applied)
             GLog.i("$id：筛选条件已生效（${summaryOf(applied)}）")
         }
+        if (original != null) wrappedOkButtons[okBtn] = original
+        injectedPanel = WeakReference(panel)
 
         GLog.i("$id：已在宿主筛选面板里注入「${FilterRow.SECTION_DIRECTION}」三行（面板标题「$title」）")
+    }
+
+    /**
+     * 撤掉注入到宿主面板里的那一块，并把「确定」按钮的监听还原成宿主自己的。
+     *
+     * 规则 1.1：install 落下的每一笔都要能被撤销。原先**只做不撤** ——
+     * `TAG_INJECTED_BLOCK` 的注释写着「幂等与撤销都靠它」，可全仓没有任何一处
+     * 按这个 tag 撤销。结果：关掉开关后三行还在（用户以为开关没生效），
+     * 而且「确定」仍被我们的包装器包着 → 用户在面板里勾的方向仍会落盘进
+     * **策略详情页共用**的那份筛选状态 → 关掉 A 功能、B 功能的行为被改了。
+     */
+    private fun removeInjected(panel: ViewGroup) {
+        val block = panel.findViewWithTag<View>(FilterPanelIds.TAG_INJECTED_BLOCK) ?: return
+        runCatching { (block.parent as? ViewGroup)?.removeView(block) }
+            .onFailure { GLog.w("$id：撤掉注入块失败", it) }
+        restoreOkButtons()
+        injectedPanel = null
+        GLog.i("$id：已撤掉面板里的「${FilterRow.SECTION_DIRECTION}」注入块")
+    }
+
+    /** 把「确定」按钮的监听还原成宿主自己的（我们包过的那些） */
+    private fun restoreOkButtons() {
+        val entries = synchronized(wrappedOkButtons) {
+            val list = wrappedOkButtons.entries.toList()
+            wrappedOkButtons.clear()
+            list
+        }
+        for ((btn, original) in entries) {
+            runCatching { btn.setOnClickListener(original) }
+                .onFailure { GLog.w("$id：还原「确定」按钮监听失败", it) }
+        }
     }
 
     /** 宿主行情筛选面板的内容视图；不是它（或是我方自己的面板）就返回 null */
