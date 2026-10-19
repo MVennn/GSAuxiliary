@@ -29,14 +29,31 @@ internal object IndexShape {
      * @param childCount        子项数
      * @param labeledCount      其中「有文案」的项数
      * @param entryItemCount    其中「图标 + 文字」形态的项数
+     * @param groupItemCount    其中「本身是 ViewGroup」的项数
      * @param totalHeightDp     整块高度（dp）；0 = 还没量出来（不参与高度判断）
      */
     fun looksLikeIndexOverview(
         childCount: Int,
         labeledCount: Int,
         entryItemCount: Int,
+        groupItemCount: Int,
         totalHeightDp: Int,
     ): Boolean {
+        // ⓪ **每一项都得是 ViewGroup**
+        //
+        // ⚠️ 这条是 2026-10-20 三次复核时补的（兜底范围收窄之后引入的）：
+        // 兜底范围收窄到「行情页那几行的直接子项」之后，
+        // **行4 快捷入口**（`#rv_entra`，5 个 `TextView` 格子）与
+        // **行6 板块页签**（`#rg_bk`，5 个 `RadioButton`）也落进了范围，
+        // 而它们**满足下面全部四条判据** ——
+        // 原因在条件③：快捷入口的格子是 `TextView`（**不是** ViewGroup），
+        // 而 `looksLikeEntryItem` 的第一道判据就是 `v is ViewGroup` → 直接短路
+        // → 入口格数恒为 0 → 条件③（排除入口网格）**永远不生效**。
+        //
+        // 指数概览的每一项实测是 `LinearLayout #ll_content`（**是** ViewGroup），
+        // 所以这一条能一次挡掉上面两个（TextView 格子 / RadioButton）。
+        if (groupItemCount < childCount) return false
+
         // ① 子项够多
         if (childCount < MarketTargets.MIN_INDEX_ITEMS) return false
 

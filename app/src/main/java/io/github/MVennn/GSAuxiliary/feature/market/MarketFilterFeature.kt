@@ -427,13 +427,6 @@ class MarketFilterFeature : UiCleanFeature() {
         val percent: WeakReference<TextView>?,
     )
 
-    /**
-     * 行视图 → 它那行的「代码 / 涨跌幅」两个 TextView。
-     *
-     * ⚠️ **value 必须是弱引用**（规则 1.4）：`RowViews` 里的 TextView 是行视图的子视图，
-     * 它的 `mParent` 指向行视图（也就是 key）—— value→key 的强引用会让弱键**形同虚设**，
-     * 每滚出一屏就泄漏一整棵行视图子树（**泄漏在宿主进程里**）。
-     */
     private val rowViewsCache =
         Collections.synchronizedMap(WeakHashMap<View, RowViews>())
 
@@ -445,7 +438,12 @@ class MarketFilterFeature : UiCleanFeature() {
      * 涨跌幅取不到时按「读不到涨跌幅」处理（`parsePercent(null)` = null = 平盘）。
      */
     private fun rowViews(row: View, codeId: Int, percentId: Int): RowViews? {
-        rowViewsCache[row]?.let { return it }
+        // ⚠️ **弱引用被清时要当「未命中」重新查**（2026-10-20 三次复核时发现）：
+        // 键是行视图，宿主若把行里的「代码」TextView 换掉（removeAllViews 后重新 inflate），
+        // 缓存条目**不会**失效（键还可达）→ 这一行会被**永久**判成「平盘」而收起，
+        // 而且**不会自愈**（要等行视图被回收才清）。
+        // 判「弱引用还活着」再返回，异常路径上多查一次子树，代价可忽略。
+        rowViewsCache[row]?.takeIf { it.code.get() != null }?.let { return it }
         val codeTv = row.findViewById<TextView>(codeId) ?: return null
         val pctTv = row.findViewById<TextView>(percentId)
         val v = RowViews(WeakReference(codeTv), pctTv?.let { WeakReference(it) })

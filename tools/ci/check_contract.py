@@ -35,7 +35,7 @@
 python3 tools/ci/check_contract.py
 
 # 拿探针 dump 对照宿主存在性
-python3 tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271.txt
+python3 tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271-classes.txt
 
 # 重新生成清单（改了 Targets 之后）
 python3 tools/ci/check_contract.py --regen
@@ -296,6 +296,12 @@ def main():
         return 1
 
     problems = static_check(contract)
+
+    # ⚠️ **先打印静态校验的结果，再做宿主存在性校验**（2026-10-20 三次复核时发现）：
+    # 后者遇到 dump 缺失会直接 `sys.exit(1)`，那时静态校验的清单**一条都没打印** ——
+    # 两件事一起坏时，维护者只看到「dump 不存在」，得修一件再跑一次。
+    if not problems:
+        print("[OK] 静态双向校验通过（代码 ↔ 清单）")
 
     host_problems = host_check(contract, args.dump)
     if host_problems is not None:

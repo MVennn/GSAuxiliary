@@ -145,15 +145,24 @@ class MarketIndexHideFeature : UiCleanFeature() {
      * 只在这个范围里找，认错的可能就小得多（见上面那条注释）。
      */
     private fun marketRows(root: View, ids: IdCache): List<ViewGroup> {
-        val listId = ids.of(MarketTargets.PAGE_LIST_ID)
-        if (listId == 0) return emptyList()
-        val rv = root.findViewById<ViewGroup>(listId) ?: return emptyList()
-        val out = ArrayList<ViewGroup>(rv.childCount)
-        for (i in 0 until rv.childCount) {
-            val c = rv.getChildAt(i) as? ViewGroup ?: continue
-            out.add(c)
+        // ⚠️ **不能只认 `rv_markets_hs` 一个 id**（2026-10-20 三次复核时发现）：
+        // 兜底存在的意义恰恰是覆盖**宿主改名**的场景 —— 而把 `rv_markets_hs` 改名
+        // 正是最可能发生的改版（它是这一页的主容器）。只绑一个 id 的话，
+        // 改名 → 兜底范围为空 → 兜底彻底不生效 → **功能静默失效**。
+        // 页面门禁 `MarketTargets.onMarketPage` 用的是**三个**候选，兜底也该同样宽。
+        for (name in MarketTargets.PAGE_ANCHOR_ID_CANDIDATES) {
+            val id = ids.of(name)
+            if (id == 0) continue
+            val rv = root.findViewById<ViewGroup>(id) ?: continue
+            val out = ArrayList<ViewGroup>(rv.childCount)
+            for (i in 0 until rv.childCount) {
+                val c = rv.getChildAt(i) as? ViewGroup ?: continue
+                out.add(c)
+            }
+            if (out.isNotEmpty()) return out
         }
-        return out
+        GLog.d("$id：行情页那几行没认出来 —— 兜底范围为空，结构判据用不上")
+        return emptyList()
     }
 
     /**
@@ -168,8 +177,10 @@ class MarketIndexHideFeature : UiCleanFeature() {
         val n = g.childCount
 
         var labels = 0
+        var groupItems = 0
         for (i in 0 until n) {
             val c = g.getChildAt(i) ?: return false
+            if (c is ViewGroup) groupItems++
             if (itemId != 0) {
                 if (c.findViewById<View>(itemId) != null) labels++
             } else if (UiClean.firstLabel(c) != null) {
@@ -189,6 +200,7 @@ class MarketIndexHideFeature : UiCleanFeature() {
             childCount = n,
             labeledCount = labels,
             entryItemCount = entries,
+            groupItemCount = groupItems,
             totalHeightDp = heightDp,
         )
     }

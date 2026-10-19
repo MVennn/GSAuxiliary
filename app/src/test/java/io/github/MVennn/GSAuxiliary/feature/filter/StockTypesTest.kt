@@ -125,6 +125,31 @@ class StockTypesTest {
     }
 
     @Test
+    fun `切分结果 直接断言 - 不能只比类型掩码`() {
+        // ⚠️ **比类型掩码不够**（2026-10-20 三次复核时发现）：
+        // `StockTypes.byCodeAndMarket` 的 market 只在「等于 5（北交所）」这一条上起作用，
+        // 其余全靠代码前缀 → 13 个样本里**没有一个能区分「market 还在不在」** ——
+        // 把 `split` 改成永远返回 `market = null`，比类型掩码的对拍**依然全绿**。
+        //
+        // 而 market 这一维是**行为相关**的：`isInWatchlist` 要求 market 非空才去查自选
+        // （`StgStockFilterFeature` 里），market 丢了 = 自选判定失效。
+        // 所以这里**直接断言切分结果**。
+        val cases = listOf(
+            "301666.1" to ("301666" to "1"),
+            "301666" to ("301666" to null),
+            "301666." to ("301666" to ""),
+            ".1" to (".1" to null),          // 点在下标 0
+            "a.b" to ("a" to "b"),
+            "301666.1.2" to ("301666" to "1.2"),
+            "" to (null to null),
+            null to (null to null),
+        )
+        for ((cam, expected) in cases) {
+            assertEquals(expected, CodeMarketParts.split(cam), "「$cam」的切分结果不对")
+        }
+    }
+
+    @Test
     fun `切分口径 与 StockTypes 的 2 参重载 逐字等价`() {
         // 「生产代码切的」与「StockTypes 自己切的」必须一致 ——
         // 不一致就说明有一边的口径漂了（前车之鉴第 3 条）。

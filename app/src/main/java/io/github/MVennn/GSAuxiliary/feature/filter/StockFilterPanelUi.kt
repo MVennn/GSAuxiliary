@@ -74,6 +74,15 @@ internal object FilterPanelIds {
      * 热重载后新实例也认得出「这是上一任注入的块」（规则 1.2）。
      */
     const val TAG_INJECTED_BLOCK = "gsaux_market_filter_block"
+
+    /**
+     * 我们把宿主的行容器（`#rv_markets`）包进去的那层 `LinearLayout` 的标记。
+     *
+     * 为什么需要它：那个 host **原本既没 id 也没 tag**，所以「有没有已经包过」
+     * 这件事在代码里无处可查 → 「开→关→开」每轮都会再包一层，
+     * 宿主视图树逐轮增长（规则 1.2：注入的东西要能被认出来）。
+     */
+    const val TAG_PANEL_HOST = "gsaux_market_filter_host"
 }
 
 /**
@@ -147,12 +156,36 @@ internal object StockFilterPanelUi {
      */
     fun wrapWithVerticalHost(target: View): LinearLayout? {
         val parent = target.parent as? ViewGroup ?: return null
+
+        // ⚠️ **已经包过就复用，别再包一层**（2026-10-20 三次复核时发现）：
+        // 这个 host **没有标记就认不出来**（原来既没 id 也没 tag），
+        // 于是「开→关→开」每轮都会再包一次 —— 新的 host 塞进旧的 host 里，
+        // **宿主视图树逐轮增长**（无上限），而且 `LayoutParams` 实例被多层共用，
+        // 面板高度 / 内边距会被算错。
+        // 修：给 host 打自己的 tag（规则 1.2：注入的东西要能被认出来）。
+        (parent as? ViewGroup)?.let { p ->
+            val already = p.findViewWithTag<View>(FilterPanelIds.TAG_PANEL_HOST)
+            if (already != null) {
+                // 已经是我们的 host 了 → 直接复用，不再包
+                return already as? LinearLayout
+            }
+        }
+
         val index = parent.indexOfChild(target)
         val lp = target.layoutParams
         parent.removeView(target)
         val host = LinearLayout(target.context).apply {
             orientation = LinearLayout.VERTICAL
-            if (lp != null) layoutParams = lp
+            tag = FilterPanelIds.TAG_PANEL_HOST
+            // ⚠️ **要用副本**，不能直接复用宿主那个实例 ——
+            // 复用的话 host 与 target 共用同一个 LayoutParams 对象，
+            // 后面改任一边的属性都会影响另一边（多��套娃时三层共用，更容易错）。
+            if (lp != null) {
+                layoutParams = when (lp) {
+                    is LinearLayout.LayoutParams -> LinearLayout.LayoutParams(lp)
+                    else -> ViewGroup.LayoutParams(lp)
+                }
+            }
         }
         parent.addView(host, if (index in 0..parent.childCount) index else -1)
         host.addView(target)
