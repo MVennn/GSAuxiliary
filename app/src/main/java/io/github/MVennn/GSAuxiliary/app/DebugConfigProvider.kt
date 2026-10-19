@@ -49,6 +49,19 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_AISTARE_QUICK = "aistare_quick_enabled"
         const val COL_AISTARE_SCHEMES = "aistare_quick_config"
         const val COL_AISTARE_EMPTY_SAVE = "aistare_empty_save"
+        const val COL_AISTARE_SKIP_CONFIRM = "aistare_skip_save_confirm"
+        const val COL_AISTARE_SAVE_BACK = "aistare_save_back_to_stock"
+        const val COL_AISTARE_PICK_SCHEME = "aistare_pick_scheme"
+        const val COL_AISTARE_CARD_DETAIL = "aistare_card_detail"
+        const val COL_DOCK_CLEAN = "dock_clean"
+        const val COL_HOME_BANNER_HIDE = "home_banner_hide"
+        const val COL_MARKET_BANNER_HIDE = "market_banner_hide"
+        const val COL_MARKET_SECTOR_COMPACT = "market_sector_compact"
+        const val COL_MARKET_OVERVIEW_COMPACT = "market_overview_compact"
+        const val COL_MARKET_STOCK_FILTER = "market_stock_filter"
+        const val COL_MARKET_INDEX_HIDE = "market_index_hide"
+        const val COL_NAV_BAR_BLEND = "nav_bar_blend"
+        const val COL_WATCHLIST_BOLD = "watchlist_bold"
     }
 
     override fun onCreate(): Boolean {
@@ -96,6 +109,12 @@ class DebugConfigProvider : ContentProvider() {
                 COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
                 COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
                 COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
+                COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
+                COL_AISTARE_CARD_DETAIL,
+                COL_DOCK_CLEAN, COL_HOME_BANNER_HIDE,
+                COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
+                COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
+                COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD,
             )
         ).apply {
             addRow(
@@ -153,6 +172,19 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_IPO_DIALOG_CLEAN)?.let { putBoolean(ConfigKeys.IPO_DIALOG_CLEAN, it != 0); n++ }
             intOf(COL_AISTARE_QUICK)?.let { putBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, it != 0); n++ }
             intOf(COL_AISTARE_EMPTY_SAVE)?.let { putBoolean(ConfigKeys.AISTARE_EMPTY_SAVE, it != 0); n++ }
+            intOf(COL_AISTARE_SKIP_CONFIRM)?.let { putBoolean(ConfigKeys.AISTARE_SKIP_SAVE_CONFIRM, it != 0); n++ }
+            intOf(COL_AISTARE_SAVE_BACK)?.let { putBoolean(ConfigKeys.AISTARE_SAVE_BACK_TO_STOCK, it != 0); n++ }
+            intOf(COL_AISTARE_PICK_SCHEME)?.let { putBoolean(ConfigKeys.AISTARE_PICK_SCHEME, it != 0); n++ }
+            intOf(COL_AISTARE_CARD_DETAIL)?.let { putBoolean(ConfigKeys.AISTARE_CARD_DETAIL, it != 0); n++ }
+            intOf(COL_DOCK_CLEAN)?.let { putBoolean(ConfigKeys.DOCK_CLEAN, it != 0); n++ }
+            intOf(COL_HOME_BANNER_HIDE)?.let { putBoolean(ConfigKeys.HOME_BANNER_HIDE, it != 0); n++ }
+            intOf(COL_MARKET_BANNER_HIDE)?.let { putBoolean(ConfigKeys.MARKET_BANNER_HIDE, it != 0); n++ }
+            intOf(COL_MARKET_SECTOR_COMPACT)?.let { putBoolean(ConfigKeys.MARKET_SECTOR_COMPACT, it != 0); n++ }
+            intOf(COL_MARKET_OVERVIEW_COMPACT)?.let { putBoolean(ConfigKeys.MARKET_OVERVIEW_COMPACT, it != 0); n++ }
+            intOf(COL_MARKET_STOCK_FILTER)?.let { putBoolean(ConfigKeys.MARKET_STOCK_FILTER, it != 0); n++ }
+            intOf(COL_MARKET_INDEX_HIDE)?.let { putBoolean(ConfigKeys.MARKET_INDEX_HIDE, it != 0); n++ }
+            intOf(COL_NAV_BAR_BLEND)?.let { putBoolean(ConfigKeys.NAV_BAR_BLEND, it != 0); n++ }
+            intOf(COL_WATCHLIST_BOLD)?.let { putBoolean(ConfigKeys.WATCHLIST_BOLD, it != 0); n++ }
             if (values.containsKey(COL_AISTARE_SCHEMES)) {
                 putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
                 n++

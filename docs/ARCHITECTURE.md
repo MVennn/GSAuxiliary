@@ -234,7 +234,7 @@ onHotReloaded(param)
 | **隐藏 指数概览** | `MarketIndexHideFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`） | 行情页顶部那一行（`#rv_markets_hs` 的**行1**，内含 `RecyclerView #rv_index` → `#ll_content` ×4）整块收起，高度归零 + `GONE` | **收的是「行1」不是 `#rv_index`** —— 版块内边距在子项上，且 `RecyclerView` 的 `LayoutManager` 不判 `visibility`，只设 `GONE` 照样占地方（见 [FEATURE-UI-CLEAN](FEATURE-UI-CLEAN.md) §3.6） |
 | **行情市场筛选涨跌与自选** | `MarketFilterFeature` | `Dialog#show`（**前置**注入，宿主自己的筛选面板）+ `PageSyncFeature` 骨架（改排行榜行） | 往宿主的「沪深京A」筛选面板里追加「涨跌与自选」三行（与策略详情页那颗面板**共用同一份状态与文案**），点确定落盘；按这三行把排行榜里不匹配的行**收起**（高度归零 + GONE） | **注入必须前置**（面板一 `show` 就量过尺寸，之后 `addView` 会被裁掉）；判定**只看视图**（`Dialog` 是框架类、全 App 都在弹）；关开关能**撤掉**注入的三行并把宿主「确定」的监听还原（规则 1.1）；**不碰**宿主自己的类型过滤那五行（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md)） |
 
-**界面精简**（其余 6 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
+**界面精简**（其余 5 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
 （可一键还原）。挂载点即 `PageSyncFeature` 骨架本身：
 
@@ -252,12 +252,14 @@ onHotReloaded(param)
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
 > **当前状态（16 个 Feature 实现 / 19 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
-> 挂钩子改行为 10 个 + 界面精简 5 个。
+> 挂钩子改行为 11 个 + 界面精简 5 个。
 >
-> **口径说明**：「17 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
-> 「15 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 2 是因为
+> **口径说明**：「19 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
+> 「16 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
+> 各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
-> 三个开关由**同一个** Feature 实现（`AiStareQuickConfigFeature`），不单列功能行。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
+> 三个由 `AiStareQuickConfigFeature` 实现（不单列功能行），
+> `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
 > `stock_bar_entry`（底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`
@@ -347,6 +349,7 @@ env.xposed.hook(m)
 ```kotlin
 data class ConfigSnapshot(
     val enabled: Boolean,                // 自选高亮总开关
+    val watchlistBold: Boolean,          // 自选股名称加粗（与高亮是两个独立开关）
     val color: Int,                      // 高亮色（ARGB）
     val scopeStrategy: Boolean,          // 自选高亮：是否作用于策略详情页
     val logLevel: Int,                   // 日志等级（两进程共用，见 core/GLog.kt）
@@ -359,6 +362,7 @@ data class ConfigSnapshot(
     val homeBannerHide: Boolean,         // 隐藏首页快捷入口下方的横幅
     val marketBannerHide: Boolean,       // 隐藏行情市场滚动横幅与快捷入口
     val marketSectorCompact: Boolean,    // 行情市场板块由六项压缩为三项
+    val marketIndexHide: Boolean,        // 行情市场顶部的「指数概览」整块收起
     val marketOverviewCompact: Boolean,  // 行情市场「市场概览」整体压矮
     val marketStockFilter: Boolean,      // 行情市场「沪深京A」筛选面板加「涨跌与自选」三行
     val navBarBlend: Boolean,            // 手势导航条填充与紧邻界面一致的颜色
@@ -381,8 +385,10 @@ data class ConfigSnapshot(
 }
 ```
 
-> 快照共 **24 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 30 个键
-> = 24 个进快照 + 6 个只属模块 App 进程（桌面图标 / 玻璃 / 语言 / 主题 / 可预测返回 / 日志等级）。
+> 快照共 **26 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 32 个键
+> = 26 个进快照 + 6 个只属模块 App 进程（桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
+> ⚠️ **日志等级（`LOG_LEVEL`）是例外** —— 它既不在功能键也不在参数键里，
+> 但**进快照**（目标进程用它控制日志等级，见 `ConfigKeys` 的类注释）。
 
 为什么用快照而不是直接读 `SharedPreferences`：
 

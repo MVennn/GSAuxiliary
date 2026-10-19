@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块自己的 View tag id。
+
+  `View.setTag(int key, Object value)` 的 key 必须是**资源 id**（不能是字符串）——
+  而我们要存的东西（宿主行容器的原 LayoutParams、原外边距）需要一个 key。
+
+  ⚠️ 这些 id **只进模块自己的进程**（宿主 App 的视图上挂的是模块的 R 资源 id，
+  跨进程不冲突 —— 宿主不可能用我们的 id）。
+-->
+<resources>
+    <!-- 我们包住宿主行容器时，原 LayoutParams 的留档位置（挂在 host 上） -->
+    <item name="gsaux_panel_original_lp" type="id" />
+    <!-- 原外边距（left / right / start / end）的留档位置（挂在 host 上） -->
+    <item name="gsaux_panel_original_margin" type="id" />
+
+    <!--
+      自选股名称的**原色 / 原字重**的留档位置（挂在那个 TextView 上）。
+
+      为什么挂在视图上而不是存在 Feature 实例里（规则 1.2）：
+      存在实例里的话，**热重载后新实例认不出**「这已经是我们改过的」——
+      它看到的是一个已经被我们染过色 / 加过粗的 TextView，于是：
+        · 原色被当成「预设色」→ 还原成硬编码兜底色，宿主的颜色被顶掉；
+        · 原字重永远记不下来 → 关掉「加粗」也撤不掉，**永久粗着**。
+      挂在视图上就跨实例可认（热重载后的新实例读得到同一个 tag）。
+    -->
+    <item name="gsaux_watchlist_original_color" type="id" />
+    <item name="gsaux_watchlist_original_typeface" type="id" />
+</resources>

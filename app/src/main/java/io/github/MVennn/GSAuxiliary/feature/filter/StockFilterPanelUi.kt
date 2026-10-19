@@ -10,6 +10,7 @@ import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 
@@ -83,6 +84,7 @@ internal object FilterPanelIds {
      * 宿主视图树逐轮增长（规则 1.2：注入的东西要能被认出来）。
      */
     const val TAG_PANEL_HOST = "gsaux_market_filter_host"
+
 }
 
 /**
@@ -166,8 +168,27 @@ internal object StockFilterPanelUi {
         (parent as? ViewGroup)?.let { p ->
             val already = p.findViewWithTag<View>(FilterPanelIds.TAG_PANEL_HOST)
             if (already != null) {
-                // 已经是我们的 host 了 → 直接复用，不再包
-                return already as? LinearLayout
+                // ⚠️ **要确认 target 就在这个 host 里**（2026-10-20 审计时发现）：
+                // 宿主若复用了 Dialog 但**重建了内容视图**（换了新的行容器实例），
+                // 而旧壳还在树上 → 只按 tag 认会命中**旧壳** → 我们的三行加进
+                // 装着已废弃旧容器的壳里 → **宿主面板上根本看不到那三行**
+                // （而日志还会说「已注入」）。
+                if (target.parent === already) {
+                    // 已经是我们的 host 了 → 直接复用，不再包
+                    return already as? LinearLayout
+                }
+                // 不是同一个 → 旧壳是过期的，先把它拆掉再重新包
+                runCatching { unwrapVerticalHost(already.findViewById<View>(0) ?: target) }
+                val stale = already.parent as? ViewGroup
+                if (stale != null) {
+                    val idx = stale.indexOfChild(already)
+                    stale.removeView(already)
+                    // 把旧壳里的原视图放回原位
+                    val inner = (already as? ViewGroup)?.getChildAt(0)
+                    if (inner != null) {
+                        stale.addView(inner, if (idx in 0..stale.childCount) idx else -1)
+                    }
+                }
             }
         }
 
@@ -177,18 +198,36 @@ internal object StockFilterPanelUi {
         val host = LinearLayout(target.context).apply {
             orientation = LinearLayout.VERTICAL
             tag = FilterPanelIds.TAG_PANEL_HOST
-            // ⚠️ **要用副本**，不能直接复用宿主那个实例 ——
-            // 复用的话 host 与 target 共用同一个 LayoutParams 对象，
-            // 后面改任一边的属性都会影响另一边（多��套娃时三层共用，更容易错）。
-            if (lp != null) {
-                layoutParams = when (lp) {
-                    is LinearLayout.LayoutParams -> LinearLayout.LayoutParams(lp)
-                    else -> ViewGroup.LayoutParams(lp)
-                }
-            }
+            // ⚠️ **必须沿用原实例**（不是副本）——
+            // 宿主的行容器在 `ConstraintLayout` 里，它的 `LayoutParams` 是
+            // `ConstraintLayout.LayoutParams`（带约束）。换成 `ViewGroup.LayoutParams`
+            // 会**丢掉约束与边距** → `parent.addView` 发现类型不匹配就
+            // `generateLayoutParams` 重新生成一份 → 约束字段全部回落 `UNSET`
+            // → 宿主那几行（创业板 / 科创板 / 北证A / 未开板次新 / ST股）位置错乱。
+            //
+            // 「host 与 target 共用同一个实例」的担心**本来就不成立**：
+            // 下面 `host.addView(target)` 时 LinearLayout 会检查 target 的 lp 类型
+            // （`ConstraintLayout.LayoutParams` 不是 `LinearLayout.LayoutParams`），
+            // 自动给 target **转一份自己的副本** —— 两边并不共用。
+            if (lp != null) layoutParams = lp
         }
         parent.addView(host, if (index in 0..parent.childCount) index else -1)
+        // 这一步会把 target 的 LayoutParams 转成 LinearLayout 的副本（约束不适用于它）
         host.addView(target)
+
+        // ⚠️ **原 LayoutParams 与原边距要留档**（2026-10-20 审计时发现）：
+        // 下面把 target 的左右外边距清零了（`LinearLayout` 会把约束容器的外边距
+        // 一起抄成自己的 —— 同一份缩进被用了两次，2026-10-19 真机实测过
+        // 「行内名称 70px → 112px」）。**不记档就还原不回去**：
+        // 关掉开关后宿主的行会一直偏着，而「重置模块」也救不了。
+        host.setTag(R.id.gsaux_panel_original_lp, lp)
+        val m = target.layoutParams as? ViewGroup.MarginLayoutParams
+        host.setTag(
+            R.id.gsaux_panel_original_margin,
+            if (m == null) null else intArrayOf(
+                m.leftMargin, m.rightMargin, m.marginStart, m.marginEnd,
+            ),
+        )
         // 转出来的那份 LayoutParams 是副本，改它不会碰宿主原来那个实例
         (target.layoutParams as? ViewGroup.MarginLayoutParams)?.let { p ->
             p.leftMargin = 0
@@ -197,6 +236,42 @@ internal object StockFilterPanelUi {
             runCatching { p.marginEnd = 0 }
         }
         return host
+    }
+
+    /**
+     * **拆回**我们包过的那层壳：把行容器放回原来的父容器与原下标，���原边距。
+     *
+     * 规则 1.1：install 落下的每一笔都要能撤掉 ——
+     * 只撤「注入的三行」而留着「多出来的一层壳」和「被清零的外边距」，
+     * 宿主的筛选面板就被永久改坏了（行整体偏一截）。
+     *
+     * @return true = 拆过了（原来是我们包的）
+     */
+    fun unwrapVerticalHost(target: View): Boolean {
+        val host = target.parent as? ViewGroup ?: return false
+        if (host.tag != FilterPanelIds.TAG_PANEL_HOST) return false
+        val grand = host.parent as? ViewGroup ?: return false
+
+        // 放回原来的父容器与原下标
+        val index = grand.indexOfChild(host)
+        val origLp = host.getTag(R.id.gsaux_panel_original_lp) as? ViewGroup.LayoutParams
+        val hadLp = origLp != null
+        if (hadLp) target.layoutParams = origLp
+        grand.removeView(host)
+        grand.addView(target, if (index in 0..grand.childCount) index else -1)
+
+        // 还原边距
+        @Suppress("UNCHECKED_CAST")
+        val margin = host.getTag(R.id.gsaux_panel_original_margin) as? IntArray
+        if (margin != null) {
+            (target.layoutParams as? ViewGroup.MarginLayoutParams)?.let { m ->
+                m.leftMargin = margin[0]
+                m.rightMargin = margin[1]
+                runCatching { m.marginStart = margin[2] }
+                runCatching { m.marginEnd = margin[3] }
+            }
+        }
+        return true
     }
 
     /**

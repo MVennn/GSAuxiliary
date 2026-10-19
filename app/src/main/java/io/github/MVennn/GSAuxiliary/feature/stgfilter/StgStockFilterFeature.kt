@@ -170,9 +170,24 @@ class StgStockFilterFeature : Feature {
 
     private fun trackedActivity(): Activity? = trackedActivityRef.get()?.get()
 
-    /** 已经包过行点击回映射的 ListView → 我们装的 wrapper（用来避免重复包裹） */
+    /**
+     * 已经包过行点击回映射的 ListView → [ClickWrap]（用来避免重复包裹）。
+     *
+     * ⚠️ **必须连宿主的 original 一起存**（规则 1.1）：
+     * 只存 wrapper 的话**撤不掉** —— 宿主的行点击上永久多一层转发；
+     * 而热重载后新实例的表是空的 → 判据不成立 → **再包一层**，
+     * N 次热重载 = N 层转发链（每层都还在跑 keptIndices 查表）。
+     * （`StgSelectAllFeature` 那边早就改成 `Wrap(wrapper, original)` 了，
+     *   这里是同一形状的问题，两边得一样。）
+     */
     private val wrappedLists = Collections.synchronizedMap(
-        WeakHashMap<ListView, AdapterView.OnItemClickListener>()
+        WeakHashMap<ListView, ClickWrap>()
+    )
+
+    /** 一次行点击包装：我们的 wrapper + 宿主的原监听 */
+    private class ClickWrap(
+        val wrapper: AdapterView.OnItemClickListener,
+        val original: AdapterView.OnItemClickListener?,
     )
 
     /** 策略详情页 ListView 的资源 id 缓存 */
@@ -1257,7 +1272,8 @@ class StgStockFilterFeature : Feature {
         // ⚠️ **必须保留 `existing != null`**：若 existing 与 wrappedLists[lv] 都是 null，
         // `null === null` 为真 → 会**永远不再包裹** → 宿主点行没反应。
         val existing = itemClickListener(lv)
-        if (existing != null && wrappedLists[lv] === existing) return   // 已经包过
+        val known = wrappedLists[lv]
+        if (existing != null && known != null && known.wrapper === existing) return   // 已经包过
 
         var adapter = unwrapHeaderAdapter(lv.adapter) ?: return noteSkip("列表还没有 adapter")
         // 列表上可能是我们的过滤代理 —— 认它包着的那个原适配器
@@ -1291,8 +1307,19 @@ class StgStockFilterFeature : Feature {
             }
         }
         runCatching { lv.onItemClickListener = wrapper }
-            .onSuccess { wrappedLists[lv] = wrapper }
+            .onSuccess { wrappedLists[lv] = ClickWrap(wrapper, existing) }
             .onFailure { GLog.w("筛选股票：包裹行点击监听失败", it) }
+    }
+
+    /**
+     * **拆回**我们包过的行点击监听，把宿主自己的放回去（规则 1.1）。
+     *
+     * 关掉开关时调用 —— 不拆的话宿主列表上永久多一层转发。
+     */
+    private fun unwrapRowClick(lv: ListView) {
+        val w = synchronized(wrappedLists) { wrappedLists.remove(lv) } ?: return
+        runCatching { lv.onItemClickListener = w.original }
+            .onFailure { GLog.w("筛选股票：还原行点击监听失败", it) }
     }
 
     /**
@@ -1485,6 +1512,11 @@ class StgStockFilterFeature : Feature {
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         StockFilterStore.invalidate()
         val act = trackedActivity() ?: return
+        // ⚠️ **关掉开关时把行点击的包装拆回去**（规则 1.1）：
+        // 不拆的话宿主列表上永久多一层转发，而热重载后新实例还会再包一层。
+        if (!cfg.stgStockFilter) {
+            findListView(act)?.let { unwrapRowClick(it) }
+        }
         val a = liveAdapter(act) ?: return
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }

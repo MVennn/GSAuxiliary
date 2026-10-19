@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.TextView
+import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
@@ -277,7 +278,10 @@ class WatchlistFeature : Feature {
         failMsg: String,
     ) {
         // ---- 颜色 ----
-        val target = if (inWatchlist && cfg.enabled) cfg.color else originalColor(nameTv)
+        // ⚠️ **先无条件取一次原色**：这样「首次绑定到的就是自选股」的行也能记下宿主原色
+        // （原先只在「不是自选」时才记 → 那类行还原时变成硬编码兜底色，宿主颜色被顶掉）。
+        val original = originalColor(nameTv)
+        val target = if (inWatchlist && cfg.enabled) cfg.color else original
         runCatching {
             val colors = nameTv.textColors
             if (colors == null || colors.defaultColor != target) {
@@ -299,14 +303,23 @@ class WatchlistFeature : Feature {
     private fun applyBold(tv: TextView, bold: Boolean) {
         val cur = runCatching { tv.typeface }.getOrNull()
         val curStyle = cur?.style
-        val recorded = originalTypefaces[tv]?.style
+        // ⚠️ **原字重优先读视图上的 tag**（规则 1.2）：
+        // 只存在实例的表里的话，**热重载后新实例认不出**「这已经是我们加粗过的」——
+        // 它看到的 Typeface 已经是 BOLD，于是「原字重永远记不下来」，
+        // 用户关掉「加粗」也撤不掉 → **那些名字永久粗着**。
+        val tagged = tv.getTag(R.id.gsaux_watchlist_original_typeface) as? Typeface
+        val recorded = (tagged ?: originalTypefaces[tv])?.style
 
         // 决策走 [TypefacePlan]（纯逻辑，可单测）——
         // 「记原字重的时机」是这个功能最隐蔽的坑：记晚了就记下了加粗后的那个，
         // 还原时撤不回去（整行一直粗着）。
         when (val d = TypefacePlan.decide(curStyle, recorded, bold)) {
             is TypefacePlan.Decision.Set -> {
-                if (d.recordOriginal && cur != null) originalTypefaces[tv] = cur
+                if (d.recordOriginal && cur != null) {
+                    originalTypefaces[tv] = cur
+                    // 也记到视图上（热重载后的新实例读得到）
+                    runCatching { tv.setTag(R.id.gsaux_watchlist_original_typeface, cur) }
+                }
                 if (curStyle != d.style) {
                     val base = originalTypefaces[tv] ?: cur
                     if (base != null) {
@@ -316,7 +329,11 @@ class WatchlistFeature : Feature {
                 }
             }
             is TypefacePlan.Decision.Restore -> {
-                val orig = originalTypefaces.remove(tv)
+                // 还原完就把记录清掉（视图上的 tag 与实例的表都清）——
+                // 留着的话下次加粗时会把「已还原的普通字重」当成原字重。
+                val taggedOrig = tv.getTag(R.id.gsaux_watchlist_original_typeface) as? Typeface
+                val orig = originalTypefaces.remove(tv) ?: taggedOrig
+                runCatching { tv.setTag(R.id.gsaux_watchlist_original_typeface, null) }
                 if (orig != null && cur != orig) {
                     runCatching { tv.typeface = orig }
                         .onFailure { GLog.w("还原名称字重失败", it) }
@@ -369,8 +386,23 @@ class WatchlistFeature : Feature {
 
     // ------------------------------------------------------------ 视图与反射
 
-    /** 读取 TextView 的「原始色」，只缓存非高亮值，避免把高亮色误当成原色 */
+    /**
+     * 读取 TextView 的「原始色」。
+     *
+     * ⚠️ **优先读视图上的 tag**（规则 1.2：装饰性现场必须能被「陌生人」识别）：
+     * 存在实例的表里的话，**热重载后新实例认不出**「这已经是我们染过的」——
+     * 它看到的是一个已经是高亮色的 TextView，于是把高亮色当成原色，
+     * 还原时退回硬编码兜底色，**宿主自己的颜色被顶掉**。
+     *
+     * ⚠️ **每次都要先看一眼当前色并记下来**（不管这一行是不是自选）：
+     * 原先只在「这一行不是自选」时才记 → 首次绑定到的就是自选股时，
+     // 原色一次都没被记过 → 关掉高亮后还原成兜底色而不是宿主原来的颜色。
+     */
     private fun originalColor(tv: TextView): Int {
+        // ① 视图上的 tag（跨实例可认）
+        val tagged = tv.getTag(R.id.gsaux_watchlist_original_color) as? Int
+        if (tagged != null && tagged != 0) return tagged
+        // ② 实例里的表（同实例的快路径）
         originalColors[tv]?.let { return it }
 
         var cur = ConfigKeys.FALLBACK_NORMAL_COLOR
@@ -384,6 +416,8 @@ class WatchlistFeature : Feature {
 
         if (!isPresetColor(cur)) {
             originalColors[tv] = cur
+            // ③ 也记到视图上（热重载后的新实例读得到）
+            runCatching { tv.setTag(R.id.gsaux_watchlist_original_color, cur) }
             return cur
         }
         return ConfigKeys.FALLBACK_NORMAL_COLOR

@@ -287,9 +287,26 @@ class MarketFilterFeature : UiCleanFeature() {
      * **策略详情页共用**的那份筛选状态 → 关掉 A 功能、B 功能的行为被改了。
      */
     private fun removeInjected(panel: ViewGroup) {
-        val block = panel.findViewWithTag<View>(FilterPanelIds.TAG_INJECTED_BLOCK) ?: return
-        runCatching { (block.parent as? ViewGroup)?.removeView(block) }
-            .onFailure { GLog.w("$id：撤掉注入块失败", it) }
+        // ⚠️ **先拆壳，再撤注入块**（2026-10-20 审计时发现）：
+        // 壳（我们包住宿主行容器的那层 LinearLayout）与被清零的外边距
+        // **也必须还原** —— 只撤「注入的三行」的话，宿主的筛选面板会被永久改坏
+        // （多一层壳 + 行整体偏一截），而且「重置模块」也救不了。
+        //
+        // 顺序：先摘掉注入块（它挂在壳里面），再把行容器放回原位。
+        val block = panel.findViewWithTag<View>(FilterPanelIds.TAG_INJECTED_BLOCK)
+        if (block != null) {
+            runCatching { (block.parent as? ViewGroup)?.removeView(block) }
+                .onFailure { GLog.w("$id：撤掉注入块失败", it) }
+        }
+        // 拆壳：把宿主的行容器放回原来的父容器与原下标，边距也还原
+        val listId = UiClean.idsFor(panel.context, FilterPanelIds.TARGET_PKG)
+            .of(FilterPanelIds.ID_PANEL_LIST)
+        if (listId != 0) {
+            panel.findViewById<View>(listId)?.let { rv ->
+                runCatching { StockFilterPanelUi.unwrapVerticalHost(rv) }
+                    .onFailure { GLog.w("$id：拆回面板行容器失败", it) }
+            }
+        }
         restoreOkButtons()
         // ⚠️ **不清 `injectedPanel`** —— 面板还在屏上（只是内容撤了），
         // 用户再打开开关时要能找回它重新注入。
