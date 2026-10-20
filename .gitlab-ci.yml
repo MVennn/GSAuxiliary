@@ -14,11 +14,14 @@
 #   3. **零密钥也能跑**：仓库没配签名变量时会退回 debug 签名，产物只当测试包
 #      （见 docs/BUILD.md §8）。但**发版任务不认这个退路** —— 详见 release 作业。
 #
-# 静态检查单独放在第一个 stage：2 秒就能判对错，别浪费 5 分钟构建。
-# 四轮审查每一轮「优化」都引入了新 bug，而当时全靠真机人工验兜底 ——
-# 这一层是**源码级**的，不需要设备也不需要构建。
+# 静态检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约）
+# 单独放在第一个 stage：2 秒就能判对错，别浪费 5 分钟构建。
 #
 # 需要配的 CI 变量见 docs/GITLAB.md §3。
+#
+# ⚠️ GitLab 的 `script:` 只吃**字符串**（或字符串数组），不吃 `- name: / run:` 那种
+#    映射写法 —— 写成那样整条流水线会被 GitLab 判为配置非法、直接拒绝创建。
+#    所以每一段都是 `- |` 加一段 shell，段名用注释写。
 # ---------------------------------------------------------------------------
 
 stages:
@@ -58,41 +61,42 @@ static-checks:
   image: python:3.12-slim
   timeout: 10 minutes
   script:
-    - name: 静态不变量扫描
+    - |
+      # 静态不变量扫描
       # 把文档里写死的规矩变成能跑的检查：Miuix Overlay 禁用、关键状态
       # rememberSaveable、自己的类名当判据要有 proguard keep、功能开关不是
       # 假开关、宿主标识用候选数组、中英资源键对齐、日志不得出现裸代码。
-      run: python3 tools/ci/check_invariants.py
-
-    - name: 发版说明覆盖核对
+      python3 tools/ci/check_invariants.py
+    - |
+      # 发版说明覆盖核对
       # `docs/RELEASE.md` 的覆盖率红线：本版全部改动必须进说明。
       # 这条规矩之前没有自动检查 —— 靠人记，结果通常是「想起来才补」。
-      run: python3 tools/ci/check_release_notes.py
-
-    - name: 免责声明副本同步核对
+      python3 tools/ci/check_release_notes.py
+    - |
+      # 免责声明副本同步核对
       # 免责全文有四个副本（中文 md / 中文资源 / 英文 md / 英文资源）。
       # 「改任何一条都必须一起改」之前只靠人记 —— 真的漂过：
       # 英文那份整段少了第八~第十一条，还留着一句「contains no networking
       # components」，而模块 3.x 明明有 HTTP 取数。
-      run: python3 tools/ci/check_disclaimer_sync.py
-
-    - name: 死代码扫描
+      python3 tools/ci/check_disclaimer_sync.py
+    - |
+      # 死代码扫描
       # 查「顶层符号谁都没调用」与「只在测试里被调用」——
       # 这项目栽过好几次「名义上存在、实际不生效」（or 链漏一位、锚点没有调用点、
       # 调试通道补了列忘了补值）。`hygiene.py` 只查文件内的 private 成员，跨文件的漏网。
-      run: python3 tools/ci/check_dead_symbols.py
-
-    - name: 功能开关全链路校验
+      python3 tools/ci/check_dead_symbols.py
+    - |
+      # 功能开关全链路校验
       # 一个功能开关要在五处同时存在：ConfigKeys 常量 + DEFAULTS、FEATURE_KEYS、
       # SNAPSHOT_KEYS、ConfigSnapshot 字段、FeatureCatalog 的一行。
       # 缺任何一处的症状都难查（改了开关没反应、没日志）。
-      run: python3 tools/ci/check_switches.py
-
-    - name: 宿主契约校验
+      python3 tools/ci/check_switches.py
+    - |
+      # 宿主契约校验
       # 双向校验「代码里认宿主的东西」与「契约清单」：
       # 代码里有而清单里没有 → 忘了登记；清单里有而代码里没了 → 清单失效。
       # 带上宿主类名快照：能**确认**哪些候选名现在还认得到。
-      run: python3 tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271-classes.txt
+      python3 tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271-classes.txt
 
 # ---------------------------------------------------------------------------
 # 第二关：编译 + 单测 + 产物红线
@@ -107,101 +111,94 @@ build:
   needs: ["static-checks"]
   timeout: 60 minutes
   script:
-    - name: 确认 gradlew 有可执行位
+    - |
+      # 确认 gradlew 有可执行位
       # 在 Windows 上开发时很容易把它提交成 100644，到 Linux runner 上
       # 就变成一句没头没尾的 `./gradlew: Permission denied`。提前说清楚。
-      run: |
-        if [ ! -x ./gradlew ]; then
-          echo "[X] gradlew 没有可执行位（git 里必须是 100755）。修：git update-index --chmod=+x gradlew"
-          ls -l gradlew
-          exit 1
-        fi
-
-    - name: 装 Android SDK
+      if [ ! -x ./gradlew ]; then
+        echo "[X] gradlew 没有可执行位（git 里必须是 100755）。修：git update-index --chmod=+x gradlew"
+        ls -l gradlew
+        exit 1
+      fi
+    - |
+      # 装 Android SDK
       # 装 cmdline-tools + platform-tools + build-tools，并把 compileSdk 37
       # 归一成 AGP 8.10.1 认得的目录名（来龙去脉见 docs/BUILD.md §4.1）。
-      run: bash tools/ci/setup-android-sdk.sh
-
-    - name: 解码签名密钥（配了才做）
+      bash tools/ci/setup-android-sdk.sh
+    - |
+      # 解码签名密钥（配了才做）
       # ⚠️ 这一步不能省：`GS_KEYSTORE_BASE64` 是**密钥库本体**，而 Gradle 要的是
       # **文件路径**（`GS_KEYSTORE_PATH`）。少这一步，构建就悄悄退回 debug 签名 ——
       # 而下面的红线校验又会因为「配了密钥」要求 release 包不是 debug 签名，
       # 于是必然红（这个坑真踩过：2.15.0 的 CI 就是这么红的）。
-      run: |
-        set -e
-        if [ -z "${GS_KEYSTORE_BASE64:-}" ]; then
-          echo "[i] 没配签名密钥 —— 本次走零密钥路径，release 包会用 debug 签名"
-          exit 0
-        fi
-        printf '%s' "$GS_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$CI_PROJECT_DIR/release.keystore"
-        ls -l "$CI_PROJECT_DIR/release.keystore"
-        # 顺手验一下密码 / 别名对不对，别等到构建完才发现签名失败
-        if ! keytool -list -keystore "$CI_PROJECT_DIR/release.keystore" \
-               -storepass "$GS_KEYSTORE_PASSWORD" -alias "$GS_KEYSTORE_ALIAS" >/dev/null 2>&1; then
-          echo "[X] keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS"
-          exit 1
-        fi
-        echo "[OK] keystore 与密码 / 别名匹配"
-        export GS_KEYSTORE_PATH="$CI_PROJECT_DIR/release.keystore"
-        echo "GS_KEYSTORE_PATH=$GS_KEYSTORE_PATH" >> "$CI_PROJECT_DIR/.ci-env"
-
-    - name: 跑单元测试
+      set -e
+      if [ -z "${GS_KEYSTORE_BASE64:-}" ]; then
+        echo "[i] 没配签名密钥 —— 本次走零密钥路径，release 包会用 debug 签名"
+        exit 0
+      fi
+      printf '%s' "$GS_KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$CI_PROJECT_DIR/release.keystore"
+      ls -l "$CI_PROJECT_DIR/release.keystore"
+      # 顺手验一下密码 / 别名对不对，别等到构建完才发现签名失败
+      if ! keytool -list -keystore "$CI_PROJECT_DIR/release.keystore" \
+             -storepass "$GS_KEYSTORE_PASSWORD" -alias "$GS_KEYSTORE_ALIAS" >/dev/null 2>&1; then
+        echo "[X] keystore 能解开，但密码或别名对不上 —— 检查 GS_KEYSTORE_PASSWORD / GS_KEYSTORE_ALIAS"
+        exit 1
+      fi
+      echo "[OK] keystore 与密码 / 别名匹配"
+      export GS_KEYSTORE_PATH="$CI_PROJECT_DIR/release.keystore"
+      echo "GS_KEYSTORE_PATH=$GS_KEYSTORE_PATH" >> "$CI_PROJECT_DIR/.ci-env"
+    - |
+      # 跑单元测试
       # testReleaseUnitTest 与 assembleRelease **共用 compileReleaseKotlin 的产物**，
       # 边际成本 ≈ 数秒。覆盖的是「纯逻辑」那一半的正确性：
       # 配置指纹、筛选语义真值表、日志打码、配置键对齐。
-      run: |
-        set -e
-        if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
-        ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest
-
-    - name: 确认真的跑了测试
+      set -e
+      if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
+      ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest
+    - |
+      # 确认真的跑了测试
       # 防「测试目录被误删 → 任务成功但一条没跑 → 假绿」
-      run: |
-        python3 - <<'PY'
-        import glob, xml.etree.ElementTree as ET
-        fs = glob.glob("app/build/test-results/testReleaseUnitTest/*.xml")
-        n = sum(int(ET.parse(f).getroot().get("tests")) for f in fs)
-        print(f"[OK] 跑了 {n} 条用例")
-        assert n > 0, "一条用例都没跑 —— 测试源码集可能整目录被删了"
-        PY
-
-    - name: 构建 release
-      run: |
-        set -e
-        if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
-        ./gradlew --no-daemon --console=plain :app:assembleRelease
-
-    - name: 校验产物红线
+      python3 - <<'PY'
+      import glob, xml.etree.ElementTree as ET
+      fs = glob.glob("app/build/test-results/testReleaseUnitTest/*.xml")
+      n = sum(int(ET.parse(f).getroot().get("tests")) for f in fs)
+      print(f"[OK] 跑了 {n} 条用例")
+      assert n > 0, "一条用例都没跑 —— 测试源码集可能整目录被删了"
+      PY
+    - |
+      # 构建 release
+      set -e
+      if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
+      ./gradlew --no-daemon --console=plain :app:assembleRelease
+    - |
+      # 校验产物红线
       # 签名证书指纹可选（GS_CERT_SHA256）：钉死它就能挡住「签名悄悄换了」。
-      run: |
-        set -e
-        if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
-        EXTRA=()
-        if [ -n "${GS_KEYSTORE_BASE64:-}" ]; then
-          # 配了签名密钥 —— release 包就不该再是 debug 签名，踩到直接红。
-          echo "已配置签名密钥：release 包不允许退回 debug 签名"
-          EXTRA+=(--reject-debug-cert)
-        else
-          echo "未配置签名密钥（零密钥 CI）：release 包会用 debug 签名，只提醒不报错"
-        fi
-        if [ -n "${GS_CERT_SHA256:-}" ]; then
-          EXTRA+=(--expect-cert-sha256 "$GS_CERT_SHA256")
-        fi
-        python3 tools/ci/verify_apk.py "${EXTRA[@]}" app/build/outputs/apk/release/app-release.apk
-
-    - name: 整理产物
+      set -e
+      if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
+      EXTRA=()
+      if [ -n "${GS_KEYSTORE_BASE64:-}" ]; then
+        # 配了签名密钥 —— release 包就不该再是 debug 签名，踩到直接红。
+        echo "已配置签名密钥：release 包不允许退回 debug 签名"
+        EXTRA+=(--reject-debug-cert)
+      else
+        echo "未配置签名密钥（零密钥 CI）：release 包会用 debug 签名，只提醒不报错"
+      fi
+      if [ -n "${GS_CERT_SHA256:-}" ]; then
+        EXTRA+=(--expect-cert-sha256 "$GS_CERT_SHA256")
+      fi
+      python3 tools/ci/verify_apk.py "${EXTRA[@]}" app/build/outputs/apk/release/app-release.apk
+    - |
+      # 整理产物
       # 就算上面红线校验红了，也要把 APK 留下来 —— 那正是排查要用的东西
-      run: |
-        mkdir -p dist
-        VC="$(python3 tools/ci/version.py | sed -n 's/^vc=//p')"
-        VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
-        cp app/build/outputs/apk/release/app-release.apk "dist/GSAuxiliary_${VC}-${VN}.apk"
-        # R8 的混淆映射：release 崩溃栈要靠它还原成可读的类名 / 行号
-        if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
-          cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
-        fi
-        ls -l dist || true
-
+      mkdir -p dist
+      VC="$(python3 tools/ci/version.py | sed -n 's/^vc=//p')"
+      VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
+      cp app/build/outputs/apk/release/app-release.apk "dist/GSAuxiliary_${VC}-${VN}.apk"
+      # R8 的混淆映射：release 崩溃栈要靠它还原成可读的类名 / 行号
+      if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
+        cp app/build/outputs/mapping/release/mapping.txt dist/mapping.txt
+      fi
+      ls -l dist || true
   artifacts:
     paths:
       - dist/
@@ -228,82 +225,77 @@ release:
   rules:
     - if: '$CI_COMMIT_TAG =~ /^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+$/'
   script:
-    - name: 装 curl
-      run: |
-        if ! command -v curl >/dev/null 2>&1; then
-          apt-get update -qq && apt-get install -y -qq curl > /dev/null
-        fi
-
-    - name: 校验 tag 与版本号一致
+    - |
+      # 装 curl（runner 镜像不一定带）
+      if ! command -v curl >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq curl > /dev/null
+      fi
+    - |
+      # 校验 tag 与版本号一致
       # 不一致直接失败 —— 防止给一个还没完工的版本建出假 Release
-      run: |
-        set +e
-        OUT="$(python3 tools/ci/version.py --check-tag "$CI_COMMIT_TAG" 2>&1)"
-        rc=$?
-        set -e
-        echo "$OUT"
-        [ "$rc" -eq 0 ] || exit 1
+      set +e
+      OUT="$(python3 tools/ci/version.py --check-tag "$CI_COMMIT_TAG" 2>&1)"
+      rc=$?
+      set -e
+      echo "$OUT"
+      [ "$rc" -eq 0 ] || exit 1
+    - |
+      # 检查签名密钥齐不齐
+      if [ -z "${GS_KEYSTORE_BASE64:-}" ] || [ -z "${GS_KEYSTORE_PASSWORD:-}" ] \
+         || [ -z "${GS_KEYSTORE_ALIAS:-}" ] || [ -z "${GS_KEYSTORE_KEY_PASSWORD:-}" ]; then
+        echo "[X] 缺少签名相关的 CI 变量（GS_KEYSTORE_BASE64 / GS_KEYSTORE_PASSWORD /"
+        echo "    GS_KEYSTORE_ALIAS / GS_KEYSTORE_KEY_PASSWORD），不发布 ——"
+        echo "    宁可没有 Release，也不要发一个 debug 签名的包让用户卸载重装。"
+        echo "    怎么配见 docs/GITLAB.md §3。"
+        exit 1
+      fi
+      echo "[OK] 签名变量都在"
+    - |
+      # 建 Release 并上传 APK
+      set -euo pipefail
+      TAG="$CI_COMMIT_TAG"
+      VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
+      NOTES_FILE="docs/release-notes/$VN.md"
+      if [ -f "$NOTES_FILE" ]; then
+        NOTES="$(cat "$NOTES_FILE")"
+      else
+        echo "[!] $NOTES_FILE 不存在，退回用 CHANGELOG 的 [$VN] 段当说明（面向开发者，偏噪音）。见 docs/RELEASE.md §2"
+        # 复用 publish.py 里已有的抽取逻辑 —— 同一段正则不写两遍
+        # （tools/ 下的规矩：逻辑出现 2 处就抽公共实现，见 TOOLS-DOC-RULES.md §5）
+        NOTES="$(python3 -c "import sys; sys.path.insert(0,'tools'); import publish; print(publish.notes_from_changelog('$VN'))")"
+      fi
 
-    - name: 检查签名密钥齐不齐
-      run: |
-        if [ -z "${GS_KEYSTORE_BASE64:-}" ] || [ -z "${GS_KEYSTORE_PASSWORD:-}" ] \
-           || [ -z "${GS_KEYSTORE_ALIAS:-}" ] || [ -z "${GS_KEYSTORE_KEY_PASSWORD:-}" ]; then
-          echo "[X] 缺少签名相关的 CI 变量（GS_KEYSTORE_BASE64 / GS_KEYSTORE_PASSWORD /"
-          echo "    GS_KEYSTORE_ALIAS / GS_KEYSTORE_KEY_PASSWORD），不发布 ——"
-          echo "    宁可没有 Release，也不要发一个 debug 签名的包让用户卸载重装。"
-          echo "    怎么配见 docs/GITLAB.md §3。"
-          exit 1
-        fi
-        echo "[OK] 签名变量都在"
+      API="https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/releases"
+      echo "[1/2] 建 Release $TAG"
+      # 已存在就更新说明（幂等：同一个 tag 重跑一次不会 409 炸掉）
+      code="$(curl -s -o /tmp/rel.json -w '%{http_code}' \
+               --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+               --data-urlencode "name=$TAG" \
+               --data-urlencode "tag_name=$TAG" \
+               --data-urlencode "description=$NOTES" \
+               "$API")"
+      case "$code" in
+        200|201) echo "    [OK] Release 已建（HTTP $code）" ;;
+        409)
+          echo "    [i] Release 已存在，改成更新说明"
+          curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+               --request PUT \
+               --data-urlencode "name=$TAG" \
+               --data-urlencode "description=$NOTES" \
+               "$API/$TAG" > /dev/null
+          ;;
+        *) echo "[X] 建 Release 失败（HTTP $code）："; cat /tmp/rel.json; exit 1 ;;
+      esac
 
-    - name: 建 Release 并上传 APK
-      env:
-        API: "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/releases"
-      run: |
-        set -euo pipefail
-        TAG="$CI_COMMIT_TAG"
-        VN="$(python3 tools/ci/version.py | sed -n 's/^vn=//p')"
-        NOTES_FILE="docs/release-notes/$VN.md"
-        if [ -f "$NOTES_FILE" ]; then
-          NOTES="$(cat "$NOTES_FILE")"
-        else
-          echo "[!] $NOTES_FILE 不存在，退回用 CHANGELOG 的 [$VN] 段当说明（面向开发者，偏噪音）。见 docs/RELEASE.md §2"
-          # 复用 publish.py 里已有的抽取逻辑 —— 同一段正则不写两遍
-          # （tools/ 下的规矩：逻辑出现 2 处就抽公共实现，见 TOOLS-DOC-RULES.md §5）
-          NOTES="$(python3 -c "import sys; sys.path.insert(0,'tools'); import publish; print(publish.notes_from_changelog('$VN'))")"
-        fi
-
-        echo "[1/2] 建 Release $TAG"
-        # 已存在就更新说明（幂等：同一个 tag 重跑一次不会 409 炸掉）
-        code="$(curl -s -o /tmp/rel.json -w '%{http_code}' \
-                 --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-                 --data-urlencode "name=$TAG" \
-                 --data-urlencode "tag_name=$TAG" \
-                 --data-urlencode "description=$NOTES" \
-                 "$API")"
-        case "$code" in
-          200|201) echo "    [OK] Release 已建（HTTP $code）" ;;
-          409)
-            echo "    [i] Release 已存在，改成更新说明"
-            curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-                 --request PUT \
-                 --data-urlencode "name=$TAG" \
-                 --data-urlencode "description=$NOTES" \
-                 "$API/$TAG" > /dev/null
-            ;;
-          *) echo "[X] 建 Release 失败（HTTP $code）："; cat /tmp/rel.json; exit 1 ;;
-        esac
-
-        echo "[2/2] 上传 APK 附件"
-        APK="dist/GSAuxiliary_$TAG.apk"
-        [ -f "$APK" ] || { echo "[X] 找不到 $APK"; ls -l dist || true; exit 1; }
-        curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-             --form "file=@$APK" \
-             "$API/$TAG/assets/uploads?name=GSAuxiliary_$TAG.apk" > /tmp/asset.json
-        cat /tmp/asset.json
-        echo ""
-        echo "[OK] Release: https://gitlab.com/$CI_PROJECT_PATH/-/releases/$TAG"
-
+      echo "[2/2] 上传 APK 附件"
+      APK="dist/GSAuxiliary_$TAG.apk"
+      [ -f "$APK" ] || { echo "[X] 找不到 $APK"; ls -l dist || true; exit 1; }
+      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+           --form "file=@$APK" \
+           "$API/$TAG/assets/uploads?name=GSAuxiliary_$TAG.apk" > /tmp/asset.json
+      cat /tmp/asset.json
+      echo ""
+      echo "[OK] Release: https://gitlab.com/$CI_PROJECT_PATH/-/releases/$TAG"
   artifacts:
     paths:
       - dist/
