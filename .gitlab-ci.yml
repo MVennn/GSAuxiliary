@@ -167,25 +167,13 @@ build:
       export GS_KEYSTORE_PATH="$CI_PROJECT_DIR/release.keystore"
       echo "GS_KEYSTORE_PATH=$GS_KEYSTORE_PATH" >> "$CI_PROJECT_DIR/.ci-env"
     - |
-      # 打印 SDK 平台状态（排查用；跟本机那套验证可用的状态逐项对）
-      echo "=== platforms 目录 ==="
-      ls -1 "$CI_PROJECT_DIR/.android-sdk/platforms" 2>/dev/null || true
-      echo "=== android-37/source.properties ==="
-      cat "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/source.properties" 2>/dev/null || true
-      echo "=== android-37/build.prop 关键项 ==="
-      grep -E "ro.build.version.sdk|sdk_full|ro.build.version.release"         "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/build.prop" 2>/dev/null || true
-      echo "=== package.xml sha256（应等于本机的 c8673ab3…）==="
-      sha256sum "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/package.xml" 2>/dev/null || true
-      echo "=== android.jar 大小 ==="
-      ls -l "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/android.jar" 2>/dev/null || true
-    - |
       # 跑单元测试
       # testReleaseUnitTest 与 assembleRelease **共用 compileReleaseKotlin 的产物**，
       # 边际成本 ≈ 数秒。覆盖的是「纯逻辑」那一半的正确性：
       # 配置指纹、筛选语义真值表、日志打码、配置键对齐。
       set -e
       if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
-      ./gradlew --no-daemon --console=plain --info :app:testReleaseUnitTest
+      ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest
     - |
       # 确认真的跑了测试
       # 防「测试目录被误删 → 任务成功但一条没跑 → 假绿」
@@ -321,9 +309,34 @@ release:
       echo "[2/2] 上传 APK 附件"
       APK="dist/GSAuxiliary_$TAG.apk"
       [ -f "$APK" ] || { echo "[X] 找不到 $APK"; ls -l dist || true; exit 1; }
+
+      # 附件是**两步**（与 tools/publish_gitlab.py 同一份做法）：
+      #   1. POST /projects/:id/uploads                   —— 传到项目 uploads，拿 full_path
+      #   2. POST /projects/:id/releases/:tag/assets/links —— 挂成 Release 的下载链接
+      # ⚠️ 之前用的 /releases/:tag/assets/uploads 在这个 GitLab 版本上是 **404**。
+      # ⚠️ 第 2 步是 **POST**（新建）；PUT 是更新，会 404。
+      UPLOAD_PATH="$(curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+        --form "file=@$APK" \
+        "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/uploads" \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin)["full_path"])')"
+      ASSET_URL="https://gitlab.com$UPLOAD_PATH"
+      echo "    上传到：$ASSET_URL"
+
+      # 同名资产先删再挂（重跑不会挂出两个一样的）
+      # ⚠️ python 只用单行 —— YAML 块标量里**顶格的行会把整个块截断**
+      for lid in $(curl -s --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/releases/$TAG/assets/links" \
+          | python3 -c 'import sys,json; [print(a["id"]) for a in json.load(sys.stdin) if a.get("name")==sys.argv[1]]' "$(basename "$APK")"); do
+        curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request DELETE \
+          "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/releases/$TAG/assets/links/$lid" > /dev/null \
+          && echo "    删掉同名旧资产 id=$lid"
+      done
+
       curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" \
-           --form "file=@$APK" \
-           "$API/$TAG/assets/uploads?name=GSAuxiliary_$TAG.apk" > /tmp/asset.json
+        --data-urlencode "name=$(basename "$APK")" \
+        --data-urlencode "url=$ASSET_URL" \
+        --data-urlencode "link_type=package" \
+        "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/releases/$TAG/assets/links" > /tmp/asset.json
       cat /tmp/asset.json
       echo ""
       echo "[OK] Release: https://gitlab.com/$CI_PROJECT_PATH/-/releases/$TAG"
