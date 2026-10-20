@@ -1,6 +1,8 @@
+# GitLab 的「描述模板」。字段写法见 bug_report.yml 顶部的说明
+# （GitLab 的 required 写在 attributes 里，不写 validations）。
 name: 功能建议
 description: 想要新功能，或者希望某个地方更好用
-labels: ["enhancement"]
+labels: ["功能增强"]
 body:
   - type: markdown
     attributes:
@@ -19,7 +21,6 @@ body:
         - label: 我已阅读并同意仓库中的免责声明（docs/DISCLAIMER.md）；我的建议仅涉及界面显示与操作便捷，不涉及自动化交易、荐股或任何违规用途。
           required: true
         - label: 我没读上面的清单，闭眼全选（选了这项就别提了，直接关闭）。
-          required: false
 
   - type: textarea
     id: problem
@@ -32,7 +33,6 @@ body:
         例：
         在策略详情页想快速看某只股票的行情，
         现在要点进二级页面再点一次标准行情，多了一层。
-    validations:
       required: true
 
   - type: textarea
@@ -40,13 +40,9 @@ body:
     attributes:
       label: 期望的效果（可选）
       description: 有参考就更好——比如金太阳或别的 App 里类似的做法
-    validations:
-      required: false
 
   - type: textarea
     id: extra
     attributes:
       label: 补充信息（可选）
       description: 金太阳里对应页面的截图、金太阳版本号等
-    validations:
-      required: false
