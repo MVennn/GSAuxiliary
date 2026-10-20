@@ -105,6 +105,10 @@
   「contains no networking components」—— 而模块 3.x 明明有 HTTP 取数；中文那份的引号退回成直引号、
   末句少一段加粗（网页版 2026-10-17 加的）。现在四份对齐：英文从中文规范源补齐翻译，
   并新增 `tools/ci/check_disclaimer_sync.py` 把这件事变成会红的检查（逐字比对 + 中英结构对齐）。
+  真机（MEIZU 20 / Android 16 / 宿主 8.6.0）复验：中英文各看一遍全文 ——
+  中文是弯引号 + 末句「开发者所在地有管辖权的人民法院」加粗，英文十一条款齐全
+  （第八~十一条原来整段没有）、末句 "People's Court with jurisdiction over the
+  Developer's location" 加粗；同批装的包在宿主里 16/16 功能全装上、45 个钩子，无回归。
 
 ### 调整
 
