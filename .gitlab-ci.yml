@@ -361,6 +361,10 @@ release-smoke:
       set -euo pipefail
       echo "冒烟：用 release: 关键字挂本地产物（tag 已由维护者推好）"
       echo "smoke" > ci-smoke.txt
+      echo "--- 试通用包上传（作业令牌支持吗？）---"
+      CODE="$(curl -s -o /tmp/pkg.json -w '%{http_code}'         --header "JOB-TOKEN: $CI_JOB_TOKEN"         --upload-file "ci-smoke.txt"         "https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/packages/generic/gsauxiliary-smoke/1.0.0/smoke.txt")"
+      echo "    HTTP $CODE  body: $(head -c 200 /tmp/pkg.json)"
+      echo "    下载地址: https://gitlab.com/api/v4/projects/$CI_PROJECT_ID/packages/generic/gsauxiliary-smoke/1.0.0/smoke.txt"
   artifacts:
     paths:
       - ci-smoke.txt
