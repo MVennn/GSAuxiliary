@@ -355,7 +355,6 @@ release:
 release-smoke:
   stage: release
   image: eclipse-temurin:17-jdk
-  needs: ["build"]
   when: manual
   before_script:
     - |
@@ -379,7 +378,10 @@ release-smoke:
         *) echo "[X] 失败（HTTP $code）："; cat /tmp/rel.json; exit 1 ;;
       esac
       echo "[2/3] 传到项目 uploads"
-      UPLOAD_PATH="$(curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"         --form "file=@dist/mapping.txt"         "$API/uploads"         | python3 -c 'import sys,json; print(json.load(sys.stdin)["full_path"])')"
+      echo "smoke" > /tmp/smoke.txt
+      UP_CODE="$(curl -s -o /tmp/up.json -w '%{http_code}'         --header "JOB-TOKEN: $CI_JOB_TOKEN"         --form "file=@/tmp/smoke.txt"         "$API/uploads")"
+      echo "    HTTP $UP_CODE  body: $(head -c 300 /tmp/up.json)"
+      UPLOAD_PATH="$(python3 -c 'import sys,json; print(json.load(sys.stdin)["full_path"])' < /tmp/up.json)"
       echo "    上传到：$UPLOAD_PATH"
       echo "[3/3] 挂成 Release 资产"
       curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"         --data-urlencode "name=mapping-smoke.txt"         --data-urlencode "url=https://gitlab.com$UPLOAD_PATH"         --data-urlencode "link_type=other"         "$API/releases/$TAG/assets/links" > /tmp/asset.json
