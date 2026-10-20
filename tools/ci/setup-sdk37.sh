@@ -35,19 +35,25 @@ set -euo pipefail
 DST_NAME="android-37"          # AGP 8.10.1 认得的目录名
 TARGET_API="37"                # 归一化后的整数 api-level
 
-# 候选包：**37.0 优先**，不是 37.2。
+# 候选包：**37.2 优先** —— 必须是它，理由见下面两段。
 #
-# 为什么（2026-10-20 在 GitLab 共享 runner 上真踩出来的）：
-#   AGP 8.10.1 要的 target hash 是 'android-37'。它算 hash 时**会带上次版本**：
-#   37.2 那个包的 package.xml 里 <revision> 除了 <major>2</major> 还有 <minor>2</minor>，
-#   目录名与 api-level 归一化对了，那个 <minor> 却还在 ——
-#   于是 AGP 算出的是 'android-37.2'，照样认不出来，最后报
-#   「Failed to find target with hash string 'android-37'」。
-#   37.0 那个包（也就是 AGP 自己会装的那一个）<revision> 里**只有 <major>2</major>**，
-#   归一化后正是本机那套已验证可用的状态（docs/BUILD.md §4.1）。
+# 源包为什么是 37.2（2026-10-20 在 CI 上对照出来的）：
+#   本机那套**验证可用**的 platforms/android-37 就是 37.2 那个包改的 ——
+#   它的 build.prop 写着 ro.build.version.sdk_full=37.2、android.jar 43.8 MB、
+#   source.properties 的 ExtensionLevel=24。
+#   换成 37.0 那个包（sdk_full=37.0、jar 43.0 MB、ExtensionLevel=22）就认不出来。
+#   所以源包要与本机那份**同源**。
 #
-# 37.2 / 37.1 留作候选（万一 37.0 被撤下），装它们时脚本会把 <minor> 抹掉。
-CANDIDATES=("platforms;android-37.0" "platforms;android-37.2" "platforms;android-37.1")
+# package.xml 为什么不能直接用 37.x 包自带的那个（第二个坑）：
+#   37.x 包自带的 package.xml 带着空的 <codename></codename>、次版本痕迹与
+#   另一套命名空间映射，AGP 8.10.1 解析完**不认这个平台**，
+#   报的仍是「Failed to find target with hash string 'android-37'」。
+#   本机那套能用的 package.xml 其实是 **android-35 的改了 3 个字段**
+#   （path / api-level / display-name），实测逐字节可复现 ——
+#   所以脚本改成「照抄 android-35 当模板」（见下面第 5.1 步）。
+#
+# 37.1 / 37.0 留作候选（万一 37.2 被撤下），但那时不保证与本机那份一致。
+CANDIDATES=("platforms;android-37.2" "platforms;android-37.1" "platforms;android-37.0")
 if [ -n "${GS_SDK_PLATFORM_PKG:-}" ]; then
     CANDIDATES=("$GS_SDK_PLATFORM_PKG")
 fi
