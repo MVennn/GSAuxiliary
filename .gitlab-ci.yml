@@ -167,13 +167,25 @@ build:
       export GS_KEYSTORE_PATH="$CI_PROJECT_DIR/release.keystore"
       echo "GS_KEYSTORE_PATH=$GS_KEYSTORE_PATH" >> "$CI_PROJECT_DIR/.ci-env"
     - |
+      # 打印 SDK 平台状态（排查用；跟本机那套验证可用的状态逐项对）
+      echo "=== platforms 目录 ==="
+      ls -1 "$CI_PROJECT_DIR/.android-sdk/platforms" 2>/dev/null || true
+      echo "=== android-37/source.properties ==="
+      cat "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/source.properties" 2>/dev/null || true
+      echo "=== android-37/build.prop 关键项 ==="
+      grep -E "ro.build.version.sdk|sdk_full|ro.build.version.release"         "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/build.prop" 2>/dev/null || true
+      echo "=== package.xml sha256（应等于本机的 c8673ab3…）==="
+      sha256sum "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/package.xml" 2>/dev/null || true
+      echo "=== android.jar 大小 ==="
+      ls -l "$CI_PROJECT_DIR/.android-sdk/platforms/android-37/android.jar" 2>/dev/null || true
+    - |
       # 跑单元测试
       # testReleaseUnitTest 与 assembleRelease **共用 compileReleaseKotlin 的产物**，
       # 边际成本 ≈ 数秒。覆盖的是「纯逻辑」那一半的正确性：
       # 配置指纹、筛选语义真值表、日志打码、配置键对齐。
       set -e
       if [ -f "$CI_PROJECT_DIR/.ci-env" ]; then . "$CI_PROJECT_DIR/.ci-env"; fi
-      ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest
+      ./gradlew --no-daemon --console=plain --info :app:testReleaseUnitTest
     - |
       # 确认真的跑了测试
       # 防「测试目录被误删 → 任务成功但一条没跑 → 假绿」
