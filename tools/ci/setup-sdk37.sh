@@ -207,14 +207,14 @@ echo " 使用 $PKG"
 #                      AndroidVersion.ApiLevel=37.x -> 37
 #                      Platform.Version / Pkg.Desc   -> 37
 #
-#    ⚠️ **package.xml 必须照抄，不能只做 sed 替换**（2026-10-20 在 CI 上真踩过）：
-#       37.x 那个包自带的 package.xml 里带着 `<codename></codename>`、
-#       次版本痕迹与另一套命名空间映射，AGP 8.10.1 解析完**不认这个平台**，
-#       报的仍是「Failed to find target with hash string 'android-37'」。
-#       本机那套验证可用的 platforms/android-37/package.xml 其实是
-#       **照抄 android-35/package.xml 改了 3 个字段**（path / api-level / display-name），
-#       实测逐字节可复现 —— 所以 CI 里也这么做：装一个 android-35 当**模板来源**，
-#       照抄它再改那 3 处。
+#    ⚠️ **package.xml / source.properties 必须用仓库里的模板，不能用装下来的那份**
+#       （2026-10-20 在 CI 上真踩过）：37.x 包自带的是**新结构**（schema v4），
+#       AGP 8.10.1 解析完**不认这个平台**，报的仍是
+#       「Failed to find target with hash string 'android-37'」；
+#       现装的 android-35 也不行（结构跟本机那份不一样，sha256 对不上）。
+#       本机那套**验证可用**的元数据（老结构 schema v3）已经放进仓库：
+#       `tools/ci/sdk37-package.xml` 与 `tools/ci/sdk37-source.properties`，
+#       装完平台直接覆盖上去 —— CI 产出的元数据与本机**逐字节一致**。
 #
 #    注意：**不按目录名去猜版本号**，而是把所有 `37.<次要版本>` 一律压成 `37`。
 #    目录名和元数据里的版本并不保证一致（本机验证时遇到过目录叫 android-37.2、
@@ -225,8 +225,6 @@ VER="$(grep -E '^AndroidVersion\.ApiLevel=' "$SRC/source.properties" 2>/dev/null
        | cut -d= -f2 || true)"
 VER="${VER:-未知}"
 MINOR_RE='37\.[0-9]+'           # 任何 37.x
-DONOR_NAME="android-35"          # 模板来源：一个「正常」的稳定平台
-DONOR_API="35"
 
 if [ "$SRC" = "$PLATFORMS/$DST_NAME" ]; then
     DST="$SRC"
@@ -240,24 +238,34 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5.1 package.xml：照抄「正常平台」那份，只改 3 个字段
+# 5.1 package.xml / source.properties：**用仓库里的模板**
+#
+#   为什么是仓库里的模板、而不是现装的平台（2026-10-20 在 CI 上对照出来的）：
+#     37.x 那个包自带的 package.xml 是**新结构**（Google 现在发的是 schema v4），
+#     AGP 8.10.1 解析完**不认这个平台** —— 报的仍是
+#     「Failed to find target with hash string 'android-37'」。
+#     本机那套验证可用的 platforms/android-37 用的是**老结构**（schema v3）。
+#     现装的 android-35 也不行 —— 它的结构跟本机那份不一样
+#     （sha256 对不上：c7fd9fd8… vs c8673ab3…）。
+#
+#   所以直接把**本机那份验证可用的元数据**放进仓库
+#   （tools/ci/sdk37-package.xml + tools/ci/sdk37-source.properties），
+#   装完平台直接覆盖上去 —— 这样 CI 上产出的元数据与本机**逐字节一致**，
+#   也不再依赖 Google 仓库那一刻发的是哪个版本。
 # ---------------------------------------------------------------------------
-DONOR="$PLATFORMS/$DONOR_NAME"
-if [ ! -f "$DONOR/package.xml" ]; then
-    echo ""
-    echo "  模板来源 $DONOR_NAME 没装 —— 装它（只要它的 package.xml）"
-    install_pkg "platforms;$DONOR_NAME" || log "[!] 装 $DONOR_NAME 失败"
-fi
-if [ -f "$DONOR/package.xml" ] && [ -f "$DST/package.xml" ]; then
-    cp "$DONOR/package.xml" "$DST/package.xml"
-    sed -i -E \
-        -e "s|path=\"platforms;${DONOR_NAME}\"|path=\"platforms;android-${TARGET_API}\"|" \
-        -e "s|<api-level>${DONOR_API}</api-level>|<api-level>${TARGET_API}</api-level>|" \
-        -e "s|<display-name>Android SDK Platform ${DONOR_API}</display-name>|<display-name>Android SDK Platform ${TARGET_API}</display-name>|" \
-        "$DST/package.xml"
-    echo "  package.xml：照抄 $DONOR_NAME 的，改了 path / api-level / display-name"
+TPL_PKG="$HERE/sdk37-package.xml"
+TPL_SRC="$HERE/sdk37-source.properties"
+if [ -f "$TPL_PKG" ]; then
+    cp "$TPL_PKG" "$DST/package.xml"
+    echo "  package.xml：用仓库里的模板（tools/ci/sdk37-package.xml）"
 else
-    log "[!] 拿不到模板（$DONOR_NAME/package.xml）—— 保留原包的 package.xml，可能认不出来"
+    log "[X] 缺模板 $TPL_PKG —— 平台多半认不出来"
+fi
+if [ -f "$TPL_SRC" ]; then
+    cp "$TPL_SRC" "$DST/source.properties"
+    echo "  source.properties：用仓库里的模板"
+else
+    log "[!] 缺模板 $TPL_SRC —— 保留原包的 source.properties"
 fi
 
 if [ -f "$DST/source.properties" ]; then
@@ -330,6 +338,19 @@ if [ -f "$DST/package.xml" ]; then
         fail=1
     else
         log "[OK] package.xml 无 <codename> 元素"
+    fi
+fi
+
+# 逐字节核对：产出的 package.xml 必须与**本机验证可用的那份**完全一致
+# （sha256 c8673ab3…）—— 这是「CI 上认不认得出这个平台」的唯一可靠判据。
+if [ -f "$DST/package.xml" ] && [ -f "$TPL_PKG" ]; then
+    a="$(sha256sum "$DST/package.xml" 2>/dev/null | cut -d' ' -f1)"
+    b="$(sha256sum "$TPL_PKG" 2>/dev/null | cut -d' ' -f1)"
+    if [ -n "$a" ] && [ "$a" = "$b" ]; then
+        log "[OK] package.xml 与本机验证可用的那份逐字节一致（${a:0:8}…）"
+    else
+        log "[X] package.xml 与模板不一致：${a:0:8}… vs ${b:0:8}…"
+        fail=1
     fi
 fi
 
