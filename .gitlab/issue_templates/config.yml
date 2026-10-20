@@ -1,7 +1,0 @@
-# GitLab 的 Issue 模板配置
-#
-# blank_issues_enabled: false —— 不允许开空白 Issue：
-# 上面两个模板已经把「要填什么」写清楚了，空白 Issue 往往只会变成一句
-# 「不生效」，来回追问三轮还是定位不了。
-blank_issues_enabled: false
-contact_links: []
