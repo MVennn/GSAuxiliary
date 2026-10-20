@@ -6,8 +6,12 @@
 > **2026-10-20 迁移**：GitHub 账号被停用，源码仓库已迁到
 > `https://gitlab.com/M.Venn/gsauxiliary`。下面描述的 `publish.py` 双仓库发布
 > 依赖 GitHub 写权限，账号恢复前**不可用**；
-> **GitLab 侧走流水线**（改版本号 → 写 `docs/release-notes/<版本>.md` → 推 tag，
-> 流水线自己建 Release 并上传 APK），见 [GITLAB.md](GITLAB.md) §5。
+> **GitLab 侧走 `tools/publish_gitlab.py`**（出包 → 签名红线校验 → 建 Release → 传 APK），
+> 见 [GITLAB.md](GITLAB.md) §5。
+>
+> 仓库里的流水线（`.gitlab-ci.yml`）本来也能发版，但它要求**先开 2FA**
+> （GitLab 不让没做身份验证的账号跑 CI 作业），而且签名密钥放进公开项目的
+> CI 变量等于把密钥公开 —— 所以发版继续用本地脚本，流水线只跑检查与编译。
 
 ---
 

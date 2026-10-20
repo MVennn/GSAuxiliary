@@ -25,7 +25,7 @@
 | 设备调试与日志 | sh.sh · ui.sh + uidump.py · drive.sh · glog.sh + glog_tail.py |
 | 真机功能验证 | verify.py · sample_colors.py + _color.py · enable_lsposed.py |
 | 品牌视觉与图标 | gen_launcher_icons.py · verify_icons.py · make_social_preview.py（+ 公共库 _png.py） |
-| 发布与 CI | publish.py · ci/ |
+| 发布与 CI | publish.py · publish_gitlab.py · ci/ |
 | 运行时探针 | probe/ |
 | 代码卫生 | hygiene.py |
 
@@ -428,6 +428,38 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 > token，拿去写模块仓库会 403；宁可报错也不静默用错。
 
 环境变量可改仓库名：`GITHUB_SOURCE_REPO` / `GITHUB_MODULE_REPO`。
+
+## publish_gitlab.py ★
+
+**把这一版发到 GitLab 源码仓库**（`M.Venn/gsauxiliary`）—— 建 Release、传 APK、
+传 R8 混淆映射。
+
+> GitHub 账号 2026-10-18 起被停用，`publish.py` 那条路走不通了；
+> GitLab 侧的发版走这个脚本。规则正本仍是
+> [`docs/RELEASE.md`](../docs/RELEASE.md)，GitLab 那一侧的配置见
+> [`docs/GITLAB.md`](../docs/GITLAB.md)。
+
+```bash
+python tools/publish_gitlab.py --check              # 只查凭据与版本，不写任何东西
+python tools/publish_gitlab.py --dry-run            # 演一遍（构建 + 校验，不写）
+python tools/publish_gitlab.py --notes docs/release-notes/3.3.0.md
+python tools/publish_gitlab.py --skip-build         # 用现有 APK，不重新构建
+```
+
+| 步骤 | 做什么 |
+|---|---|
+| 1 | 读 `app/build.gradle.kts` 的 `versionCode` / `versionName`，tag = `{vc}-{vn}` |
+| 2 | `./gradlew assembleRelease`，把 APK 复制成 `.work/apk/GSAuxiliary_{vc}-{vn}.apk` |
+| 3 | 跑 `tools/ci/verify_apk.py --reject-debug-cert` —— **签名红线**：debug 证书直接失败 |
+| 4 | 建 / 更新 Release，说明优先用 `--notes` 指定的文件，其次 `docs/release-notes/<版本>.md` |
+| 5 | 上传 APK 与 `mapping.txt`（R8 映射：release 崩溃栈要靠它还原类名 / 行号） |
+
+凭据按优先级取：环境变量 `GS_GITLAB_TOKEN` → `~/.config/gitlab/token`
+（那是 glab 的配置位置）。**token 只在内存里用，不落盘、不打印。**
+
+> ⚠️ **它只管源码仓库**。LSPosed 模块仓库（`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary`）
+> 本账号**没有写权限**，所以「双仓库同 tag 同产物」目前只落了一半 ——
+> LSPosed App 与 modules.lsposed.org 收不到更新提示。见 `docs/RELEASE.md` §0。
 
 ## ci/ ★
 

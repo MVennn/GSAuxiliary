@@ -38,6 +38,7 @@
 | `.gitlab/issue_templates/` | Issue 模板（问题反馈 / 功能建议） |
 | `.gitlab/merge_request_templates/Default.md` | MR 模板 |
 | `CONTRIBUTING.md` | 贡献指引（Issue / MR 怎么提、硬规矩清单） |
+| `tools/publish_gitlab.py` | 发版到 GitLab 源码仓库（建 Release + 传 APK） |
 | `docs/GITLAB.md` | 本篇 |
 
 `.github/` 下的同名文件**继续保留**：GitHub 账号万一恢复，还能直接用；
@@ -45,31 +46,61 @@
 
 ---
 
-## 3. CI 变量（要发版就得配）
+## 3. 凭据
 
-去 **Settings → CI/CD → Variables** 加这四个（都勾 **Masked** 与 **Protected**）：
+### 3.1 GitLab token（API 用）
 
-| 变量 | 值 | 怎么造 |
-|---|---|---|
-| `GS_KEYSTORE_BASE64` | 密钥库本体的 base64 | `base64 -w0 gszx.keystore` |
-| `GS_KEYSTORE_PASSWORD` | 密钥库口令 | `keystore.properties` 里的 `storePassword` |
-| `GS_KEYSTORE_ALIAS` | 密钥别名 | `keystore.properties` 里的 `keyAlias`（当前是 `gszx`） |
-| `GS_KEYSTORE_KEY_PASSWORD` | 密钥口令 | `keystore.properties` 里的 `keyPassword` |
+发版脚本要调 API，用的是 **Personal Access Token**（scope `api`，2026-11-19 到期）：
 
-可选：`GS_CERT_SHA256` —— 钉死签名证书指纹，证书换了就红。
+| 位置 | 说明 |
+|---|---|
+| `~/.config/gitlab/token` | 脚本读这个（纯文本，一行） |
+| `~/.config/glab-cli/config.yml` | 同一份令牌（`glab` 的标准位置，装了 glab 就能直接用） |
 
-> **Masked 的前提**：值里不能有空格，长度 ≥ 8。base64 后的密钥库满足。
->
-> **Protected 的含义**：只有受保护分支（`main`）上的流水线能读到这些变量 ——
->   这正是我们要的：别让 fork 提的 MR 读到密钥。
+环境变量 `GS_GITLAB_TOKEN` 优先于这两个文件。**令牌只在内存里用，不落盘到仓库、不打印。**
 
-**没配这四个会怎样**：流水线照跑，静态检查、编译、单测都过，
-但 release 作业会**报错退出**（`[X] 缺少签名相关的 CI 变量`），
-**不会**发一个 debug 签名的包 —— 那会让所有已装用户被迫卸载重装。
+> ⚠️ **这个令牌曾经出现在一次调试输出里**（2026-10-20 建它时的中间产物）。
+> 用完就撤：GitLab → 用户设置 → 个人访问令牌 → 删掉 `gsauxiliary-setup`。
+> 重建时记得**别把令牌贴进对话**。
+
+### 3.2 CI 变量（流水线用）
+
+去 **Settings → CI/CD → Variables**（2026-10-20 已配好）：
+
+| 变量 | 值 | 掩码 | 说明 |
+|---|---|---|---|
+| `GS_KEYSTORE_BASE64` | 密钥库本体的 base64 | ✅ | 让流水线签出与本机一致的包 |
+| `GS_KEYSTORE_PASSWORD` | 密钥库口令 | ❌ 受保护 | 值只有 7 个字符，**不足 8 位不能掩码**（GitLab 的硬规矩） |
+| `GS_KEYSTORE_ALIAS` | 密钥别名（`gszx`） | ❌ 受保护 | 同上（4 个字符） |
+| `GS_KEYSTORE_KEY_PASSWORD` | 密钥口令 | ❌ 受保护 | 值只有 7 个字符 |
+
+> 「受保护」= 只有 `main` 与受保护 tag 上的流水线读得到，够用。
+
+### 3.3 ⚠️ CI 跑不动：GitLab 要求先验证身份
+
+2026-10-20 实测：**流水线一创建就失败**，报
+
+```
+Identity verification is required in order to run CI jobs
+```
+
+原因：账号 `two_factor_enabled = false`。GitLab.com 要求**先完成身份验证**
+（开 2FA 最省事）才允许跑 CI 作业。
+
+**这需要用户自己动手**：GitLab → 用户设置 → 账号 → 两步验证 → 启用 2FA。
+做完之后，`.gitlab-ci.yml` 就能正常跑了（配置本身已用 CI Lint 与实际创建验证过）。
 
 ---
 
-## 4. 流水线怎么触发
+## 4. 流水线
+
+`.gitlab-ci.yml` 三段：
+
+| 阶段 | 做什么 |
+|---|---|
+| `static-checks` | 六项源码级检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约）。2 秒判对错，不浪费 5 分钟构建。 |
+| `build` | 装 SDK（`tools/ci/setup-android-sdk.sh`）→ 跑单测 → 编 release → 校验产物红线 → 留产物 |
+| `release` | 只在 tag 上跑：校验 tag 与版本号一致 → 建 Release → 传 APK |
 
 | 触发方式 | 跑什么 | 说明 |
 |---|---|---|
@@ -80,58 +111,56 @@
 > 为什么不在 push 上跑：日常改动一律本地编 + 真机验完才提交，推上去再编一遍是纯重复；
 > 推得勤也最招风控。这条规矩从 GitHub Actions 那边沿用过来。
 
-三个阶段：
-
-1. **`static-checks`** —— 六项源码级检查（不变量 / 发版说明覆盖 / 免责副本同步 /
-   死代码 / 开关全链路 / 宿主契约）。2 秒判对错，不浪费 5 分钟构建。
-2. **`build`** —— 装 SDK（`tools/ci/setup-android-sdk.sh`，共享 runner 不预装 SDK）→
-   跑单测 → 编 release → 校验产物红线（签名证书、版本号、宿主标识…）→ 留产物。
-3. **`release`** —— 只在 tag 上跑。校验 tag 与版本号一致 → 用
-   `CI_JOB_TOKEN` 调 GitLab API 建 Release 并传 APK 附件。
-   **同项目内的作业令牌就够用**，不必再在 GitLab 上存一份长期 PAT。
+> **GitLab 的 `script:` 只吃字符串**（或字符串数组），不吃 `- name: / run:` 那种映射写法 ——
+> 写成那样整条流水线会被 GitLab 判为配置非法、连创建都不允许。
+> 本地 YAML 解析得过，GitLab 的校验更严：**改这份文件必须实际触发一次流水线才算验过。**
 
 ---
 
-## 5. 发版（推 tag 就行）
+## 5. 发版（当前走脚本，不走流水线）
+
+因为 §3.3 那道身份验证的门还没过，**发版暂时用本地脚本**：
 
 ```bash
 # 1. 改 app/build.gradle.kts 的 versionCode / versionName
 # 2. 写一份面向用户的说明：docs/release-notes/<versionName>.md
 #    （格式正本见 release-notes/README.md）
-# 3. 提交，然后打同名 tag 并推上去
-git tag 48-3.3.0
-git push gitlab main 48-3.3.0
+# 3. 出包 + 发版
+python tools/publish_gitlab.py --notes docs/release-notes/3.3.0.md
 ```
 
-流水线会自己建 Release、传 `GSAuxiliary_48-3.3.0.apk`。
+脚本做四件事：读版本号 → 构建 → 跑 `verify_apk --reject-debug-cert`（签名红线：
+**debug 证书直接失败**，否则所有已装用户得卸载重装）→ 建 Release 并传 APK 与 R8 映射。
 
-> **模块仓库还没发**：`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` 本账号
-> 没有写权限，所以 **LSPosed App 与 modules.lsposed.org 收不到更新**。
-> 这是当前唯一没解决的对外分发问题，要等账号恢复或联系 LSPosed 维护者。
-> 在那之前，GitLab Releases 是唯一能装到包的地方。
+> 等 2FA 开了、流水线能跑之后，可以改成推 tag 让流水线发版 ——
+> 但**签名密钥在 CI 里**这件事得先想清楚：GitLab 的 CI 变量有大小上限，
+> 而密钥库 base64 约 3.6 KB、密码只有 4~7 位（不够掩码），
+> 放进公开项目的 CI 变量等于**把签名密钥公开**。
+> 所以更稳的是**继续用本地脚本发版**，流水线只跑检查与编译。
+
+### 5.1 模块仓库还没发
+
+`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` 本账号没有写权限，
+所以 **LSPosed App 与 modules.lsposed.org 收不到更新**。
+在账号恢复（或联系 LSPosed 维护者）之前，GitLab Releases 是唯一能装到包的地方。
 
 ---
 
-## 6. 项目设置（只能在浏览器里改的那几项）
-
-GitLab 的**项目元信息**没有公开的免密接口，要么用 Personal Access Token 调 API，
-要么在浏览器里改。下面几项是 2026-10-20 一次性配好的：
+## 6. 项目设置（2026-10-20 配好的）
 
 | 项 | 值 |
 |---|---|
-| 描述（Description） | 见 §6.1 |
-| 话题（Topics） | `lsposed`, `xposed`, `android`, `kotlin`, `goldsun`, `guosen` |
-| 头像（Avatar） | `assets/logo.png` |
+| 描述 | 国信金太阳的 LSPosed 体验增强模块：界面精简、行情与策略筛选、盯盘快捷配置等 15 个开关，默认全部关闭、随时还原。 |
+| 话题 | `lsposed` `xposed` `android` `kotlin` `goldsun` `guosen` `lsp-module` |
+| 头像 | `assets/logo.png`（512×512） |
 | 社交预览图 | `assets/social-preview.png` |
+| 标签 | 功能增强 / 缺陷 / 文档 / 需求 / 需要信息 / 重复 / 暂不处理 / 已修复 |
+| Wiki | 5 页：Home、安装、功能一览、开发与构建、排错 |
+| 默认分支 | `main`（合并方式 merge，squash 默认关） |
+| 其它 | 公开流水线日志、Wiki 开、Snippets / LFS / 容器仓库 / Packages 关 |
 
 > 模块的**显示名**取自仓库 Description —— 这也是 LSPosed 模块页上显示的名字，
 > 所以描述要写成「一句话能说清是什么」的样子，而不是一句「这是一个项目」。
-
-### 6.1 描述文案
-
-```
-国信金太阳的 LSPosed 体验增强模块：界面精简、行情与策略筛选、盯盘快捷配置等 15 个开关，默认全部关闭、随时还原。
-```
 
 ---
 
@@ -144,3 +173,4 @@ GitLab 的**项目元信息**没有公开的免密接口，要么用 Personal Ac
 | 构建（本地编、依赖版本为什么钉死、签名） | [BUILD.md](BUILD.md) |
 | 编码纪律 | [CODE-RULES.md](CODE-RULES.md) |
 | 文档规则 | [DOC-RULES.md](DOC-RULES.md) |
+| 发版脚本的用法 | [tools/README.md](../tools/README.md) |
