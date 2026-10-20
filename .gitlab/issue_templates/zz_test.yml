@@ -1,0 +1,6 @@
+name: 最小模板
+description: 用来定位 GitLab 到底认不认 YAML 描述模板
+body:
+  - type: markdown
+    attributes:
+      value: hello
