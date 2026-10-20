@@ -2,8 +2,10 @@
 # ---------------------------------------------------------------------------
 # export-sdk-env.sh —— 把 SDK 路径交给后面的构建步骤
 #
-#   · 在 GitHub Actions 里（$GITHUB_ENV 存在）：写 ANDROID_SDK_ROOT / ANDROID_HOME，
-#     并补一份 local.properties（该文件已被 .gitignore 忽略）。
+#   · 在 GitHub Actions 里（$GITHUB_ENV 存在）：写 ANDROID_SDK_ROOT / ANDROID_HOME。
+#   · 在 GitLab CI 里：写 local.properties（Gradle 靠它找 SDK）——
+#     共享 runner 不会把环境变量带进下一个作业，但同一个作业里工作区是共用的，
+#     local.properties 一直在。
 #   · 在别的地方：只打印一行提示，什么都不改。
 #
 # 单独拆出来是因为 setup-sdk37.sh 有两条返回路径（已装好 / 刚装完），
@@ -24,13 +26,22 @@ if [ -n "${GITHUB_ENV:-}" ]; then
         echo "ANDROID_SDK_ROOT=$SDK"
         echo "ANDROID_HOME=$SDK"
     } >> "$GITHUB_ENV"
-
-    if [ ! -f "$ROOT/local.properties" ]; then
-        printf 'sdk.dir=%s\n' "$SDK" > "$ROOT/local.properties"
-        echo "  已写 local.properties -> $SDK"
-    fi
     echo "  已导出 ANDROID_SDK_ROOT / ANDROID_HOME"
-else
-    echo "  （非 CI 环境）SDK 路径: $SDK"
-    echo "  如需构建请确保 local.properties 里有 sdk.dir，或导出 ANDROID_SDK_ROOT"
+fi
+
+# local.properties：Gradle 就是靠它找 SDK —— **哪个 CI 都得有**
+# （GitLab 的共享 runner 不会把环境变量带进下一个作业，但同一个作业里
+#   工作区是共用的，local.properties 一直在。）
+if [ ! -f "$ROOT/local.properties" ]; then
+    printf 'sdk.dir=%s\n' "$SDK" > "$ROOT/local.properties"
+    echo "  已写 local.properties -> $SDK"
+fi
+
+if [ -z "${GITHUB_ENV:-}" ]; then
+    if [ -n "${CI:-}" ]; then
+        echo "  （CI 环境）SDK 路径: $SDK —— Gradle 靠 local.properties 找它"
+    else
+        echo "  （非 CI 环境）SDK 路径: $SDK"
+        echo "  如需构建请确保 local.properties 里有 sdk.dir，或导出 ANDROID_SDK_ROOT"
+    fi
 fi

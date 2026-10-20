@@ -432,13 +432,15 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 ## ci/ ★
 
 **给 CI 与「干净环境」用的脚本**，本地也能跑。工作流本身在
-[`.github/workflows/`](../.github/workflows)，说明见
-[`docs/BUILD.md`](../docs/BUILD.md) §8。
+[`.gitlab-ci.yml`](../.gitlab-ci.yml)（GitLab）与
+[`.github/workflows/`](../.github/workflows)（GitHub，已停用、留档），
+说明见 [`docs/BUILD.md`](../docs/BUILD.md) §8 与 [`docs/GITLAB.md`](../docs/GITLAB.md)。
 
 | 脚本 | 干什么 |
 |---|---|
+| `ci/setup-android-sdk.sh` | 在一台干净的 Linux runner 上装好构建要用的整套 Android SDK：command-line tools、platform-tools、build-tools，再交给 `setup-sdk37.sh` 装 compileSdk 37。幂等。 |
 | `ci/setup-sdk37.sh` | 装好 compileSdk 37 平台并归一化成 AGP 认得的 `platforms/android-37`。幂等；下载失败自动重试，37.2 装不上会退到 37.1 / 37.0。 |
-| `ci/export-sdk-env.sh` | 把 SDK 路径交给后续步骤（CI 里写 `$GITHUB_ENV` + 补 `local.properties`）。 |
+| `ci/export-sdk-env.sh` | 把 SDK 路径交给后续步骤（GitHub 写 `$GITHUB_ENV`；两边都补 `local.properties`）。 |
 | `ci/verify_apk.py` | 产物红线自查：libxposed api / annotation 类定义必须 0、无 legacy `assets/xposed_init`、manifest 无 `xposedminversion`、入口类被 R8 保留、元文件与源码母本逐字一致、**APK 已签名且不是 debug 证书**…… |
 | `ci/version.py` | 读 `app/build.gradle.kts` 的版本号（CI 里唯一来源），并提供 tag 一致性校验与 shell 求值模式。 |
 
@@ -459,7 +461,10 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 | `ci/mutants.py` | 变异测试：把每个判据**故意改坏一次**，确认对应的单测真的会红 | `--list` 只列出变异体、不动手 |
 
 ```bash
-# 干净机器 / CI 上补 compileSdk 37
+# 干净机器 / CI 上装好整套 Android SDK（含 compileSdk 37）
+bash tools/ci/setup-android-sdk.sh
+
+# 只要 compileSdk 37 那一段（SDK 已经装好时）
 ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
 
 # 产物红线自查（纯标准库，不需要 dexdump / aapt2 / apksigner）
@@ -490,9 +495,16 @@ python tools/ci/check_disclaimer_sync.py --write
 > `ci/mutants.py` 会**临时改源码**（跑完自己还原），所以要求工作区是干净的 ——
 > 不是 CI 的常规步骤，而是「改了判据之后手动跑一次」的检查清单。
 
-环境变量：`setup-sdk37.sh` 支持 `GS_SDK_PLATFORM_PKG`（指定安装包）、
+环境变量：`setup-android-sdk.sh` 支持 `GS_CMDLINE_TOOLS_URL`（覆盖 command-line tools
+下载地址）、`GS_SDK_BUILD_TOOLS`（build-tools 版本，默认 35.0.0）；
+`setup-sdk37.sh` 支持 `GS_SDK_PLATFORM_PKG`（指定安装包）、
 `GS_SDK_INSTALL_TRIES`（下载重试次数，默认 3）；`verify_apk.py` 支持
 `GS_EXPECT_CERT_SHA256`（等价于 `--expect-cert-sha256`）。
+
+> `setup-android-sdk.sh` 为什么必须存在：**GitLab 的共享 runner 什么都不预装** ——
+> 没有 cmdline-tools、没有 sdkmanager、没有 build-tools。与其依赖某个第三方 action
+> （它自己也要下载 SDK，还要信它的版本），不如把「装 SDK」写成仓库里的脚本：
+> 版本钉死、行为可读、出错时日志在自己手里。
 
 `verify_apk.py` 的输出分三级：`[OK]` 通过、`[!]` 提醒（不影响退出码）、
 `[X]` 踩红线（退出码 1）。签名证书是**纯标准库解析 APK Signing Block** 拿到的，

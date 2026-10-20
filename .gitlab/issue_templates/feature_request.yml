@@ -1,0 +1,52 @@
+name: 功能建议
+description: 想要新功能，或者希望某个地方更好用
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提建议前可以先翻翻已有的 Issue，避免重复；
+        功能页里已经有的开关也请先确认一下没被漏掉。
+
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: 建议前确认
+      description: 本模块仅供学习研究，请知悉以下事项后再提交。
+      options:
+        - label: 我已知悉本模块会 Hook 国信金太阳，可能违反其用户协议并导致账号风控或封禁，相关风险由我自行承担。
+          required: true
+        - label: 我已阅读并同意仓库中的免责声明（docs/DISCLAIMER.md）；我的建议仅涉及界面显示与操作便捷，不涉及自动化交易、荐股或任何违规用途。
+          required: true
+        - label: 我没读上面的清单，闭眼全选（选了这项就别提了，直接关闭）。
+          required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 什么场景不顺手
+      description: |
+        先说场景再说想法——「在金太阳的 xx 页面，我想做 xx，但现在要 xx 步 / 看不到 xx」。
+        场景越具体，越容易判断该不该做、怎么做。
+      placeholder: |
+        例：
+        在策略详情页想快速看某只股票的行情，
+        现在要点进二级页面再点一次标准行情，多了一层。
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 期望的效果（可选）
+      description: 有参考就更好——比如金太阳或别的 App 里类似的做法
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息（可选）
+      description: 金太阳里对应页面的截图、金太阳版本号等
+    validations:
+      required: false

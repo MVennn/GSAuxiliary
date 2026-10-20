@@ -5,7 +5,9 @@
 
 > **2026-10-20 迁移**：GitHub 账号被停用，源码仓库已迁到
 > `https://gitlab.com/M.Venn/gsauxiliary`。下面描述的 `publish.py` 双仓库发布
-> 依赖 GitHub 写权限，账号恢复前**不可用**；GitLab 侧先手工建 Release 并上传 APK。
+> 依赖 GitHub 写权限，账号恢复前**不可用**；
+> **GitLab 侧走流水线**（改版本号 → 写 `docs/release-notes/<版本>.md` → 推 tag，
+> 流水线自己建 Release 并上传 APK），见 [GITLAB.md](GITLAB.md) §5。
 
 ---
 
