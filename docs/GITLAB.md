@@ -183,7 +183,55 @@ python tools/publish_gitlab.py --notes docs/release-notes/3.3.0.md
 
 ---
 
-## 7. 与其它文档的关系
+## 7. 分支与标签的布局
+
+GitLab 上**只有一个分支** `main`：
+
+| 名字 | 类型 | 是什么 |
+|---|---|---|
+| `main` | 分支 | 唯一的工作分支（默认分支，已保护） |
+| `{vc}-{vn}` | 标签 | 发版用的版本标签（`48-3.3.0`） |
+| `archive/fix3-full-backup` | 标签 | **归档**：第三轮专项审查的落地提交 `ac003a9` —— 它的内容已在 main 里（逐行核对过），但那个提交本身不在 main 的历史里，所以用标签留住，不占分支位 |
+
+> 迁移时推上去的 `backup/20261017-refactor`、`backup/20261020-pre-review4`
+> 两个分支已删 —— 它们的提交全在 main 的历史里，删掉不丢东西
+> （另有 `.work/backup/*.bundle` 全量 bundle 与本地 `.git` 兜底）。
+
+---
+
+## 8. 如果 GitHub 解封了
+
+**能推，而且不用改历史**（2026-10-20 核过）：
+
+| 项 | 现状 |
+|---|---|
+| `origin` 远端 | 还在（`https://github.com/MVennn/GSAuxiliary.git`） |
+| 历史关系 | `origin/main`（`6b49fc7`）是本地 `main` 的**祖先** → 推上去是**快进**，不用 force、不用改历史 |
+| 差距 | 本地领先 **99 个提交** |
+| 凭据 | Windows 凭据管理器里**还留着** GitHub 凭据（`SansKritO4`）；若被一并撤销，就重造一个 PAT（`repo` scope），或把 `~/.ssh/id_ed25519` 加到 GitHub 并把远端换成 SSH |
+
+解封后要做的三件事：
+
+```bash
+# 1. 代码与标签（一条命令，历史连续）
+git push origin main --tags
+
+# 2. 发版：GitHub + LSPosed 模块仓库 一次发完（需要 PAT 有 repo scope）
+python tools/publish.py --notes docs/release-notes/3.3.0.md
+
+# 3. 决定谁是「正本」：README 与 docs 里的链接现在指向 GitLab
+#    （2026-10-20 迁移时改的，见 CHANGELOG 3.3.0 段）
+```
+
+> **模块仓库才是 LSPosed 用户收更新的地方**（modules.lsposed.org 与 LSPosed App 只读它）。
+> GitLab 那边发 Release **不会**让 LSPosed 用户收到提示 —— 账号解封后，
+> `publish.py` 那一步才真正能把 3.3.0 送进模块仓库。
+>
+> 签名密钥没变过 → 两边发出来的 APK 签名一致，已装用户**直接覆盖安装**，不用卸载。
+
+---
+
+## 9. 与其它文档的关系
 
 | 想做的事 | 看哪篇 |
 |---|---|
