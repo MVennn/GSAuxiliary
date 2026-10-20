@@ -359,12 +359,8 @@ release-smoke:
   script:
     - |
       set -euo pipefail
-      echo "冒烟：新建一个一次性 tag，用 release: 关键字挂本地产物"
+      echo "冒烟：用 release: 关键字挂本地产物（tag 已由维护者推好）"
       echo "smoke" > ci-smoke.txt
-      git config user.email "ci@example.com"
-      git config user.name "CI Smoke"
-      git tag -f "ci-smoke-1" HEAD
-      git push --force origin "refs/tags/ci-smoke-1" 2>&1 | tail -3
   artifacts:
     paths:
       - ci-smoke.txt
