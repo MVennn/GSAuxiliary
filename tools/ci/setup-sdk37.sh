@@ -35,9 +35,19 @@ set -euo pipefail
 DST_NAME="android-37"          # AGP 8.10.1 认得的目录名
 TARGET_API="37"                # 归一化后的整数 api-level
 
-# 候选包：37.2 在稳定通道，是首选；37.1 / 37.0 是更早的次要版本，
-# 官方仓库里仍可下载 —— 万一 37.2 被撤下或下载通道抽风，不至于整条流水线红掉。
-CANDIDATES=("platforms;android-37.2" "platforms;android-37.1" "platforms;android-37.0")
+# 候选包：**37.0 优先**，不是 37.2。
+#
+# 为什么（2026-10-20 在 GitLab 共享 runner 上真踩出来的）：
+#   AGP 8.10.1 要的 target hash 是 'android-37'。它算 hash 时**会带上次版本**：
+#   37.2 那个包的 package.xml 里 <revision> 除了 <major>2</major> 还有 <minor>2</minor>，
+#   目录名与 api-level 归一化对了，那个 <minor> 却还在 ——
+#   于是 AGP 算出的是 'android-37.2'，照样认不出来，最后报
+#   「Failed to find target with hash string 'android-37'」。
+#   37.0 那个包（也就是 AGP 自己会装的那一个）<revision> 里**只有 <major>2</major>**，
+#   归一化后正是本机那套已验证可用的状态（docs/BUILD.md §4.1）。
+#
+# 37.2 / 37.1 留作候选（万一 37.0 被撤下），装它们时脚本会把 <minor> 抹掉。
+CANDIDATES=("platforms;android-37.0" "platforms;android-37.2" "platforms;android-37.1")
 if [ -n "${GS_SDK_PLATFORM_PKG:-}" ]; then
     CANDIDATES=("$GS_SDK_PLATFORM_PKG")
 fi
@@ -221,6 +231,7 @@ if [ -f "$DST/package.xml" ]; then
         -e "s|<api-level>${MINOR_RE}</api-level>|<api-level>${TARGET_API}</api-level>|g" \
         -e "s|platforms;android-${MINOR_RE}|platforms;android-${TARGET_API}|g" \
         -e "s|Android SDK Platform ${MINOR_RE}|Android SDK Platform ${TARGET_API}|g" \
+        -e "/<minor>/d" \
         "$DST/package.xml"
 else
     log "[!] 没有 package.xml —— sdkmanager 通常会给，缺了也不一定报错，继续"
@@ -276,6 +287,16 @@ if [ -f "$DST/package.xml" ]; then
         log "[X] package.xml 的 api-level 没改成 ${TARGET_API}"
         fail=1
     fi
+fi
+
+# ⚠️ 次版本残留检查：<minor>N</minor> 这种元素**不含 "37.x" 字样**，
+#    上面那条残留 grep 抓不到它 —— 而它正是让 AGP 把 hash 算成带次版本的
+#    （认不出来）的元凶（2026-10-20 在 CI 上真踩过）。所以单独查。
+if [ -f "$DST/package.xml" ] && grep -q "<minor>" "$DST/package.xml"; then
+    log "[X] package.xml 里还有 <minor> —— AGP 会把 hash 算成带次版本的（认不出来）"
+    fail=1
+else
+    log "[OK] package.xml 无 <minor> 元素"
 fi
 
 # 残留检查：只扫存在的文件（package.xml 可能没有，grep 一个不存在的路径会报错，

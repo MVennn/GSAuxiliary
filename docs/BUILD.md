@@ -322,6 +322,32 @@ android.suppressUnsupportedCompileSdk=37,37.0
 > Gradle 有时会自己在 `<SDK>/platforms/android-37.0` 再放一份冗余副本，
 > 两份内容一致，不影响构建，但可以删掉其中一份。
 
+#### ⚠️ 次版本陷阱：`<minor>` 会让 AGP 算错 hash（2026-10-20 在 CI 上真踩过）
+
+上面第 1 步装的是 **37.2** 那个包。它的 `package.xml` 里
+`<revision>` 除了 `<major>2</major>` 还有 **`<minor>2</minor>`**。
+
+把目录名改成 `android-37`、`<api-level>` 改成 `37` 之后，那个 `<minor>` **还在** ——
+而 **AGP 算 target hash 时会带上次版本**：于是它算出的是 `android-37.2`，
+跟你要的 `android-37` 对不上，报的还是那句：
+
+```
+Failed to find target with hash string 'android-37'
+```
+
+看着像「归一化没做」，其实是**做了一半**。三个要点：
+
+1. **装 `platforms;android-37.0`（不是 37.2）** —— 37.0 是 AGP 自己会装的那一个，
+   它的 `<revision>` 里**只有 `<major>2</major>`**，归一化后正好是本机验证可用的状态。
+   `tools/ci/setup-sdk37.sh` 的候选顺序已经按这个改了。
+2. **`<minor>` 元素要整个删掉**（脚本里 `-e "/<minor>/d"`）——
+   它**不含 "37.x" 字样**，所以「残留 grep」抓不到，得单独查（脚本里已加这条校验）。
+3. **`source.properties` 的 `AndroidVersion.ApiLevel` 也要是整数 `37`** ——
+   37.0 那个包原始值是 `37.0`。
+
+> 手工步骤只作讲解用（上面那段是历史）；现在 CI 与新机器一律跑
+> `bash tools/ci/setup-android-sdk.sh`（它会调 `setup-sdk37.sh`）。
+
 ### 4.2 AGP 9.1 需要 Gradle ≥ 9.3.1
 
 如果你真的要走 AGP 9.x 路线：AGP 9.1 要求 **Gradle 9.3.1 以上**，
