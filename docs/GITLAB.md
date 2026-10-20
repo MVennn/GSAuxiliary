@@ -107,56 +107,44 @@ Windows 上 `chmod 600` 其实不生效，NTFS 权限要靠 ACL。
 
 > 「受保护」= 只有 `main` 与受保护 tag 上的流水线读得到，够用。
 
-### 3.3 ⚠️ CI 跑不动：GitLab 要求先验证身份
+### 3.3 账号级身份验证（已通过）
 
-2026-10-20 实测：**流水线一创建就失败**，报
+GitLab.com 上跑 CI 作业要过**两道门**：
+
+| 门 | 状态（2026-10-20） |
+|---|---|
+| 账号两步验证（2FA） | ✅ 已开 |
+| **账号级身份验证**（identity verification） | ✅ **已过**（用户用信用卡验证，页面 <https://gitlab.com/-/identity_verification>） |
+
+没过之前，**流水线一创建就失败**，报：
 
 ```
 Identity verification is required in order to run CI jobs
 ```
 
-GitLab.com 上这是**两道门**，容易只看到第一道：
-
-| 门 | 状态（2026-10-20） |
-|---|---|
-| 账号两步验证（2FA） | ✅ 已开 |
-| **账号级身份验证**（identity verification） | ❌ **还没做** —— 页面 <https://gitlab.com/-/identity_verification> |
-
-第二道门三种过法，**任选其一**：
-
-| 方式 | 说明 |
-|---|---|
-| 手机短信验证码 | 选国家/地区 → 填号码 → 「发送验证码」→ 填收到的 6 位码 |
-| 语音答题 | 页面下方的「请回答此问题以证明您是真人」—— 出声念出屏幕上的数字 |
-| 信用卡验证 | 「改为使用信用卡验证?」—— 会有一笔极小额的扣款验证 |
-
-> 这道门**只有本人能过**（要收短信 / 出声 / 刷卡），所以 AI 代不了。
->
 > 顺带解释一个现象：验证之前，**往 main 推一次就会留下一条 0 作业的 failed
 > 流水线**（实测 18 条）。那不是 workflow 规则匹配上了 —— 规则只认
 > MR / 手动 / tag —— 而是这道门在规则之前就拦下了，GitLab 于是留了条失败记录。
-> 验证通过后确认一次：那时 push 应该一条都不建。
 >
-> **它只挡 CI 作业，不挡别的**：仓库、Wiki、标签、Release、发版脚本
-> （`tools/publish_gitlab.py`）全都正常 —— 3.3.0 就是这么发的。
+> 这道门**只挡 CI 作业**，不挡别的：仓库、Wiki、标签、Release、发版脚本
+> （`tools/publish_gitlab.py`）全程正常 —— 3.3.0 就是这么发的。
 
 ---
 
 ## 4. 流水线
 
-`.gitlab-ci.yml` 三段：
+`.gitlab-ci.yml` 两段（**2026-10-20 真跑通过**）：
 
-| 阶段 | 做什么 |
-|---|---|
-| `static-checks` | 六项源码级检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约）。2 秒判对错，不浪费 5 分钟构建。 |
-| `build` | 装 SDK（`tools/ci/setup-android-sdk.sh`）→ 跑单测 → 编 release → 校验产物红线 → 留产物 |
-| `release` | 只在 tag 上跑：校验 tag 与版本号一致 → 建 Release → 传 APK |
+| 阶段 | 做什么 | 实测耗时 |
+|---|---|---|
+| `check` | 七项源码级检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约 / **文档链接**）。2 秒判对错，不浪费 5 分钟构建。 | ~20s |
+| `build` | 装 SDK（`tools/ci/setup-android-sdk.sh`）→ 跑单测 → 编 release → 校验产物红线（签名证书等 24 项）→ 留产物（APK + R8 mapping） | ~8 分钟 |
 
 | 触发方式 | 跑什么 | 说明 |
 |---|---|---|
 | 开 Merge Request | 全套（静态检查 → 编译 → 单测 → 红线） | 推 `main` **不触发** |
 | 流水线页「Run pipeline」 | 同上 | 想云端复验时手动跑 |
-| 推 tag（形如 `48-3.3.0`） | 上面全套 + 建 Release、传 APK | tag 必须与 `app/build.gradle.kts` 一致 |
+| API 触发（`POST /projects/:id/pipeline`） | 同上 | 脚本里复验用 |
 
 > 为什么不在 push 上跑：日常改动一律本地编 + 真机验完才提交，推上去再编一遍是纯重复；
 > 推得勤也最招风控。这条规矩从 GitHub Actions 那边沿用过来。
@@ -164,12 +152,15 @@ GitLab.com 上这是**两道门**，容易只看到第一道：
 > **GitLab 的 `script:` 只吃字符串**（或字符串数组），不吃 `- name: / run:` 那种映射写法 ——
 > 写成那样整条流水线会被 GitLab 判为配置非法、连创建都不允许。
 > 本地 YAML 解析得过，GitLab 的校验更严：**改这份文件必须实际触发一次流水线才算验过。**
+>
+> 顺带两个实测出来的坑（都写在脚本注释里）：
+> - **每个作业都是全新容器** —— 一个作业里 apt 装的 python3 不会留给下一个作业；
+>   而 `eclipse-temurin` 镜像**没有 python3**（读版本号的 `tools/ci/version.py` 要它）。
+> - **YAML 块标量里顶格的行会把整个块截断** —— 内嵌的 python 必须写成单行。
 
 ---
 
-## 5. 发版（当前走脚本，不走流水线）
-
-因为 §3.3 那道身份验证的门还没过，**发版暂时用本地脚本**：
+## 5. 发版（走本地脚本，不走流水线）
 
 ```bash
 # 1. 改 app/build.gradle.kts 的 versionCode / versionName
@@ -182,11 +173,24 @@ python tools/publish_gitlab.py --notes docs/release-notes/3.3.0.md
 脚本做四件事：读版本号 → 构建 → 跑 `verify_apk --reject-debug-cert`（签名红线：
 **debug 证书直接失败**，否则所有已装用户得卸载重装）→ 建 Release 并传 APK 与 R8 映射。
 
-> 等 2FA 开了、流水线能跑之后，可以改成推 tag 让流水线发版 ——
-> 但**签名密钥在 CI 里**这件事得先想清楚：GitLab 的 CI 变量有大小上限，
-> 而密钥库 base64 约 3.6 KB、密码只有 4~7 位（不够掩码），
-> 放进公开项目的 CI 变量等于**把签名密钥公开**。
-> 所以更稳的是**继续用本地脚本发版**，流水线只跑检查与编译。
+也可以直接发布流水线产出的包（流水线用 CI 里的签名密钥编的，签名一致）：
+
+```bash
+python tools/publish_gitlab.py --skip-build --apk <下载下来的 APK>
+```
+
+### 5.1 为什么发版不放在 CI 里（2026-10-20 实测的三条路）
+
+试过三种「推 tag → 流水线自动发版」，都走不通：
+
+| 方案 | 结果 |
+|---|---|
+| API 三步：`POST /releases` → `POST /uploads` → `POST /assets/links`，用 `CI_JOB_TOKEN` | ❌ **Releases API 认作业令牌，但 uploads 接口不认**（401） |
+| `release:` 关键字（底层是 glab），`assets.links` 给 `filepath` | ❌ **Release 建得出来**（✓ 作业令牌够用），但 `filepath` 不会被翻译成上传 → 报「url is missing」 |
+| 把 PAT 放进 CI 变量 | ⚠️ 能通，但等于把**长期有效的发布凭据**挂在**公开**项目上 —— 最差的选择，不做 |
+
+所以定成：**流水线只管「验证 + 产出签名 APK」，发布由维护者在本地做。**
+（流水线本身已真跑通过：静态检查 → 装 SDK → 编译 → 单测 → 产物红线 → 留产物。）
 
 ### 5.1 模块仓库还没发
 
