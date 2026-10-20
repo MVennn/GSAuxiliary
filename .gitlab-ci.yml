@@ -356,6 +356,10 @@ release-smoke:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   when: manual
+  before_script:
+    - |
+      # release-cli 镜像里没有 curl
+      apt-get update -qq && apt-get install -y -qq curl > /dev/null
   script:
     - |
       set -euo pipefail
@@ -375,5 +379,5 @@ release-smoke:
     assets:
       links:
         - name: "ci-smoke.txt"
-          filepath: "ci-smoke.txt"
+          url: "https://gitlab.com/api/v4/projects/87853791/packages/generic/gsauxiliary-smoke/1.0.0/smoke.txt"
           link_type: "other"
