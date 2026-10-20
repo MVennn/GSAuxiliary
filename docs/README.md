@@ -55,7 +55,7 @@
 |---|---|
 | ~~reference/~（本地留存） | 逆向采集的**原始数据**档案（探针日志、Activity 清单、APK 解析报告），因含宿主内部信息不再随公开仓库分发，维护者本地保留一份作比对基准 |
 | [release-notes/](release-notes/README.md) | 面向用户的 Release 说明，文件名 = `versionName`；格式规范在它的 README |
-| [DISCLAIMER.md](DISCLAIMER.md) | 免责声明全文，与 `strings.xml` 的 `disclaimer_full` 双副本同步维护 |
+| [DISCLAIMER.md](DISCLAIMER.md) | 免责声明**中文规范源**；[DISCLAIMER.en.md](DISCLAIMER.en.md) 是英文规范源。两份各自与 `strings.xml` 的 `disclaimer_full` 同步维护（`tools/ci/check_disclaimer_sync.py` 守着） |
 | 仓库根 [CHANGELOG.md](../CHANGELOG.md) | 开发者记录：症状 / 根因 / 改法 / 验证结果 |
 
 ---

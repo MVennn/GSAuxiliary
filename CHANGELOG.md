@@ -99,6 +99,12 @@
 - 修复 导航条取色横跳 —— 渐变 / 圆角页面；像素校准值与结构推导值来回打架，导航条颜色每 250ms 被拉回盲区值；现在校准值记 `verified`，结构值与它差大不再覆盖，真实变色不受影响。
 - 修复 导航条取色 —— 圆角与垂直渐变背景；原先只读渲染图左上角一个像素（圆角处读到透明、渐变只取到顶部色），改成 16×16 画板沿中轴三点平均。
 - 修复 导航条还原 —— 关开关后迟到的 `PixelCopy` 回调会把窗口重新上色；现在回调落地前校验记账，不属于当前窗口的即丢弃。
+- 修复 免责全文 —— 关于页免责声明；免责全文有**四份副本**（中文 md / 中文资源 / 英文 md / 英文资源），
+  `docs/MAINTENANCE.md` 写着「改任何一条都必须一起改、没有例外」，但那条规矩之前只靠人记 —— 真的漂了：
+  **英文那份整段少了第八~第十一条**（使用者声明、投诉响应、违约终止、适用法律），还留着一句
+  「contains no networking components」—— 而模块 3.x 明明有 HTTP 取数；中文那份的引号退回成直引号、
+  末句少一段加粗（网页版 2026-10-17 加的）。现在四份对齐：英文从中文规范源补齐翻译，
+  并新增 `tools/ci/check_disclaimer_sync.py` 把这件事变成会红的检查（逐字比对 + 中英结构对齐）。
 
 ### 调整
 
@@ -121,13 +127,25 @@
 - 调整 仓库 —— 3.2.0 说明补齐 14 条漏项（内部整理按对象拆开，不再打包成「代码整理」）。
 - 调整 文档 —— 扩展篇补一条硬要求：目录里一行不等于一个功能，子开关要自己处理 `isEnabled`。
 - 调整 构建 —— CI 去掉 push 触发（只在 PR / 手动跑）；`publish.py` 版本解析对齐 CI 的整行锚定口径。
+- 调整 仓库 —— 一次大扫除（按 `docs/MAINTENANCE.md` 的四层流程）：仓库体积 **483M → 70M** ——
+  删掉宿主解包缓存 237M、旧日志与散落截图 27M、旧 APK 10.5M、构建产物 130M，
+  清掉已并入 `main` 的第二个 worktree（1.6G）与冗余 bundle，`git gc` 后 .git 12M → 3.8M；
+  代码侧扫描 **0 候选**（冗余资源 0 / 未引用顶层声明 0 / 没调用的 private 成员 0 / 未用 import 0）——
+  上一轮扫过后确实没剩什么。分支与备份按「已并入 main 且在 bundle 里」才删，
+  `fix3-full-backup` 有一个提交没进 main，保留。
+- 调整 仓库 —— `tools/README.md` 补齐 **7 个 ci 脚本缺失的条目**
+  （`check_invariants` / `check_switches` / `check_contract` / `check_dead_symbols` /
+  `check_release_notes` / `check_disclaimer_sync` / `mutants`）——
+  `docs/TOOLS-DOC-RULES.md` §1 写着「没有条目的脚本视为未交付」，这七条一直在漏。
 
 ### 优化
 
 - 优化 回归防护 —— 全局；这一轮装了**三层自动化**把「优化引入的回归」从靠人记变成靠机器拦：
   ① **125 条单元测试**（纯逻辑那一半：配置指纹、筛选语义、算价、打码、限速决策、方案 JSON 编解码…）；
-  ② **三套静态检查**（`tools/ci/check_invariants.py` 8 条不变量、
-  `check_switches.py` 功能开关全链路、`check_contract.py` 宿主契约 164 条），全接进 CI；
+  ② **五套静态检查**（`tools/ci/check_invariants.py` 8 条不变量、
+  `check_switches.py` 功能开关全链路、`check_contract.py` 宿主契约 164 条、
+  `check_dead_symbols.py` 死代码、`check_disclaimer_sync.py` 免责副本同步），
+  全接进 CI；
   ③ **变异测试**（`tools/ci/mutants.py`）—— 把每个判据**故意改坏一次**，确认对应的测试**真的会红**。
   动机见 `docs/REVIEW-2026-10.md`：这个项目**每一轮审查都引入了新 bug**，
   而五轮独立复核里**十条 P0/P1 有八条是我自己前一轮修出来的** ——

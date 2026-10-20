@@ -461,6 +461,9 @@ cp keystore.properties.example keystore.properties
 | `python tools/ci/check_invariants.py` | 8 条静态不变量（见下） | 2s |
 | `python tools/ci/check_switches.py` | 功能开关全链路：目录行 ↔ 配置键 ↔ 快照字段 ↔ 出厂默认值 | 2s |
 | `python tools/ci/check_contract.py` | 宿主契约：代码里认的宿主标识 ↔ 契约清单 | 2s |
+| `python tools/ci/check_dead_symbols.py` | 死代码：顶层符号没人调用 / 只在测试里被调用 | 2s |
+| `python tools/ci/check_release_notes.py` | 发版说明覆盖率：本版改动必须进说明 | 1s |
+| `python tools/ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | 1s |
 | `cmd /c gradlew.bat :app:testReleaseUnitTest` | 125 条单元测试（纯逻辑那一半） | 5s |
 | `python tools/ci/verify_apk.py --reject-debug-cert <apk>` | 产物红线（24 项） | 2s |
 

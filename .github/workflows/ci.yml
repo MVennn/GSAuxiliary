@@ -129,6 +129,14 @@ jobs:
         # 这条规矩之前没有自动检查 —— 靠人记，结果通常是「想起来才补」。
         run: python3 tools/ci/check_release_notes.py
 
+      - name: 免责声明副本同步核对
+        # 免责全文有四个副本（中文 md / 中文资源 / 英文 md / 英文资源）。
+        # 「改任何一条都必须一起改」之前只靠人记 —— 真的漂过：
+        # 英文那份整段少了第八~第十一条，还留着一句「contains no networking
+        # components」，而模块 3.x 明明有 HTTP 取数。
+        # 这里逐字比对两份资源与各自的规范源，并要求中英结构对齐（不许少一条）。
+        run: python3 tools/ci/check_disclaimer_sync.py
+
       - name: 死代码扫描
         # 查「顶层符号谁都没调用」与「只在测试里被调用」——
         # 这项目栽过好几次「名义上存在、实际不生效」（or 链漏一位、锚点没有调用点、

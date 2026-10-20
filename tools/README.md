@@ -442,6 +442,22 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 | `ci/verify_apk.py` | 产物红线自查：libxposed api / annotation 类定义必须 0、无 legacy `assets/xposed_init`、manifest 无 `xposedminversion`、入口类被 R8 保留、元文件与源码母本逐字一致、**APK 已签名且不是 debug 证书**…… |
 | `ci/version.py` | 读 `app/build.gradle.kts` 的版本号（CI 里唯一来源），并提供 tag 一致性校验与 shell 求值模式。 |
 
+### 静态检查（`ci/check_*.py`）
+
+**都是源码级、秒级、不需要设备也不需要构建** —— CI 里跑在最前面，
+2 秒就能判对错，别浪费 5 分钟构建。各查什么、为什么要有，见
+[`docs/BUILD.md`](../docs/BUILD.md) §7.5。
+
+| 脚本 | 查什么 | 参数 |
+|---|---|---|
+| `ci/check_invariants.py` | 8 条静态不变量（Miuix Overlay、rememberSaveable、proguard keep、假开关、宿主候选名、中英资源键对齐、日志打码、跨容器搬 View） | `--report` 只报告、不改退出码 |
+| `ci/check_switches.py` | 功能开关全链路：目录行 ↔ 配置键 ↔ 快照字段 ↔ 出厂默认值 | 无 |
+| `ci/check_contract.py` | 宿主契约双向核对：代码里认的宿主标识 ↔ 契约清单 | `--dump <宿主类名快照>` 一并确认哪些候选名现在还认得到 |
+| `ci/check_dead_symbols.py` | 死代码：顶层符号没人调用 / 只在测试里被调用 | `--changed` 只查本分支新增的符号 |
+| `ci/check_release_notes.py` | 发版说明覆盖率：本版用户可感知的改动必须进说明 | `--notes <说明文件>` 指定要核对的说明 |
+| `ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | `--write` 从 md 规范源重新生成两个 `strings.xml` 的 `disclaimer_full` |
+| `ci/mutants.py` | 变异测试：把每个判据**故意改坏一次**，确认对应的单测真的会红 | `--list` 只列出变异体、不动手 |
+
 ```bash
 # 干净机器 / CI 上补 compileSdk 37
 ANDROID_SDK_ROOT=/path/to/sdk bash tools/ci/setup-sdk37.sh
@@ -458,7 +474,21 @@ python tools/ci/version.py                  # 输出 vc=47 / vn=3.2.0（供 $GIT
 python tools/ci/version.py --tag            # 47-3.2.0
 python tools/ci/version.py --shell          # 输出 VC=/VN=/TAG= 三行，供 shell eval
 python tools/ci/version.py --check-tag 47-3.2.0  # 不一致就 exit 1
+
+# 静态检查（提交前跑一遍，全是秒级）
+python tools/ci/check_invariants.py
+python tools/ci/check_switches.py
+python tools/ci/check_contract.py --dump tools/contract/dump/8.6.0-271-classes.txt
+python tools/ci/check_dead_symbols.py
+python tools/ci/check_release_notes.py
+python tools/ci/check_disclaimer_sync.py
+
+# 免责全文改过了：从 md 规范源重新生成资源值，再核对一次
+python tools/ci/check_disclaimer_sync.py --write
 ```
+
+> `ci/mutants.py` 会**临时改源码**（跑完自己还原），所以要求工作区是干净的 ——
+> 不是 CI 的常规步骤，而是「改了判据之后手动跑一次」的检查清单。
 
 环境变量：`setup-sdk37.sh` 支持 `GS_SDK_PLATFORM_PKG`（指定安装包）、
 `GS_SDK_INSTALL_TRIES`（下载重试次数，默认 3）；`verify_apk.py` 支持

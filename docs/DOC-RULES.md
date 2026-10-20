@@ -80,7 +80,7 @@ REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md 里的
 | 新增 / 删除功能 | [ARCHITECTURE.md](ARCHITECTURE.md) §3.2 功能挂载表、[UI.md](UI.md) 功能页清单、[NAMING.md](NAMING.md) §5、候选常量表（reference/ 已转本地留存） |
 | 发版 | 根目录 CHANGELOG.md、`docs/release-notes/<版本>.md`（写法正本：[release-notes/README.md](release-notes/README.md)） |
 | 内部重构 / 底层修复 / 死代码 | 说明里**必须按对象单列一行**（算「修复」，不许打包成「代码整理」） |
-| 改免责全文 | `strings.xml` 的 `disclaimer_full` + [DISCLAIMER.md](DISCLAIMER.md) 双写（细则见 [MAINTENANCE.md](MAINTENANCE.md) §3 L3） |
+| 改免责全文 | 改 [DISCLAIMER.md](DISCLAIMER.md) / [DISCLAIMER.en.md](DISCLAIMER.en.md) 两个规范源，再跑 `python tools/ci/check_disclaimer_sync.py --write` 同步进两个 `strings.xml`（细则见 [MAINTENANCE.md](MAINTENANCE.md) §3 L3） |
 | 改构建 / 脚本 | [BUILD.md](BUILD.md) / [MAINTENANCE.md](MAINTENANCE.md) 对应段 |
 | 新增 / 删除文档 | [README.md](README.md) 索引（见 §7） |
 
