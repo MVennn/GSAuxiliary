@@ -344,3 +344,42 @@ release:
     paths:
       - dist/
     expire_in: 90 days
+
+# ---------------------------------------------------------------------------
+# 临时冒烟作业：验证「用 CI_JOB_TOKEN 建/改 Release + 传附件」这条链路
+# （真发版只会在 tag 上跑；这里用已发布的 48-3.3.0 重挂一次 mapping，
+#   不碰已发布的 APK —— 目的是验证 JOB-TOKEN 与那两个接口的用法）
+# ---------------------------------------------------------------------------
+release-smoke:
+  stage: release
+  image: eclipse-temurin:17-jdk
+  needs: ["build"]
+  when: manual
+  script:
+    - |
+      set -euo pipefail
+      TAG="48-3.3.0"
+      API="https://gitlab.com/api/v4/projects/$CI_PROJECT_ID"
+      echo "[1/3] 建/改 Release（用 JOB-TOKEN）"
+      code="$(curl -s -o /tmp/rel.json -w '%{http_code}'         --header "JOB-TOKEN: $CI_JOB_TOKEN"         --data-urlencode "name=$TAG"         --data-urlencode "tag_name=$TAG"         --data-urlencode "description=冒烟测试（内容会被下一次正式发版覆盖）"         "$API/releases")"
+      case "$code" in
+        200|201) echo "    [OK] 已建（HTTP $code）" ;;
+        409)
+          echo "    [i] 已存在，改成更新"
+          curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request PUT             --data-urlencode "name=$TAG"             --data-urlencode "description=冒烟测试（内容会被下一次正式发版覆盖）"             "$API/releases/$TAG" > /dev/null
+          echo "    [OK] 已更新"
+          ;;
+        *) echo "[X] 失败（HTTP $code）："; cat /tmp/rel.json; exit 1 ;;
+      esac
+      echo "[2/3] 传到项目 uploads"
+      UPLOAD_PATH="$(curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"         --form "file=@dist/mapping.txt"         "$API/uploads"         | python3 -c 'import sys,json; print(json.load(sys.stdin)["full_path"])')"
+      echo "    上传到：$UPLOAD_PATH"
+      echo "[3/3] 挂成 Release 资产"
+      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"         --data-urlencode "name=mapping-smoke.txt"         --data-urlencode "url=https://gitlab.com$UPLOAD_PATH"         --data-urlencode "link_type=other"         "$API/releases/$TAG/assets/links" > /tmp/asset.json
+      cat /tmp/asset.json
+      echo ""
+      # 冒烟产物立刻删掉，不留在 Release 上
+      LID="$(python3 -c 'import sys,json; print(json.load(sys.stdin)[0]["id"])' < /tmp/asset.json)"
+      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request DELETE         "$API/releases/$TAG/assets/links/$LID" > /dev/null && echo "[OK] 冒烟资产已删除（id=$LID）"
+      # 说明文字恢复成正式版
+      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request PUT         --data-urlencode "name=3.3.0"         --data-urlencode "description=$(cat docs/release-notes/3.3.0.md)"         "$API/releases/$TAG" > /dev/null && echo "[OK] Release 说明已恢复"
