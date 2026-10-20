@@ -243,12 +243,14 @@ release:
   timeout: 20 minutes
   rules:
     - if: '$CI_COMMIT_TAG =~ /^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+$/'
-  script:
+  before_script:
     - |
-      # 装 curl（runner 镜像不一定带）
-      if ! command -v curl >/dev/null 2>&1; then
-        apt-get update -qq && apt-get install -y -qq curl > /dev/null
-      fi
+      # 装 curl + python3：eclipse-temurin 镜像里两个都没有。
+      # ⚠️ **每个作业都是全新的容器** —— build 作业里 apt 装的 python3 不会留到这里，
+      #    各作业得各装各的（踩过：release 作业挂在 python3: command not found）。
+      apt-get update -qq
+      apt-get install -y -qq curl python3 > /dev/null
+  script:
     - |
       # 校验 tag 与版本号一致
       # 不一致直接失败 —— 防止给一个还没完工的版本建出假 Release
@@ -355,6 +357,11 @@ release-smoke:
   image: eclipse-temurin:17-jdk
   needs: ["build"]
   when: manual
+  before_script:
+    - |
+      # 同样的理由：每个作业都是全新容器，python3 得自己装
+      apt-get update -qq
+      apt-get install -y -qq curl python3 > /dev/null
   script:
     - |
       set -euo pipefail
