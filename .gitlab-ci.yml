@@ -44,6 +44,12 @@ workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
+    # API 建的流水线来源是 `api`（不是 `web`）—— 漏了它，
+    # `POST /projects/:id/pipeline` 会被 workflow 规则挡掉：
+    # "The pipeline did not run. Review the workflow:rules configuration"
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    # trigger token 触发（脚本里最常见的「手动跑一次」方式）
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
     # 这里**先判空**再匹配：`=~` 碰上未定义/空的变量时判定不可靠，
     # 加上 `$CI_COMMIT_TAG != ""` 才是「真有 tag 才建」。
     #
