@@ -354,41 +354,22 @@ release:
 # ---------------------------------------------------------------------------
 release-smoke:
   stage: release
-  image: eclipse-temurin:17-jdk
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
   when: manual
-  before_script:
-    - |
-      # 同样的理由：每个作业都是全新容器，python3 得自己装
-      apt-get update -qq
-      apt-get install -y -qq curl python3 > /dev/null
   script:
     - |
       set -euo pipefail
-      TAG="48-3.3.0"
-      API="https://gitlab.com/api/v4/projects/$CI_PROJECT_ID"
-      echo "[1/3] 建/改 Release（用 JOB-TOKEN）"
-      code="$(curl -s -o /tmp/rel.json -w '%{http_code}'         --header "JOB-TOKEN: $CI_JOB_TOKEN"         --data-urlencode "name=$TAG"         --data-urlencode "tag_name=$TAG"         --data-urlencode "description=冒烟测试（内容会被下一次正式发版覆盖）"         "$API/releases")"
-      case "$code" in
-        200|201) echo "    [OK] 已建（HTTP $code）" ;;
-        409)
-          echo "    [i] 已存在，改成更新"
-          curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request PUT             --data-urlencode "name=$TAG"             --data-urlencode "description=冒烟测试（内容会被下一次正式发版覆盖）"             "$API/releases/$TAG" > /dev/null
-          echo "    [OK] 已更新"
-          ;;
-        *) echo "[X] 失败（HTTP $code）："; cat /tmp/rel.json; exit 1 ;;
-      esac
-      echo "[2/3] 传到项目 uploads"
-      echo "smoke" > /tmp/smoke.txt
-      UP_CODE="$(curl -s -o /tmp/up.json -w '%{http_code}'         --header "JOB-TOKEN: $CI_JOB_TOKEN"         --form "file=@/tmp/smoke.txt"         "$API/uploads")"
-      echo "    HTTP $UP_CODE  body: $(head -c 300 /tmp/up.json)"
-      UPLOAD_PATH="$(python3 -c 'import sys,json; print(json.load(sys.stdin)["full_path"])' < /tmp/up.json)"
-      echo "    上传到：$UPLOAD_PATH"
-      echo "[3/3] 挂成 Release 资产"
-      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN"         --data-urlencode "name=mapping-smoke.txt"         --data-urlencode "url=https://gitlab.com$UPLOAD_PATH"         --data-urlencode "link_type=other"         "$API/releases/$TAG/assets/links" > /tmp/asset.json
-      cat /tmp/asset.json
-      echo ""
-      # 冒烟产物立刻删掉，不留在 Release 上
-      LID="$(python3 -c 'import sys,json; print(json.load(sys.stdin)[0]["id"])' < /tmp/asset.json)"
-      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request DELETE         "$API/releases/$TAG/assets/links/$LID" > /dev/null && echo "[OK] 冒烟资产已删除（id=$LID）"
-      # 说明文字恢复成正式版
-      curl -s --fail --header "JOB-TOKEN: $CI_JOB_TOKEN" --request PUT         --data-urlencode "name=3.3.0"         --data-urlencode "description=$(cat docs/release-notes/3.3.0.md)"         "$API/releases/$TAG" > /dev/null && echo "[OK] Release 说明已恢复"
+      echo "冒烟：验证 release: 关键字能不能直接挂本地产物（不需要任何令牌）"
+      echo "smoke" > ci-smoke.txt
+  artifacts:
+    paths:
+      - ci-smoke.txt
+  release:
+    tag_name: "48-3.3.0"
+    name: "3.3.0"
+    description: "冒烟测试（说明会被下一次正式发版覆盖）"
+    assets:
+      links:
+        - name: "ci-smoke.txt"
+          filepath: "ci-smoke.txt"
+          link_type: "other"
