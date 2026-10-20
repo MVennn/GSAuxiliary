@@ -416,6 +416,44 @@ def check_raw_code_logging(findings):
                     ))
 
 
+# ---------------------------------------------------------------------------
+# 规则 8：跨容器搬 View 必须先把 target 从旧父里摘掉
+# ---------------------------------------------------------------------------
+
+def check_reparent_remove(findings):
+    """`unwrapVerticalHost` 把行容器从壳搬回 grand 时，必须先 `removeView(target)`。
+
+    2026-10-20 真机：只 `removeView(host)` 就 `addView(target)` →
+    `IllegalStateException: The specified child already has a parent`，
+    而 host 已经被摘掉 → 宿主的行容器成了孤儿，筛选面板当场塌陷
+    （「面板开着时关开关」这条路径，单测与其余静态检查都抓不到）。
+    """
+    path = os.path.join(PKG_DIR, "feature", "filter", "StockFilterPanelUi.kt")
+    if not os.path.exists(path):
+        findings.append(Finding("reparent", rel(path), 0, "找不到 StockFilterPanelUi.kt —— 规则过期"))
+        return
+    text = code_without_comments(read(path))
+    m = re.search(r"fun\s+unwrapVerticalHost\s*\(", text)
+    if not m:
+        findings.append(Finding("reparent", rel(path), 0, "找不到 unwrapVerticalHost —— 规则过期"))
+        return
+    start = m.start()
+    # 函数体边界：到下一个同缩进的 fun 声明为止（本文件里函数之间没有嵌套 fun）
+    nxt = re.search(r"\n\s{4}fun\s", text[start + 10:])
+    body = text[start:start + 10 + nxt.start()] if nxt else text[start:]
+    add = body.find("grand.addView(target")
+    if add < 0:
+        findings.append(Finding("reparent", rel(path), 0, "unwrapVerticalHost 里找不到 grand.addView(target) —— 规则过期"))
+        return
+    if not re.search(r"removeView\(\s*target\s*\)", body[:add]):
+        line = text[:start + add].count("\n") + 1
+        findings.append(Finding(
+            "reparent", rel(path), line,
+            "grand.addView(target) 之前没有 removeView(target) —— target 还挂在旧父上会抛 "
+            "IllegalStateException，旧父被摘掉后宿主行容器成孤儿（筛选面板会塌陷）",
+        ))
+
+
 RULES = [
     ("Miuix Overlay* 禁用", check_miuix_overlay),
     ("关键状态用 rememberSaveable", check_remember_saveable),
@@ -424,6 +462,7 @@ RULES = [
     ("宿主标识用候选数组", check_single_host_id),
     ("中英资源键对齐", check_i18n_alignment),
     ("日志不得出现裸代码", check_raw_code_logging),
+    ("跨容器搬 View 先摘旧父", check_reparent_remove),
 ]
 
 

@@ -254,6 +254,13 @@ internal object StockFilterPanelUi {
         val origLp = host.getTag(R.id.gsaux_panel_original_lp) as? ViewGroup.LayoutParams
         val hadLp = origLp != null
         if (hadLp) target.layoutParams = origLp
+        // ⚠️ **先把 target 从壳里摘出来**（2026-10-20 真机发现）：
+        // 只 `grand.removeView(host)` 的话 target 仍然挂在 host 上，
+        // 紧接着 `grand.addView(target)` 会抛
+        // `IllegalStateException: The specified child already has a parent`
+        // —— 而那时 host 已经被摘掉，宿主的行容器就被摘成孤儿，
+        // 筛选面板当场塌陷（真机 10:58 复现）。这一对 remove/add 必须成对。
+        host.removeView(target)
         grand.removeView(host)
         grand.addView(target, if (index in 0..grand.childCount) index else -1)
 

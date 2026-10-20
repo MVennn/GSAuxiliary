@@ -458,13 +458,13 @@ cp keystore.properties.example keystore.properties
 | 命令 | 查什么 | 多久 |
 |---|---|---|
 | `python tools/hygiene.py` | 死代码 / 冗余资源 / 未用 import / 未引用的顶层声明 | 1s |
-| `python tools/ci/check_invariants.py` | 7 条静态不变量（见下） | 2s |
+| `python tools/ci/check_invariants.py` | 8 条静态不变量（见下） | 2s |
 | `python tools/ci/check_switches.py` | 功能开关全链路：目录行 ↔ 配置键 ↔ 快照字段 ↔ 出厂默认值 | 2s |
 | `python tools/ci/check_contract.py` | 宿主契约：代码里认的宿主标识 ↔ 契约清单 | 2s |
-| `cmd /c gradlew.bat :app:testReleaseUnitTest` | 113 条单元测试（纯逻辑那一半） | 5s |
+| `cmd /c gradlew.bat :app:testReleaseUnitTest` | 125 条单元测试（纯逻辑那一半） | 5s |
 | `python tools/ci/verify_apk.py --reject-debug-cert <apk>` | 产物红线（24 项） | 2s |
 
-`check_invariants.py` 的 7 条规则：
+`check_invariants.py` 的 8 条规则：
 
 1. Miuix 的 `Overlay*` 组件禁用（一点就闪退）
 2. 关键 UI 状态用 `rememberSaveable` 而不是 `remember`（翻屏丢状态）
@@ -474,6 +474,8 @@ cp keystore.properties.example keystore.properties
 5. 宿主标识要用候选数组而不是单值（宿主升级就废）
 6. 中英 `strings.xml` 的键一一对应
 7. INFO/WARN 日志里不得出现未脱敏的 6 位代码（规则 3.1）
+8. 跨容器搬 View 必须先把 target 从旧父里摘掉（2026-10-20 真机：筛选面板拆壳时
+   `addView` 抛 `IllegalStateException`，宿主行容器成孤儿、面板塌陷）
 
 ### 变异测试：证明「单测真的在守着那条判据」
 
