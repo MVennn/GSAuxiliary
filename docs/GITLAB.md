@@ -35,7 +35,7 @@
 | 路径 | 作用 |
 |---|---|
 | `.gitlab-ci.yml` | 流水线：静态检查 → 编译/单测/红线 → 发版 |
-| `.gitlab/issue_templates/` | Issue 模板（问题反馈 / 功能建议） |
+| `.gitlab/issue_templates/` | Issue 模板（问题反馈 / 功能建议）—— **legacy markdown 格式**，理由见 §2.1 |
 | `.gitlab/merge_request_templates/Default.md` | MR 模板 |
 | `CONTRIBUTING.md` | 贡献指引（Issue / MR 怎么提、硬规矩清单） |
 | `tools/publish_gitlab.py` | 发版到 GitLab 源码仓库（建 Release + 传 APK） |
@@ -43,6 +43,25 @@
 
 `.github/` 下的同名文件**继续保留**：GitHub 账号万一恢复，还能直接用；
 现在它不参与任何构建。
+
+### 2.1 Issue 模板必须是 markdown 文件（踩过的坑）
+
+GitLab 19 上，`.gitlab/issue_templates/*.yml`（YAML 描述模板）与
+`.gitlab/issue_forms/*.yml`（issue forms）**两种格式都被静默忽略** ——
+新建 issue 的模板下拉里根本不出现，API 也不列它们。
+
+**能用的是 legacy markdown 模板**：`.gitlab/issue_templates/<名字>.md`，
+内容是 markdown，文件名就是下拉里显示的名字（本仓库用中文文件名：
+`问题反馈.md` / `功能建议.md`）。
+
+> 这三种格式**本地 YAML 解析都过得去、GitHub 侧也正常**，
+> 只有真到 GitLab 页面点开那个下拉才知道认不认 ——
+> **静态检查查不出来**，所以模板类的东西必须真机点一次。
+
+### 2.2 CI 变量与受保护 tag
+
+CI 变量是**受保护**的（只有 `main` 与**受保护 tag** 上的流水线读得到）。
+所以配了受保护 tag 规则 `*-*.*.*` —— 不然发版那条流水线读不到签名变量。
 
 ---
 
