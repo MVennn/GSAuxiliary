@@ -158,13 +158,29 @@ object MarketTargets {
      *
      * ⚠️ **候选名放的是 `#rv_index`（内层容器），不是行1 本身** ——
      * 行1 没有 id，只能靠「父是列表」往上爬（见 `MarketIndexHideFeature.itemOf`）。
+     *
+     * ⚠️ **来源只有一处，且未经二次核实**（2026-10-20 记）：
+     * 唯一的依据是 `docs/FEATURE-UI-CLEAN.md` §7.5 的真机实测表
+     * （「行1 = 0,0-1080,229，`rv_index` → `ll_content` ×4」）。
+     * 手头的探针 dump（`com.wb.probe`）**只覆盖了个股详情页的 K 线区**，
+     * 不含行情页 —— 所以这几个 id **没能二次核实**。
+     * 装机后第一眼看这里：若功能不生效，先确认宿主当前的 id 是不是还叫这俩。
      */
     val INDEX_OVERVIEW_ID_CANDIDATES = arrayOf(
         "rv_index",
         "ll_index", "ll_index_content", "rv_index_content", "ll_market_index",
     )
 
-    /** 指数概览里每一项的 id（确认「这就是指数概览」，不是别的横向列表） */
+    /**
+     * 指数概览里每一项的 id（确认「这就是指数概览」，不是别的横向列表）。
+     *
+     * ⚠️ **只当「辅助确认」，不当必要条件** —— 它是个**通用名**，
+     * 宿主改版改掉它的概率不低。拿它当必要条件就等于整个功能废掉
+     * （认不出来 → 静默失效）。所以判据是「命中**或**这一项本身有文案」。
+     *
+     * 宿主里另有一个 `ll_content_ma`（K 线区的均线），**没有**裸的 `ll_content` ——
+     * 撞名的风险不大，但这条判断的依据同样只有实测表。
+     */
     const val INDEX_ITEM_ID = "ll_content"
 
     /** 指数概览至少这么多项才算它（实测 4 项：上证 / 深证 / 北证50 / …） */
