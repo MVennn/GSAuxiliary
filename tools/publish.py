@@ -9,6 +9,10 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 所以每次发版必须在**两个仓库各发一份同 tag、同产物（只有 release 包）的 Release**，
 并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
 
+**2026-10-20：GitHub 账号被停用，源码仓库已迁到 GitLab
+（https://gitlab.com/M.Venn/gsauxiliary）。本脚本依赖 GitHub 写权限，
+账号恢复前不可用。**
+
 每次 Release 只传 **release 包**：`GSAuxiliary_<tag>.apk`。
 不再附带 debug 包 —— 有过用户直接下载 debug 版当日常版本用的先例，debug 包保留
 完整日志、签名也不该外流。本地排查仍可用 `assembleDebug` 自打自装。

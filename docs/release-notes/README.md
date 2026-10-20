@@ -42,7 +42,7 @@ Release 说明是**给用户看的**，要短、写成清单、只讲「我现�
 ---
 
 需要 root + LSPosed（支持 API 102），适配国信金太阳 8.6.0 / Android 8.1+。
-安装步骤见 [README](https://github.com/MVennn/GSAuxiliary#安装)。
+安装步骤见 [README](https://gitlab.com/M.Venn/gsauxiliary#安装)。
 
 ---
 

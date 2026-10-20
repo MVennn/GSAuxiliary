@@ -289,9 +289,9 @@ internal fun AboutTab(
 }
 
 /**
- * 作者卡：圆形头像 + 名字 + GitHub 账号，整卡可点（跳 GitHub）。
+ * 作者卡：圆形头像 + 名字 + 账号，整卡可点（跳个人主页）。
  *
- * 头像用的是作者的 GitHub 头像（拉自 github.com/MVennn.png，240×240，
+ * 头像用的是作者头像（本地 `drawable-nodpi/about_developer_avatar.jpg`，240×240，
  * `drawable-nodpi` 保证不随密度放大）。外面那道 2dp 白边与参考实现一致 ——
  * 没有它，深色照片贴在深色卡片上会糊成一坨、看不出是圆的。
  */

@@ -3,7 +3,7 @@
 > **一句话**：每批开发收尾时说一句「**做一次大扫除**」，就按本文档把磁盘垃圾、
 > 死代码、失效文档清一遍，最后出一版能装的包并推送。
 
-适用范围：本仓库（`MVennn/GSAuxiliary`），以及它旁边的两个发布目标
+适用范围：本仓库（`M.Venn/gsauxiliary`，GitLab），以及它旁边的两个发布目标
 （`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` 元文件、`.work/lsposed-repo` 克隆）。
 不涉及重新设计功能，也不改用户可见行为 —— 大扫除只做「减法」。
 
@@ -95,14 +95,27 @@ python tools/hygiene.py all      # ①②③④⑤ 五条一起跑（res / decls
 | 功能页与 `docs/UI.md` 是否还一致 | 对照 `docs/UI.md` 的页面清单 | 页面删了就补一句「为什么不再有」（参照 §5.2 日志页的写法） |
 | `CHANGELOG.md` 有没有漏条目 | `git log --oneline <上个版本>..HEAD` 逐条比对 | 漏的补进「未发布」段 |
 | `docs/` 里的相对链接是否失效 | 打开被改过的文档点一遍 | 断链改掉或删掉 |
-| 免责声明两处副本是否一致（见下） | 改过任一处的批次必查 | 不一致立刻同步 |
+| 免责声明各份副本是否一致（见下） | `python tools/ci/check_disclaimer_sync.py` | 不一致立刻同步 |
 
-**免责声明多副本同步**：免责全文存在两处，**改任何一条都必须两处一起改**，
+**免责声明多副本同步**：免责全文存在**三个地方**，**改任何一条都必须一起改**，
 没有例外：
 
-1. `app/src/main/res/values/strings.xml` 的 `disclaimer_full` —— App 内
+1. `docs/DISCLAIMER.md` —— 中文**规范源**（GitHub 网页锚点，正常多行 Markdown）；
+2. `app/src/main/res/values/strings.xml` 的 `disclaimer_full` —— App 内
    「关于 → 免责声明」与首启同意弹窗的渲染源（单行 + `\n` 转义形态，别改多行）；
-2. `docs/DISCLAIMER.md` —— GitHub 网页锚点（正常多行 Markdown，内容须与 1 逐字一致）。
+3. `docs/DISCLAIMER.en.md` + `app/src/main/res/values-en/strings.xml` 的
+   `disclaimer_full` —— 英文的两份，同上。
+
+**别手改那两行 XML**：资源值由规范源机械生成 ——
+`python tools/ci/check_disclaimer_sync.py --write` 会把 md 重新写进两个
+`strings.xml`（保持单行形态）。手改正是这份文本漂移的原因：2026-10-17 之前
+中文那份的引号退回直引号、末句少一段加粗，**英文那份更是整段少了第八~第十一条**
+（使用者声明、投诉响应、违约终止、管辖），还留着一句**已经不成立的话** ——
+「contains no networking components」，而模块 3.x 明明有 HTTP 取数。
+
+三条规则由 `tools/ci/check_disclaimer_sync.py` 自动守着：中文逐字比对、
+英文逐字比对、中英**结构对齐**（标题 / 条款 / 条目 / 加粗 / 斜体的处数一致
+—— 翻译腔允许句子不同，但不许少一条）。
 
 README 免责段只是**摘要**，不承载全文；改全文时如果摘要要点受影响（比如新增了
 一条承诺或切割），顺手核一下 README 那几行要不要跟着动。

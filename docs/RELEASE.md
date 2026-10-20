@@ -3,6 +3,10 @@
 > **一句话**：发版跑 `python tools/publish.py --notes <说明>.md`，它会把两个仓库一次发完。
 > 别手工在两个仓库各来一遍。
 
+> **2026-10-20 迁移**：GitHub 账号被停用，源码仓库已迁到
+> `https://gitlab.com/M.Venn/gsauxiliary`。下面描述的 `publish.py` 双仓库发布
+> 依赖 GitHub 写权限，账号恢复前**不可用**；GitLab 侧先手工建 Release 并上传 APK。
+
 ---
 
 ## 0. 为什么必须发两个仓库
@@ -11,7 +15,7 @@
 
 | 仓库 | 谁在用 |
 |---|---|
-| `MVennn/GSAuxiliary`（源码） | 源码、Issue、GitHub 访客的下载入口 |
+| `M.Venn/gsauxiliary`（源码，GitLab） | 源码、Issue、GitLab 访客的下载入口 |
 | `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary`（模块仓库） | **LSPosed 网站与 App 只读这里** |
 
 `Xposed-Modules-Repo/*` 是 LSPosed 官方组织下的**独立仓库**，
@@ -325,7 +329,7 @@ bot 在收录 issue 里的原话：
 |---|---|---|
 | `README.md` | `README.md` | 与源码仓库**逐字一致** |
 | `SUMMARY` | **`xposed-repo/SUMMARY`** | 模块页标题下面那行**一句话简介** |
-| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/MVennn/GSAuxiliary` |
+| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | 迁移后应为 `https://gitlab.com/M.Venn/gsauxiliary`（模块仓库现有值仍是旧地址） |
 | `icon.svg` | `assets/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
 
 > ⚠️ **`SUMMARY` 不是名字**。模块的**显示名**来自仓库 Description（见 4.1），
@@ -336,16 +340,15 @@ bot 在收录 issue 里的原话：
 
 ## 5. 几个已经踩过的坑
 
-- **README 里的相对链接**：GitHub 只在**仓库首页**服务端重写相对链接。
-  写 `../../releases/latest` 会正确变成 `/owner/repo/releases/latest`；
-  写成 `/releases/latest`（前导斜杠）会被当成**域名根** → `github.com/releases/latest` → **404**。
-  用 API 的 markdown 渲染端点核对会被误导（那个上下文**不重写**）。
-- **`raw.githubusercontent.com` 有 CDN 缓存（最长 5 分钟）**，
-  别用它判断「远端同步成功没有」—— 用 contents API 或查 commits。
+- **README 里的相对链接**：GitLab 只在**仓库首页**重写相对链接，而模块仓库
+  （`Xposed-Modules-Repo`）里没有 `assets/` —— logo 因此仍用**绝对 raw 地址**
+  `https://gitlab.com/M.Venn/gsauxiliary/-/raw/main/assets/logo.png`，两个仓库都能显示。
+- **`/-/raw/` 有缓存**：别用它判断「远端同步成功没有」，用 API 或查 commits。
 - **在途开发期间别跑 `publish.py`** —— 它按 `build.gradle.kts` 的当前值建 Release，
   会给一个还没完工的版本建出假 Release。
 - 模块仓库的 `README.md` 若引用 `docs/` 下的文件，会变成**坏图 / 死链** ——
-  那边没有 `docs/`。logo 因此用**绝对 raw 地址**引用，两个仓库都能显示。
+  那边没有 `docs/`。logo 因此用 GitLab 的**绝对 raw 地址**引用
+  （`https://gitlab.com/M.Venn/gsauxiliary/-/raw/main/assets/logo.png`），两个仓库都能显示。
 - **签名会「静默」退回 debug**：`app/build.gradle.kts` 判定 `hasEnvKeystore` 要求
   四个 `GS_KEYSTORE_*` **全部**存在且文件真的在。少一个就安静地走 debug 签名分支，
   构建照样成功、包照样能装 —— 只是签名和以前不一样。
