@@ -359,15 +359,19 @@ release-smoke:
   script:
     - |
       set -euo pipefail
-      echo "冒烟：验证 release: 关键字能不能直接挂本地产物（不需要任何令牌）"
+      echo "冒烟：新建一个一次性 tag，用 release: 关键字挂本地产物"
       echo "smoke" > ci-smoke.txt
+      git config user.email "ci@example.com"
+      git config user.name "CI Smoke"
+      git tag -f "ci-smoke-1" HEAD
+      git push --force origin "refs/tags/ci-smoke-1" 2>&1 | tail -3
   artifacts:
     paths:
       - ci-smoke.txt
   release:
-    tag_name: "48-3.3.0"
-    name: "3.3.0"
-    description: "冒烟测试（说明会被下一次正式发版覆盖）"
+    tag_name: "ci-smoke-1"
+    name: "CI Smoke"
+    description: "冒烟测试（临时，验完即删）"
     assets:
       links:
         - name: "ci-smoke.txt"
