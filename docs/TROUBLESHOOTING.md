@@ -292,7 +292,7 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 |---|---|---|
 | `requires AGP 9.1.0 or higher` | Miuix 版本太高 | 用 0.9.3，别升 |
 | `plugin is no longer required since AGP 9.0` | AGP 9.x 内置 Kotlin | 用 AGP 8.10.1 |
-| `Failed to find target android-37` | platform 没装 / schema 不对 | 见 [BUILD.md §4.1](BUILD.md#41-compilesdk-37-没有正式安装包) |
+| `Failed to find target android-37` | platform 装了但**元数据是 schema v4**，AGP 8.10.1 直接跳过 | 见 [BUILD.md §4.1](BUILD.md#41-compilesdk-37-的平台agp-只认-schema-v3-的元数据) |
 | `Could not find method ...` | Gradle 版本太低 | 用仓库自带 Wrapper `./gradlew` |
 | `Error parsing AndroidManifest.xml` | XML 注释里出现了 `--`（非法） | 注释里不要写 `--` |
 

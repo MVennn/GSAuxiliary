@@ -292,26 +292,44 @@ app/src/main/resources/META-INF/xposed/
 
 ## 4. 环境踩坑记录
 
-### 4.1 compileSdk 37 没有正式安装包
+### 4.1 compileSdk 37 的平台：AGP 只认 schema v3 的元数据
 
-> **好消息：这一段现在已经自动化了。** 干净环境（CI / 新机器）里不用再手工做，
-> 跑 `bash tools/ci/setup-sdk37.sh` 就行 —— 它做的是同一件事，见 §8.1。
+> **这一段已经自动化了。** 干净环境（CI / 新机器）里跑
+> `bash tools/ci/setup-android-sdk.sh` 就行（它会调 `setup-sdk37.sh`）。
 > 下面留着手工步骤，是为了讲清**为什么**要这么折腾。
 
-AGP 8.10.1 默认只会去下载「已发布」的 platform。compileSdk 37 需要手工装：
+**根因**（2026-10-20 在 GitLab 共享 runner 上真踩出来的，日志里 AGP 自己说了）：
 
-1. 下载 `platform-37.2_r01.zip`（解压后目录名是 `android-37.2`）
-2. 放进 `<SDK>/platforms/`
-3. **关键：改 XML schema**
+```
+This version only understands SDK XML versions up to 3
+but an SDK XML file of version 4 was encountered
+```
 
-AGP 8.x 只认 `package.xml` 的 **schema v3**，而新下载的包是 **v4**，直接放进去会报
-「找不到 android-37」。解法是照抄已有的 `android-35/package.xml` 结构改写：
+AGP 8.10.1 **只认 SDK XML schema v3**（命名空间 `.../repository2/03`），
+而 Google 现在发的平台包带的是 **v4**（`.../repository2/04`）——
+v4 的 `package.xml` 会被 AGP **直接跳过**。平台「装了但等于没装」，
+最后报的是那句看起来毫不相关的：
 
-- 去掉内嵌的 license 文本块
-- `localPackage path="platforms;android-37"`
-- `source.properties` 里的 `AndroidVersion.ApiLevel` 要写成 AGP 认得的形态
+```
+Failed to find target with hash string 'android-37'
+```
 
-改完在 `gradle.properties` 里加：
+**手工做法**：
+
+1. 装 `platforms;android-37.0`（目录名保持 `android-37.0`）
+2. 把它的 `package.xml` 换成 **v3 结构**那份
+   （仓库里存着：`tools/ci/sdk37-package.xml`，逐字节等于本机验证可用的那份）
+3. `source.properties` **不要动** —— 37.0 那个包原始的
+   `AndroidVersion.ApiLevel=37.0` 正是 AGP 认得的形式
+
+> ⚠️ **目录名不能改**：AGP 认平台看的是 `package.xml` 里的 `localPackage path`，
+> 与目录名对不上就等于没这个平台。
+>
+> ⚠️ **别用「照抄 android-35 的 package.xml」那招**（这段历史 advice 是错的）：
+> 本机那份 `android-35/package.xml` 现在**也是 v4**，照抄过来一样被跳过。
+> 本机构建一直用的是 `platforms/android-37.0` —— 它恰好还是 v3 时代的元数据。
+
+`gradle.properties` 里要有：
 
 ```properties
 android.suppressUnsupportedCompileSdk=37,37.0
@@ -319,34 +337,8 @@ android.suppressUnsupportedCompileSdk=37,37.0
 
 否则 AGP 会警告"未测试过该版本"。
 
-> Gradle 有时会自己在 `<SDK>/platforms/android-37.0` 再放一份冗余副本，
-> 两份内容一致，不影响构建，但可以删掉其中一份。
-
-#### ⚠️ 次版本陷阱：`<minor>` 会让 AGP 算错 hash（2026-10-20 在 CI 上真踩过）
-
-上面第 1 步装的是 **37.2** 那个包。它的 `package.xml` 里
-`<revision>` 除了 `<major>2</major>` 还有 **`<minor>2</minor>`**。
-
-把目录名改成 `android-37`、`<api-level>` 改成 `37` 之后，那个 `<minor>` **还在** ——
-而 **AGP 算 target hash 时会带上次版本**：于是它算出的是 `android-37.2`，
-跟你要的 `android-37` 对不上，报的还是那句：
-
-```
-Failed to find target with hash string 'android-37'
-```
-
-看着像「归一化没做」，其实是**做了一半**。三个要点：
-
-1. **装 `platforms;android-37.0`（不是 37.2）** —— 37.0 是 AGP 自己会装的那一个，
-   它的 `<revision>` 里**只有 `<major>2</major>`**，归一化后正好是本机验证可用的状态。
-   `tools/ci/setup-sdk37.sh` 的候选顺序已经按这个改了。
-2. **`<minor>` 元素要整个删掉**（脚本里 `-e "/<minor>/d"`）——
-   它**不含 "37.x" 字样**，所以「残留 grep」抓不到，得单独查（脚本里已加这条校验）。
-3. **`source.properties` 的 `AndroidVersion.ApiLevel` 也要是整数 `37`** ——
-   37.0 那个包原始值是 `37.0`。
-
-> 手工步骤只作讲解用（上面那段是历史）；现在 CI 与新机器一律跑
-> `bash tools/ci/setup-android-sdk.sh`（它会调 `setup-sdk37.sh`）。
+> 平台包本身可以选 37.0 / 37.1 / 37.2（内容略有差异），
+> **但元数据一律用仓库里那份 v3 模板** —— 那才是判据。
 
 ### 4.2 AGP 9.1 需要 Gradle ≥ 9.3.1
 
