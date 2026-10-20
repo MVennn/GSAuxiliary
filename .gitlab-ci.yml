@@ -44,8 +44,12 @@ workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
-    - if: '$CI_COMMIT_TAG =~ /^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+$/'
-  # 上面三条都没命中（= 往 main / 其它分支 push）就整条不跑 —— 理由见文件头第 1 条。
+    # ⚠️ 这里**必须先判空**：`=~` 碰上未定义/空的变量时，规则会被判成**真** ——
+    #    于是往 main 推一次就建一条流水线（实测：push 每次都建，全被身份验证挡掉，
+    #    所以问题一直藏着）。加上 `$CI_COMMIT_TAG != ""` 才是真的要 tag 才建。
+    - if: '$CI_COMMIT_TAG != "" && $CI_COMMIT_TAG =~ /^[0-9]+-[0-9]+\.[0-9]+\.[0-9]+$/'
+    # 兜底：上面都没命中（= 往 main / 其它分支 push）就整条不跑 —— 理由见文件头第 1 条。
+    - when: never
 
 default:
   interruptible: true

@@ -115,11 +115,25 @@ Windows 上 `chmod 600` 其实不生效，NTFS 权限要靠 ACL。
 Identity verification is required in order to run CI jobs
 ```
 
-原因：账号 `two_factor_enabled = false`。GitLab.com 要求**先完成身份验证**
-（开 2FA 最省事）才允许跑 CI 作业。
+GitLab.com 上这是**两道门**，容易只看到第一道：
 
-**这需要用户自己动手**：GitLab → 用户设置 → 账号 → 两步验证 → 启用 2FA。
-做完之后，`.gitlab-ci.yml` 就能正常跑了（配置本身已用 CI Lint 与实际创建验证过）。
+| 门 | 状态（2026-10-20） |
+|---|---|
+| 账号两步验证（2FA） | ✅ 已开 |
+| **账号级身份验证**（identity verification） | ❌ **还没做** —— 页面 <https://gitlab.com/-/identity_verification> |
+
+第二道门三种过法，**任选其一**：
+
+| 方式 | 说明 |
+|---|---|
+| 手机短信验证码 | 选国家/地区 → 填号码 → 「发送验证码」→ 填收到的 6 位码 |
+| 语音答题 | 页面下方的「请回答此问题以证明您是真人」—— 出声念出屏幕上的数字 |
+| 信用卡验证 | 「改为使用信用卡验证?」—— 会有一笔极小额的扣款验证 |
+
+> 这道门**只有本人能过**（要收短信 / 出声 / 刷卡），所以 AI 代不了。
+>
+> **它只挡 CI 作业，不挡别的**：仓库、Wiki、标签、Release、发版脚本
+> （`tools/publish_gitlab.py`）全都正常 —— 3.3.0 就是这么发的。
 
 ---
 
