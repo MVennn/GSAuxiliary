@@ -1,0 +1,7 @@
+name: t1 标签
+description: 测 labels 字段
+labels: ["缺陷"]
+body:
+  - type: markdown
+    attributes:
+      value: hi

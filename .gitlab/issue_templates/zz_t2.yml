@@ -1,0 +1,8 @@
+name: t2 输入框
+description: 测 input
+body:
+  - type: input
+    id: contact
+    attributes:
+      label: 联系方式
+      placeholder: 邮箱
