@@ -50,7 +50,8 @@ README 按七大类编排（见分类总览表），新脚本必须归入其中�
 
 ## 5. 公共代码与单一来源
 
-- 同一段逻辑出现在 **2 处及以上**就抽 `tools/_xxx.py` 公共模块（先例：`_color.py` 取色、`_png.py` PNG 编码）。
+- 同一段逻辑出现在 **2 处及以上**就抽成 `tools/` 下的公共模块（下划线开头，
+比如 `_color.py` 取色、`_png.py` PNG 编码）。
   抽取后原脚本的输出必须**逐字节一致**（先留基线产物再改，`cmp` 验证）。
 - **设计常量唯一来源是 `gen_launcher_icons.py` 顶部常量块**：改图标/配色只改那里，
   `make_social_preview.py`、drawable XML、`colors.xml` 注释跟着同步。
@@ -60,9 +61,11 @@ README 按七大类编排（见分类总览表），新脚本必须归入其中�
 
 ## 6. 红线（只读，整理时不动）
 
-`tools/publish.py`、`tools/probe/probe.keystore`、`.github/workflows/` 下引用的路径
-（`ci/setup-sdk37.sh`、`ci/version.py`、`ci/verify_apk.py`、`publish.py`）——
-**移动或改名需同步改 workflow**，不做没有 CI 验证保证的路径整理。
+`tools/publish.py`、`tools/publish_gitlab.py`、`tools/probe/probe.keystore`、
+`.github/workflows/` 与 `.gitlab-ci.yml` 下引用的路径
+（`ci/setup-sdk37.sh`、`ci/setup-android-sdk.sh`、`ci/version.py`、`ci/verify_apk.py`、
+`publish.py`、`publish_gitlab.py`）——
+**移动或改名需同步改 workflow 与 CI 配置**，不做没有 CI 验证保证的路径整理。
 
 ## 7. 临时产物
 

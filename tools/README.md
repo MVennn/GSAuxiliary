@@ -490,6 +490,7 @@ python tools/publish_gitlab.py --skip-build         # 用现有 APK，不重新�
 | `ci/check_dead_symbols.py` | 死代码：顶层符号没人调用 / 只在测试里被调用 | `--changed` 只查本分支新增的符号 |
 | `ci/check_release_notes.py` | 发版说明覆盖率：本版用户可感知的改动必须进说明 | `--notes <说明文件>` 指定要核对的说明 |
 | `ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | `--write` 从 md 规范源重新生成两个 `strings.xml` 的 `disclaimer_full` |
+| `ci/check_links.py` | 文档链接：相对链接 / 锚点 / `docs/` 索引覆盖 / 孤儿文档 | 无 |
 | `ci/mutants.py` | 变异测试：把每个判据**故意改坏一次**，确认对应的单测真的会红 | `--list` 只列出变异体、不动手 |
 
 ```bash

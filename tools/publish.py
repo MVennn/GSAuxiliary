@@ -23,7 +23,7 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 |---|---|
 | `README.md` | `README.md` |
 | `SUMMARY` | `xposed-repo/SUMMARY` |
-| `SOURCE_URL` | 按 `SOURCE_REPO` 生成 |
+| `SOURCE_URL` | 按 `SOURCE_URL` 常量生成 —— 指向**正本**源码仓库（GitLab） |
 | `icon.svg` | `assets/icon.svg` |
 
 ## 用法
@@ -55,8 +55,11 @@ tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
 
 ## 环境变量
 
-    GITHUB_SOURCE_REPO   源码仓库，默认 MVennn/GSAuxiliary
+    GITHUB_SOURCE_REPO   GitHub 侧的源码仓库（镜像），默认 MVennn/GSAuxiliary
     GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary
+    GS_SOURCE_URL        模块仓库里 SOURCE_URL 指向的**正本**源码地址，
+                         默认 https://gitlab.com/M.Venn/gsauxiliary
+                         （2026-10-20 起源码仓库迁到 GitLab；GitHub 那边是镜像）
     GS_GITHUB_TOKEN      优先使用的 PAT（需要 repo scope，且对模块仓库有写权限）
     GH_TOKEN             次选
 """
@@ -78,6 +81,9 @@ README = os.path.join(ROOT, "README.md")
 WORK = os.path.join(ROOT, ".work")
 
 SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "MVennn/GSAuxiliary")
+# 模块仓库的 SOURCE_URL 指向**正本**源码仓库 —— 2026-10-20 起是 GitLab 那个。
+# GitHub 账号停用期间那边是镜像（或干脆没有），别让用户点到一个死链。
+SOURCE_URL = os.environ.get("GS_SOURCE_URL", "https://gitlab.com/M.Venn/gsauxiliary")
 MODULE_REPO = os.environ.get(
     "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary")
 
@@ -87,11 +93,11 @@ API = "https://api.github.com"
 def repo_files():
     """模块仓库里要同步的文件：`模块仓库文件名 -> 内容`。
 
-    `SOURCE_URL` 是派生的（就是源码仓库地址），不单独存一份，免得又一处能改偏。
+    `SOURCE_URL` 是派生的（指向正本源码仓库），不单独存一份，免得又一处能改偏。
     """
     out = {
         "README.md": open(README, encoding="utf-8").read(),
-        "SOURCE_URL": "https://github.com/%s\n" % SOURCE_REPO,
+        "SOURCE_URL": "%s\n" % SOURCE_URL,
         "icon.svg": open(os.path.join(ROOT, "assets", "icon.svg"), encoding="utf-8").read(),
     }
     summary = os.path.join(ROOT, "xposed-repo", "SUMMARY")

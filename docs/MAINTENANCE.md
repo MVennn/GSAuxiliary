@@ -156,7 +156,8 @@ README 免责段只是**摘要**，不承载全文；改全文时如果摘要要
 ## 5. 红线（一律不动）
 
 - 签名与凭据：`gszx.keystore`、`keystore.properties`、`tools/probe/probe.keystore`；
-- 发布链路：`tools/publish.py`、`.github/workflows/`、`xposed-repo/`、`docs/release-notes/`；
+- 发布链路：`tools/publish.py`、`tools/publish_gitlab.py`、`.gitlab-ci.yml`、
+  `.github/workflows/`、`xposed-repo/`、`docs/release-notes/`；
 - 逆向结论：`docs/REVERSE-ENGINEERING.md`（含原 HOOK-NOTES 并入的「难点与解法」部分）
   里的类名 / 字段名 / Hook 点，
   哪怕代码里暂时没用到（`INSTANCE_PROVIDERS` 这类空实现是**有意占位**，别当死代码删）；

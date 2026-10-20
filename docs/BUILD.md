@@ -413,7 +413,8 @@ GS_NO_MIRROR=1 ./gradlew assembleRelease
 ```
 
 设了之后只留 `google()` / `mavenCentral()` / `gradlePluginPortal()`。
-`.github/workflows/` 里的两个工作流都设了它 —— runner 在海外，直连更稳。
+GitLab 流水线（`.gitlab-ci.yml` 的 `variables:`）与 GitHub 那两个工作流都设了它 ——
+runner 在海外，直连更稳。
 
 > 为什么不「镜像失败自动回落」：Gradle 只在某个仓库返回 **404** 时才换下一个，
 > **超时不会自动兜底**。镜像站对海外 IP 一慢，构建就直接卡在那儿。
@@ -464,6 +465,7 @@ cp keystore.properties.example keystore.properties
 | `python tools/ci/check_dead_symbols.py` | 死代码：顶层符号没人调用 / 只在测试里被调用 | 2s |
 | `python tools/ci/check_release_notes.py` | 发版说明覆盖率：本版改动必须进说明 | 1s |
 | `python tools/ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | 1s |
+| `python tools/ci/check_links.py` | 文档链接：相对链接 / 锚点 / docs 索引覆盖 / 孤儿文档 | 1s |
 | `cmd /c gradlew.bat :app:testReleaseUnitTest` | 125 条单元测试（纯逻辑那一半） | 5s |
 | `python tools/ci/verify_apk.py --reject-debug-cert <apk>` | 产物红线（24 项） | 2s |
 
@@ -501,9 +503,36 @@ cp keystore.properties.example keystore.properties
 
 ---
 
-## 8. 在 GitHub Actions 上构建
+## 8. CI 构建
 
-两个工作流，都在 `.github/workflows/`：
+### 8.0 GitLab 流水线（现在的正本）
+
+配置在 `.gitlab-ci.yml`，三段：
+
+| 阶段 | 干什么 | 需要什么 |
+|---|---|---|
+| `check` | 六项静态检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约） | 无（纯 Python，秒级） |
+| `build` | 装 Android SDK → 跑单测 → 编 release → 跑产物红线 → 留 APK 与 R8 mapping | 4 个 CI 变量（`GS_KEYSTORE_*`） |
+| `release` | 推 tag 时：校验 tag 与版本号一致 → 建 Release → 传 APK 与 mapping | 同上 |
+
+触发方式：**开 MR / 手动触发 / 推 tag** —— **push 到 `main` 不触发**（理由与
+GitHub 那套一样，见下面 §8.1 的说明）。整体说明、CI 变量怎么配、
+以及**账号级身份验证那道门**（没通过前流水线建出来就是 0 作业 + failed），
+都在 [GITLAB.md](GITLAB.md)。
+
+> **共享 runner 什么都不预装** —— 没有 cmdline-tools、没有 sdkmanager、没有
+> build-tools。装 SDK 那一步写成了仓库里的脚本
+> （`tools/ci/setup-android-sdk.sh`），不靠某个第三方 action：
+> 版本钉死、行为可读、出错时日志在自己手里。
+>
+> ⚠️ GitLab 的 `script:` **只吃字符串**，不吃 `- name: / run:` 映射写法 ——
+> 写成那样整条流水线会被判为配置非法、连创建都不允许（本地 YAML 解析得过，
+> 只有真触发才发现）。
+
+### 8.1 GitHub Actions（账号停用，留档）
+
+GitHub 账号 2026-10-18 起被停用，下面这两个工作流**已经跑不动**，留着做参考
+（GitLab 那套是照着它们搬的）。两个工作流，都在 `.github/workflows/`：
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
@@ -591,6 +620,10 @@ git ls-files -s gradlew      # 必须是 100755
 ```
 
 ### 8.2 发布需要的 5 个 Repository secrets
+
+> **这是 GitHub Actions 那条路的变量**（账号恢复后用）。GitLab 侧对应的是
+> **Settings → CI/CD → Variables**，只要 4 个 `GS_KEYSTORE_*`（没有模块仓库那个），
+> 已在 2026-10-20 配好 —— 见 [GITLAB.md](GITLAB.md) §3.2。
 
 到 `Settings → Secrets and variables → Actions` 加。
 **每个 secret 的造法与取值只见 [`docs/RELEASE.md` §1.2](RELEASE.md#12-ci-发版需要的-5-个-repository-secrets)，这里不重抄。**

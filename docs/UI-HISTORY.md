@@ -491,7 +491,7 @@ aapt2 dump resources "$APK" | grep -E "ic_launcher_(background|foreground|monoch
   透明文字**仍然在语义树里** —— 读屏会把同一行念两遍（高度尺里的那个 + 真标题）。
   还要加 `Modifier.clearAndSetSemantics {}` 把它整个从语义树里摘掉。
   另外透明文字**照样参与测量**（这正是要的：高度保留），所以「透明 + 清语义」
-  才是「只当高度尺」的完整做法（见 [UI.md §1.0.2](UI.md#102-顶栏只留标题副标题只撑高度33x)）
+  才是「只当高度尺」的完整做法（见 [UI.md §1.0.2](UI.md#102-顶栏只留标题副标题只撑高度330)）
 - **`TextField` 默认背景是 `secondaryContainer`，不是卡片色**（2.9.4）：
   想要「与卡片一致」必须显式传
   `colors = TextFieldDefaults.textFieldColors(backgroundColor = surfaceContainer, labelColor = onSurfaceSecondary)`；

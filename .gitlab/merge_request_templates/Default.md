@@ -28,7 +28,7 @@
 
 ## Checklist
 
-- [ ] 改动遵循 [docs/CODE-RULES.md](/docs/CODE-RULES.md)
-- [ ] 文档同步（新增/删除文档要更 [docs/README.md](/docs/README.md) 索引）
-- [ ] 用户可感知的改动已进 [CHANGELOG.md](/CHANGELOG.md)
-- [ ] 没动 `versionCode` / `versionName`（发版时才动，见 [docs/VERSIONING.md](/docs/VERSIONING.md)）
+- [ ] 改动遵循 [docs/CODE-RULES.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/CODE-RULES.md)
+- [ ] 文档同步（新增/删除文档要更 [docs/README.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/README.md) 索引）
+- [ ] 用户可感知的改动已进 [CHANGELOG.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/CHANGELOG.md)
+- [ ] 没动 `versionCode` / `versionName`（发版时才动，见 [docs/VERSIONING.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/VERSIONING.md)）

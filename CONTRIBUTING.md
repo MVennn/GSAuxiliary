@@ -33,7 +33,7 @@
    python tools/ci/check_invariants.py     # 静态检查六项（见 tools/README.md）
    ```
 
-4. MR 描述用仓库自带的模板（`.gitlab/merge_request_templates/Default.md`），
+4. MR 描述用仓库自带的模板（[.gitlab/merge_request_templates/Default.md](.gitlab/merge_request_templates/Default.md)），
    把「怎么验的」写清楚——**真机没验就明说没验**，别含糊。
 
 ## 几条硬规矩

@@ -100,6 +100,11 @@ static-checks:
       # 缺任何一处的症状都难查（改了开关没反应、没日志）。
       python3 tools/ci/check_switches.py
     - |
+      # 文档链接 / 索引 / 孤儿检查
+      # Release 说明里的免责链接曾写成 GitHub 的 `../../blob/main/...` ——
+      # 在 GitLab 上点不开，而本地 YAML 解析、Markdown 渲染都看不出问题。
+      python3 tools/ci/check_links.py
+    - |
       # 宿主契约校验
       # 双向校验「代码里认宿主的东西」与「契约清单」：
       # 代码里有而清单里没有 → 忘了登记；清单里有而代码里没了 → 清单失效。

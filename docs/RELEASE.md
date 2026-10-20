@@ -1,17 +1,19 @@
 # 发布清单
 
-> **一句话**：发版跑 `python tools/publish.py --notes <说明>.md`，它会把两个仓库一次发完。
-> 别手工在两个仓库各来一遍。
+> **一句话**：发版有**两条路**——GitLab 源码仓库跑 `python tools/publish_gitlab.py`，
+> LSPosed 模块仓库跑 `python tools/publish.py`。**两个仓库都要发**（§0），
+> 别手工在两边各来一遍。
 
 > **2026-10-20 迁移**：GitHub 账号被停用，源码仓库已迁到
-> `https://gitlab.com/M.Venn/gsauxiliary`。下面描述的 `publish.py` 双仓库发布
+> `https://gitlab.com/M.Venn/gsauxiliary`。`publish.py` 的双仓库发布
 > 依赖 GitHub 写权限，账号恢复前**不可用**；
 > **GitLab 侧走 `tools/publish_gitlab.py`**（出包 → 签名红线校验 → 建 Release → 传 APK），
 > 见 [GITLAB.md](GITLAB.md) §5。
 >
-> 仓库里的流水线（`.gitlab-ci.yml`）本来也能发版，但它要求**先开 2FA**
-> （GitLab 不让没做身份验证的账号跑 CI 作业），而且签名密钥放进公开项目的
-> CI 变量等于把密钥公开 —— 所以发版继续用本地脚本，流水线只跑检查与编译。
+> 仓库里的流水线（`.gitlab-ci.yml`）本来也能发版，但它要求账号先完成
+> **身份验证**（GitLab 不让没验证的账号跑 CI 作业，见 [GITLAB.md](GITLAB.md) §3.3），
+> 而且签名密钥放进**公开项目**的 CI 变量等于把密钥公开 ——
+> 所以发版继续用本地脚本，流水线只跑检查与编译。
 
 ---
 
@@ -76,6 +78,31 @@
 
 ## 1. 发版
 
+**有两条路，缺一不可**（为什么见 §0）：
+
+| 目标仓库 | 脚本 | 状态（2026-10-20） |
+|---|---|---|
+| **GitLab 源码仓库** `M.Venn/gsauxiliary` | `python tools/publish_gitlab.py` | ✅ 现在就能发 |
+| **LSPosed 模块仓库** `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` | `python tools/publish.py` | ⛔ GitHub 账号停用中，本账号暂无写权限 |
+
+```bash
+# ① GitLab 源码仓库（GitLab 访客的下载入口）
+python tools/publish_gitlab.py --check        # 只查凭据与版本，不写任何东西
+python tools/publish_gitlab.py --dry-run      # 演一遍（构建 + 校验，不写）
+python tools/publish_gitlab.py --notes docs/release-notes/<版本>.md
+
+# ② LSPosed 模块仓库（等 GitHub 账号恢复；LSPosed App 只读它）
+python tools/publish.py --check
+python tools/publish.py --dry-run
+python tools/publish.py --notes docs/release-notes/<版本>.md
+```
+
+> `publish_gitlab.py` 的凭据是 GitLab token（`GS_GITLAB_TOKEN` 或
+> `~/.config/gitlab/token`），见 [GITLAB.md](GITLAB.md) §3.1。
+> `publish.py` 的凭据见下面第 108 行那段。
+
+下面这五步是 **`publish.py`（GitHub 那条路）** 做的事：
+
 ```bash
 # 0. 先确认凭据对两个仓库都有写权限（几秒钟，只调 API，不写任何东西）
 python tools/publish.py --check
@@ -115,6 +142,11 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 ---
 
 ## 1.1 从 CI 发版（推个 tag 就行）
+
+> **这一节讲的是 GitHub Actions 那条路** —— GitHub 账号 2026-10-18 起被停用，
+> 那两个工作流已经跑不动，**留档**。GitLab 侧的对应物是 `.gitlab-ci.yml` 的
+> `release` 作业（结构见 [GITLAB.md](GITLAB.md) §4），但它卡在账号级身份验证
+> 那道门上 —— 所以**现在发版走脚本**（§1），流水线通了再切回去。
 
 `.github/workflows/release.yml` 把上面这一整套搬到了 GitHub 上。你只需要：
 
@@ -162,6 +194,11 @@ git tag 34-2.14.0 && git push origin 34-2.14.0
 
 
 ## 1.2 CI 发版需要的 5 个 Repository secrets
+
+> **这是 GitHub Actions 那条路的变量**（`Settings → Secrets and variables → Actions`），
+> 账号恢复后用。GitLab 侧对应的是 **Settings → CI/CD → Variables**，
+> 只需要 4 个 `GS_KEYSTORE_*`（没有 LSPosed 模块仓库那份），
+> 已在 2026-10-20 配好，见 [GITLAB.md](GITLAB.md) §3.2。
 
 `Settings → Secrets and variables → Actions → New repository secret`：
 
@@ -221,7 +258,7 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
   > 风险提示：本模块仅供学习研究，会 Hook 国信金太阳，可能违反其用户协议并导致
   > 账号风控或封禁；不构成任何投资建议。下载使用前请阅读并同意
-  > [免责声明](../../blob/main/docs/DISCLAIMER.md)。
+  > [免责声明](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/DISCLAIMER.md)。
   ```
 
 ---
