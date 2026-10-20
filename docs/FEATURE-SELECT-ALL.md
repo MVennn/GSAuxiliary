@@ -104,9 +104,14 @@ toggleAll()
   ├─ allChecked = (cur == realAdapter.count)
   ├─ wantChecked = !allChecked
   └─ stepToggle(index = 0 … total-1)，每行之间 postDelayed 16ms
+        ├─ fullIdx = StgFilterBridge.fullIndexAt(index)   // 子集下标 → 全量下标
         ├─ 可见行 → 用已绑定的真实子 View
-        └─ 屏外行 → adapter.getView(index, null, lv) 现造探针 View
-        └─ 该行状态 != 目标状态 → lv.performItemClick(row, pos, id)
+        ├─ 屏外行 → adapter.getView(index, null, lv) 现造探针 View
+        ├─ 该行状态 != 目标状态 →
+        │    StgFilterBridge.runWithRemapBypassed {
+        │        lv.performItemClick(row, header + fullIdx, id)
+        │    }
+        └─ 全部走完 → lv.invalidateViews() 重画可见行 + updateLabel()
 ```
 
 要点：
@@ -118,6 +123,38 @@ toggleAll()
 4. **计数明确时跳过逐行探状态**（`cur == 0` 或 `cur == total`）：直接全量点击，省掉屏外行的 `getView` 开销。
 5. **`#ct_item` id 解析失败 → 保守放弃**并记日志。若拿不到勾选态，`checked` 会恒为 `false`，
    于是对**已选行**也发点击 → 「全选」会变成「反选」。宁可不动，也不能点反。
+6. **筛选生效时必须传「全量下标」**（见 §2.3.1）。
+
+### 2.3.1 与「策略详情页筛选股票」叠加（2026-10-20 真机修复）
+
+筛选用一层**过滤代理**挂在 ListView 上：列表里第 N 行对应宿主全量数据的 `keptIndices[N]`。
+这里有两套坐标，**不能混用**：
+
+| 坐标 | 谁在用 |
+|---|---|
+| **子集下标**（0..保留数-1） | 过滤代理的 `getView` / `getItem`；`performItemClick` 的 `position` 初值 |
+| **全量下标**（宿主 `data` 的 0..N-1） | 宿主的多选模型（`checkCodes` 等）与 `AbsListView` 的 checked states |
+
+事故现场（50e / 21 只 / 涨家筛选后可见 301330、300815、002956）：
+
+- 旧实现把**子集下标**交给 `performItemClick`，再由筛选 wrapper 在转发给宿主监听器时换成全量下标；
+- 但 `AbsListView.performItemClick` 在调到 wrapper **之前**就用传入的 position 写了
+  `mCheckStates` —— 宿主的多选模型读的正是这份表；
+- 结果：界面勾着 A/B/C，`确认添加` 收到的却是全量前 3 只（688787、688768、600178）。
+  第一次可能刚好加进去，第二次这 3 只已经在自选里 → 宿主提示「已在该组合」。
+
+修复分两半，缺一不可：
+
+1. **合成点击直接传全量下标**：`pos = header + fullIndexAt(index)`，并用
+   `StgFilterBridge.runWithRemapBypassed { … }` 让筛选 wrapper **原样放行**
+   （否则它会把全量下标再当子集下标映射一次）。这样框架写的 checked states 与宿主收到的
+   position 都是全量坐标。
+2. **手动点行由筛选 wrapper 改写 checked states**：手动点击的 position 由框架按子集坐标给出，
+   wrapper 在转发前把 `mCheckStates[子集下标]` 清掉、写入 `mCheckStates[全量下标]`，
+   宿主随后读到的就是正确股票。
+
+另外，**可见行必须传真实子 View**：宿主的点击处理会就地把这一行的勾选框打上；
+用脱离列表的探针 View 只会改到探针，屏幕上看不到勾。屏外行仍然用探针 View。
 
 ### 2.4 文案随状态切换（全选 / 反选）
 
@@ -129,9 +166,12 @@ toggleAll()
 重算文案的三个时机：
 
 1. **进入多选态**（`TextWatcher` 触发 `sync → injectSelectAll → updateLabel`）；
-2. **用户点了任意一行**：包裹一次宿主 ListView 的 `OnItemClickListener`（读隐藏字段
-   `AdapterView.mOnItemClickListener` 拿原监听器，调完原逻辑再刷新文案）；
+2. **底部「已选 N」变化**：给 `#tv_bottom_zxg_num` 挂 `TextWatcher`（手动点行、
+   宿主自己改选中都会更新它）；
 3. **点了全选/反选按钮自己**（`stepToggle` 跑完最后一帧时刷新）。
+
+> ⚠️ **不要再包裹 ListView 的 `OnItemClickListener`**：它和筛选层的下标回映射会互相重包，
+> 叠成双重映射；而且宿主的选中模型看的是 checked states，不是转发出去的 position 参数。
 
 ---
 
@@ -141,6 +181,7 @@ toggleAll()
 |---|---|
 | `feature/strategyselect/StgSelectAllTargets.kt` | 上面那张控件契约表（全部做成候选数组，App 升级只改常量） |
 | `feature/strategyselect/StgSelectAllFeature.kt` | 功能本体 |
+| `feature/stgfilter/StgFilterBridge.kt` | 筛选生效时的「子集下标 → 全量下标」通道，以及合成点击的放行标记 |
 | `feature/FeatureManager.kt` | `features` 列表登记 |
 | `core/ConfigKeys.kt` | `STG_SELECT_ALL` 键 + `DEFAULT_*=false` + 进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
 | `core/ConfigSnapshot.kt` | `stgSelectAll` 字段 + 进 `fingerprint` + `DEFAULT` |
@@ -171,6 +212,25 @@ toggleAll()
 | 7 | 关闭开关 `stg_select_all` | 按钮**即时消失**（0 个）；重新打开并重进多选态 → 恢复 1 个 |
 | 8 | 全程 crash | `logcat -b crash` 中 `ClassCastException` / `FATAL` 计数 **0** |
 
+### 4.1 2026-10-20 追加：与筛选叠加（真机）
+
+设备 / 宿主不变，策略换成 **50e（21 只）**，筛选条件「涨家股票」（保留 3 只）。
+
+| # | 验证项 | 结果 |
+|---|---|---|
+| 9 | 筛选生效时手动点第一行 | `ChooseGroupAct` 收到的股票 = **301330**（屏幕上那只），不是全量第 1 只 |
+| 10 | 筛选生效时点「全选」 | 底部「已选 3 只股票」；确认添加收到的 codes = **[301330, 300815, 002956]**（= 可见的 3 只） |
+| 11 | 同一组合再选一次 | 这 3 只已在自选里 → 宿主显示「已在该组合」（**语义正确**；修复前是选错了股票导致的误报） |
+| 12 | 非连续子集（19/23，排除科创板） | 底部「已选 19 只」；确认页 codes **len=19 且不含 688xxx**；手动点首行 → codes = **[600178]**；「反选」→ 计数 0、文案回「全选」、可见勾选框全部清空 |
+
+> ⚠️ **已知观感局限（未修）**：合成点击后**部分可见勾选框可能不重画** ——
+> 50e / 19 只筛选结果实测：底部「已选 19 只股票」、确认页 19 只全对，
+> 但屏幕 9 个可见勾选框只画出 6 个；**手动点行**与**反选**的勾选显示正常。
+> 试过 `invalidateViews()` 与「预置视图位置」两种补法：前者无效；
+> 后者会让确认页把「视图位置」也当选中行（18 只被并成 21 只）。
+> 宿主的多选渲染与 `mCheckStates` 的读写时机不透明，故保留「计数 + 确认页正确」
+> 这一层，不做不可靠的视图 hack。
+
 ---
 
 ## 5. 验收标准
@@ -182,6 +242,8 @@ toggleAll()
 5. 反复进出多选态不会出现第二个按钮。
 6. 关掉 `stg_select_all` → 按钮消失（即时生效）；重开并重进多选态 → 按钮回来。
 7. 目标 App 无新增崩溃；release 包 `Lio/github/libxposed/api` 定义类 0。
+8. **筛选生效时**：全选勾中的行 = 页面可见的股票；确认添加收到的代码与之一致
+   （不能是全量前 N 只）；手动点行也选中屏幕上那一只。
 
 ---
 

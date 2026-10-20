@@ -27,13 +27,48 @@ object StgFilterBridge {
     class Snapshot(
         /** 筛选后保留的条目，保序，与适配器里是同一批对象 */
         val kept: List<Any>,
+        /** 保留项在宿主**全量列表**里的下标（与 [kept] 等长、同序） */
+        val keptIndices: IntArray,
     )
 
     @Volatile private var current: Snapshot? = null
 
-    /** 筛选侧调用：条件生效时传保留的条目，不筛 / 功能关闭时传 null */
-    fun publish(kept: List<Any>?) {
-        current = if (kept.isNullOrEmpty()) null else Snapshot(kept)
+    /** 筛选侧调用：条件生效时传保留的条目与全量下标，不筛 / 功能关闭时传 null */
+    fun publish(kept: List<Any>?, keptIndices: IntArray? = null) {
+        current = if (kept.isNullOrEmpty() || keptIndices == null) {
+            null
+        } else {
+            Snapshot(kept, keptIndices)
+        }
+    }
+
+    /** 过滤代理的第 [proxyIndex] 行对应宿主全量列表的哪个下标；没筛 / 越界返回 null */
+    fun fullIndexAt(proxyIndex: Int): Int? {
+        val idx = current?.keptIndices ?: return null
+        return if (proxyIndex in idx.indices) idx[proxyIndex] else null
+    }
+
+    /**
+     * 「合成行点击」放行标记。
+     *
+     * 筛选的回映射 wrapper 会在行点击时把「子集下标」换成「全量下标」再转发；
+     * 但 `AbsListView.performItemClick` 在调到 wrapper 之前，已经用**原始位置**
+     * 写过一次自己的 checked states（宿主的多选模型读的就是它）。
+     * 所以「全选」这类**合成点击**必须直接把全量下标交给 `performItemClick`，
+     * 并让 wrapper 原样放行 —— 否则框架记一份子集下标、宿主收到另一份全量下标，
+     * 两边打架（真机表现：全选后界面勾着 A/B/C，确认添加的却是全量前 N 只）。
+     */
+    private val bypassRemap = ThreadLocal<Boolean>()
+
+    fun isRemapBypassed(): Boolean = bypassRemap.get() == true
+
+    fun runWithRemapBypassed(block: () -> Unit) {
+        bypassRemap.set(true)
+        try {
+            block()
+        } finally {
+            bypassRemap.remove()
+        }
     }
 
     /** 从宿主的全量列表里，按筛选结果挑出该留下的条目（保序） */

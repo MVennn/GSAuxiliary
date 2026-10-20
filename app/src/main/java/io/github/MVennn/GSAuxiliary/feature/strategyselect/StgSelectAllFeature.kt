@@ -6,7 +6,6 @@ import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
 import android.widget.CheckedTextView
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -16,6 +15,7 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
 import io.github.MVennn.GSAuxiliary.util.Density
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.ref.WeakReference
@@ -37,10 +37,17 @@ import java.util.WeakHashMap
  *
  * ## 文案随状态切换（全选 / 反选）
  *
- *  - 会重算文案的时机：① 进入多选态注入时；② 每次行点击（包裹宿主 `OnItemClickListener`）；
- *    ③ 本按钮被点击后。
+ *  - 会重算文案的时机：① 进入多选态注入时；② 底部「已选 N」计数变化时
+ *    （手动点行、宿主自己改选中都会更新它）；③ 本按钮被点击后。
  *  - 判定：可见行的勾选数 == 适配器总行数 → 文案「反选」（点击取消全部），
  *    否则「全选」（点击勾选全部）。
+ *
+ * ⚠️ **不要包裹 ListView 的 `OnItemClickListener`**（2026-10-20 真机定位）：
+ * 宿主的多选状态写在 ListView 自己的 checked states 里，而 `AbsListView.performItemClick`
+ * 是在调到监听器**之前**就用传入的 `position` 写这份表的 —— 筛选层的回映射只改
+ * 「转发给监听器的 position」，改不到这份表；两个 wrapper 还会互相重包，叠成双重映射。
+ * 所以全选不碰监听链：文案改看底部「已选 N」，合成点击则把**全量下标**直接交给
+ * `performItemClick`（见 [stepToggle]）。
  *
  * ## 触发方式：给「取消」按钮挂 TextWatcher（而不是全局 Hook `TextView.setText`）
  *
@@ -87,27 +94,24 @@ class StgSelectAllFeature : Feature {
             WeakHashMap<TextView, WeakReference<TextWatcher>>(),
         )
 
-    /** 已包裹过行点击监听的 ListView → 我们装的 wrapper（弱引用，防泄漏） */
     /**
-     * 已包过行点击监听的 ListView → [Wrap]（弱引用，防泄漏）。
+     * 底部「已选 N」计数控件 → 我们挂的 TextWatcher + 它负责刷新文案的那颗按钮。
      *
-     * [Wrap] 里**必须存下宿主的 original**：包装时把它捕获进闭包后就没人拿得到了，
-     * 而摘包装时需要把它放回去 —— 否则宿主的行点击就永久失联。
+     * 宿主每次改选中都会同步这颗控件，所以它是**与宿主选中模型无关**的观察点：
+     * 不包裹 ListView 的行点击监听，也就不会和筛选的下标回映射抢同一条链。
+     * value 里存按钮（不是 key 自己），不会形成 value→key 的强引用环。
      */
-    private val wrappedLists =
-        Collections.synchronizedMap(WeakHashMap<ListView, Wrap>())
+    private val countWatchers =
+        Collections.synchronizedMap(WeakHashMap<TextView, CountWatch>())
 
-    /** 一次行点击包装：我们的 wrapper + 宿主的原监听 */
-    private class Wrap(
-        val wrapper: AdapterView.OnItemClickListener,
-        val original: AdapterView.OnItemClickListener?,
-    )
+    /** 一次计数观察：watcher + 要刷新文案的注入按钮 */
+    private class CountWatch(val watcher: TextWatcher, val button: TextView)
 
     /** 「取消」按钮 → 我们注入的「全选 / 反选」按钮（弱引用） */
     private val injected =
         Collections.synchronizedMap(WeakHashMap<TextView, TextView>())
 
-    /** ListView → 当前的注入按钮（行点击时据此刷新文案；弱引用） */
+    /** ListView → 当前的注入按钮（摘按钮时据此清账；弱引用） */
     private val buttonByList =
         Collections.synchronizedMap(WeakHashMap<ListView, TextView>())
 
@@ -213,7 +217,11 @@ class StgSelectAllFeature : Feature {
         val existing = injected[anchor]
         if (existing != null && existing.parent === anchor.parent) {
             // 已注入：只刷新一下文案（例如从别处切回多选态）
-            findListView(anchor)?.let { updateLabel(env, it, existing) }
+            findListView(anchor)?.let { lv ->
+                buttonByList[lv] = existing
+                ensureCountWatcher(env, lv, existing)
+                updateLabel(env, lv, existing)
+            }
             return
         }
         if (existing != null) removeInjected(anchor)   // 视图被换了，先清旧的
@@ -234,14 +242,61 @@ class StgSelectAllFeature : Feature {
         }
         injected[anchor] = button
 
-        // 行点击时也要刷新「全选 / 反选」文案，所以包裹一次 ListView 的行点击监听
         val lv = findListView(anchor)
         if (lv != null) {
             buttonByList[lv] = button
-            ensureRowClickWatcher(env, lv)
+            ensureCountWatcher(env, lv, button)
             updateLabel(env, lv, button)
         }
         GLog.i("策略全选：已在多选栏注入「全选」按钮")
+    }
+
+    /**
+     * 观察底部「已选 N」计数：宿主改选中时它一定会变，用它刷新「全选 / 反选」文案。
+     *
+     * 为什么不包裹 ListView 的行点击监听（旧做法）：宿主的多选状态是 ListView 的
+     * checked states，而 `AbsListView.performItemClick` 在调到监听器之前就用传入的
+     * position 写过它；筛选层还有一层「子集下标 → 全量下标」的回映射 wrapper。
+     * 两层 wrapper 谁包谁无法保证，重包后会变成双重映射（真机：全选点到全量前 N 只）。
+     * 计数控件是宿主自己维护的，与选中模型、点击链都解耦。
+     */
+    private fun ensureCountWatcher(env: FeatureEnv, lv: ListView, button: TextView) {
+        val id = countId(button)
+        if (id == 0) {
+            GLog.w("全选：#${StgSelectAllTargets.COUNT_ID_CANDIDATES.joinToString()} 解析失败，按钮文案不会跟随手动勾选")
+            return
+        }
+        val tv = lv.rootView?.findViewById<View>(id) as? TextView ?: return
+        synchronized(countWatchers) {
+            if (countWatchers[tv]?.button === button) return
+            countWatchers.remove(tv)?.let {
+                runCatching { tv.removeTextChangedListener(it.watcher) }
+            }
+            val watcher = object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    runCatching { updateLabel(env, lv, button) }
+                        .onFailure { GLog.w("全选：刷新按钮文案异常", it) }
+                }
+            }
+            tv.addTextChangedListener(watcher)
+            countWatchers[tv] = CountWatch(watcher, button)
+        }
+    }
+
+    /** 摘掉某颗按钮对应的计数 watcher（退出多选态 / 关开关 / 热重载时撤干净） */
+    private fun removeCountWatcher(button: TextView) {
+        synchronized(countWatchers) {
+            val it = countWatchers.entries.iterator()
+            while (it.hasNext()) {
+                val e = it.next()
+                if (e.value.button !== button) continue
+                runCatching { e.key.removeTextChangedListener(e.value.watcher) }
+                    .onFailure { GLog.w("全选：摘掉计数监听失败", it) }
+                it.remove()
+            }
+        }
     }
 
     /** 从「取消」按钮克隆出一颗样式一致、但**独立 id** 的「全选 / 反选」按钮 */
@@ -279,6 +334,7 @@ class StgSelectAllFeature : Feature {
     private fun removeInjected(anchor: TextView) {
         val btn = injected.remove(anchor) ?: return
         runCatching { (btn.parent as? ViewGroup)?.removeView(btn) }
+        removeCountWatcher(btn)
         val lv = buttonByList.entries.firstOrNull { it.value === btn }?.key
         if (lv != null) buttonByList.remove(lv)
     }
@@ -348,10 +404,20 @@ class StgSelectAllFeature : Feature {
             return
         }
         runCatching {
-            val pos = headerCount + index           // ListView 里的位置（含 header 偏移）
-            val childIdx = pos - lv.firstVisiblePosition
+            // ⚠️ 「视图位置」与「数据位置」在筛选生效时是两套坐标（2026-10-20 真机）：
+            // ListView 上挂的是过滤代理，`performItemClick` 的 position 是**子集下标**；
+            // 而宿主的多选模型从 ListView 的 checked states 取值，框架又是用**传入的
+            // position** 写这份表的。所以合成点击必须直接把**全量下标**传进去：
+            // 框架写对位置、宿主收到对位置，回映射层用 [StgFilterBridge.runWithRemapBypassed]
+            // 原样放行（否则它会把全量下标再当子集下标映射一次）。
+            val fullIdx = StgFilterBridge.fullIndexAt(index)
+            val pos = headerCount + (fullIdx ?: index)   // 传给宿主的**全量**位置
+            val proxyPos = headerCount + index           // 列表里那一行的实际位置（子集）
+            val childIdx = proxyPos - lv.firstVisiblePosition
             val visible = childIdx in 0 until lv.childCount
-            // 可见行用已绑定的真实子 View；屏外行现造探针 View（getView 会按模型绑定勾选态）
+            // 可见行用已绑定的真实子 View（宿主的点击处理会**就地**把这一行的勾选框打上，
+            // 用脱离列表的探针 View 只会改到探针、屏幕上看不到勾）；
+            // 屏外行现造探针 View（getView 会按模型绑定勾选态）。
             val row: View? = if (visible) {
                 lv.getChildAt(childIdx)
             } else {
@@ -360,7 +426,9 @@ class StgSelectAllFeature : Feature {
             val isChecked = (row?.findViewById<View>(ctId) as? CheckedTextView)?.isChecked == true
             val shouldClick = !needProbe || (isChecked != wantChecked)
             if (shouldClick) {
-                lv.performItemClick(row, pos, lv.getItemIdAtPosition(pos))
+                StgFilterBridge.runWithRemapBypassed {
+                    lv.performItemClick(row, pos, lv.getItemIdAtPosition(pos))
+                }
             }
         }.onFailure { GLog.w("全选：触发行点击失败 index=$index", it) }
 
@@ -394,65 +462,22 @@ class StgSelectAllFeature : Feature {
         return runCatching { tv.text?.toString()?.trim()?.toIntOrNull() ?: -1 }.getOrDefault(-1)
     }
 
-    /**
-     * 包裹宿主 ListView 的行点击监听：手动点行后也刷新「全选 / 反选」文案。
-     * 每次都比对面上的监听是不是我们上次装的 wrapper：宿主若在生命周期里
-     * 重新 setOnItemClickListener，旧 wrapper 会把点击转发给过期的监听器
-     * （审查 2026-10-17），照 StgStockFilterFeature.ensureClickRemap 的
-     * 「比对 - 重包」模式处理。
-     */
-    private fun ensureRowClickWatcher(env: FeatureEnv, lv: ListView) {
-        val existing = itemClickListener(lv)
-        val known = wrappedLists[lv]
-        if (existing != null && known != null && known.wrapper === existing) return   // 已经包过且没被换掉
-        // 走到这里：要么原来没有监听，要么宿主换了新的 —— 都直接包现挂的这个
-        val original = existing
-        val wrapper = AdapterView.OnItemClickListener { parent, view, position, id ->
-            runCatching { original?.onItemClick(parent, view, position, id) }
-            runCatching {
-                val b = buttonByList[lv] ?: return@runCatching
-                updateLabel(env, lv, b)
-            }
-        }
-        runCatching { lv.onItemClickListener = wrapper }
-            // original 一并存下：摘包装时要把宿主的监听放回去，否则它永久失联
-            .onSuccess { wrappedLists[lv] = Wrap(wrapper, original) }
-            .onFailure { GLog.w("全选：包裹行点击监听失败", it) }
-    }
-
-    /**
-     * 摘掉我们包在 ListView 上的行点击监听，把宿主原本的监听放回去。
-     *
-     * 关开关时必须调：不摘的话宿主的行点击永远多一层转发，
-     * 而且热重载后新实例的 [wrappedLists] 是空的 → 判据不成立 → **再包一层**，
-     * N 次热重载 = N 层转发链（链无限增长，且每次都转发给上一层的 wrapper）。
-     */
-    private fun unwrapRowClick(lv: ListView) {
-        val w = synchronized(wrappedLists) { wrappedLists.remove(lv) } ?: return
-        runCatching { lv.onItemClickListener = w.original }
-            .onFailure { GLog.w("全选：还原行点击监听失败", it) }
-    }
-
-    /** 读宿主原本挂在 ListView 上的 `OnItemClickListener`（`AdapterView.getOnItemClickListener` 是隐藏 API） */
-    private fun itemClickListener(lv: ListView): AdapterView.OnItemClickListener? =
-        runCatching {
-            val f = AdapterView::class.java.getDeclaredField("mOnItemClickListener")
-            f.isAccessible = true
-            f.get(lv) as? AdapterView.OnItemClickListener
-        }.getOrNull()
-
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         // 关掉功能时，把所有已注入的按钮撤掉
         if (cfg.stgSelectAll) return
         val anchors = synchronized(injected) { injected.keys.toList() }
         for (a in anchors) removeInjected(a)
-        // ⚠️ 按钮撤了还不够：watcher 与行点击 wrapper 也得摘（规则 1.1：install 落下的
-        // 每一笔都要能撤掉）。原先只摘按钮 → 宿主的行点击**永久**多一层转发，
-        // 「取消」按钮也**永久**挂着一个 watcher（闭包持有 env → 钉住旧实例）。
+        // ⚠️ 按钮撤了还不够：watcher 也得摘（规则 1.1：install 落下的每一笔都要能撤掉）。
+        // 原先只摘按钮 → 「取消」按钮**永久**挂着一个 watcher（闭包持有 env → 钉住旧实例）。
         val watched = synchronized(watchers) { watchers.keys.toList() }
         for (b in watched) unwatch(b)
-        val wrapped = synchronized(wrappedLists) { wrappedLists.keys.toList() }
-        for (lv in wrapped) unwrapRowClick(lv)
+        // 防御：正常路径上 removeInjected 已经逐颗摘过了；这里兜一遍，
+        // 防止「按钮被宿主替换 / 已不在 injected 表里」留下的孤儿 watcher。
+        val counts = synchronized(countWatchers) { countWatchers.entries.toList() }
+        for ((tv, w) in counts) {
+            runCatching { tv.removeTextChangedListener(w.watcher) }
+        }
+        synchronized(countWatchers) { countWatchers.clear() }
     }
 
     // ------------------------------------------------------------ 样式克隆

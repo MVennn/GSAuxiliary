@@ -655,7 +655,7 @@ OkHttp 钩子（`okhttp3.OkHttpClient.newCall` / `ResponseBody.string()`）整�
 
 | 项 | 风险 |
 |---|---|
-| **「全选」与筛选叠加** | 代理方案下，多选栏「全选」走 `ListView.performItemClick`，落在代理的行号上，再由我们映射成全量下标转发 —— 理论上自洽；但「筛选 + 全选 + 加入自选」这个组合仍没实机跑过 |
+| ~~**「全选」与筛选叠加**~~ | ✅ 2026-10-20 真机验过并修掉：旧实现把**子集下标**交给 `performItemClick`，而 `AbsListView` 在调到回映射 wrapper **之前**就用它写过 `mCheckStates`（宿主的多选模型读这份表）→ 全选勾着 A/B/C、确认添加的却是全量前 N 只。现在合成点击由 `StgFilterBridge` 直接给全量下标并放行回映射；手动点行由 wrapper 改写 `mCheckStates`。详见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md) §2.3.1 |
 | **宿主改成从 adapter 取股** | 回映射建立在「宿主自己持有全量列表」这一**实测事实**上。哪天宿主改成从 adapter 取股，回映射会**反向错位**（那时应当把映射拆掉） |
 | **宿主 `setAdapter` 后不再触发 `getView`** | 代理被顶掉后靠 `getView` 兜底装回。若宿主既换了 adapter、又完全不触发 `getView`（列表为空时有可能），筛选会暂时失效 —— 日志里能看到「暂时没装行点击回映射」那一行 |
 | **涨跌幅兜底** | 数据项 `zdf` 读不到时退回 `getView` 快照，行情原地刷新后要等下一次 bind 才修正 |

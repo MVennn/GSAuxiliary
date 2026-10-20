@@ -780,6 +780,9 @@ class StgStockFilterFeature : Feature {
                 lastSummary = null
                 GLog.i("筛选股票：筛选未生效，已还原全量（${full.size} 只）")
             }
+            // 过滤代理已经不在列表上 → 行点击的回映射也没有存在意义，拆回宿主自己的监听
+            // （规则 1.1；否则列表上永久多一层透传，热重载后还会再叠一层）。
+            unwrapRowClick(lv)
             return
         }
 
@@ -842,7 +845,7 @@ class StgStockFilterFeature : Feature {
         if (proxy != null && snap != null && sameList(keep, snap.kept) &&
             unwrapHeaderAdapter(lv.adapter) === proxy
         ) {
-            StgFilterBridge.publish(keep)
+            StgFilterBridge.publish(keep, rows)
             return
         }
 
@@ -871,7 +874,7 @@ class StgStockFilterFeature : Feature {
             }
         }
 
-        StgFilterBridge.publish(keep)
+        StgFilterBridge.publish(keep, rows)
         if (notify) notifyAdapter(adapter)
 
         val summary = buildString {
@@ -1290,31 +1293,67 @@ class StgStockFilterFeature : Feature {
         }
 
         val wrapper = AdapterView.OnItemClickListener { parent, view, position, id ->
-            var mapped = position
-            runCatching {
-                val header = lv.headerViewsCount
-                // 每次都重新读：两次点击之间筛选结果可能已经换过，
-                // 而 kept 与 keptIndices 是一起原子替换的，不会读到错位组合。
-                val idx = stateOf(adapter).snap?.keptIndices?.getOrNull(position - header)
-                if (idx != null) mapped = header + idx
-            }.onFailure { GLog.w("筛选股票：点击下标回映射失败", it) }
             val sink = existing
-            if (sink == null) {
-                GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")
+            if (StgFilterBridge.isRemapBypassed()) {
+                // 合成点击（「全选」）：调用方已经把 position 换算成全量下标（含 header），
+                // `AbsListView.performItemClick` 也用它写过 checked states —— 两边已经一致，
+                // 这里原样转发，**绝不能**再映射一次。
+                if (sink == null) {
+                    GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")
+                } else {
+                    runCatching { sink.onItemClick(parent, view, position, id) }
+                        .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+                }
             } else {
-                runCatching { sink.onItemClick(parent, view, mapped, id) }
-                    .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+                var mapped = position
+                runCatching {
+                    // 每次点击都重新取「列表此刻在用的原适配器」：宿主可能换过适配器实例
+                    // （进多选态 / 数据刷新都可能），捕获包装时的旧实例会读到**过期的 snap**，
+                    // 映射就静默退化成「原样透传」—— 真机表现仍是点 A 选中 B。
+                    val current = unwrapHeaderAdapter(lv.adapter)?.let { unwrapOnList(lv, it) } ?: adapter
+                    val header = lv.headerViewsCount
+                    // 每次都重新读：两次点击之间筛选结果可能已经换过，
+                    // 而 kept 与 keptIndices 是一起原子替换的，不会读到错位组合。
+                    val idx = stateOf(current).snap?.keptIndices?.getOrNull(position - header)
+                    if (idx != null) mapped = header + idx
+                    // 手动点行：`AbsListView.performItemClick` 在调到我们之前已经用
+                    // **子集下标**写过一次 checked states，而宿主的多选模型读的是这份表。
+                    // 只改转发给监听器的 position 没用 —— 这里把它改写成全量下标。
+                    if (mapped != position) {
+                        runCatching {
+                            val f = android.widget.AbsListView::class.java
+                                .getDeclaredField("mCheckStates").also { it.isAccessible = true }
+                            val states = f.get(lv) as? android.util.SparseBooleanArray
+                            if (states != null) {
+                                // 框架刚把**勾/取消**的结果写在这个子集位置上，先读出来再搬走：
+                                // 固定写 true 会把「手动取消勾选」又改回选中。
+                                val newChecked = states.get(position, false)
+                                states.put(position, false)
+                                states.put(mapped, newChecked)
+                            }
+                        }.onFailure { GLog.w("筛选股票：改写 checked states 失败", it) }
+                    }
+                }.onFailure { GLog.w("筛选股票：点击下标回映射失败", it) }
+                if (sink == null) {
+                    GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")
+                } else {
+                    runCatching { sink.onItemClick(parent, view, mapped, id) }
+                        .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+                }
             }
         }
         runCatching { lv.onItemClickListener = wrapper }
-            .onSuccess { wrappedLists[lv] = ClickWrap(wrapper, existing) }
+            .onSuccess {
+                wrappedLists[lv] = ClickWrap(wrapper, existing)
+                GLog.i("筛选股票：行点击回映射已包上 listener=${existing?.javaClass?.name} header=${lv.headerViewsCount} adapter=${adapter.javaClass.name}")
+            }
             .onFailure { GLog.w("筛选股票：包裹行点击监听失败", it) }
     }
 
     /**
      * **拆回**我们包过的行点击监听，把宿主自己的放回去（规则 1.1）。
      *
-     * 关掉开关时调用 —— 不拆的话宿主列表上永久多一层转发。
+     * 关掉开关 / 筛选条件清空时调用 —— 不拆的话宿主列表上永久多一层转发。
      */
     private fun unwrapRowClick(lv: ListView) {
         val w = synchronized(wrappedLists) { wrappedLists.remove(lv) } ?: return
