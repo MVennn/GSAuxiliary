@@ -196,14 +196,19 @@ echo " 使用 $PKG"
 #
 #    只改「包身份」相关的字段，不动 android.jar / 资源：
 #      · 目录名        android-37.x        -> android-37
-#      · package.xml   <api-level>37.x     -> 37
-#                      localPackage path   -> platforms;android-37
-#                      <display-name>      -> Android SDK Platform 37
+#      · package.xml   **整个照抄一个「正常平台」的 package.xml**（见下）
 #      · source.properties
 #                      AndroidVersion.ApiLevel=37.x -> 37
 #                      Platform.Version / Pkg.Desc   -> 37
 #
-#    归一化后的状态与本机已验证可用的 platforms/android-37 完全一致。
+#    ⚠️ **package.xml 必须照抄，不能只做 sed 替换**（2026-10-20 在 CI 上真踩过）：
+#       37.x 那个包自带的 package.xml 里带着 `<codename></codename>`、
+#       次版本痕迹与另一套命名空间映射，AGP 8.10.1 解析完**不认这个平台**，
+#       报的仍是「Failed to find target with hash string 'android-37'」。
+#       本机那套验证可用的 platforms/android-37/package.xml 其实是
+#       **照抄 android-35/package.xml 改了 3 个字段**（path / api-level / display-name），
+#       实测逐字节可复现 —— 所以 CI 里也这么做：装一个 android-35 当**模板来源**，
+#       照抄它再改那 3 处。
 #
 #    注意：**不按目录名去猜版本号**，而是把所有 `37.<次要版本>` 一律压成 `37`。
 #    目录名和元数据里的版本并不保证一致（本机验证时遇到过目录叫 android-37.2、
@@ -214,6 +219,8 @@ VER="$(grep -E '^AndroidVersion\.ApiLevel=' "$SRC/source.properties" 2>/dev/null
        | cut -d= -f2 || true)"
 VER="${VER:-未知}"
 MINOR_RE='37\.[0-9]+'           # 任何 37.x
+DONOR_NAME="android-35"          # 模板来源：一个「正常」的稳定平台
+DONOR_API="35"
 
 if [ "$SRC" = "$PLATFORMS/$DST_NAME" ]; then
     DST="$SRC"
@@ -226,15 +233,25 @@ else
     DST="$PLATFORMS/$DST_NAME"
 fi
 
-if [ -f "$DST/package.xml" ]; then
+# ---------------------------------------------------------------------------
+# 5.1 package.xml：照抄「正常平台」那份，只改 3 个字段
+# ---------------------------------------------------------------------------
+DONOR="$PLATFORMS/$DONOR_NAME"
+if [ ! -f "$DONOR/package.xml" ]; then
+    echo ""
+    echo "  模板来源 $DONOR_NAME 没装 —— 装它（只要它的 package.xml）"
+    install_pkg "platforms;$DONOR_NAME" || log "[!] 装 $DONOR_NAME 失败"
+fi
+if [ -f "$DONOR/package.xml" ] && [ -f "$DST/package.xml" ]; then
+    cp "$DONOR/package.xml" "$DST/package.xml"
     sed -i -E \
-        -e "s|<api-level>${MINOR_RE}</api-level>|<api-level>${TARGET_API}</api-level>|g" \
-        -e "s|platforms;android-${MINOR_RE}|platforms;android-${TARGET_API}|g" \
-        -e "s|Android SDK Platform ${MINOR_RE}|Android SDK Platform ${TARGET_API}|g" \
-        -e "/<minor>/d" \
+        -e "s|path=\"platforms;${DONOR_NAME}\"|path=\"platforms;android-${TARGET_API}\"|" \
+        -e "s|<api-level>${DONOR_API}</api-level>|<api-level>${TARGET_API}</api-level>|" \
+        -e "s|<display-name>Android SDK Platform ${DONOR_API}</display-name>|<display-name>Android SDK Platform ${TARGET_API}</display-name>|" \
         "$DST/package.xml"
+    echo "  package.xml：照抄 $DONOR_NAME 的，改了 path / api-level / display-name"
 else
-    log "[!] 没有 package.xml —— sdkmanager 通常会给，缺了也不一定报错，继续"
+    log "[!] 拿不到模板（$DONOR_NAME/package.xml）—— 保留原包的 package.xml，可能认不出来"
 fi
 
 if [ -f "$DST/source.properties" ]; then
@@ -286,6 +303,27 @@ if [ -f "$DST/package.xml" ]; then
     else
         log "[X] package.xml 的 api-level 没改成 ${TARGET_API}"
         fail=1
+    fi
+    # 路径与显示名也要对：AGP 认平台看的是 localPackage 的 path
+    if grep -q "path=\"platforms;android-${TARGET_API}\"" "$DST/package.xml"; then
+        log "[OK] package.xml 的 localPackage path = platforms;android-${TARGET_API}"
+    else
+        log "[X] package.xml 的 localPackage path 不对"
+        fail=1
+    fi
+    if grep -q "<display-name>Android SDK Platform ${TARGET_API}</display-name>" "$DST/package.xml"; then
+        log "[OK] package.xml 的 display-name = Android SDK Platform ${TARGET_API}"
+    else
+        log "[X] package.xml 的 display-name 不对"
+        fail=1
+    fi
+    # 37.x 那个包自带的 package.xml 里有个空的 <codename></codename> ——
+    # 本机验证可用的那份（照抄 android-35 改 3 字段）里**没有**它。
+    if grep -q "<codename>" "$DST/package.xml"; then
+        log "[X] package.xml 里还有 <codename> —— 与本机验证可用的那份不一致"
+        fail=1
+    else
+        log "[OK] package.xml 无 <codename> 元素"
     fi
 fi
 
