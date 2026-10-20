@@ -1,8 +1,0 @@
-name: t4 多行
-description: 测 textarea
-body:
-  - type: textarea
-    id: body
-    attributes:
-      label: 描述
-      placeholder: 写点什么

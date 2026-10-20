@@ -1,0 +1,102 @@
+# GitLab 的「问题表单」（issue forms）。
+#
+# ⚠️ 格式与 GitHub 的 issue 模板**完全不同**，别照抄：
+#   · 目录是 `.gitlab/issue_forms/`（不是 `.gitlab/issue_templates/`）
+#   · 类型只有四种：**markdown / input / textarea / select / checkbox**
+#     （GitHub 的 dropdown 在 GitLab 叫 select；GitHub 的 checkboxes 叫 checkbox）
+#   · **支持必填**（`required: true`，写在 attributes 里）
+#
+# 为什么不用老的 YAML「描述模板」(.gitlab/issue_templates/*.yml)：
+# GitLab 19 已把描述模板换成了 issue forms —— 描述模板那份**整份被静默忽略**，
+# 新建 issue 的模板下拉里根本不出现（本地 YAML 解析得过，只有真机点开才发现）。
+#
+# 这份与 `.github/ISSUE_TEMPLATE/bug_report.yml` 内容一致，但**格式不同**。
+name: 问题反馈（Bug）
+description: 开关失灵、显示异常、模块崩溃等问题
+labels: ["缺陷"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量把下面的信息填全，尤其是 **LSPosed 日志**——
+        没有日志的问题很难定位，多半只能来回追问。
+
+        > 本模块仅供学习研究，请知悉：它会 Hook 国信金太阳，可能违反其用户协议
+        > 并导致账号风控或封禁，相关风险由你自己承担；开发者不承担因使用本模块
+        > 产生的任何责任（详见仓库 docs/DISCLAIMER.md）。
+
+  - type: checkbox
+    id: acknowledgment
+    attributes:
+      label: 反馈前确认
+      description: 本模块仅供学习研究，请知悉以下事项后再提交。
+      required: true
+      options:
+        - label: 我已知悉本模块会 Hook 国信金太阳，可能违反其用户协议并导致账号风控或封禁，相关风险由我自行承担。
+        - label: 我已阅读并同意仓库中的免责声明（docs/DISCLAIMER.md），了解开发者不承担因使用本模块产生的任何责任。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 出了什么问题
+      description: |
+        描述现象 + 复现步骤：在哪个页面、点了什么、预期是什么、实际看到什么。
+        能稳定复现就写步骤，时有时无就写出现频率。
+      placeholder: |
+        例：
+        1. 打开金太阳，进入策略详情页
+        2. 点右上角「筛选股票」，筛选后返回
+        3. 预期：列表正常显示；实际：整页空白
+      required: true
+
+  - type: input
+    id: gsx-version
+    attributes:
+      label: 国信金太阳版本号
+      description: 金太阳「我的 → 设置 → 关于」里能看到
+      placeholder: "例：8.6.0"
+      required: true
+
+  - type: input
+    id: module-version
+    attributes:
+      label: 模块版本号
+      description: GSAuxiliary「关于」页里能看到
+      placeholder: "例：3.3.0（versionCode 48）"
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: 机型与安卓版本
+      placeholder: "例：Redmi K60 / Android 14"
+      required: true
+
+  - type: select
+    id: scope
+    attributes:
+      label: LSPosed 作用域里「国信金太阳」勾了吗
+      description: 报问题前先确认这一步——没勾作用域模块不会生效
+      required: true
+      options:
+        - label: 已勾选，且强制停止金太阳后重开过
+        - label: 没勾 / 不确定
+
+  - type: textarea
+    id: lsposed-log
+    attributes:
+      label: LSPosed 日志
+      description: |
+        电脑连上手机后执行这条命令，把输出整段贴进来：
+
+        ```
+        adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"
+        ```
+
+        没法抓日志的话，说明一下原因（比如问题发生在另一台设备上）。
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏（可选）
+      description: 界面类问题一图胜千言
