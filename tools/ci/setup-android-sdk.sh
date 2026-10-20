@@ -73,6 +73,10 @@ echo " SDK 根目录 : $SDK"
 need=""
 command -v curl >/dev/null 2>&1 || need="$need curl"
 command -v unzip >/dev/null 2>&1 || need="$need unzip"
+# ⚠️ python3 也要装 —— JDK 镜像（eclipse-temurin）里**没有** python3，
+#    而流水线后面还要用 tools/ci/version.py 与那段数用例的脚本。
+#    踩过：编译都过了，挂在「python3: command not found」上。
+command -v python3 >/dev/null 2>&1 || need="$need python3"
 if [ -n "$need" ]; then
     echo ""
     echo "[1/4] 装依赖:$need"
