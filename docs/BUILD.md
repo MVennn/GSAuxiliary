@@ -525,27 +525,34 @@ cp keystore.properties.example keystore.properties
 
 ### 8.0 GitLab 流水线（现在的正本）
 
-配置在 `.gitlab-ci.yml`，三段：
+配置在 `.gitlab-ci.yml`，**两段**（2026-10-20 真跑通过）：
 
-| 阶段 | 干什么 | 需要什么 |
-|---|---|---|
-| `check` | 六项静态检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约） | 无（纯 Python，秒级） |
-| `build` | 装 Android SDK → 跑单测 → 编 release → 跑产物红线 → 留 APK 与 R8 mapping | 4 个 CI 变量（`GS_KEYSTORE_*`） |
-| `release` | 推 tag 时：校验 tag 与版本号一致 → 建 Release → 传 APK 与 mapping | 同上 |
+| 阶段 | 干什么 | 需要什么 | 实测 |
+|---|---|---|---|
+| `check` | 七项静态检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约 / 文档链接） | 无（纯 Python） | ~20s |
+| `build` | 装 Android SDK → 跑单测 → 编 release → 跑产物红线（24 项）→ 留 APK 与 R8 mapping | 4 个 CI 变量（`GS_KEYSTORE_*`） | ~8 分钟 |
 
-触发方式：**开 MR / 手动触发 / 推 tag** —— **push 到 `main` 不触发**（理由与
+触发方式：**开 MR / 手动触发 / API 触发** —— **push 到 `main` 不触发**（理由与
 GitHub 那套一样，见下面 §8.1 的说明）。整体说明、CI 变量怎么配、
-以及**账号级身份验证那道门**（没通过前流水线建出来就是 0 作业 + failed），
-都在 [GITLAB.md](GITLAB.md)。
+以及**账号级身份验证那道门**，都在 [GITLAB.md](GITLAB.md)。
+
+> **发版不在这条流水线里** —— 发布走本地脚本 `tools/publish_gitlab.py`，
+> 三条「让流水线自动发版」的路都实测走不通，结论见 [GITLAB.md](GITLAB.md) §5.1。
+> 流水线产出的 APK 本身是**用正式密钥签的**，可以直接 `--skip-build --apk` 发布。
 
 > **共享 runner 什么都不预装** —— 没有 cmdline-tools、没有 sdkmanager、没有
-> build-tools。装 SDK 那一步写成了仓库里的脚本
+> build-tools，**连 python3 都没有**。装 SDK 那一步写成了仓库里的脚本
 > （`tools/ci/setup-android-sdk.sh`），不靠某个第三方 action：
 > 版本钉死、行为可读、出错时日志在自己手里。
 >
 > ⚠️ GitLab 的 `script:` **只吃字符串**，不吃 `- name: / run:` 映射写法 ——
 > 写成那样整条流水线会被判为配置非法、连创建都不允许（本地 YAML 解析得过，
 > 只有真触发才发现）。
+>
+> ⚠️ **每个作业都是全新容器** —— 一个作业里 apt 装的 python3 不会留给下一个作业。
+> 而后面读版本号的 `tools/ci/version.py` 要 python3，所以各作业得各装各的。
+>
+> ⚠️ **YAML 块标量里顶格的行会把整个块截断** —— 内嵌的 python 必须写成单行。
 
 ### 8.1 GitHub Actions（账号停用，留档）
 
