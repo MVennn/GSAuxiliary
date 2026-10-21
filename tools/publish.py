@@ -10,7 +10,7 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
 
 **2026-10-21：GitHub 账号已解封，源码正本回到 `MVennn/GSAuxiliary`。
-GitLab 镜像已停用，本脚本是唯一的发版入口。**
+旧镜像已停用，本脚本是唯一的发版入口。**
 
 每次 Release 只传 **release 包**：`GSAuxiliary_<tag>.apk`。
 不再附带 debug 包 —— 有过用户直接下载 debug 版当日常版本用的先例，debug 包保留
