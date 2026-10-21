@@ -15,7 +15,7 @@
 | `TARGET_PKG` | 目标 App 包名，默认 `com.guosen.android` |
 | `MODULE_PKG` | 模块包名，默认 `io.github.MVennn.GSAuxiliary` |
 | `ADB_WIFI_TARGET` | 无线调试地址，如 `192.168.1.10:5555` |
-| `ADB_WIFI_HOST` | 无线调试主机 IP（dev.sh / adbw.sh，默认 `10.0.0.26`） |
+| `ADB_WIFI_HOST` | 无线调试主机 IP（dev.sh / adbw.sh，必须设置；占位符 `YOUR_DEVICE_IP`） |
 
 ## 分类总览
 
@@ -53,11 +53,11 @@ bash -c '. tools/env.sh; echo "adb=$ADB"; echo "python=$PYTHON"; echo "ffmpeg=$F
 ```bash
 bash tools/adbw.sh shell "input tap 540 1020"
 bash tools/adbw.sh exec-out screencap -p > shot.png
-bash tools/adbw.sh pull /sdcard/ui.xml F:/Project/GoldSunEnhance/.work/ui.xml
+bash tools/adbw.sh pull /sdcard/ui.xml F:/x/ui.xml
 bash tools/adbw.sh dev            # 只打印当前可用 serial
 ```
 
-环境变量：`ADB_WIFI_HOST`（默认 `10.0.0.26`）、`ADBW_TRIES`（重试次数，默认 6）。
+环境变量：`ADB_WIFI_HOST`（必须设置）、`ADBW_TRIES`（重试次数，默认 6）。
 
 > 脚本内部已 `export MSYS_NO_PATHCONV=1` —— 否则 Git Bash 会把远端路径
 > `/sdcard/ui.xml` 改写成 `F:/Program Files/.../sdcard/ui.xml`，`pull` 直接报
@@ -74,7 +74,7 @@ DEV="$(bash tools/dev.sh)" || exit 1
 adb -s "$DEV" shell ...
 ```
 
-环境变量：`ADB_WIFI_HOST`（默认 `10.0.0.26`）、`ADB_MDNS_PORT`（已知直连端口时跳过 mDNS 发现）。
+环境变量：`ADB_WIFI_HOST`（必须设置）、`ADB_MDNS_PORT`（已知直连端口时跳过 mDNS 发现）。
 
 > 功能与 `adbw.sh dev` 重合（后者还多一层重试）。新脚本建议直接用 `adbw.sh dev`；
 > 本脚本保留是因为历史文档示例（如 `docs/FEATURE-SELECT-ALL.md`）引用了它。

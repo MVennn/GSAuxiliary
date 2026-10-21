@@ -6,7 +6,7 @@
 #   1. **adb server 会被回收**（沙箱 / 会话结束），server 一重启，无线连接就断，
 #      必须重新 connect。所以每条命令前都得跑一次本脚本。
 #   2. **无线调试端口会变**（关掉再开无线调试，或系统重启，端口就换一个）。
-#      写死 10.0.0.26:38131 迟早会失效 —— 这里用 mDNS 自动发现。
+#      写死 IP:端口 迟早会失效 —— 这里用 mDNS 自动发现。
 #   3. **mDNS 会额外注册一条 `adb-XXXX._adb-tls-connect._tcp` 虚拟 serial**，
 #      它常常排在第一，导致 tools/*.sh 里的 `wait_device` 选中一个不可用的名字。
 #      所以本脚本一律连接 **ip:port** 形式，不返回 mDNS 名字。
@@ -16,7 +16,7 @@
 #   adb -s "$DEV" shell ...
 #
 # 环境变量:
-#   ADB_WIFI_HOST   设备 IP，默认 10.0.0.26
+#   ADB_WIFI_HOST   设备 IP，必须设置（默认占位符 YOUR_DEVICE_IP）
 #   ADB_MDNS_PORT   已知端口时直接指定，跳过 mDNS 发现
 # ---------------------------------------------------------------------------
 set -u
@@ -25,9 +25,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=env.sh
 . "$HERE/env.sh"
 
-HOST="${ADB_WIFI_HOST:-10.0.0.26}"
+HOST="${ADB_WIFI_HOST:-YOUR_DEVICE_IP}"
 
 [ -n "${ADB:-}" ] || { echo "[dev] 没找到 adb" >&2; exit 1; }
+
+if [ "$HOST" = "YOUR_DEVICE_IP" ]; then
+    echo "[dev] 请先设置 ADB_WIFI_HOST=<设备IP>（无线调试地址）" >&2
+    exit 1
+fi
 
 "$ADB" start-server >/dev/null 2>&1
 

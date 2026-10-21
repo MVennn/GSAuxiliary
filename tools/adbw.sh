@@ -27,8 +27,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=env.sh
 . "$HERE/env.sh"
 
-HOST="${ADB_WIFI_HOST:-10.0.0.26}"
+HOST="${ADB_WIFI_HOST:-YOUR_DEVICE_IP}"
 TRIES="${ADBW_TRIES:-6}"
+
+if [ "$HOST" = "YOUR_DEVICE_IP" ]; then
+    echo "[adbw] 请先设置 ADB_WIFI_HOST=<设备IP>（无线调试地址）" >&2
+    exit 2
+fi
 
 ensure_dev() {
     "$ADB" start-server >/dev/null 2>&1
