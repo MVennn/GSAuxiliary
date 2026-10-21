@@ -221,6 +221,8 @@ class WatchlistFeature : Feature {
             return
         }
 
+        var painted = 0
+        var firstMap: String? = null
         for (i in 0 until lv.childCount) {
             val pos = first + i
             if (pos < headerCount) continue          // header，不是股票行
@@ -247,7 +249,14 @@ class WatchlistFeature : Feature {
                 false
             }
             applyStyle(cfg, nameTv, inWatchlist, "重绘名称失败 pos=$fullPos")
+            painted++
+            if (firstMap == null) firstMap = "$dataPos→$fullPos"
         }
+        // onResume 才跑一次，INFO 级不刷屏；筛选生效时这行能直接证明代理拆包与下标映射都走到了
+        GLog.i(
+            "自选高亮：重绘 $painted 行（筛选=$filtered" +
+                (firstMap?.let { "，首个映射 $it" } ?: "") + "）",
+        )
     }
 
     /**

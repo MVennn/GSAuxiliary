@@ -1371,40 +1371,21 @@ class StgStockFilterFeature : Feature {
                     // 而 kept 与 keptIndices 是一起原子替换的，不会读到错位组合。
                     val idx = stateOf(current).snap?.keptIndices?.getOrNull(position - header)
                     if (idx != null) mapped = header + idx
-                    // 手动点行：`AbsListView.performItemClick` 在调到我们之前已经用
-                    // **子集下标**写过一次 checked states，而宿主的多选模型读的是这份表。
-                    // 只改转发给监听器的 position 没用 —— 这里把它改写成全量下标。
-                    if (mapped != position && lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE) {
-                        runCatching {
-                            // 框架刚按**子集下标**取反写了 position 那一格。筛选时两套坐标会重叠：
-                            // 这个格子属于「全量下标 == position」的**另一只**股票。
-                            // 先把它还原成取反前的值，再把**被点的这一行**按自己的旧值取反。
-                            // 用 setItemChecked 而不是直接改 mCheckStates：框架会一并维护
-                            // checkedItemCount / checkedIdStates（直接改表会漏掉这两份，
-                            // stable id 的列表下次刷新还会按 id 表把勾选复活到子集坐标上）。
-                            val toggledAtSubset = lv.isItemChecked(position)
-                            val oldMapped = lv.isItemChecked(mapped)
-                            try {
-                                // 这一格用**子集坐标**：代理的 getItemId 正常映射，
-                                // 拿到的正是被点这一行的 id（框架刚写进去的那一份）。
-                                lv.setItemChecked(position, !toggledAtSubset)
-                                // 这一格是**全量坐标**：必须让代理的 getItemId 原样放行，
-                                // 否则会再映射一次，mCheckedIdStates 记成别的股票。
-                                StgFilterBridge.runWithRemapBypassed {
-                                    lv.setItemChecked(mapped, !oldMapped)
-                                }
-                            } catch (t: Throwable) {
-                                // 失败回滚：不能把两格留在与点击前不同的状态
-                                runCatching { lv.setItemChecked(position, toggledAtSubset) }
-                                runCatching {
-                                    StgFilterBridge.runWithRemapBypassed {
-                                        lv.setItemChecked(mapped, oldMapped)
-                                    }
-                                }
-                                throw t
-                            }
-                        }.onFailure { GLog.w("筛选股票：改写 checked states 失败", it) }
-                    }
+                    // 诊断「筛后点 A 选中 B」时先看这一行：position 是框架给的原始位置（含 header），
+                    // header 是 ListView 此刻的 header 数，mapped 是转发给宿主/写 checked states 的位置。
+                    // 三者对不上就说明坐标换算的前提变了（INFO 级、每次手动点行一条，不刷屏）。
+                    GLog.i(
+                        "筛选股票：行点击 position=$position header=$header " +
+                            "subset=${position - header} mapped=$mapped " +
+                            "adapter=${current.javaClass.simpleName}",
+                    )
+                    // ⚠️ **不要把 checked states 搬到 mapped（全量位置）**（2026-10-21 真机）：
+                    // `AbsListView.performItemClick` 在调到我们之前，已经按**适配器位置**
+                    // （header + 子集下标）取反写了 `mCheckStates`，而屏幕上的
+                    // `CheckedTextView` 与 `mCheckedItemCount` 读的正是这一格。
+                    // 搬到 `header + 全量下标` 会让勾选落到**下一行**（点第 3 行勾中第 4 行）。
+                    // 宿主需要的是 `mapped`（全量位置）—— 只改转发给监听器的 position，
+                    // 两边各用各的坐标；checked states 保持框架写下的适配器位置不动。
                 }.onFailure { GLog.w("筛选股票：点击下标回映射失败", it) }
                 if (sink == null) {
                     GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")

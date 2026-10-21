@@ -26,7 +26,7 @@ import java.util.IdentityHashMap
  * 这个 object 是**进程级单例**：离开筛选页后快照会一直留着。只按元素身份匹配不够 ——
  * 宿主可能在多个策略页之间复用同一批 `StockInfo` 对象，于是上一页的筛选结果会被
  * 套到这一页上（直达行情的翻页列表被无故裁掉几只）。所以 [publish] 必须带上
- * 全量列表实例，[keepOnly] 只认 `===` 的同一个列表；对不上就当作「没筛」。
+ * 全量列表实例，[keepOnly] 只认「同一个实例或内容逐项 `===` 的副本」；对不上就当作「没筛」。
  * 同时记下**列表上的过滤代理**（owner），供 [fullIndexAt] / [fullIndices] 做归属校验。
  */
 object StgFilterBridge {
@@ -129,9 +129,10 @@ object StgFilterBridge {
     fun keepOnly(source: List<*>?): List<Any>? {
         val snap = current ?: return null
         if (source.isNullOrEmpty()) return null
-        // 只认算出这份快照的**同一个列表实例**：别的策略页 / 重建后的列表即使
-        // 复用同一批 model 对象，也不能套用这份结果（2026-10-21）。
-        if (snap.source !== source) return null
+        // 只认「算出快照的那份列表」：同一个实例，或**内容逐项 `===`** 的副本。
+        // 宿主构造 EngineIntent 时可能把列表复制一份（真机 2026-10-21：直接比实例会
+        // 把正常路径也拒掉，翻页列表退回全量）；但换页后元素/顺序不同，仍然会被挡下。
+        if (!sameContents(snap.source, source)) return null
 
         val ids = IdentityHashMap<Any, Boolean>(snap.kept.size * 2)
         for (e in snap.kept) ids[e] = true
@@ -139,5 +140,13 @@ object StgFilterBridge {
         val out = ArrayList<Any>(snap.kept.size)
         for (e in source) if (e != null && ids.containsKey(e)) out.add(e)
         return out.ifEmpty { null }
+    }
+
+    /** 两个列表是不是「同一份内容」：长度相同且逐项 `===`（允许宿主复制列表实例） */
+    private fun sameContents(a: List<*>, b: List<*>): Boolean {
+        if (a === b) return true
+        if (a.size != b.size) return false
+        for (i in a.indices) if (a[i] !== b[i]) return false
+        return true
     }
 }

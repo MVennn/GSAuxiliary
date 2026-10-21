@@ -95,16 +95,25 @@ class StgFilterBridgeTest {
     }
 
     @Test
-    fun `keepOnly 只认算出快照的同一个列表实例`() {
+    fun `keepOnly 接受同一份内容的列表副本`() {
+        // 宿主构造 EngineIntent 时可能复制列表实例，但元素还是同一批对象 —— 这是正常路径
+        val full = arrayListOf("a", "b", "c", "d")
+        StgFilterBridge.publish(listOf("a", "c"), intArrayOf(0, 2), full, proxy)
+        val copy = arrayListOf<Any>(full[0], full[1], full[2], full[3])
+        assertEquals(listOf<Any>("a", "c"), StgFilterBridge.keepOnly(copy))
+    }
+
+    @Test
+    fun `keepOnly 拒绝换页后的另一份列表`() {
         StgFilterBridge.publish(listOf("a", "c"), intArrayOf(0, 2), full, proxy)
         assertTrue(StgFilterBridge.hasSnapshot())
 
         assertEquals(listOf<Any>("a", "c"), StgFilterBridge.keepOnly(full))
-        // 内容相同、但不是同一个列表（换页 / 列表重建 / Bundle 副本）→ 不套用
+        // 长度不同（换页 / 另一份列表）→ 不套用
         assertNull(StgFilterBridge.keepOnly(arrayListOf("a", "b", "c")))
-        // 即使元素是同一批对象，只要列表实例不同也不套用
-        val sameObjects = arrayListOf<Any>(full[0], full[1], full[2])
-        assertNull(StgFilterBridge.keepOnly(sameObjects))
+        // 长度相同但元素不同 → 不套用
+        val other = arrayListOf<Any>("a", "b", "d", "e")
+        assertNull(StgFilterBridge.keepOnly(other))
     }
 
     @Test
