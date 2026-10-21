@@ -234,33 +234,20 @@ GitLab 上**只有一个分支** `main`：
 
 ---
 
-## 8. 如果 GitHub 解封了
+## 8. GitHub 解封后（2026-10-21 已完成）
 
-**能推，而且不用改历史**（2026-10-20 核过）：
+2026-10-21 账号解封，当天补齐了镜像与模块仓库：
 
-| 项 | 现状 |
+| 项 | 结果 |
 |---|---|
-| `origin` 远端 | 还在（`https://github.com/MVennn/GSAuxiliary.git`） |
-| 历史关系 | `origin/main`（`6b49fc7`）是本地 `main` 的**祖先** → 推上去是**快进**，不用 force、不用改历史 |
-| 差距 | 本地领先 **99 个提交** |
-| 凭据 | Windows 凭据管理器里**还留着** GitHub 凭据（`SansKritO4`）；若被一并撤销，就重造一个 PAT（`repo` scope），或把 `~/.ssh/id_ed25519` 加到 GitHub 并把远端换成 SSH |
-
-解封后要做的三件事：
-
-```bash
-# 1. 代码与标签（一条命令，历史连续）
-git push origin main --tags
-
-# 2. 发版：GitHub + LSPosed 模块仓库 一次发完（需要 PAT 有 repo scope）
-python tools/publish.py --notes docs/release-notes/3.3.0.md
-
-# 3. 决定谁是「正本」：README 与 docs 里的链接现在指向 GitLab
-#    （2026-10-20 迁移时改的，见 CHANGELOG 3.3.0 段）
-```
+| 代码 | `main` 已快进到 `origin` —— 未 force、未改写历史（`6b49fc7` 之后的提交全部上去） |
+| 标签 | `48-3.3.0` 已推到 `origin` |
+| 3.3.0 补发 | 源码仓库与 LSPosed 模块仓库各有一份 Release；APK 用的就是 GitLab 那份（`1 537 403 B`，签名证书 `a7fc6034…`，`verify_apk --reject-debug-cert` 24 项全过） |
+| 正本 | **GitLab 仍是正本**：README / docs / 模块仓库的 `SOURCE_URL` 都指向 GitLab；GitHub 是镜像 |
+| 流水线 | `release.yml` 收窄成**只手动触发** —— 推 tag 只同步标签，不再起 40 分钟构建（理由见 [BUILD.md](BUILD.md) §8.1） |
 
 > **模块仓库才是 LSPosed 用户收更新的地方**（modules.lsposed.org 与 LSPosed App 只读它）。
-> GitLab 那边发 Release **不会**让 LSPosed 用户收到提示 —— 账号解封后，
-> `publish.py` 那一步才真正能把 3.3.0 送进模块仓库。
+> 之前 GitLab 那边发 Release **不会**让 LSPosed 用户收到提示；3.3.0 补发之后两边才齐。
 >
 > 签名密钥没变过 → 两边发出来的 APK 签名一致，已装用户**直接覆盖安装**，不用卸载。
 

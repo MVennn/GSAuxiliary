@@ -554,15 +554,21 @@ GitHub 那套一样，见下面 §8.1 的说明）。整体说明、CI 变量怎
 >
 > ⚠️ **YAML 块标量里顶格的行会把整个块截断** —— 内嵌的 python 必须写成单行。
 
-### 8.1 GitHub Actions（账号停用，留档）
+### 8.1 GitHub Actions（仅手动触发；账号 2026-10-21 已解封）
 
-GitHub 账号 2026-10-18 起被停用，下面这两个工作流**已经跑不动**，留着做参考
-（GitLab 那套是照着它们搬的）。两个工作流，都在 `.github/workflows/`：
+GitHub 账号 2026-10-18 被停用、2026-10-21 解封。解封后按风控口径把两个工作流都收窄成
+**只认人主动发起**：`ci.yml` 不在 push 上跑，`release.yml` 不再认 tag（发版改走本地
+`tools/publish.py`）。两个工作流仍在 `.github/workflows/`，GitLab 那套是照着它们搬的：
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
 | `ci.yml` | **开 PR / 手动**（不在 push 上跑） | 编译 `assembleRelease`（手动触发勾了 `build_debug` 才连 `assembleDebug`）+ 跑红线校验 + 上传 APK 与 R8 mapping | **可选**（配了就签真名，没配也能跑） |
-| `release.yml` | 推 tag（`34-2.14.0`）/ 手动 | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
+| `release.yml` | **仅手动**（`workflow_dispatch`，填已存在的 tag） | 校验 tag、查凭据权限、签名构建、跑红线、调 `publish.py` 发双仓库 | 5 个（+1 个可选），见 §8.2 |
+
+> **推 tag 不触发流水线**（2026-10-21 起）：`release.yml` 的 `push: tags` 已去掉 ——
+> 「推一个版本标签 → 自动起一次 40 分钟构建」与账号被停用的形态同类。
+> 发版由本地 `python tools/publish.py --notes …` 完成（见 [GITLAB.md](GITLAB.md) §5），
+> 需要云端复验时到 Actions 页面手动触发、填同一个 tag。
 
 > **`ci.yml` 不在 push 上跑**（2026-10-18 起）：日常改动都在本地
 > `./gradlew.bat :app:assembleRelease` + 真机验证完才提交，云端再编一遍是重复；

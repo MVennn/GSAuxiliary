@@ -141,12 +141,12 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 
 ---
 
-## 1.1 从 CI 发版（推个 tag 就行）
+## 1.1 从 CI 发版（手动触发，留档）
 
-> **这一节讲的是 GitHub Actions 那条路** —— GitHub 账号 2026-10-18 起被停用，
-> 那两个工作流已经跑不动，**留档**。GitLab 侧的对应物是 `.gitlab-ci.yml` 的
-> `release` 作业（结构见 [GITLAB.md](GITLAB.md) §4），但它卡在账号级身份验证
-> 那道门上 —— 所以**现在发版走脚本**（§1），流水线通了再切回去。
+> **这一节讲的是 GitHub Actions 那条路**。账号 2026-10-18 被停用、2026-10-21 解封；
+> 解封后 `release.yml` 已收窄成**只手动触发** —— 推 tag 只同步标签，不再起流水线
+> （理由见 [BUILD.md](BUILD.md) §8.1）。**日常发版走本地脚本**（§1）。
+> 需要一个可复现的云端构建 / 演练时，到 Actions 页面手动触发、填同一个 tag。
 
 `.github/workflows/release.yml` 把上面这一整套搬到了 GitHub 上。你只需要：
 
@@ -154,8 +154,9 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 # 1. 改 app/build.gradle.kts 的 versionCode / versionName
 # 2. 写一份面向用户的说明（可选，但强烈建议）
 vim docs/release-notes/2.14.0.md      # 文件名 = versionName
-# 3. 提交，然后打一个同名的 tag
+# 3. 提交，然后打一个同名的 tag（只同步标签，不触发流水线）
 git tag 34-2.14.0 && git push origin 34-2.14.0
+# 4. Actions → Release → Run workflow，填 34-2.14.0
 ```
 
 然后 CI 依次做（前 5 步都在装 JDK / SDK **之前** —— 几秒就能判定的事，
@@ -324,7 +325,8 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 **4. 构建触发收窄到「人主动发起」。**
 `ci.yml` 已在 2026-10-18 去掉 `push` 触发，只剩开 PR / 手动（见 [BUILD.md](BUILD.md) §8）；
-`release.yml` 只认 tag 与手动。日常一律本地 `assembleRelease` + 真机验证，云端不再自动编。
+`release.yml` 在 2026-10-21 去掉 `push: tags`，只剩手动 —— 推 tag 只同步标签。
+日常一律本地 `assembleRelease` + 真机验证，云端不再自动编。
 
 另外两条同样算异常活动模式：短时间批量创建 / 删除仓库或 Release；多个 token 轮换着用
 （本项目的分工是固定的 —— `LSPOSED_REPO_TOKEN` 给 CI 发版，`GS_GITHUB_TOKEN` 给本地脚本）。
