@@ -160,6 +160,11 @@ class StgDirectQuoteFeature : Feature {
             } else {
                 GLog.w("策略直达标准行情：被点的股票不在筛选结果里，翻页列表退回全量")
             }
+        } else if (!rawList.isNullOrEmpty() && StgFilterBridge.hasSnapshot()) {
+            // 有筛选快照，但和这张列表对不上（页面已换 / 列表已重建 / Bundle 里是副本），
+            // 或者保留项已经不在列表里。通道只对「算出快照的那个列表实例」生效，
+            // 这里按全量走 —— 套错页面比不筛更糟。
+            GLog.w("策略直达标准行情：筛选快照与当前列表对不上（或结果为空），翻页列表按全量")
         }
 
         val cls = resolveItemClass(env, originalList, clicked) ?: run {

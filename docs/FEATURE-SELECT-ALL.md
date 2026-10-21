@@ -95,35 +95,52 @@ Activity.onResume（只对 AIStkStgDetailAct）
 | **独立 id**：`View.generateViewId()` | 克隆品若沿用源的 `id`，`findViewById` 会歧义，"防重复注入"的幂等判断也会失效。 |
 | **`minWidth` 用 `paint.measureText` 量**，取「全选」「反选」里更宽的那个 | 文案在「全选 ↔ 反选」间切换时宽度不变，按钮不抖、也不会把「取消」挤出屏幕。**不能**取 `src.width` —— 文案切换途中会拿到旧文案（「勾选加入自选股」5 字）的宽度，把按钮撑过头。 |
 
-### 2.3 全选 / 反选：逐行触发 + 覆盖屏外行 + 分帧
+### 2.3 全选 / 反选：先确定每行状态 + 只点要改的行 + 分帧
 
 ```
 toggleAll()
   ├─ realAdapter = unwrapHeaderAdapter(lv.adapter)   // 拆掉 HeaderViewListAdapter
-  ├─ 读底部 #tv_bottom_zxg_num 得到 cur（宿主维护，天然含屏外行）
-  ├─ allChecked = (cur == realAdapter.count)
-  ├─ wantChecked = !allChecked
-  └─ stepToggle(index = 0 … total-1)，每行之间 postDelayed 16ms
-        ├─ fullIdx = StgFilterBridge.fullIndexAt(index)   // 子集下标 → 全量下标
-        ├─ 可见行 → 用已绑定的真实子 View
-        ├─ 屏外行 → adapter.getView(index, null, lv) 现造探针 View
-        ├─ 该行状态 != 目标状态 →
-        │    StgFilterBridge.runWithRemapBypassed {
-        │        lv.performItemClick(row, header + fullIdx, id)
-        │    }
-        └─ 全部走完 → lv.invalidateViews() 重画可见行 + updateLabel()
+  ├─ readRowStates()：确定每一行**点击前**的状态（优先级见下）
+  │     ├─ 宿主计数 == 0        → 全部未选（不建视图）
+  │     ├─ checked states 可用  → 读它（O(行数)、不建视图；与「确认添加」同一份表）
+  │     │     没有筛选时还要求「表里勾选数 == 宿主计数」，对不上就改用探针
+  │     └─ 否则                 → 逐行 adapter.getView(i, null, lv) 现绑探针读 #ct_item
+  ├─ wantChecked = StgSelectAllPlan.wantChecked(before)   // 还有没勾上的 → 全选
+  ├─ click = StgSelectAllPlan.rowsToClick(before, wantChecked)
+  │     // 只点「状态与目标不同」的行 —— 行点击是取反的
+  └─ stepToggle(click[0..n])，每行之间 postDelayed 16ms
+        ├─ 运行令牌 / 适配器身份 / 下标快照校验，变了就中止
+        ├─ pos = header + full[index]                  // 子集下标 → 全量下标（快照）
+        ├─ 可见行 → 传已绑定的真实子 View；屏外行 → 再造一个探针 View
+        ├─ lv.setItemChecked(pos, !wantChecked)
+        │     // 摆成「点击前」，取反后才一定落到目标；它还会维护 checkedItemCount
+        ├─ StgFilterBridge.runWithRemapBypassed {
+        │      lv.performItemClick(row, pos, adapter.getItemId(index))
+        │  }
+        └─ 全部走完 → repaintVisible() 把屏上可见勾选框刷成目标态 + updateLabel()
 ```
 
 要点：
 
-1. **「是否已全选」以底部的宿主计数为准**，不是数可见行 —— 它含屏外行，且不用建 View。
-2. **屏外行必须覆盖**：`index` 从 `0` 走到 `total-1`，屏外行靠 `Adapter.getView(pos, null, lv)` 造视图；
+1. **状态来源按优先级选，绝不读屏上那颗勾选框**（2026-10-21）：合成点击后宿主不会重画
+   部分可见勾选框（§4.1），读屏上那颗会拿到过期状态 —— 这正是「重复全选部分选不中」的根因。
+   顺序是「宿主计数 0 → 全部未选」→「checked states」→「逐行探针」。
+   中间那档最省（不建视图），最后一档只在表不可用或与计数矛盾时才走。
+2. **只点状态与目标不同的行**：行点击是**取反**的，对已勾上的行再点一次就是取消。
+3. **屏外行必须覆盖**：`index` 从 `0` 走到 `total-1`，屏外行靠 `Adapter.getView(pos, null, lv)` 造视图；
    不看 `ListView.childCount`（那只是可见行数）。
-3. **一行一帧（`postDelayed` 16ms）**：宿主每切换一行就刷新列表，同帧复用子 View 会拿到失效视图。
-4. **计数明确时跳过逐行探状态**（`cur == 0` 或 `cur == total`）：直接全量点击，省掉屏外行的 `getView` 开销。
+4. **一行一帧（`postDelayed` 16ms）+ 防重入**：宿主每切换一行就刷新列表，同帧复用子 View
+   会拿到失效视图；一轮没跑完时再点按钮直接忽略（两轮会各自按旧快照点同一批行）。
 5. **`#ct_item` id 解析失败 → 保守放弃**并记日志。若拿不到勾选态，`checked` 会恒为 `false`，
    于是对**已选行**也发点击 → 「全选」会变成「反选」。宁可不动，也不能点反。
-6. **筛选生效时必须传「全量下标」**（见 §2.3.1）。
+6. **筛选生效时必须传「全量下标」**（见 §2.3.1），并在启动时把下标表**快照**下来；
+   运行中宿主换了适配器或筛选结果变了就中止（否则后半程会点到别的股票）。
+7. **用 `setItemChecked` 预置状态，不直接改 `mCheckStates`**：前者会一并维护
+   `mCheckedItemCount` / `mCheckedIdStates`（宿主可能用它们渲染「已选 N」）；
+   点击抛异常时把旧值写回，不留「与目标相反」的残值。
+8. **只对普通多选模式生效**：`CHOICE_MODE_SINGLE`（点击会清掉别的行）与
+   `CHOICE_MODE_MULTIPLE_MODAL`（action mode 活跃时框架不把点击派给宿主监听器）
+   都不注入按钮，日志里写明 `choiceMode`。
 
 ### 2.3.1 与「策略详情页筛选股票」叠加（2026-10-20 真机修复）
 
@@ -148,13 +165,17 @@ toggleAll()
 1. **合成点击直接传全量下标**：`pos = header + fullIndexAt(index)`，并用
    `StgFilterBridge.runWithRemapBypassed { … }` 让筛选 wrapper **原样放行**
    （否则它会把全量下标再当子集下标映射一次）。这样框架写的 checked states 与宿主收到的
-   position 都是全量坐标。
+   position 都是全量坐标。放行标记也覆盖过滤代理的 `getItem` / `getItemId` ——
+   `setItemChecked(全量下标)` 维护 `mCheckedIdStates` 时不会再映射一次（2026-10-21）。
 2. **手动点行由筛选 wrapper 改写 checked states**：手动点击的 position 由框架按子集坐标给出，
-   wrapper 在转发前把 `mCheckStates[子集下标]` 清掉、写入 `mCheckStates[全量下标]`，
-   宿主随后读到的就是正确股票。
+   wrapper 在转发前把这一格还原成「取反前」的值，再把**被点的这一行**（全量下标）按它自己的
+   旧值取反。**不能**直接把子集位置上的取反结果搬过去 —— 筛选时两套坐标会重叠，
+   子集位置 N 的格子属于「全量下标 N」的**另一只**股票，搬过去会顺手改掉别人的选中
+   （2026-10-21 修正，见 §4.2）。全量那一格同样放在放行标记里；两格任一步失败都回滚。
 
 另外，**可见行必须传真实子 View**：宿主的点击处理会就地把这一行的勾选框打上；
 用脱离列表的探针 View 只会改到探针，屏幕上看不到勾。屏外行仍然用探针 View。
+**读状态则相反**：一律用现绑的探针视图，不读屏上那颗（它可能没被重画，见 §4.1）。
 
 ### 2.4 文案随状态切换（全选 / 反选）
 
@@ -181,6 +202,7 @@ toggleAll()
 |---|---|
 | `feature/strategyselect/StgSelectAllTargets.kt` | 上面那张控件契约表（全部做成候选数组，App 升级只改常量） |
 | `feature/strategyselect/StgSelectAllFeature.kt` | 功能本体 |
+| `feature/strategyselect/StgSelectAllPlan.kt` | 方向判定与待点行（纯逻辑，可单测） |
 | `feature/stgfilter/StgFilterBridge.kt` | 筛选生效时的「子集下标 → 全量下标」通道，以及合成点击的放行标记 |
 | `feature/FeatureManager.kt` | `features` 列表登记 |
 | `core/ConfigKeys.kt` | `STG_SELECT_ALL` 键 + `DEFAULT_*=false` + 进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
@@ -223,13 +245,57 @@ toggleAll()
 | 11 | 同一组合再选一次 | 这 3 只已在自选里 → 宿主显示「已在该组合」（**语义正确**；修复前是选错了股票导致的误报） |
 | 12 | 非连续子集（19/23，排除科创板） | 底部「已选 19 只」；确认页 codes **len=19 且不含 688xxx**；手动点首行 → codes = **[600178]**；「反选」→ 计数 0、文案回「全选」、可见勾选框全部清空 |
 
-> ⚠️ **已知观感局限（未修）**：合成点击后**部分可见勾选框可能不重画** ——
+> ⚠️ **观感局限（2026-10-21 已补显示刷新，待真机验证）**：合成点击后宿主不会重画**部分**可见勾选框 ——
 > 50e / 19 只筛选结果实测：底部「已选 19 只股票」、确认页 19 只全对，
 > 但屏幕 9 个可见勾选框只画出 6 个；**手动点行**与**反选**的勾选显示正常。
-> 试过 `invalidateViews()` 与「预置视图位置」两种补法：前者无效；
-> 后者会让确认页把「视图位置」也当选中行（18 只被并成 21 只）。
-> 宿主的多选渲染与 `mCheckStates` 的读写时机不透明，故保留「计数 + 确认页正确」
-> 这一层，不做不可靠的视图 hack。
+> 根因：`performItemClick` 内部的 `updateOnScreenCheckedViews()` 只处理行根视图（`Checkable`），
+> 而勾选框 `#ct_item` 在行内部。
+> `invalidateViews()` 与「预置视图位置」两种旧补法无效（后者还会让确认页多出股票）。
+> 现在改为**全部点完后只刷新显示**：`repaintVisible()` 把屏上可见的 `#ct_item`
+> 直接刷成目标状态 —— 不写 checked states、不碰宿主模型，所以确认页不受影响。
+> 这条显示刷新只在**所有行点击都成功**时执行（失败就保持原样，不画一个假的勾）。
+
+### 4.2 2026-10-21：重复全选「部分选不中」
+
+真机（用户报）：**做过一次全选以后，下次在同一个策略详情页点全选，部分行选不中**。
+
+根因有两层，都在「判据」上：
+
+1. **读错了状态**：旧实现在需要逐行判断时（`cur` 既不等于 0 也不等于总数），
+   对**可见行**读的是屏上那颗 `#ct_item`。而上一轮合成点击后宿主不重画部分勾选框（§4.1），
+   屏上显示「没勾」、宿主模型里其实「已勾」→ 这一轮又对它发了一次点击。
+   行点击是**取反**的 → 已经选中的行被点掉 = 部分选不中。
+2. **取反写 checked states 撞上残值**：`performItemClick` 按 `position` **取反**写
+   `mCheckStates`。上一轮留下的 true 会让「勾上」变成「取消」。
+
+修复：
+
+- **状态来源按优先级选，不读屏上那颗勾选框**（`readRowStates` + `StgSelectAllPlan.stateSource`）：
+  ① 宿主计数为 0 → 全部未选；② 读框架的 checked states（与「确认添加」同一份表，
+  O(行数)、不建视图；没有筛选时还要求「表里勾选数 == 宿主计数」）；
+  ③ 只有它不可用 / 与计数矛盾时才逐行现绑探针（`adapter.getView(i, null, lv)`）。
+- **只点状态与目标不同的行**（`StgSelectAllPlan.rowsToClick`）：
+  已符合目标的再点一次就是取消。
+- **点击前用 `lv.setItemChecked(pos, !wantChecked)` 预置状态**：
+  取反后必然落到 `wantChecked`；用公开 API 而不是直接改 `mCheckStates`，
+  这样 `mCheckedItemCount` / `mCheckedIdStates` 一并维护；点击抛异常时写回旧值。
+- **防重入 + 可取消**：一轮没跑完时忽略新的点击；关开关 / 退出多选态时
+  `cancelRun()` 让正在分帧的链立刻停。
+- **运行中校验快照**：启动时把「子集→全量」下标表快照下来（并要求列表上挂的确实是过滤代理，
+  避免读到上一页留在全局桥里的旧表）；中途适配器换了或下标变了就中止。
+- **只对普通多选模式生效**：单选 / 多选模态下不注入按钮（`toggleAll` 里也有同一道守卫）。
+- **手动点行的 wrapper 不再搬取反结果**：先还原子集位置那一格（它属于全量下标相同的
+  另一只股票），再把被点的行按自己的旧值取反（见 §2.3.1 第 2 条）。
+- **`performItemClick` 的 id 改用代理的 `getItemId(index)`**：`lv.getItemIdAtPosition(全量位置)`
+  在全量下标小于子集行数时会被代理再映射一次，拿到别的股票的 id。
+- **只在过滤代理确实挂在列表上时才发布下标表**：否则「全选」会把子集下标当全量下标用。
+- **文案与动作共用同一判据**（`updateLabel` 也读 checked states）：
+  否则筛选后会出现「文案写着全选、点下去却在取消」。
+
+单测：`StgSelectAllPlanTest` 10 条（方向判定 / 待点行 / 状态来源优先级）。
+
+> ⚠️ **本节的修复尚未真机验证**（2026-10-21 提交时设备未接）。
+> 装机后按 §5 第 9 条复验；重点看「连续点」与「筛选 + 全选」两种组合。
 
 ---
 
@@ -244,6 +310,8 @@ toggleAll()
 7. 目标 App 无新增崩溃；release 包 `Lio/github/libxposed/api` 定义类 0。
 8. **筛选生效时**：全选勾中的行 = 页面可见的股票；确认添加收到的代码与之一致
    （不能是全量前 N 只）；手动点行也选中屏幕上那一只。
+9. **重复点**：全选 → 反选 → 全选、全选 → 手动改几行 → 全选 —— 每次结束都应达到
+   目标状态（全勾或全不勾），**不能有行反向**（2026-10-21 修的就是这个）。
 
 ---
 

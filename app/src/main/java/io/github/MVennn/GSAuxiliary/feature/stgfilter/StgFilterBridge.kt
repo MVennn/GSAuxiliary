@@ -20,6 +20,14 @@ import java.util.IdentityHashMap
  *
  * [Snapshot.kept] 里是与适配器数据**同一批对象**（没有复制），所以匹配用 `===`
  * 而不是 `equals` —— 数据项是宿主自己的 model，不保证 `equals` 的语义。
+ *
+ * ## 快照必须绑定到「算出它的那个列表实例」（2026-10-21）
+ *
+ * 这个 object 是**进程级单例**：离开筛选页后快照会一直留着。只按元素身份匹配不够 ——
+ * 宿主可能在多个策略页之间复用同一批 `StockInfo` 对象，于是上一页的筛选结果会被
+ * 套到这一页上（直达行情的翻页列表被无故裁掉几只）。所以 [publish] 必须带上
+ * 全量列表实例，[keepOnly] 只认 `===` 的同一个列表；对不上就当作「没筛」。
+ * 同时记下**列表上的过滤代理**（owner），供 [fullIndexAt] / [fullIndices] 做归属校验。
  */
 object StgFilterBridge {
 
@@ -29,23 +37,69 @@ object StgFilterBridge {
         val kept: List<Any>,
         /** 保留项在宿主**全量列表**里的下标（与 [kept] 等长、同序） */
         val keptIndices: IntArray,
+        /** 这份结果是从哪个**全量列表实例**算出来的（身份绑定，防止快照串页） */
+        val source: List<*>,
+        /**
+         * 装在这张列表上的过滤代理实例。
+         *
+         * 消费者（全选 / 自选高亮）手里只有代理，没有全量列表；用它做归属校验，
+         * 比类名判据可靠（R8 打不穿、也不怕宿主有同名类）。
+         */
+        val owner: Any?,
     )
 
     @Volatile private var current: Snapshot? = null
 
-    /** 筛选侧调用：条件生效时传保留的条目与全量下标，不筛 / 功能关闭时传 null */
-    fun publish(kept: List<Any>?, keptIndices: IntArray? = null) {
-        current = if (kept.isNullOrEmpty() || keptIndices == null) {
+    /**
+     * 筛选侧调用：条件生效时传保留的条目、全量下标、**算这份结果用的全量列表**
+     * 与**列表上那个过滤代理**；不筛 / 功能关闭时传 null。
+     *
+     * [source] 不是可选装饰：缺了它就只能按元素身份匹配，跨页会误筛。
+     * 因此 kept 非空而 source 为空时按「没筛」处理（宁可退化成全量，也不套错页面）。
+     */
+    fun publish(
+        kept: List<Any>?,
+        keptIndices: IntArray? = null,
+        source: List<*>? = null,
+        owner: Any? = null,
+    ) {
+        current = if (kept.isNullOrEmpty() || keptIndices == null || source == null) {
             null
         } else {
-            Snapshot(kept, keptIndices)
+            Snapshot(kept, keptIndices, source, owner)
         }
     }
 
-    /** 过滤代理的第 [proxyIndex] 行对应宿主全量列表的哪个下标；没筛 / 越界返回 null */
-    fun fullIndexAt(proxyIndex: Int): Int? {
-        val idx = current?.keptIndices ?: return null
+    /** 当前是否有生效的筛选快照（用于调用方区分「没筛」与「快照不属于本页」） */
+    fun hasSnapshot(): Boolean = current != null
+
+    /** 这份快照是不是 [owner]（列表上那个过滤代理）算出来的 */
+    fun isFor(owner: Any?): Boolean = owner != null && current?.owner === owner
+
+    /**
+     * 过滤代理的第 [proxyIndex] 行对应宿主全量列表的哪个下标；没筛 / 越界返回 null。
+     *
+     * 传了 [owner] 就要求快照确实由这个代理发布（消费者手里通常只有代理）——
+     * 别的页面的快照一律不认，免得按别页的下标点行/染色。
+     */
+    fun fullIndexAt(proxyIndex: Int, owner: Any? = null): Int? {
+        val snap = current ?: return null
+        if (owner != null && snap.owner !== owner) return null
+        val idx = snap.keptIndices
         return if (proxyIndex in idx.indices) idx[proxyIndex] else null
+    }
+
+    /**
+     * 子集行数 → 全量下标的完整映射（[count] 行）。
+     *
+     * 供「全选」一次性快照用：**长度必须与列表上的行数一致**，任何一项缺失都返回 null。
+     * 不能用 `?: it` 逐项兜底 —— 那会让同一轮点击里混用两套坐标（点到别的股票）。
+     */
+    fun fullIndices(count: Int, owner: Any? = null): IntArray? {
+        val snap = current ?: return null
+        if (owner != null && snap.owner !== owner) return null
+        if (count <= 0 || snap.keptIndices.size != count) return null
+        return snap.keptIndices.copyOf()
     }
 
     /**
@@ -75,6 +129,9 @@ object StgFilterBridge {
     fun keepOnly(source: List<*>?): List<Any>? {
         val snap = current ?: return null
         if (source.isNullOrEmpty()) return null
+        // 只认算出这份快照的**同一个列表实例**：别的策略页 / 重建后的列表即使
+        // 复用同一批 model 对象，也不能套用这份结果（2026-10-21）。
+        if (snap.source !== source) return null
 
         val ids = IdentityHashMap<Any, Boolean>(snap.kept.size * 2)
         for (e in snap.kept) ids[e] = true

@@ -355,9 +355,22 @@ class StgStockFilterFeature : Feature {
             return if (position >= 0 && position < idx.size) idx[position] else position
         }
 
-        override fun getItem(position: Int): Any? = base.getItem(mapped(position))
+        /**
+         * `StgFilterBridge.runWithRemapBypassed` 里的 position **已经是全量下标**
+         * （「全选」的合成点击、手动点击搬运 checked states 时）。
+         *
+         * 这两个方法必须一起放行：
+         *  - `getItemId`：`AbsListView.setItemChecked(pos=全量)` 会用它维护
+         *    `mCheckedIdStates`；再映射一次就会记成**另一只股票**的 id，
+         *    stable-id 的列表下次布局会按 id 表把勾选复活到子集坐标上。
+         *  - `getItem`：宿主若在点击回调里用 `parent.getItemAtPosition(全量下标)` 取值，
+         *    再映射一次会读到别的股票。
+         */
+        override fun getItem(position: Int): Any? =
+            if (StgFilterBridge.isRemapBypassed()) base.getItem(position) else base.getItem(mapped(position))
 
-        override fun getItemId(position: Int): Long = base.getItemId(mapped(position))
+        override fun getItemId(position: Int): Long =
+            if (StgFilterBridge.isRemapBypassed()) base.getItemId(position) else base.getItemId(mapped(position))
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
             base.getView(mapped(position), convertView, parent)
@@ -372,7 +385,17 @@ class StgStockFilterFeature : Feature {
             base.unregisterDataSetObserver(observer)
         }
 
-        override fun hasStableIds(): Boolean = base.hasStableIds()
+        /**
+         * 过滤生效期间**一律不认 stable id**。
+         *
+         * 代理改变了 position 的语义（子集 ↔ 全量），而 `AbsListView` 的 id 表
+         * （`mCheckedIdStates`）是按 **position** 存、在 `handleDataChanged()` 里用
+         * `mAdapter.getItemId(position)` **反查**重建的。只要 id 表和 checked states
+         * 用的不是同一套坐标，下一次布局 `confirmCheckedPositionsById()` 就会把勾选
+         * 挪到别的行（或直接删掉并减计数）。与其维护两套坐标的 id 表，不如在筛选期间
+         * 关掉 id 表：checked states 仍然照常工作，宿主的多选模型读的也是它。
+         */
+        override fun hasStableIds(): Boolean = false
 
         override fun areAllItemsEnabled(): Boolean = base.areAllItemsEnabled()
 
@@ -777,8 +800,15 @@ class StgStockFilterFeature : Feature {
                 st.snap = null
                 synchronized(proxiedLists) { proxiedLists.remove(lv) }
                 StgFilterBridge.publish(null)
+                lastPublishSkip = null
                 lastSummary = null
                 GLog.i("筛选股票：筛选未生效，已还原全量（${full.size} 只）")
+            } else if (StgFilterBridge.hasSnapshot()) {
+                // 当前页没有代理，但桥里还留着上一页 / 列表重建前的快照。
+                // 现在明确不筛 → 清掉，免得直达行情每次点击都判成「快照不属于当前列表」。
+                StgFilterBridge.publish(null)
+                lastPublishSkip = null
+                GLog.i("筛选股票：筛选未生效，已清掉残留的下标表")
             }
             // 过滤代理已经不在列表上 → 行点击的回映射也没有存在意义，拆回宿主自己的监听
             // （规则 1.1；否则列表上永久多一层透传，热重载后还会再叠一层）。
@@ -842,10 +872,15 @@ class StgStockFilterFeature : Feature {
 
         // 结果与上一轮一致、代理也还挂在列表上 → 什么都别动。
         // 宿主行情刷新很勤，这里放过就等于不给 ListView 多加一次「数据变了」。
+        // ⚠️ 必须连**下标表**一起比：宿主重排 / 前插 / 删除后保留项可能还是那几只，
+        // 但 `rows` 变了；只比 `keep` 就会跳过 `proxy.update(rows)`，代理仍按旧下标
+        // 渲染（屏幕上显示错股票），而桥却发布了新表。
         if (proxy != null && snap != null && sameList(keep, snap.kept) &&
+            rows.contentEquals(snap.keptIndices) &&
             unwrapHeaderAdapter(lv.adapter) === proxy
         ) {
-            StgFilterBridge.publish(keep, rows)
+            lastPublishSkip = null
+            StgFilterBridge.publish(keep, rows, full, proxy)
             return
         }
 
@@ -874,7 +909,24 @@ class StgStockFilterFeature : Feature {
             }
         }
 
-        StgFilterBridge.publish(keep, rows)
+        // 只有过滤代理**确实挂在列表上**时才发布下标表。
+        // 发布了下标表却没有代理时，列表上还是全量数据，而「全选」会按这张表
+        // 把子集下标当全量下标用 —— 点到别的股票上（比不筛更糟）。
+        if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) {
+            lastPublishSkip = null
+            StgFilterBridge.publish(keep, rows, full, st.proxy)
+        } else {
+            // 这一支不能静默：下游会退化成「全量」/「放弃全选」，日志里必须有原因
+            val why = if (st.proxy == null) "过滤代理没装上" else "列表上挂的不是我们的代理"
+            if (lastPublishSkip != why) {
+                lastPublishSkip = why
+                GLog.w("筛选股票：下标表未发布 —— $why（全选/直达行情按全量处理）")
+            }
+            // 代理没挂在列表上 → 列表上是全量数据，行点击**不能**再按子集下标回映射，
+            // 否则手动点行会选中另一只股票（点击 wrapper 读的就是 st.snap）。
+            st.snap = null
+            StgFilterBridge.publish(null)
+        }
         if (notify) notifyAdapter(adapter)
 
         val summary = buildString {
@@ -1230,6 +1282,9 @@ class StgStockFilterFeature : Feature {
     /** [applyFilter] 上一次的早退原因（同款去重） */
     @Volatile private var lastApplySkip: String? = null
 
+    /** 「算出了结果但代理不在列表上」的上一次原因（同款去重；发布成功时清空） */
+    @Volatile private var lastPublishSkip: String? = null
+
     private fun noteSkip(reason: String) {
         if (lastSkipReason == reason) return
         lastSkipReason = reason
@@ -1319,17 +1374,34 @@ class StgStockFilterFeature : Feature {
                     // 手动点行：`AbsListView.performItemClick` 在调到我们之前已经用
                     // **子集下标**写过一次 checked states，而宿主的多选模型读的是这份表。
                     // 只改转发给监听器的 position 没用 —— 这里把它改写成全量下标。
-                    if (mapped != position) {
+                    if (mapped != position && lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE) {
                         runCatching {
-                            val f = android.widget.AbsListView::class.java
-                                .getDeclaredField("mCheckStates").also { it.isAccessible = true }
-                            val states = f.get(lv) as? android.util.SparseBooleanArray
-                            if (states != null) {
-                                // 框架刚把**勾/取消**的结果写在这个子集位置上，先读出来再搬走：
-                                // 固定写 true 会把「手动取消勾选」又改回选中。
-                                val newChecked = states.get(position, false)
-                                states.put(position, false)
-                                states.put(mapped, newChecked)
+                            // 框架刚按**子集下标**取反写了 position 那一格。筛选时两套坐标会重叠：
+                            // 这个格子属于「全量下标 == position」的**另一只**股票。
+                            // 先把它还原成取反前的值，再把**被点的这一行**按自己的旧值取反。
+                            // 用 setItemChecked 而不是直接改 mCheckStates：框架会一并维护
+                            // checkedItemCount / checkedIdStates（直接改表会漏掉这两份，
+                            // stable id 的列表下次刷新还会按 id 表把勾选复活到子集坐标上）。
+                            val toggledAtSubset = lv.isItemChecked(position)
+                            val oldMapped = lv.isItemChecked(mapped)
+                            try {
+                                // 这一格用**子集坐标**：代理的 getItemId 正常映射，
+                                // 拿到的正是被点这一行的 id（框架刚写进去的那一份）。
+                                lv.setItemChecked(position, !toggledAtSubset)
+                                // 这一格是**全量坐标**：必须让代理的 getItemId 原样放行，
+                                // 否则会再映射一次，mCheckedIdStates 记成别的股票。
+                                StgFilterBridge.runWithRemapBypassed {
+                                    lv.setItemChecked(mapped, !oldMapped)
+                                }
+                            } catch (t: Throwable) {
+                                // 失败回滚：不能把两格留在与点击前不同的状态
+                                runCatching { lv.setItemChecked(position, toggledAtSubset) }
+                                runCatching {
+                                    StgFilterBridge.runWithRemapBypassed {
+                                        lv.setItemChecked(mapped, oldMapped)
+                                    }
+                                }
+                                throw t
                             }
                         }.onFailure { GLog.w("筛选股票：改写 checked states 失败", it) }
                     }
@@ -1337,8 +1409,13 @@ class StgStockFilterFeature : Feature {
                 if (sink == null) {
                     GLog.w("筛选股票：没有宿主的行点击监听可转发（position=$position）")
                 } else {
-                    runCatching { sink.onItemClick(parent, view, mapped, id) }
-                        .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+                    // 从这里开始 position 已经是全量坐标：让代理的 getItem/getItemId
+                    // 原样放行 —— 宿主若用 `parent.getItemAtPosition(mapped)` 取值，
+                    // 再映射一次会读到别的股票。
+                    StgFilterBridge.runWithRemapBypassed {
+                        runCatching { sink.onItemClick(parent, view, mapped, id) }
+                            .onFailure { GLog.w("筛选股票：转发行点击失败", it) }
+                    }
                 }
             }
         }

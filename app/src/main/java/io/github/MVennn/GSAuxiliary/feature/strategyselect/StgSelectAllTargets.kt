@@ -50,8 +50,11 @@ object StgSelectAllTargets {
 
     /**
      * 底部「已选 N 只股票」里的**计数**控件（`TextView`，内容是裸数字）。
-     * 宿主在每次勾选变化后自己维护它，所以「是否已全选」直接读它即可 ——
-     * 比遍历可见行更准（含屏外行）也更省（不建 View）。
+     *
+     * 用途已经收窄（2026-10-21）：它只做**快速路径**的旁证 —— 计数为 0 表示一行都没选中；
+     * 以及 checked states 与它明显矛盾时，触发逐行探针。**不再单独作为「是否已全选」的判据**：
+     * 筛选生效时它含被筛掉的行，且与屏上勾选框可能不同步（见
+     * `StgSelectAllFeature#toggleAll` 与 `docs/FEATURE-SELECT-ALL.md` §4.2）。
      */
     val COUNT_ID_CANDIDATES = arrayOf(
         "tv_bottom_zxg_num",

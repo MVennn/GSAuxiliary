@@ -13,6 +13,7 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.reflect.Field
 import java.lang.reflect.Method
@@ -175,7 +176,13 @@ class WatchlistFeature : Feature {
         observeConfig(env.config, allowRefresh = true)
 
         if (WatchlistTargets.isResumeRepaintActivity(activity.javaClass.name)) {
-            repaintVisibleRows(env, activity)
+            // 延后一帧再重绘：筛选功能的 onResume 可能晚于我们注册（钩子顺序决定），
+            // 它会先清掉/重发 StgFilterBridge 的快照。同步读的话可能读到「刚被清空」
+            // 的一瞬间，`isFor(live)` 为 false → 整段跳过（2026-10-21 复核）。
+            mainHandler.post {
+                if (activity.isFinishing || activity.isDestroyed) return@post
+                repaintVisibleRows(env, activity)
+            }
         }
     }
 
@@ -190,15 +197,29 @@ class WatchlistFeature : Feature {
         val lvId = listViewId(activity)
         if (lvId == 0) return
         val lv = activity.findViewById<View>(lvId) as? android.widget.ListView ?: return
-        val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
-        if (!WatchlistTargets.isTargetAdapter(adapter.javaClass.name)) return
+        val live = unwrapHeaderAdapter(lv.adapter) ?: return
 
-        seenAdapters.add(adapter)
+        // 「筛选股票」可能给这个列表套了一层过滤代理 —— 真正的业务适配器被它包着。
+        // 不拆的话 `isTargetAdapter(代理类名)` 永远为 false，整段重绘**静默跳过**：
+        // 表现为「筛选生效时，从个股页加/删自选返回后名字不刷新」（2026-10-21）。
+        val base = unwrapFilterProxy(live) ?: return
+        if (!WatchlistTargets.isTargetAdapter(base.javaClass.name)) return
+
+        // 必须记**原适配器**：代理没有覆写 notifyDataSetChanged，它的观察者
+        // 是转发到 base 的，对代理发通知等于什么都没做。
+        seenAdapters.add(base)
         val cfg = env.config
 
         // ListView 的 header 也占一个 adapter position，需要减掉它才能对齐数据下标
         val headerCount = lv.headerViewsCount
         val first = lv.firstVisiblePosition
+        val filtered = live !== base
+        if (filtered && !StgFilterBridge.isFor(live)) {
+            // 列表上挂着代理，但桥里的快照不是它发布的（换页 / 列表重建 / 热重载后的旧代理）。
+            // 整段跳过并记一条，别逐行刷同一条日志。
+            GLog.w("自选高亮：筛选快照不属于当前列表，跳过本次重绘")
+            return
+        }
 
         for (i in 0 until lv.childCount) {
             val pos = first + i
@@ -207,13 +228,51 @@ class WatchlistFeature : Feature {
             val nameTv = findNameView(row) ?: continue
             val dataPos = pos - headerCount
 
+            // 筛选生效时 dataPos 是**子集下标**，而 itemAt 要的是全量下标。
+            // 读不到下标表就跳过这一行 —— 宁可少染一只，也不能按子集下标染错一只。
+            val fullPos = if (filtered) {
+                val f = StgFilterBridge.fullIndexAt(dataPos, live)
+                if (f == null) {
+                    GLog.w("自选高亮：筛选下标越界（pos=$dataPos），跳过该行")
+                    continue
+                }
+                f
+            } else {
+                dataPos
+            }
+
             val inWatchlist = if (needsSelfCheck(cfg) && cfg.scopeStrategy) {
-                judge(adapter, dataPos)
+                judge(base, fullPos)
             } else {
                 false
             }
-            applyStyle(cfg, nameTv, inWatchlist, "重绘名称失败 pos=$dataPos")
+            applyStyle(cfg, nameTv, inWatchlist, "重绘名称失败 pos=$fullPos")
         }
+    }
+
+    /**
+     * 拆掉「筛选股票」装的过滤代理；不是代理就原样返回，认出来了但拆不开返回 null。
+     *
+     * 为什么按类名认：热重载后新旧实例的类是**不同 ClassLoader 下的同名类**，
+     * `is` 判不出来；类名与 `getTarget()` 由 proguard 的 `-keepnames` /
+     * `-keepclassmembers` 保住（规则 1.2.1）。这里只做跨实例兜底 ——
+     * 本功能没有代理的记账表，也只能这么认。
+     *
+     * 拆不开必须返回 null 而不是原样返回：调用方拿代理类名去比目标适配器会失败，
+     * 但更糟的是把代理当成业务适配器去 `getItem(子集下标)`，那会读到别的股票。
+     */
+    private fun unwrapFilterProxy(a: Any): Any? {
+        if ("FilteredAdapter" !in a.javaClass.name) return a
+        // ⚠️ 必须走 Reflect.findMethod（它设了 isAccessible）：FilteredAdapter 是
+        // StgStockFilterFeature 的**包私有**嵌套类，跨包 `getMethod().invoke()` 会抛
+        // IllegalAccessException —— 那样这里永远返回 null，整段重绘照样是死的。
+        val m = Reflect.findMethod(a.javaClass, "getTarget") ?: run {
+            GLog.w("自选高亮：过滤代理上没有 getTarget()（${a.javaClass.name}），本次不重绘")
+            return null
+        }
+        return runCatching { m.invoke(a) }
+            .onFailure { GLog.w("自选高亮：过滤代理拆包失败（${a.javaClass.name}）", it) }
+            .getOrNull()
     }
 
     /**

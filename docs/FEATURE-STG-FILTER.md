@@ -341,6 +341,32 @@ existing?.onItemClick(parent, view, mapped, id)      // 再转发给宿主原监
 - 换算时要让掉 `headerViewsCount`（横向表头 / 固定列）；
 - `ListView.adapter` 可能是 `HeaderViewListAdapter`，要 `getWrappedAdapter()` 拆包；
 - 没装筛选时 `keptIndices` 为空 → 等价于原样透传，天然安全。
+- 多选态下手动点行还要把框架写下的 checked states 从子集坐标搬到全量坐标。
+  **不能直接搬取反结果**：筛选时两套坐标会重叠，子集位置 N 的格子属于「全量下标 N」
+  的**另一只**股票。正确做法是先还原那一格，再把被点的行按它自己的旧值取反
+  （2026-10-21，见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md) §4.2）。
+- 只有过滤代理**确实挂在列表上**时才发布 `keptIndices`；否则列表还是全量数据，
+  而「全选」会按下标表把子集下标当全量下标用。
+- 多选态手动点行搬 checked states 时，**全量坐标那一格**要放在
+  `StgFilterBridge.runWithRemapBypassed` 里调 `setItemChecked`：代理的 `getItemId`
+  会按子集映射，再映射一次会让 `mCheckedIdStates` 记成别的股票（stable-id 列表
+  下次布局会按 id 表把勾选复活到子集坐标）。转发给宿主监听器时也带上放行标记 ——
+  宿主若用 `parent.getItemAtPosition(全量下标)` 取值，同样不能再映射（2026-10-21）。
+- **筛选结果通道是进程级单例，快照必须绑定到「算出它的那个全量列表实例」与「列表上的代理」**：
+  `StgFilterBridge.publish` 带上全量列表与代理，`keepOnly` 只认 `===` 的同一个列表，
+  `fullIndexAt` / `fullIndices` 按 owner + 行数校验。宿主可能在多个策略页之间复用同一批
+  `StockInfo`，只按元素身份匹配会把上一页的筛选结果套到这一页（直达行情的翻页列表被无故
+  裁掉几只）。换页 / 列表重建 / Bundle 里是副本 / 行数对不上时一律按「没筛」或「放弃全选」
+  处理；`fullIndices` 不做逐项 `?: it` 兜底（混用两套坐标会点到别的股票）（2026-10-21）。
+- **筛选期间代理不声明 stable id**：代理改变了 position 语义，而 `AbsListView` 的 id 表
+  会在 `handleDataChanged()` 里用 `getItemId(position)` 反查重建；两套坐标下必然把勾选
+  挪到别的行（或删掉并减计数）。checked states / 计数照常工作（2026-10-21）。
+- **其他功能读这个列表时也要先拆代理**：`WatchlistFeature` 的 onResume 重绘原先只拆
+  `HeaderViewListAdapter`，筛选生效时 `isTargetAdapter(代理类名)` 为 false → 整段
+  静默跳过（从个股页加/删自选返回后名字不刷新）。现在先拆代理（跨包反射必须走
+  `Reflect.findMethod` 设 `isAccessible`，否则包私有类会抛 `IllegalAccessException`），
+  再用 `keptIndices` 把可见行的子集下标换回全量下标；快照不属于当前代理就整段跳过
+  （宁可少染，不能染错）（2026-10-21）。
 
 ### 走过的弯路：`GONE` 不塌陷、`height=0` 也不塌陷（已废弃，留档）
 
