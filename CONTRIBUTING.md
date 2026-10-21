@@ -5,7 +5,7 @@
 > [docs/DOC-RULES.md](docs/DOC-RULES.md)（文档规则），本文件只讲「怎么提」。
 
 先说一句要紧的：本模块只做**界面显示与操作便捷**的增强，不碰交易、不做自动化下单、
-不荐股。提 Issue / MR 时请确认自己的建议在这条线内。
+不荐股。提 Issue / PR 时请确认自己的建议在这条线内。
 
 ## 提 Issue
 
@@ -21,7 +21,7 @@
 
 排错步骤见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
-## 提 Merge Request
+## 提 Pull Request
 
 1. 从 `main` 开分支（一条改动一个分支）。
 2. 改动前过一遍 [docs/CODE-RULES.md](docs/CODE-RULES.md) 的「新功能自检清单」。
@@ -33,8 +33,7 @@
    python tools/ci/check_invariants.py     # 静态检查六项（见 tools/README.md）
    ```
 
-4. MR 描述用仓库自带的模板（[.gitlab/merge_request_templates/Default.md](.gitlab/merge_request_templates/Default.md)），
-   把「怎么验的」写清楚——**真机没验就明说没验**，别含糊。
+4. PR 描述里把「怎么验的」写清楚——**真机没验就明说没验**，别含糊。
 
 ## 几条硬规矩
 
@@ -49,6 +48,6 @@
 
 ## 免责声明
 
-提交 Issue / MR 即表示你已知悉：本模块会 Hook 国信金太阳，可能违反其用户协议并导致
+提交 Issue / PR 即表示你已知悉：本模块会 Hook 国信金太阳，可能违反其用户协议并导致
 账号风控或封禁，相关风险由你自己承担；开发者不承担因使用本模块产生的任何责任。
 全文见 [docs/DISCLAIMER.md](docs/DISCLAIMER.md)。

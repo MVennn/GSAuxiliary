@@ -1,0 +1,8 @@
+# 统一历史提交的作者身份。
+#
+# GitHub 的 Contributors 是按「提交邮箱 → 账号」归属的，.mailmap 只影响本地
+# git shortlog / blame 等工具；要让网页上的 Contributors 只剩主账号，
+# 还得在账号设置里把 mvenn@qq.com 从小号上移除（见 PROGRESS 的说明）。
+M.Venn <127460743+MVennn@users.noreply.github.com> <127460743+SansKritO4@users.noreply.github.com>
+M.Venn <127460743+MVennn@users.noreply.github.com> <mvenn@qq.com>
+M.Venn <127460743+MVennn@users.noreply.github.com> <dev@local>

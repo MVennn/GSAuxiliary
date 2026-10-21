@@ -3,9 +3,9 @@
 # setup-android-sdk.sh —— 在一台「干净的」Linux runner 上装好构建要用的 Android SDK
 #
 # 为什么需要它：
-#   GitHub Actions 有 `android-actions/setup-android` 这个现成的 action，
-#   而 **GitLab 的共享 runner 什么都不预装** —— 没有 cmdline-tools、没有 sdkmanager、
-#   没有 build-tools。于是流水线里的 `./gradlew` 第一句就会因为找不到 SDK 而红。
+#   干净的 Linux 机器（自建 runner / 新开发机）不一定预装 Android SDK ——
+#   **没有 cmdline-tools、没有 sdkmanager、没有 build-tools**。于是 `./gradlew`
+#   第一句就会因为找不到 SDK 而红。
 #   与其依赖某个第三方 action（它自己也要下载 SDK，还要信它的版本），
 #   不如把「装 SDK」写成仓库里的脚本：版本钉死、行为可读、出错时日志在我们自己手里。
 #

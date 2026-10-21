@@ -1,19 +1,10 @@
 # 发布清单
 
-> **一句话**：发版有**两条路**——GitLab 源码仓库跑 `python tools/publish_gitlab.py`，
-> LSPosed 模块仓库跑 `python tools/publish.py`。**两个仓库都要发**（§0），
-> 别手工在两边各来一遍。
+> **一句话**：跑 `python tools/publish.py` —— 一次把源码仓库（GitHub）与
+> LSPosed 模块仓库都发完（§0），别手工在两边各来一遍。
 
-> **2026-10-20 迁移**：GitHub 账号被停用，源码仓库已迁到
-> `https://gitlab.com/M.Venn/gsauxiliary`。`publish.py` 的双仓库发布
-> 依赖 GitHub 写权限，账号恢复前**不可用**；
-> **GitLab 侧走 `tools/publish_gitlab.py`**（出包 → 签名红线校验 → 建 Release → 传 APK），
-> 见 [GITLAB.md](GITLAB.md) §5。
->
-> 仓库里的流水线（`.gitlab-ci.yml`）本来也能发版，但它要求账号先完成
-> **身份验证**（GitLab 不让没验证的账号跑 CI 作业，见 [GITLAB.md](GITLAB.md) §3.3），
-> 而且签名密钥放进**公开项目**的 CI 变量等于把密钥公开 ——
-> 所以发版继续用本地脚本，流水线只跑检查与编译。
+> **2026-10-21 回归 GitHub**：GitHub 账号解封，源码正本回到 `MVennn/GSAuxiliary`；
+> GitLab 镜像已停用，相关脚本与配置已删除。日常发版只需要一条命令（§1）。
 
 ---
 
@@ -23,7 +14,7 @@
 
 | 仓库 | 谁在用 |
 |---|---|
-| `M.Venn/gsauxiliary`（源码，GitLab） | 源码、Issue、GitLab 访客的下载入口 |
+| `MVennn/GSAuxiliary`（源码，GitHub） | 源码、Issue、下载入口 |
 | `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary`（模块仓库） | **LSPosed 网站与 App 只读这里** |
 
 `Xposed-Modules-Repo/*` 是 LSPosed 官方组织下的**独立仓库**，
@@ -78,30 +69,29 @@
 
 ## 1. 发版
 
-**有两条路，缺一不可**（为什么见 §0）：
+一条命令发两个仓库（为什么见 §0）：
 
-| 目标仓库 | 脚本 | 状态（2026-10-20） |
-|---|---|---|
-| **GitLab 源码仓库** `M.Venn/gsauxiliary` | `python tools/publish_gitlab.py` | ✅ 现在就能发 |
-| **LSPosed 模块仓库** `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` | `python tools/publish.py` | ⛔ GitHub 账号停用中，本账号暂无写权限 |
+| 目标仓库 | 用什么 |
+|---|---|
+| **GitHub 源码仓库** `MVennn/GSAuxiliary` | `python tools/publish.py` |
+| **LSPosed 模块仓库** `Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` | 同上，一次发完 |
 
 ```bash
-# ① GitLab 源码仓库（GitLab 访客的下载入口）
-python tools/publish_gitlab.py --check        # 只查凭据与版本，不写任何东西
-python tools/publish_gitlab.py --dry-run      # 演一遍（构建 + 校验，不写）
-python tools/publish_gitlab.py --notes docs/release-notes/<版本>.md
-
-# ② LSPosed 模块仓库（等 GitHub 账号恢复；LSPosed App 只读它）
+# 0. 先确认凭据对两个仓库都有写权限（几秒，只调 API，不写任何东西）
 python tools/publish.py --check
+
+# 1. 干跑一遍，看清楚它要做什么
 python tools/publish.py --dry-run
+
+# 2. 正式发（构建 + 红线校验 + 双仓库 Release + 元文件同步）
 python tools/publish.py --notes docs/release-notes/<版本>.md
 ```
 
-> `publish_gitlab.py` 的凭据是 GitLab token（`GS_GITLAB_TOKEN` 或
-> `~/.config/gitlab/token`），见 [GITLAB.md](GITLAB.md) §3.1。
-> `publish.py` 的凭据见下面第 108 行那段。
+> 凭据按优先级取：`GS_GITHUB_TOKEN` → `GH_TOKEN` → `git credential fill`
+> （Windows 凭据管理器里的 GitHub PAT，需要 `repo` scope **且对模块仓库有写权限**）。
+> 注意**故意不读 `GITHUB_TOKEN`**：那是 Actions 自带的短命 token，写不了模块仓库。
 
-下面这五步是 **`publish.py`（GitHub 那条路）** 做的事：
+下面这五步是 **`publish.py`** 做的事：
 
 ```bash
 # 0. 先确认凭据对两个仓库都有写权限（几秒钟，只调 API，不写任何东西）
@@ -145,7 +135,7 @@ python tools/publish.py --dry-run             # 只打印，不写任何东西
 
 > **这一节讲的是 GitHub Actions 那条路**。账号 2026-10-18 被停用、2026-10-21 解封；
 > 解封后 `release.yml` 已收窄成**只手动触发** —— 推 tag 只同步标签，不再起流水线
-> （理由见 [BUILD.md](BUILD.md) §8.1）。**日常发版走本地脚本**（§1）。
+> （理由见 [BUILD.md](BUILD.md) §8.0）。**日常发版走本地脚本**（§1）。
 > 需要一个可复现的云端构建 / 演练时，到 Actions 页面手动触发、填同一个 tag。
 
 `.github/workflows/release.yml` 把上面这一整套搬到了 GitHub 上。你只需要：
@@ -196,10 +186,8 @@ git tag 34-2.14.0 && git push origin 34-2.14.0
 
 ## 1.2 CI 发版需要的 5 个 Repository secrets
 
-> **这是 GitHub Actions 那条路的变量**（`Settings → Secrets and variables → Actions`），
-> 账号恢复后用。GitLab 侧对应的是 **Settings → CI/CD → Variables**，
-> 只需要 4 个 `GS_KEYSTORE_*`（没有 LSPosed 模块仓库那份），
-> 已在 2026-10-20 配好，见 [GITLAB.md](GITLAB.md) §3.2。
+> **这是 GitHub Actions 那条路的变量**（`Settings → Secrets and variables → Actions`）。
+> 本地发版不需要它们 —— 本地脚本直接用凭据管理器里的 PAT。
 
 `Settings → Secrets and variables → Actions → New repository secret`：
 
@@ -259,7 +247,7 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
   > 风险提示：本模块仅供学习研究，会 Hook 国信金太阳，可能违反其用户协议并导致
   > 账号风控或封禁；不构成任何投资建议。下载使用前请阅读并同意
-  > [免责声明](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/DISCLAIMER.md)。
+  > [免责声明](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)。
   ```
 
 ---
@@ -374,7 +362,7 @@ bot 在收录 issue 里的原话：
 |---|---|---|
 | `README.md` | `README.md` | 与源码仓库**逐字一致** |
 | `SUMMARY` | **`xposed-repo/SUMMARY`** | 模块页标题下面那行**一句话简介** |
-| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | 迁移后应为 `https://gitlab.com/M.Venn/gsauxiliary`（模块仓库现有值仍是旧地址） |
+| `SOURCE_URL` | 由 `publish.py` 按源码仓库地址生成 | `https://github.com/MVennn/GSAuxiliary` |
 | `icon.svg` | `assets/icon.svg` | 模块图标，与 APK 内 launcher 图标同源 |
 
 > ⚠️ **`SUMMARY` 不是名字**。模块的**显示名**来自仓库 Description（见 4.1），
@@ -385,15 +373,15 @@ bot 在收录 issue 里的原话：
 
 ## 5. 几个已经踩过的坑
 
-- **README 里的相对链接**：GitLab 只在**仓库首页**重写相对链接，而模块仓库
+- **README 里的相对链接**：GitHub 只在**仓库首页**重写相对链接，而模块仓库
   （`Xposed-Modules-Repo`）里没有 `assets/` —— logo 因此仍用**绝对 raw 地址**
-  `https://gitlab.com/M.Venn/gsauxiliary/-/raw/main/assets/logo.png`，两个仓库都能显示。
-- **`/-/raw/` 有缓存**：别用它判断「远端同步成功没有」，用 API 或查 commits。
+  `https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png`，两个仓库都能显示。
+- **`raw.githubusercontent.com` 有缓存**：别用它判断「远端同步成功没有」，用 API 或查 commits。
 - **在途开发期间别跑 `publish.py`** —— 它按 `build.gradle.kts` 的当前值建 Release，
   会给一个还没完工的版本建出假 Release。
 - 模块仓库的 `README.md` 若引用 `docs/` 下的文件，会变成**坏图 / 死链** ——
-  那边没有 `docs/`。logo 因此用 GitLab 的**绝对 raw 地址**引用
-  （`https://gitlab.com/M.Venn/gsauxiliary/-/raw/main/assets/logo.png`），两个仓库都能显示。
+  那边没有 `docs/`。logo 因此用 GitHub 的**绝对 raw 地址**引用
+  （`https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png`），两个仓库都能显示。
 - **签名会「静默」退回 debug**：`app/build.gradle.kts` 判定 `hasEnvKeystore` 要求
   四个 `GS_KEYSTORE_*` **全部**存在且文件真的在。少一个就安静地走 debug 签名分支，
   构建照样成功、包照样能装 —— 只是签名和以前不一样。

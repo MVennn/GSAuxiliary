@@ -6,7 +6,7 @@
 docs/release-notes/2.14.0.md
 ```
 
-发版时（`tools/publish_gitlab.py`，以及 GitLab 流水线的 release 作业）会找
+发版时（`tools/publish.py`）会找
 `docs/release-notes/<versionName>.md`，找到就用它当 Release 说明；找不到就退回
 CHANGELOG 的对应段落并打一条警告 —— 那段是写给开发者的，用户看到的是噪音。
 
@@ -42,13 +42,13 @@ Release 说明是**给用户看的**，要短、写成清单、只讲「我现�
 ---
 
 需要 root + LSPosed（支持 API 102），适配国信金太阳 8.6.0 / Android 8.1+。
-安装步骤见 [README](https://gitlab.com/M.Venn/gsauxiliary#安装)。
+安装步骤见 [README](https://github.com/MVennn/GSAuxiliary#安装)。
 
 ---
 
 > 风险提示：本模块仅供学习研究，会 Hook 国信金太阳，可能违反其用户协议并导致
 > 账号风控或封禁；不构成任何投资建议。下载使用前请阅读并同意
-> [免责声明](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/DISCLAIMER.md)。
+> [免责声明](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)。
 ```
 
 结尾那两行加风险提示段是**固定尾巴**，每版照抄不动。风险提示段按
@@ -144,16 +144,15 @@ Release 说明里都得能找到对应行**。性能与审查类不另开长段�
 
 ## 改已经发出去的说明
 
-`tools/publish_gitlab.py` 对已存在的 Release 走「更新说明」而不是重建，同名资产
+`tools/publish.py` 对已存在的 Release 走「更新说明」而不是重建，同名资产
 会先删再传，不会报 `already_exists`。改完文案直接重跑一次就覆盖线上了：
 
 ```bash
-python tools/publish_gitlab.py --skip-build --notes docs/release-notes/<vn>.md
+python tools/publish.py --skip-build --notes docs/release-notes/<vn>.md
 ```
 
 写完 `docs/release-notes/<vn>.md`、把 `versionCode` / `versionName` 递增，
 然后跑发版脚本（见 [RELEASE.md](../RELEASE.md) §1）。
 
-> **推 tag 也会触发 GitLab 流水线**（tag 事件不受「push 不触发」那条规则限制）——
-> 但流水线目前卡在账号级身份验证那道门上（见 [GITLAB.md](../GITLAB.md) §3.3），
-> 所以**发版走脚本**，不等流水线。
+> **推 tag 不会自动发版**（2026-10-21 起）：`release.yml` 只认手动触发。
+> 发版走本地 `publish.py`，推 tag 只同步标签。

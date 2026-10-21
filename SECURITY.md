@@ -14,7 +14,7 @@
 如果发现与本项目相关的安全问题（模块崩溃、越权行为、数据泄露、更新渠道被仿冒等），
 **请不要直接开公开 Issue**，按下面任一方式报告：
 
-- 通过 GitLab 的 [机密 Issue](https://gitlab.com/M.Venn/gsauxiliary/-/issues/new?issue%5Bconfidential%5D=true) 提交（新建时勾选 Confidential）；
+- 通过 GitHub 的 [私密安全报告](https://github.com/MVennn/GSAuxiliary/security/advisories/new) 提交（不会公开可见）；
 - 或在 Issue 里只描述问题方向、隐开敏感细节，并注明「安全相关」。
 
 收到后会尽快确认；确认成立的问题在下一个版本修复并发 Release，同步在 Release 说明里致谢报告人（不愿署名可说明）。

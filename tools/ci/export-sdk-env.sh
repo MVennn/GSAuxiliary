@@ -3,7 +3,7 @@
 # export-sdk-env.sh —— 把 SDK 路径交给后面的构建步骤
 #
 #   · 在 GitHub Actions 里（$GITHUB_ENV 存在）：写 ANDROID_SDK_ROOT / ANDROID_HOME。
-#   · 在 GitLab CI 里：写 local.properties（Gradle 靠它找 SDK）——
+#   · 在别的 CI 里：写 local.properties（Gradle 靠它找 SDK）——
 #     共享 runner 不会把环境变量带进下一个作业，但同一个作业里工作区是共用的，
 #     local.properties 一直在。
 #   · 在别的地方：只打印一行提示，什么都不改。
@@ -30,7 +30,7 @@ if [ -n "${GITHUB_ENV:-}" ]; then
 fi
 
 # local.properties：Gradle 就是靠它找 SDK —— **哪个 CI 都得有**
-# （GitLab 的共享 runner 不会把环境变量带进下一个作业，但同一个作业里
+# （CI 的共享 runner 不会把环境变量带进下一个作业，但同一个作业里
 #   工作区是共用的，local.properties 一直在。）
 if [ ! -f "$ROOT/local.properties" ]; then
     printf 'sdk.dir=%s\n' "$SDK" > "$ROOT/local.properties"

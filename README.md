@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://gitlab.com/M.Venn/gsauxiliary/-/raw/main/assets/logo.png" width="128" alt="GSAuxiliary">
+<img src="https://raw.githubusercontent.com/MVennn/GSAuxiliary/main/assets/logo.png" width="128" alt="GSAuxiliary">
 
 # GSAuxiliary
 
@@ -8,7 +8,7 @@
 
 Make GoldenSun Great Again！
 
-![版本](https://img.shields.io/gitlab/v/release/M.Venn/gsauxiliary) ![流水线](https://gitlab.com/M.Venn/gsauxiliary/badges/main/pipeline.svg) ![源码仓库](https://img.shields.io/badge/源码仓库-GitLab-FC6D26?logo=gitlab&logoColor=white) ![问题反馈](https://img.shields.io/badge/问题反馈-Issues-FC6D26?logo=gitlab&logoColor=white) ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white) ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0) ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
+![版本](https://img.shields.io/github/v/release/MVennn/GSAuxiliary) ![CI](https://github.com/MVennn/GSAuxiliary/actions/workflows/ci.yml/badge.svg) ![源码仓库](https://img.shields.io/badge/源码仓库-GitHub-181717?logo=github&logoColor=white) ![问题反馈](https://img.shields.io/badge/问题反馈-Issues-181717?logo=github&logoColor=white) ![Android](https://img.shields.io/badge/Android-8.1%2B-3DDC84?logo=android&logoColor=white) ![LSPosed](https://img.shields.io/badge/LSPosed-API%20102-5C6BC0) ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
 </div>
 
@@ -29,7 +29,7 @@ Make GoldenSun Great Again！
 
 ## 安装
 
-1. [Releases](https://gitlab.com/M.Venn/gsauxiliary/-/releases) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
+1. [Releases](https://github.com/MVennn/GSAuxiliary/releases) 下载最新版（文件名形如 `GSAuxiliary_*.apk`）并安装
 2. 在 LSPosed 管理器 → 模块里勾选 GSAuxiliary
 3. 作用域中勾上「国信金太阳」（模块已声明默认作用域，一般会自动勾好）
 4. 强制停止国信金太阳，再打开一次
@@ -37,7 +37,7 @@ Make GoldenSun Great Again！
 
 ## 反馈
 
-遇到问题、想要新功能，或者金太阳升级之后某个开关失灵，都可以到 [Issues](https://gitlab.com/M.Venn/gsauxiliary/-/issues) 进行反馈。
+遇到问题、想要新功能，或者金太阳升级之后某个开关失灵，都可以到 [Issues](https://github.com/MVennn/GSAuxiliary/issues) 进行反馈。
 
 请上传相关信息与日志。相关信息主要包括：
 
@@ -64,7 +64,7 @@ Make GoldenSun Great Again！
 
 「国信金太阳」商标、标识的权利均归其权利人所有。本项目与之不存在任何隶属、合作、授权、认可或支持关系。
 
-完整声明共十一条（含使用者声明与承诺、违约与授权终止），见 [docs/DISCLAIMER.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/DISCLAIMER.md)；模块 App 内「关于 → 免责声明」为同一内容。
+完整声明共十一条（含使用者声明与承诺、违约与授权终止），见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md)；模块 App 内「关于 → 免责声明」为同一内容。
 
 ## 开源鸣谢
 
@@ -82,6 +82,6 @@ Make GoldenSun Great Again！
 
 ## 许可证
 
-本项目以 [Apache License 2.0](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/LICENSE) 发布。第三方组件的版权与许可证声明见 [NOTICE](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/NOTICE)；目标应用的参考数据（类名、键名、目录结构等事实性描述，不含目标应用代码）不随公开仓库分发，仅维护者本地保留。
+本项目以 [Apache License 2.0](https://github.com/MVennn/GSAuxiliary/blob/main/LICENSE) 发布。第三方组件的版权与许可证声明见 [NOTICE](https://github.com/MVennn/GSAuxiliary/blob/main/NOTICE)；目标应用的参考数据（类名、键名、目录结构等事实性描述，不含目标应用代码）不随公开仓库分发，仅维护者本地保留。
 
-模块不收集、不上传任何数据；完整数据流说明见 [docs/DISCLAIMER.md](https://gitlab.com/M.Venn/gsauxiliary/-/blob/main/docs/DISCLAIMER.md) 第六条。
+模块不收集、不上传任何数据；完整数据流说明见 [docs/DISCLAIMER.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/DISCLAIMER.md) 第六条。

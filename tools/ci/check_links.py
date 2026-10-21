@@ -6,7 +6,7 @@
 
 1. **相对链接是否断**（目标文件不存在 / 锚点不存在）
    —— 之前 Release 说明里的免责链接写成了 GitHub 的 `../../blob/main/...`，
-   在 GitLab 上点不开，而本地 YAML 解析、Markdown 渲染都看不出问题。
+   在 GitHub 上点不开，而本地 YAML 解析、Markdown 渲染都看不出问题。
 2. **docs/ 里的每篇是否都进了 docs/README.md 索引**
    —— 索引是 docs/ 的入口（见 DOC-RULES.md §7）。
 3. **有没有孤儿文档**（没有任何别的文档链到它）
@@ -78,18 +78,18 @@ def tracked_md_files():
 
 
 def slug(text):
-    """GitHub / GitLab 的锚点算法（近似）：小写、去标点、空格转连字符、保留中日韩字符。"""
+    """GitHub 的锚点算法（近似）：小写、去标点、空格转连字符、保留中日韩字符。"""
     text = re.sub(r"`", "", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r"[^\w一-鿿 -]", "", text, flags=re.U)
-    # GitHub / GitLab 是「每个空格换一个连字符」，**不合并连续空格**
+    # GitHub 是「每个空格换一个连字符」，**不合并连续空格**
     # （所以 "驱动 + 幂等" 会变成 "驱动--幂等"）—— 这条对不对得上，决定锚点检查准不准
     return text.strip().lower().replace(" ", "-")
 
 
 def anchors(text):
-    """一篇文档里所有的锚点（同名标题加 -1、-2 后缀，与 GitLab 一致）。"""
+    """一篇文档里所有的锚点（同名标题加 -1、-2 后缀，与 GitHub 一致）。"""
     out, seen = set(), {}
     for m in re.finditer(r"^(#{1,6})\s+(.+?)\s*$", text, re.M):
         s = slug(m.group(2))

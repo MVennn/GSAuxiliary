@@ -3,7 +3,7 @@
 > **一句话**：每批开发收尾时说一句「**做一次大扫除**」，就按本文档把磁盘垃圾、
 > 死代码、失效文档清一遍，最后出一版能装的包并推送。
 
-适用范围：本仓库（`M.Venn/gsauxiliary`，GitLab），以及它旁边的两个发布目标
+适用范围：本仓库（`MVennn/GSAuxiliary`，GitHub），以及它旁边的两个发布目标
 （`Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary` 元文件、`.work/lsposed-repo` 克隆）。
 不涉及重新设计功能，也不改用户可见行为 —— 大扫除只做「减法」。
 
@@ -156,8 +156,7 @@ README 免责段只是**摘要**，不承载全文；改全文时如果摘要要
 ## 5. 红线（一律不动）
 
 - 签名与凭据：`gszx.keystore`、`keystore.properties`、`tools/probe/probe.keystore`；
-- 发布链路：`tools/publish.py`、`tools/publish_gitlab.py`、`.gitlab-ci.yml`、
-  `.github/workflows/`、`xposed-repo/`、`docs/release-notes/`；
+- 发布链路：`tools/publish.py`、`.github/workflows/`、`xposed-repo/`、`docs/release-notes/`；
 - 逆向结论：`docs/REVERSE-ENGINEERING.md`（含原 HOOK-NOTES 并入的「难点与解法」部分）
   里的类名 / 字段名 / Hook 点，
   哪怕代码里暂时没用到（`INSTANCE_PROVIDERS` 这类空实现是**有意占位**，别当死代码删）；

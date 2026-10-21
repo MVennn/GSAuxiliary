@@ -9,9 +9,8 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 所以每次发版必须在**两个仓库各发一份同 tag、同产物（只有 release 包）的 Release**，
 并保持模块仓库那几个元文件与源码仓库一致。手工做很容易漏，本脚本一次做完。
 
-**2026-10-20：GitHub 账号被停用，源码仓库已迁到 GitLab
-（https://gitlab.com/M.Venn/gsauxiliary）。本脚本依赖 GitHub 写权限，
-账号恢复前不可用。**
+**2026-10-21：GitHub 账号已解封，源码正本回到 `MVennn/GSAuxiliary`。
+GitLab 镜像已停用，本脚本是唯一的发版入口。**
 
 每次 Release 只传 **release 包**：`GSAuxiliary_<tag>.apk`。
 不再附带 debug 包 —— 有过用户直接下载 debug 版当日常版本用的先例，debug 包保留
@@ -23,7 +22,7 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
 |---|---|
 | `README.md` | `README.md` |
 | `SUMMARY` | `xposed-repo/SUMMARY` |
-| `SOURCE_URL` | 按 `SOURCE_URL` 常量生成 —— 指向**正本**源码仓库（GitLab） |
+| `SOURCE_URL` | 按 `SOURCE_URL` 常量生成 —— 指向源码仓库（GitHub） |
 | `icon.svg` | `assets/icon.svg` |
 
 ## 用法
@@ -55,11 +54,10 @@ tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
 
 ## 环境变量
 
-    GITHUB_SOURCE_REPO   GitHub 侧的源码仓库（镜像），默认 MVennn/GSAuxiliary
+    GITHUB_SOURCE_REPO   源码仓库，默认 MVennn/GSAuxiliary
     GITHUB_MODULE_REPO   LSPosed 模块仓库，默认 Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary
-    GS_SOURCE_URL        模块仓库里 SOURCE_URL 指向的**正本**源码地址，
-                         默认 https://gitlab.com/M.Venn/gsauxiliary
-                         （2026-10-20 起源码仓库迁到 GitLab；GitHub 那边是镜像）
+    GS_SOURCE_URL        模块仓库里 SOURCE_URL 指向的源码地址，
+                         默认 https://github.com/MVennn/GSAuxiliary
     GS_GITHUB_TOKEN      优先使用的 PAT（需要 repo scope，且对模块仓库有写权限）
     GH_TOKEN             次选
 """
@@ -81,9 +79,8 @@ README = os.path.join(ROOT, "README.md")
 WORK = os.path.join(ROOT, ".work")
 
 SOURCE_REPO = os.environ.get("GITHUB_SOURCE_REPO", "MVennn/GSAuxiliary")
-# 模块仓库的 SOURCE_URL 指向**正本**源码仓库 —— 2026-10-20 起是 GitLab 那个。
-# GitHub 账号停用期间那边是镜像（或干脆没有），别让用户点到一个死链。
-SOURCE_URL = os.environ.get("GS_SOURCE_URL", "https://gitlab.com/M.Venn/gsauxiliary")
+# 模块仓库的 SOURCE_URL 指向源码仓库（2026-10-21 起回到 GitHub）。
+SOURCE_URL = os.environ.get("GS_SOURCE_URL", "https://github.com/MVennn/GSAuxiliary")
 MODULE_REPO = os.environ.get(
     "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary")
 

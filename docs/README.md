@@ -39,7 +39,6 @@
 |---|---|
 | [BUILD.md](BUILD.md) | 构建指南：环境、依赖版本为什么钉死、签名、CI 构建与产物自查 |
 | [RELEASE.md](RELEASE.md) | 发布清单：**交付规则正本（§0.1）**、双仓库发版、Release 说明格式、发版前检查 |
-| [GITLAB.md](GITLAB.md) | GitLab 仓库这一侧的设置：流水线怎么触发、CI 变量怎么配、推 tag 怎么发 Release、项目元信息 |
 | [VERSIONING.md](VERSIONING.md) | 版本命名规范：三段式进位规则，**版本晋升正本（§1）** |
 | [REVIEW-2026-10.md](REVIEW-2026-10.md) | 第四轮审查：修掉的缺陷、**五轮独立复核的经验**、装上的自动化防护（单测 / 静态检查 / 变异测试） |
 | [MAINTENANCE.md](MAINTENANCE.md) | 收尾大扫除：磁盘垃圾 / 死代码 / 文档一致性清理，红线清单 |

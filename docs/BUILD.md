@@ -298,7 +298,7 @@ app/src/main/resources/META-INF/xposed/
 > `bash tools/ci/setup-android-sdk.sh` 就行（它会调 `setup-sdk37.sh`）。
 > 下面留着手工步骤，是为了讲清**为什么**要这么折腾。
 
-**根因**（2026-10-20 在 GitLab 共享 runner 上真踩出来的，日志里 AGP 自己说了）：
+**根因**（2026-10-20 在 CI 共享 runner 上真踩出来的，日志里 AGP 自己说了）：
 
 ```
 This version only understands SDK XML versions up to 3
@@ -431,8 +431,7 @@ GS_NO_MIRROR=1 ./gradlew assembleRelease
 ```
 
 设了之后只留 `google()` / `mavenCentral()` / `gradlePluginPortal()`。
-GitLab 流水线（`.gitlab-ci.yml` 的 `variables:`）与 GitHub 那两个工作流都设了它 ——
-runner 在海外，直连更稳。
+GitHub 那两个工作流都设了它 —— runner 在海外，直连更稳。
 
 > 为什么不「镜像失败自动回落」：Gradle 只在某个仓库返回 **404** 时才换下一个，
 > **超时不会自动兜底**。镜像站对海外 IP 一慢，构建就直接卡在那儿。
@@ -523,42 +522,11 @@ cp keystore.properties.example keystore.properties
 
 ## 8. CI 构建
 
-### 8.0 GitLab 流水线（现在的正本）
-
-配置在 `.gitlab-ci.yml`，**两段**（2026-10-20 真跑通过）：
-
-| 阶段 | 干什么 | 需要什么 | 实测 |
-|---|---|---|---|
-| `check` | 七项静态检查（不变量 / 发版说明覆盖 / 免责副本同步 / 死代码 / 开关全链路 / 宿主契约 / 文档链接） | 无（纯 Python） | ~20s |
-| `build` | 装 Android SDK → 跑单测 → 编 release → 跑产物红线（24 项）→ 留 APK 与 R8 mapping | 4 个 CI 变量（`GS_KEYSTORE_*`） | ~8 分钟 |
-
-触发方式：**开 MR / 手动触发 / API 触发** —— **push 到 `main` 不触发**（理由与
-GitHub 那套一样，见下面 §8.1 的说明）。整体说明、CI 变量怎么配、
-以及**账号级身份验证那道门**，都在 [GITLAB.md](GITLAB.md)。
-
-> **发版不在这条流水线里** —— 发布走本地脚本 `tools/publish_gitlab.py`，
-> 三条「让流水线自动发版」的路都实测走不通，结论见 [GITLAB.md](GITLAB.md) §5.1。
-> 流水线产出的 APK 本身是**用正式密钥签的**，可以直接 `--skip-build --apk` 发布。
-
-> **共享 runner 什么都不预装** —— 没有 cmdline-tools、没有 sdkmanager、没有
-> build-tools，**连 python3 都没有**。装 SDK 那一步写成了仓库里的脚本
-> （`tools/ci/setup-android-sdk.sh`），不靠某个第三方 action：
-> 版本钉死、行为可读、出错时日志在自己手里。
->
-> ⚠️ GitLab 的 `script:` **只吃字符串**，不吃 `- name: / run:` 映射写法 ——
-> 写成那样整条流水线会被判为配置非法、连创建都不允许（本地 YAML 解析得过，
-> 只有真触发才发现）。
->
-> ⚠️ **每个作业都是全新容器** —— 一个作业里 apt 装的 python3 不会留给下一个作业。
-> 而后面读版本号的 `tools/ci/version.py` 要 python3，所以各作业得各装各的。
->
-> ⚠️ **YAML 块标量里顶格的行会把整个块截断** —— 内嵌的 python 必须写成单行。
-
-### 8.1 GitHub Actions（仅手动触发；账号 2026-10-21 已解封）
+### 8.0 GitHub Actions（仅手动触发；账号 2026-10-21 已解封）
 
 GitHub 账号 2026-10-18 被停用、2026-10-21 解封。解封后按风控口径把两个工作流都收窄成
 **只认人主动发起**：`ci.yml` 不在 push 上跑，`release.yml` 不再认 tag（发版改走本地
-`tools/publish.py`）。两个工作流仍在 `.github/workflows/`，GitLab 那套是照着它们搬的：
+`tools/publish.py`）。两个工作流都在 `.github/workflows/`：
 
 | 文件 | 触发 | 干什么 | 需要 Secret |
 |---|---|---|---|
@@ -567,7 +535,7 @@ GitHub 账号 2026-10-18 被停用、2026-10-21 解封。解封后按风控口�
 
 > **推 tag 不触发流水线**（2026-10-21 起）：`release.yml` 的 `push: tags` 已去掉 ——
 > 「推一个版本标签 → 自动起一次 40 分钟构建」与账号被停用的形态同类。
-> 发版由本地 `python tools/publish.py --notes …` 完成（见 [GITLAB.md](GITLAB.md) §5），
+> 发版由本地 `python tools/publish.py --notes …` 完成（见 [RELEASE.md](RELEASE.md) §1），
 > 需要云端复验时到 Actions 页面手动触发、填同一个 tag。
 
 > **`ci.yml` 不在 push 上跑**（2026-10-18 起）：日常改动都在本地
@@ -652,9 +620,8 @@ git ls-files -s gradlew      # 必须是 100755
 
 ### 8.2 发布需要的 5 个 Repository secrets
 
-> **这是 GitHub Actions 那条路的变量**（账号恢复后用）。GitLab 侧对应的是
-> **Settings → CI/CD → Variables**，只要 4 个 `GS_KEYSTORE_*`（没有模块仓库那个），
-> 已在 2026-10-20 配好 —— 见 [GITLAB.md](GITLAB.md) §3.2。
+> **这是 GitHub Actions 那条路的变量**（账号恢复后用）。本地发版走 `tools/publish.py`，
+> 凭据见 `docs/RELEASE.md` §1。
 
 到 `Settings → Secrets and variables → Actions` 加。
 **每个 secret 的造法与取值只见 [`docs/RELEASE.md` §1.2](RELEASE.md#12-ci-发版需要的-5-个-repository-secrets)，这里不重抄。**

@@ -61,11 +61,10 @@ README 按七大类编排（见分类总览表），新脚本必须归入其中�
 
 ## 6. 红线（只读，整理时不动）
 
-`tools/publish.py`、`tools/publish_gitlab.py`、`tools/probe/probe.keystore`、
-`.github/workflows/` 与 `.gitlab-ci.yml` 下引用的路径
+`tools/publish.py`、`tools/probe/probe.keystore`、`.github/workflows/` 下引用的路径
 （`ci/setup-sdk37.sh`、`ci/setup-android-sdk.sh`、`ci/version.py`、`ci/verify_apk.py`、
-`publish.py`、`publish_gitlab.py`）——
-**移动或改名需同步改 workflow 与 CI 配置**，不做没有 CI 验证保证的路径整理。
+`publish.py`）——
+**移动或改名需同步改 workflow**，不做没有 CI 验证保证的路径整理。
 
 ## 7. 临时产物
 
