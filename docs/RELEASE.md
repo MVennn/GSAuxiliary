@@ -228,6 +228,9 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 > [release-notes/README.md](release-notes/README.md)：四动词、一行一条，
 > **重构 / 底层修复 / 死代码也算修复且必须按对象拆开**（3.2.1 起）。
 
+- **正文第一行直接是加粗总结**：不要 `> **一句话**：…` 引言块，也不要
+  `# 版本号 — 日期` 标题 —— 参考范本（2.x / 3.x 各版说明）都没有这两块。
+
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
 - Release 说明只讲**这版做了什么**，而且写成**清单**：一行一条
