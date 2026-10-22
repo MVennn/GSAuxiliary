@@ -13,7 +13,7 @@
 | 问题 | 答案 |
 |---|---|
 | 按钮在哪 | `#ll_add_zxg_bottom` 内、`#tv_bottom_add_zxg`（「确认添加」）左侧；只在多选态出现 |
-| 按钮样式 | 从「确认添加」克隆背景/文字色/字号/内边距，高度与它一致（140px），宽度 `wrap_content`（实测 255px，左侧「已选 N 只股票」不裁切） |
+| 按钮样式 | 从「确认添加」克隆背景/文字色/字号/内边距，高度与它一致（140px）；宽度按确认按钮实测宽度减 12dp（实测 360px），文字左右各约 55px，左侧「已选 N 只股票」不裁切；两颗蓝按钮之间不加间隔条 |
 | 截图怎么来 | **真实详情页**：按选中子集构造 `quotes.stockDetail` Intent，一次打开 `StockFragAct`，用 `vp_stocks` 逐页切换，`PixelCopy` 截图 |
 | 数据没加载完怎么办 | **不截图**：当前页标题必须含目标代码，且可见 `KXChartGroupView.m_kxChartInfo.m_kxChartItems` 非空；超时只记失败、翻下一页，绝不保存半张图 |
 | 分组 | 不自己做分组面板、不调分组写接口：截完 `finish()` 回策略页，`performClick()` 宿主「确认添加」，由 `ChooseGroupAct` 让用户选组 |
