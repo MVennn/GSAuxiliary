@@ -38,13 +38,31 @@ internal object StgSelectAllPlan {
      * @param hostCount 底部「已选 N」（宿主维护的全量选中数；读不到传 -1）
      * @param tableChecked checked states 里勾着的行数；宿主不用多选模式时传 null
      * @param filtered 当前是否在筛选（有筛选时宿主计数还包含被筛掉的行，不能要求两者相等）
+     * @param retry 是不是「补点」轮（首轮之后再核对一遍）。
+     *        补点轮以 **checked states 为准**：那张表是我们自己刚预置、刚点过的，
+     *        拿它核对才不会把已勾上的行再点一遍；宿主计数在此刻可能还没跟上
+     *        （合成点击写得比宿主刷新快），拿它判会把整单选中的行点成未选。
+     *        **例外**：没有筛选时，表与宿主计数对不上说明宿主模型和表已经分叉
+     *        （真机上「宿主吞掉某次点击」就是这样），这时退回探针按宿主模型补 ——
+     *        只信表的话，表里已经被 `performItemClick` 写成目标态，永远发现不了漏选。
+     *        没有表（`CHOICE_MODE_NONE`）时返回 PROBE —— 调用方在这种情况下不做补点。
      */
-    fun stateSource(hostCount: Int, tableChecked: Int?, filtered: Boolean): StateSource = when {
+    fun stateSource(
+        hostCount: Int,
+        tableChecked: Int?,
+        filtered: Boolean,
+        retry: Boolean = false,
+    ): StateSource = when {
         // 计数为 0 优先于 checked states：换适配器 / 页面重建后，按 position 存的表
         // 可能留着上一份的残值；而宿主计数是它每次点击都会重写的。若反过来信表，
         // 会把「其实一行没选」判成已选，于是点「全选」变成对已勾行再点一次 = 取消。
-        hostCount == 0 -> StateSource.NONE_CHECKED
+        // ⚠️ 只对**首轮**成立：补点轮里计数可能滞后，此时表才是刚写过的现场。
+        hostCount == 0 && !retry -> StateSource.NONE_CHECKED
         tableChecked == null -> StateSource.PROBE
+        // 没有筛选时两套坐标是同一套：表与计数对不上 = 宿主模型与表分叉，按模型补。
+        // 有筛选时计数含被筛掉的行，对不上是常态，不能据此判。
+        retry && !filtered && tableChecked != hostCount -> StateSource.PROBE
+        retry -> StateSource.TABLE
         filtered || tableChecked == hostCount -> StateSource.TABLE
         else -> StateSource.PROBE
     }

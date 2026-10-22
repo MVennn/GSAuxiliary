@@ -133,4 +133,55 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.stateSource(hostCount = 0, tableChecked = null, filtered = true),
         )
     }
+
+    // ---------------------------------------------------------- 补点轮
+
+    @Test
+    fun `补点轮宿主计数为 0 但表里有勾时按宿主模型核对`() {
+        // 合成点击比宿主刷新快：计数还没跟上时若照旧判「一行没选」，
+        // 会把整单选中的行再点一遍 → 全部取消（比不补还糟）。
+        // 但也不能只信表：计数与表分叉可能是宿主模型真的漏了行。退回探针按模型判 ——
+        // 模型其实已勾上时探针读到 true，不会再点；真漏了才会补。
+        assertEquals(
+            StgSelectAllPlan.StateSource.PROBE,
+            StgSelectAllPlan.stateSource(hostCount = 0, tableChecked = 5, filtered = false, retry = true),
+        )
+    }
+
+    @Test
+    fun `补点轮没有表时退回探针`() {
+        assertEquals(
+            StgSelectAllPlan.StateSource.PROBE,
+            StgSelectAllPlan.stateSource(hostCount = 0, tableChecked = null, filtered = false, retry = true),
+        )
+    }
+
+    @Test
+    fun `补点轮筛选生效时仍信表`() {
+        assertEquals(
+            StgSelectAllPlan.StateSource.TABLE,
+            StgSelectAllPlan.stateSource(hostCount = 23, tableChecked = 19, filtered = true, retry = true),
+        )
+    }
+
+    @Test
+    fun `补点轮表与宿主计数不一致也信表`() {
+        // 有筛选时宿主计数含被筛掉的行，对不上是常态；表是我们自己刚预置、刚点过的，
+        // 确认添加读的正是这份表 —— 拿计数判会反复点同一批行。
+        assertEquals(
+            StgSelectAllPlan.StateSource.TABLE,
+            StgSelectAllPlan.stateSource(hostCount = 23, tableChecked = 2, filtered = true, retry = true),
+        )
+    }
+
+    @Test
+    fun `补点轮没有筛选且表与计数分叉时按宿主模型补`() {
+        // 没有筛选时两套坐标是同一套：表里 5 行勾着、宿主只说 2 行 —— 宿主模型漏了 3 行
+        // （真机「宿主吞掉某次点击」）。表已经被 performItemClick 写成目标态，
+        // 只信表就永远发现不了漏选，必须退回探针按宿主模型找。
+        assertEquals(
+            StgSelectAllPlan.StateSource.PROBE,
+            StgSelectAllPlan.stateSource(hostCount = 2, tableChecked = 5, filtered = false, retry = true),
+        )
+    }
 }

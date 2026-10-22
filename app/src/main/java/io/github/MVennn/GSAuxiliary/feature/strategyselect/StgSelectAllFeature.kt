@@ -43,12 +43,33 @@ import java.util.WeakHashMap
  *    否则「全选」（点击勾选全部）。行状态读框架的 checked states（与「确认添加」同一份表），
  *    不可用时才逐行现绑探针；**不读屏上那颗勾选框**（合成点击后它可能没被重画，2026-10-21）。
  *
+ * ## 点完要核对（2026-10-22）
+ *
+ * 单轮跑完就收工的话，任何一次「没走到」的点击都会让行永远停在「没勾」上：
+ * 运行中筛选结果变了导致快照作废、`getView` 造不出探针、宿主事后把表改回去……
+ * 所以一次操作现在可能跑**多轮**：每轮结束后隔几帧重读 checked states，
+ * 只补点「状态仍与目标不同」的行；没有任何缺口就立刻收工（通常第 2 轮就收工）。
+ * 补点轮以 checked states 为准（那是我们自己刚写过的表）；**没有筛选**时若表与宿主计数
+ * 分叉，说明宿主模型漏了行，退回探针按模型补。
+ *
+ * ⚠️ **补点救不了「宿主监听器静默忽略」**：`performItemClick` 在调到监听器之前就把
+ * `mCheckStates` 按取反写好了，下一轮读表只会看到目标态。这类漏选只能靠真机日志与
+ * 宿主行为去查（见 `docs/FEATURE-SELECT-ALL.md` §4.3）。
+ *
+ * ## 显示刷新为什么要连行根一起刷（2026-10-22）
+ *
+ * `AbsListView.performItemClick` 每次都会调 `updateOnScreenCheckedViews()`，把**行根视图**的
+ * `activated` 按 `mCheckStates[适配器位置]` 重写。筛选生效时我们的 checked states 用的是
+ * **全量位置**（宿主模型读这份），两套坐标错位 → 每次合成点击都会把一部分可见行刷回「没勾」。
+ * 宿主若用 `duplicateParentState` / `state_activated` 画勾，光设 `#ct_item.isChecked` 修不回来。
+ * 所以可见行的 `activated` 与 `isChecked` 一起按「全量下标 → 表」刷（见 [refreshVisibleChecked]）。
+ *
  * ⚠️ **不要包裹 ListView 的 `OnItemClickListener`**（2026-10-20 真机定位）：
  * 宿主的多选状态写在 ListView 自己的 checked states 里，而 `AbsListView.performItemClick`
  * 是在调到监听器**之前**就用传入的 `position` 写这份表的 —— 筛选层的回映射只改
  * 「转发给监听器的 position」，改不到这份表；两个 wrapper 还会互相重包，叠成双重映射。
  * 所以全选不碰监听链：状态读 checked states，合成点击则把**全量下标**直接交给
- * `performItemClick`（见 [stepToggle]）。
+ * `performItemClick`（见 [clickNext]）。
  *
  * ## 触发方式：给「取消」按钮挂 TextWatcher（而不是全局 Hook `TextView.setText`）
  *
@@ -377,24 +398,73 @@ class StgSelectAllFeature : Feature {
         if (lv != null) buttonByList.remove(lv)
     }
 
-    /** 一次「全选 / 反选」的上下文（长参数表收进对象，顺便记录有没有行点击失败） */
-    private class ToggleRun(
-        val lv: ListView,
+    /** 某一次「读现场」的结果：适配器 / 总行数 / 映射 / 每一行的当前状态 */
+    private class Shot(
         val adapter: android.widget.ListAdapter,
-        val button: TextView?,
-        val ctId: Int,
         val headerCount: Int,
         val total: Int,
-        /** 子集下标 → 全量下标的快照（运行中若变了就中止，免得点到别的股票） */
-        val full: IntArray,
-        /** 需要点击的行（子集下标，保序）—— 已符合目标状态的行不在里面 */
-        val click: IntArray,
+        /** 子集下标 → 全量下标；**null = 没有筛选**（恒等映射） */
+        val full: IntArray?,
+        val before: BooleanArray,
+        val hostCount: Int,
+    ) {
+        val checked: Int get() = before.count { it }
+    }
+
+    /**
+     * 一次「全选 / 反选」的上下文。
+     *
+     * 与旧实现的差别：一次操作可能跑**多轮**（每轮重新快照、只点还不对的行）。
+     * [load] 会把这一轮的现场整体换掉，所以运行中适配器 / 筛选结果 / 行数变了都只需要
+     * 重开一轮，不用中止整次操作。
+     */
+    private class ToggleRun(
+        val lv: ListView,
+        val button: TextView?,
+        val ctId: Int,
         val wantChecked: Boolean,
         val token: Int,
-        /** 启动时是否有筛选映射（运行中用它判断快照是否还有效） */
-        val filtered: Boolean,
     ) {
-        var failed = false
+        var adapter: android.widget.ListAdapter? = null
+        var headerCount = 0
+        var total = 0
+        var full: IntArray? = null
+
+        /** 本轮要点的行（子集下标，保序）—— 已符合目标状态的行不在里面 */
+        var click: IntArray = IntArray(0)
+        var cursor = 0
+
+        /** 已经开始的轮数（1 = 首轮；[load] 里自增） */
+        var round = 0
+
+        /**
+         * **真正点过行**的轮数。
+         *
+         * 与 [round] 分开计：适配器 / 筛选映射变化导致的「重开一轮」可能一行都没点，
+         * 不能消耗 [MAX_ROUNDS] 的点击预算，否则宿主刷新几次就报「已达补点上限」。
+         */
+        var clickRounds = 0
+
+        /** 本轮开始时宿主底部的「已选 N」（读不到 = -1），只用于日志 */
+        var hostCount = -1
+
+        /** 本轮 / 累计的点击失败次数（异常或没被宿主接住），只用于日志与显示刷新的保守判断 */
+        var failedThisRound = 0
+        var failedTotal = 0
+
+        var finished = false
+
+        fun load(shot: Shot, plan: IntArray) {
+            adapter = shot.adapter
+            headerCount = shot.headerCount
+            total = shot.total
+            full = shot.full
+            click = plan
+            cursor = 0
+            hostCount = shot.hostCount
+            failedThisRound = 0
+            round++
+        }
     }
 
     /**
@@ -410,7 +480,7 @@ class StgSelectAllFeature : Feature {
      * 可见勾选框（§4.1 的已知观感局限）→ 已勾行看起来没勾 → 下一轮又点一次 → 正好把它点掉，
      * 用户看到的就是「做过一次全选后，下次全选部分选不中」。
      *
-     * 状态来源优先级：
+     * 状态来源优先级（见 [StgSelectAllPlan.stateSource]）：
      *  1. 宿主计数为 0 → 一行都没选中，不必逐行问；
      *  2. 框架的 checked states（与「确认添加」读的是同一份表）→ O(行数)、不建视图；
      *  3. 只有它不可用 / 与宿主计数矛盾时才逐行现绑探针（`Adapter.getView(i, null, lv)`）。
@@ -420,6 +490,10 @@ class StgSelectAllFeature : Feature {
      *
      * **必须分帧**：宿主每次切换勾选后会刷新列表（`notifyDataSetChanged`），同一帧里继续拿
      * 旧的子 View 会拿到已失效的视图（真机实测「反选」只清一行的根因）。
+     *
+     * **点完还要核对**（2026-10-22）：一轮跑完后隔几帧重读 checked states，有缺口就补点
+     * （见 [nextRound]）。宿主偶尔吞掉一次合成点击、或行情刷新让筛选结果变了，
+     * 单轮收工都会留下「没勾到」的行。
      */
     private fun toggleAll(env: FeatureEnv, v: View) {
         if (running) {
@@ -439,57 +513,33 @@ class StgSelectAllFeature : Feature {
             // 从这一刻起就算「这一轮挂在 lv 上」—— 读状态阶段也可能触发宿主重设文案，
             // 提前记下来，`injectSelectAll` 的作用域判断才不会把本轮误杀。
             runList = java.lang.ref.WeakReference(lv)
-            val realAdapter = unwrapHeaderAdapter(lv.adapter) ?: return
             val ctId = checkboxId(v)
             if (ctId == 0) {
                 // 勾选框 id 解析不到就无法判断每行状态，盲目点击会把「全选」点成「反选」→ 保守放弃
                 GLog.w("全选：#${StgSelectAllTargets.CHECKBOX_ID_CANDIDATES.joinToString()} 解析失败，放弃本次操作")
                 return
             }
-            val total = realAdapter.count
-            if (total <= 0) return
-            if (lv.choiceMode == ListView.CHOICE_MODE_SINGLE ||
-                lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
-            ) {
-                // 单选：performItemClick 会清掉别的行；多选模态：action mode 活跃时
-                // 框架根本不把点击派给宿主的 OnItemClickListener —— 两种都没法做「全选」
-                GLog.w("全选：列表不是普通多选模式（choiceMode=${lv.choiceMode}），放弃本次操作")
-                return
-            }
-
-            // 子集 → 全量的映射在**启动时**快照一次：运行中筛选结果变了就中止，
-            // 免得后半程按旧下标点到别的股票上。
-            val isProxy = isFilterProxy(realAdapter)
-            val full = fullIndices(realAdapter, total)
-            if (isProxy && full == null) {
-                // 列表上是筛选代理，但桥上读不到下标表 —— 拿不到映射，点了就会点到别的股票
-                GLog.w("全选：列表挂着筛选代理但读不到下标表，放弃本次操作")
-                return
-            }
-            val mapping = full ?: IntArray(total) { it }
-            val before =
-                readRowStates(lv, realAdapter, ctId, total, selectedCount(v), mapping, full != null)
-            val wantChecked = StgSelectAllPlan.wantChecked(before)
-            val click = StgSelectAllPlan.rowsToClick(before, wantChecked)
+            val shot = takeShot(lv, ctId, retry = false) ?: return
+            val wantChecked = StgSelectAllPlan.wantChecked(shot.before)
+            val click = StgSelectAllPlan.rowsToClick(shot.before, wantChecked)
             val button = v as? TextView
 
             GLog.i(
                 "策略全选：${if (wantChecked) "全选" else "反选"} 开始" +
-                    "（共 $total 只，已勾 ${before.count { it }}，待点 ${click.size}）",
+                    "（共 ${shot.total} 只，已勾 ${shot.checked}，待点 ${click.size}）",
             )
             if (click.isEmpty()) {
+                // 理论上不可达：wantChecked 由 before 决定（还有没勾上的行 → true），
+                // 于是 before 全 true 时要点全部取消、全 false 时要点全部勾上，
+                // click 在 total > 0 时永远非空。保留这一支只为兜住「未来改了判据」。
                 updateLabel(env, lv, button ?: return)
                 return
             }
             started = true
-            stepToggle(
-                env,
-                ToggleRun(
-                    lv, realAdapter, button, ctId, lv.headerViewsCount, total, mapping, click,
-                    wantChecked, runSeq.incrementAndGet(), filtered = full != null,
-                ),
-                0,
-            )
+            val run = ToggleRun(lv, button, ctId, wantChecked, runSeq.incrementAndGet())
+            run.load(shot, click)
+            run.clickRounds = 1
+            clickNext(env, run)
         } finally {
             // 任何早退 / 异常都不能把 running 留在 true（否则按钮从此失效）
             if (!started) {
@@ -497,6 +547,50 @@ class StgSelectAllFeature : Feature {
                 runList = null
             }
         }
+    }
+
+    /**
+     * 读一次现场：适配器、总行数、子集→全量映射、每一行的当前状态。
+     *
+     * 列表不是普通多选模式 / 映射拿不到时返回 null（并记原因）—— 这两种情况下
+     * 盲目点击会把「全选」点成「反选」，或者点到别的股票上。
+     *
+     * @param retry 是不是补点轮：补点轮以 checked states 为准（首轮的保守判据见
+     *        [StgSelectAllPlan.stateSource]）。
+     */
+    private fun takeShot(lv: ListView, ctId: Int, retry: Boolean): Shot? {
+        val adapter = unwrapHeaderAdapter(lv.adapter)
+        if (adapter == null) {
+            GLog.w("全选：列表还没有适配器，放弃本次操作")
+            return null
+        }
+        val total = adapter.count
+        if (total <= 0) {
+            GLog.w("全选：列表是空的（adapter=${adapter.javaClass.simpleName}），放弃本次操作")
+            return null
+        }
+        if (lv.choiceMode == ListView.CHOICE_MODE_SINGLE ||
+            lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
+        ) {
+            // 单选：performItemClick 会清掉别的行；多选模态：action mode 活跃时
+            // 框架根本不把点击派给宿主的 OnItemClickListener —— 两种都没法做「全选」
+            GLog.w("全选：列表不是普通多选模式（choiceMode=${lv.choiceMode}），放弃本次操作")
+            return null
+        }
+
+        // 子集 → 全量的映射在每一轮开始时快照一次：运行中筛选结果变了就重开一轮，
+        // 绝不按旧下标点到别的股票上。
+        val isProxy = isFilterProxy(adapter)
+        val full = fullIndices(adapter, total)
+        if (isProxy && full == null) {
+            // 列表上是筛选代理，但桥上读不到下标表 —— 拿不到映射，点了就会点到别的股票
+            GLog.w("全选：列表挂着筛选代理但读不到下标表，放弃本次操作")
+            return null
+        }
+        val mapping = full ?: IntArray(total) { it }
+        val hostCount = selectedCount(lv)
+        val before = readRowStates(lv, adapter, ctId, total, hostCount, mapping, full != null, retry)
+        return Shot(adapter, lv.headerViewsCount, total, full, before, hostCount)
     }
 
     /**
@@ -525,6 +619,9 @@ class StgSelectAllFeature : Feature {
      *
      * 优先读框架的 checked states（宿主确认添加读的就是它，且 O(行数) 不建视图）；
      * 不可用或与宿主计数矛盾时逐行现绑探针。**不读屏上那颗勾选框** —— 它可能没被重画。
+     *
+     * @param retry 补点轮：以 checked states 为准（首轮的宿主计数在补点轮里可能滞后，
+     *        拿「计数为 0」跳过逐行读会把已勾上的行再点一遍 → 反而全部取消）
      */
     private fun readRowStates(
         lv: ListView,
@@ -534,15 +631,16 @@ class StgSelectAllFeature : Feature {
         hostCount: Int,
         full: IntArray,
         filtered: Boolean,
+        retry: Boolean,
     ): BooleanArray {
         val table = tableRowStates(lv, total, full)
         val tableChecked = table?.count { it }
-        return when (StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered)) {
+        return when (StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered, retry)) {
             // 宿主计数是「全量选中数」：为 0 就表示没有任何行被选中
             StgSelectAllPlan.StateSource.NONE_CHECKED -> BooleanArray(total)
             StgSelectAllPlan.StateSource.TABLE -> table ?: BooleanArray(total)
             StgSelectAllPlan.StateSource.PROBE -> {
-                if (table != null) {
+                if (table != null && !retry) {
                     GLog.w("全选：checked states（$tableChecked）与宿主计数（$hostCount）不一致，改用探针")
                 }
                 probeRowStates(lv, adapter, ctId, total, full)
@@ -591,116 +689,247 @@ class StgSelectAllFeature : Feature {
         return out
     }
 
-    /** 处理 [run].click 里的第 [cursor] 行（含屏外），然后 `postDelayed` 到下一帧 */
-    private fun stepToggle(env: FeatureEnv, run: ToggleRun, cursor: Int) {
+    /** 点 [run].click 里的下一行（含屏外），然后 `postDelayed` 到下一帧 */
+    private fun clickNext(env: FeatureEnv, run: ToggleRun) {
         val lv = run.lv
         // 被取消（关开关 / 退出多选态 / 又点了一次）→ 立刻停
         if (!running || run.token != runSeq.get()) return
-        if (cursor >= run.click.size) {
-            endRun()
-            if (!run.failed) repaintVisible(run)
-            run.button?.let { updateLabel(env, lv, it) }
+        if (run.cursor >= run.click.size) {
+            // 本轮点完：先给宿主几帧把手上的 notifyDataSetChanged 落定，再重新读一遍
+            // checked states —— 漏掉的行进下一轮，全部到位就收工。
+            GLog.i(
+                "策略全选：第 ${run.round} 轮结束（点了 ${run.cursor} 行，失败 ${run.failedThisRound}" +
+                    "，宿主计数 ${run.hostCount} → ${selectedCount(lv)}）",
+            )
+            scheduleNextRound(env, run, ROUND_SETTLE_MS)
             return
         }
-
-        val index = run.click[cursor]
         // 页面被销毁后 `postDelayed` 的 runnable 可能永远不跑（running 会卡在 true），
         // 这里再兜一道：列表已不在窗口上就收尾。
         if (!lv.isAttachedToWindow) {
-            endRun()
-            GLog.w("全选：列表已脱离窗口，中止（已完成 $cursor/${run.click.size}）")
+            finishRun(env, run, "列表已脱离窗口")
             return
         }
-        // 运行期间宿主换了适配器 / 筛选结果变了 → 快照下标已指向别的股票，中止
-        if (unwrapHeaderAdapter(lv.adapter) !== run.adapter) {
-            endRun()
-            run.failed = true
-            GLog.w("全选：列表适配器在运行中变了，中止（已完成 $cursor/${run.click.size}）")
+        val adapter = run.adapter
+        if (adapter == null) {
+            finishRun(env, run, "适配器丢了")
             return
         }
-        if (run.filtered) {
+        // 运行期间宿主换了适配器 → **中止**（不重开）。换适配器可能意味着换了策略 / 换了一页，
+        // 继续按原来的 wantChecked 点下去会把「全选」施加到另一批股票上。
+        // 筛选结果变化不换适配器（代理就地 update），那一条走下面的下标校验重开一轮。
+        if (unwrapHeaderAdapter(lv.adapter) !== adapter) {
+            finishRun(env, run, "适配器在运行中换了（可能是别的页面），中止")
+            return
+        }
+        // header 数变了（宿主加/删表头）→ 所有位置整体偏移，本轮快照作废：重开一轮
+        if (lv.headerViewsCount != run.headerCount) {
+            GLog.i("策略全选：header 数在运行中变了（${run.headerCount} → ${lv.headerViewsCount}），重新快照")
+            scheduleNextRound(env, run, 0)
+            return
+        }
+        val index = run.click[run.cursor]
+        val full = run.full
+        if (full != null) {
             // 归属/长度由桥校验：读不到（快照被换页覆盖）也按「变了」处理
-            val now = StgFilterBridge.fullIndexAt(index, run.adapter)
-            if (now == null || now != run.full[index]) {
-                endRun()
-                run.failed = true
-                GLog.w("全选：筛选下标在运行中变了，中止（已完成 $cursor/${run.click.size}）")
+            val now = StgFilterBridge.fullIndexAt(index, adapter)
+            if (now == null || now != full[index]) {
+                GLog.i("策略全选：筛选下标在运行中变了，重新快照（已完成 ${run.cursor}/${run.click.size}）")
+                scheduleNextRound(env, run, 0)
                 return
             }
         }
 
-        runCatching {
-            // ⚠️ 「视图位置」与「数据位置」在筛选生效时是两套坐标（2026-10-20 真机）：
-            // ListView 上挂的是过滤代理，`performItemClick` 的 position 是**子集下标**；
-            // 而宿主的多选模型从 ListView 的 checked states 取值，框架又是用**传入的
-            // position** 写这份表的。所以合成点击必须直接把**全量下标**传进去：
-            // 框架写对位置、宿主收到对位置，回映射层用 [StgFilterBridge.runWithRemapBypassed]
-            // 原样放行（否则它会把全量下标再当子集下标映射一次）。
-            val pos = run.headerCount + run.full[index]   // 传给宿主的**全量**位置
-            val proxyPos = run.headerCount + index        // 列表里那一行的实际位置（子集）
-            val childIdx = proxyPos - lv.firstVisiblePosition
-            val visible = childIdx in 0 until lv.childCount
-            // 可见行传真实子 View（宿主的点击处理会**就地**把这一行的勾选框打上）；
-            // 屏外行现造探针 View（宿主用 position 定位，不看 View 是否在屏上）。
-            val row: View? = if (visible) {
-                lv.getChildAt(childIdx)
-            } else {
-                runCatching { run.adapter.getView(index, null, lv) }.getOrNull()
-            }
-            // id 用**过滤代理**的 `getItemId(index)`：它内部会换成全量条目的 id；
-            // 而 `lv.getItemIdAtPosition(全量位置)` 在全量下标小于子集行数时会被
-            // 代理再映射一次，拿到的是别的股票的 id。
-            val id = run.adapter.getItemId(index)
-
-            // `performItemClick` 是按 position **取反**写 checked states 的。先把这一格
-            // 摆成「点击前」的值，取反后才一定落到目标（表里可能留着上一轮的残值）。
-            // 用 `setItemChecked` 而不是直接改 mCheckStates：它会一并维护
-            // mCheckedItemCount（宿主用它渲染「已选 N」）。筛选期间代理已关掉 stable id，
-            // 所以没有 id 表要维护；放行标记仍带上，见下面。
-            // 预置与点击放在同一个 try 里：预置自己抛异常也要能回滚。
-            val prev = if (lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE) {
-                lv.isItemChecked(pos)
-            } else {
-                null
-            }
-            try {
-                // `pos` 是全量坐标；筛选期间代理已关掉 stable id（见 FilteredAdapter.hasStableIds），
-                // 但放行标记仍要带上 —— 若宿主自己覆写了 id 逻辑，不能让它再映射一次。
-                if (prev != null) {
-                    StgFilterBridge.runWithRemapBypassed { lv.setItemChecked(pos, !run.wantChecked) }
-                }
-                var handled = false
-                StgFilterBridge.runWithRemapBypassed {
-                    handled = lv.performItemClick(row, pos, id)
-                }
-                if (!handled) {
-                    run.failed = true
-                    GLog.w("全选：第 $index 行没有被宿主接住（performItemClick=false）")
-                }
-            } catch (t: Throwable) {
-                // 失败回滚：不能把 checked states 留在与目标相反的状态
-                if (prev != null) {
-                    runCatching {
-                        StgFilterBridge.runWithRemapBypassed { lv.setItemChecked(pos, prev) }
-                    }
-                }
-                throw t
-            }
-        }.onFailure {
-            run.failed = true
-            GLog.w("全选：触发行点击失败 index=$index", it)
+        // ⚠️ 「视图位置」与「数据位置」在筛选生效时是两套坐标（2026-10-20 真机）：
+        // ListView 上挂的是过滤代理，`performItemClick` 的 position 是**子集下标**；
+        // 而宿主的多选模型从 ListView 的 checked states 取值，框架又是用**传入的
+        // position** 写这份表。所以合成点击必须直接把**全量下标**传进去：
+        // 框架写对位置、宿主收到对位置，回映射层用 [StgFilterBridge.runWithRemapBypassed]
+        // 原样放行（否则它会把全量下标再当子集下标映射一次）。
+        val pos = run.headerCount + (full?.get(index) ?: index)   // 传给宿主的**全量**位置
+        val proxyPos = run.headerCount + index                     // 列表里那一行的实际位置（子集）
+        val childIdx = proxyPos - lv.firstVisiblePosition
+        val visible = childIdx in 0 until lv.childCount
+        // 可见行传真实子 View（宿主的点击处理会**就地**把这一行的勾选框打上）；
+        // 屏外行现造探针 View（宿主用 position 定位，不看 View 是否在屏上）。
+        val row: View? = if (visible) {
+            lv.getChildAt(childIdx)
+        } else {
+            runCatching { adapter.getView(index, null, lv) }.getOrNull()
+        }
+        if (row == null) {
+            noteFailure(run, "第 $index 行拿不到视图，跳过（下一轮再试）")
+        } else {
+            clickRow(lv, run, adapter, index, pos, row)
         }
 
+        if (full != null) {
+            // 每次合成点击都会把可见行的 `activated` 按**适配器位置**重写一遍，
+            // 而筛选期间 checked states 用的是全量位置 —— 两套坐标错位，不补这一下
+            // 屏幕会一部分勾、一部分没勾（见 [refreshVisibleChecked]）。
+            refreshVisibleChecked(run)
+        }
+
+        run.cursor++
+        // ⚠️ `View.postDelayed` 在视图脱窗时**不会**返回 false（它把 runnable 排进
+        // RunQueue，等重新 attach 再执行），所以必须自己先判一次：脱窗就收尾，
+        // 否则 `running` 会一直挂着，重新挂载后还会接着点。
+        if (!lv.isAttachedToWindow) {
+            finishRun(env, run, "列表已脱离窗口")
+            return
+        }
         val posted = lv.postDelayed(
-            { runCatching { stepToggle(env, run, cursor + 1) } },
+            { runCatching { clickNext(env, run) } },
             TOGGLE_STEP_MS,
         )
-        if (!posted) {
-            // 列表已脱离窗口：后续帧永远不会跑，必须把防重入标记清掉，
-            // 否则按钮会从此静默失效
-            endRun()
-            GLog.w("全选：列表已脱离窗口，中止（已完成 ${cursor + 1}/${run.click.size}）")
+        if (!posted) finishRun(env, run, "列表已脱离窗口")
+    }
+
+    /**
+     * 记一次行点击失败：只在本轮**第一次**失败时打日志，其余只计数。
+     *
+     * 200 行 × 4 轮如果每行一条 WARN（异常还带堆栈）会把日志刷爆（规则 3.3 的去重口径）；
+     * 轮末那条「点了 N 行，失败 M」已经能看出规模。
+     */
+    private fun noteFailure(run: ToggleRun, what: String, t: Throwable? = null) {
+        run.failedThisRound++
+        run.failedTotal++
+        if (run.failedThisRound != 1) return
+        if (t != null) {
+            GLog.w("全选：$what（本轮后续同类失败只计数）", t)
+        } else {
+            GLog.w("全选：$what（本轮后续同类失败只计数）")
         }
+    }
+
+    /**
+     * 对一行发一次合成点击。
+     *
+     * ⚠️ **不要用 `performItemClick` 的返回值判断「宿主有没有接住」**：普通多选模式下
+     * `AbsListView.performItemClick` 在调到宿主监听器**之前**就已经把 `mCheckStates`
+     * 取反写好、并且无条件 `handled = true`（框架源码 AbsListView.java:1221-1276）。
+     * 也就是说「宿主监听器静默忽略」这件事从外部看不出来；下一轮读表时表里已经是目标态，
+     * 补点不会重试它。补点能救的是「这一行根本没点到」或「宿主事后把表改了」，
+     * 救不了「宿主自己不更新模型」—— 那只能靠真机日志 + 宿主自己的行为去查。
+     *
+     * 预置（`setItemChecked`）失败时不动表（它没写成功）；点击抛异常时**不回滚**：
+     * 表已经被框架按取反写过了，回滚会把「宿主可能已经更新的模型」与表拆开，
+     * 下一轮再点一次反而变成反向操作。
+     */
+    private fun clickRow(
+        lv: ListView,
+        run: ToggleRun,
+        adapter: android.widget.ListAdapter,
+        index: Int,
+        pos: Int,
+        row: View,
+    ) {
+        // id 用**过滤代理**的 `getItemId(index)`：它内部会换成全量条目的 id；
+        // 而 `lv.getItemIdAtPosition(全量位置)` 在全量下标小于子集行数时会被
+        // 代理再映射一次，拿到的是别的股票的 id。
+        val id = runCatching { adapter.getItemId(index) }.getOrDefault(-1L)
+
+        // `performItemClick` 是按 position **取反**写 checked states 的。先把这一格
+        // 摆成「点击前」的值，取反后才一定落到目标（表里可能留着上一轮的残值）。
+        // 用 `setItemChecked` 而不是直接改 mCheckStates：它会一并维护
+        // mCheckedItemCount（宿主用它渲染「已选 N」）。筛选期间代理已关掉 stable id，
+        // 所以没有 id 表要维护；放行标记仍带上，见下面。
+        val prev = if (lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE) {
+            lv.isItemChecked(pos)
+        } else {
+            null
+        }
+        if (prev != null) {
+            try {
+                // `pos` 是全量坐标；筛选期间代理已关掉 stable id
+                // （见 FilteredAdapter.hasStableIds），但放行标记仍要带上 ——
+                // 若宿主自己覆写了 id 逻辑，不能让它再映射一次。
+                StgFilterBridge.runWithRemapBypassed { lv.setItemChecked(pos, !run.wantChecked) }
+            } catch (t: Throwable) {
+                noteFailure(run, "第 $index 行预置勾选态失败，跳过（下一轮再试）", t)
+                return
+            }
+        }
+        try {
+            var handled = false
+            StgFilterBridge.runWithRemapBypassed {
+                handled = lv.performItemClick(row, pos, id)
+            }
+            if (!handled) {
+                // 普通多选模式下不可达（框架无条件 handled=true）；单选/模态已被守卫挡掉。
+                // 保留这一支只为兜住框架行为变化，不做回滚（原因见函数注释）。
+                noteFailure(run, "第 $index 行没有被宿主接住（performItemClick=false）")
+            }
+        } catch (t: Throwable) {
+            noteFailure(run, "触发行点击失败 index=$index（下一轮按表核对）", t)
+        }
+    }
+
+    /** 把「下一轮」排到稍后；列表已脱离窗口就直接收尾 */
+    private fun scheduleNextRound(env: FeatureEnv, run: ToggleRun, delayMs: Long) {
+        // 同 clickNext：`postDelayed` 在脱窗时会把 runnable 排进 RunQueue（返回 true），
+        // 必须自己先判一次，否则重新挂载后会接着跑。
+        if (!run.lv.isAttachedToWindow) {
+            finishRun(env, run, "列表已脱离窗口")
+            return
+        }
+        val posted = run.lv.postDelayed({ runCatching { nextRound(env, run) } }, delayMs)
+        if (!posted) finishRun(env, run, "列表已脱离窗口")
+    }
+
+    /**
+     * 本轮收尾后重读 checked states：还有行没到目标就再补一轮（上限 [MAX_ROUNDS] 轮）。
+     *
+     * 为什么值得多跑这一趟：宿主偶尔会吞掉某次合成点击（真机「点了全选，行数比计数少几只」），
+     * 行情刷新也可能让筛选结果在运行中变化。每轮只点「状态仍与目标不同」的行，
+     * 所以补点不会把已经勾上的行点掉；没有任何缺口时第 2 轮就会直接收工。
+     * 没有 checked states（`CHOICE_MODE_NONE`）时无从核对，不做补点。
+     */
+    private fun nextRound(env: FeatureEnv, run: ToggleRun) {
+        if (!running || run.token != runSeq.get()) return
+        val lv = run.lv
+        if (!lv.isAttachedToWindow) {
+            finishRun(env, run, "列表已脱离窗口")
+            return
+        }
+        if (lv.choiceMode == ListView.CHOICE_MODE_NONE) {
+            // 没有 checked states：唯一能读的是探针，而探针与点击链对不上时会把
+            // 已勾上的行反复点掉 —— 宁可不补。
+            finishRun(env, run, null)
+            return
+        }
+        // 注意：header 数变了不用在这里单独处理 —— takeShot 会按**当前** header 读状态，
+        // run.load 也会把 headerCount 一起换掉。
+        val shot = takeShot(lv, run.ctId, retry = true)
+        if (shot == null) {
+            finishRun(env, run, "重新读状态失败")
+            return
+        }
+        val plan = StgSelectAllPlan.rowsToClick(shot.before, run.wantChecked)
+        // 即使这一轮没有要补的行，也把现场换成本轮读到的 —— 收尾的显示刷新要按
+        // **当前**适配器 / 筛选映射取值（运行中它们可能已经换过）。
+        run.load(shot, plan)
+        if (plan.isEmpty()) {
+            finishRun(env, run, null)
+            return
+        }
+        // 上限只卡「真正要再点一轮」的轮次；上面那次核对永远会做，
+        // 所以不会出现「状态其实已经对了，却被上限挡掉、还记一条 WARN」。
+        // 重开轮（适配器/筛选/header 变化）不点行，也就不消耗这个预算。
+        if (run.clickRounds >= MAX_ROUNDS) {
+            finishRun(
+                env,
+                run,
+                "已达补点上限（已点 ${run.clickRounds} 轮，仍有 ${plan.size} 行没到位）",
+            )
+            return
+        }
+        run.clickRounds++
+        GLog.i(
+            "策略全选：第 ${run.round} 轮补点（共 ${run.total} 只，已勾 ${shot.checked}，" +
+                "待补 ${plan.size}，点击轮 ${run.clickRounds}/$MAX_ROUNDS）",
+        )
+        clickNext(env, run)
     }
 
     /** 一轮正常结束 / 自行中止：清标记与列表引用（不动令牌 —— 这一轮已经自己停了） */
@@ -716,22 +945,123 @@ class StgSelectAllFeature : Feature {
     }
 
     /**
-     * 全部点完后，把**屏上可见**的勾选框刷成最终状态。
+     * 收尾：清标记、刷屏上可见行的勾选显示、刷新按钮文案。
+     *
+     * [reason] 非空表示中途放弃（列表脱窗 / 适配器没了 / 补点上限），只记日志，不算失败。
+     */
+    private fun finishRun(env: FeatureEnv, run: ToggleRun, reason: String?) {
+        if (run.finished) return
+        run.finished = true
+        endRun()
+        if (reason == null) {
+            GLog.i(
+                "策略全选：完成（${run.round} 轮 / 点击 ${run.clickRounds} 轮，共 ${run.total} 只，目标 " +
+                    "${if (run.wantChecked) "全勾" else "全不勾"}" +
+                    (if (run.failedTotal > 0) "，点击失败 ${run.failedTotal} 次" else "") + "）",
+            )
+        } else {
+            GLog.w(
+                "策略全选：中止（$reason；已开始 ${run.round} 轮 / 点击 ${run.clickRounds} 轮）",
+            )
+        }
+        refreshVisibleChecked(run)
+        refreshVisibleCheckedAfterLayout(run)
+        run.button?.let { updateLabel(env, run.lv, it) }
+    }
+
+    /**
+     * 收尾后再补一次显示刷新，落在**下一帧的 pre-draw**（布局之后、绘制之前）。
+     *
+     * 宿主的 `notifyDataSetChanged()` → 布局可能比我们收尾那一下晚（`ROUND_SETTLE_MS`
+     * 是启发式，不保证布局已经跑完）；`ListView.setupChild()` 会在布局里按
+     * `mCheckStates[适配器位置]` 重写行根 `activated`，把收尾刷的值盖掉。
+     * pre-draw 是「这一帧布局已经完成」的确定性时点，刷完立刻绘制。
+     *
+     * 一次性监听：触发即摘（规则 1.1）。脱窗时 listener 会随 ViewTreeObserver 一起被回收。
+     */
+    private fun refreshVisibleCheckedAfterLayout(run: ToggleRun) {
+        val lv = run.lv
+        if (!lv.isAttachedToWindow) return
+        val vto = lv.viewTreeObserver
+        if (!vto.isAlive) return
+        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                val now = lv.viewTreeObserver
+                if (now.isAlive) now.removeOnPreDrawListener(this)
+                if (run.token == runSeq.get()) refreshVisibleChecked(run)
+                return true
+            }
+        }
+        runCatching { vto.addOnPreDrawListener(listener) }
+            .onFailure { GLog.w("全选：挂显示刷新失败", it) }
+    }
+
+    /**
+     * 把**屏上可见**行的勾选显示刷成「checked states 里的真实状态」。
      *
      * 只改显示：不写 checked states、不碰宿主模型，所以「确认添加」收到的股票不受影响。
-     * 为什么需要：合成点击走 `performItemClick`，框架的 `updateOnScreenCheckedViews()`
-     * 只处理行根视图（`Checkable`），而勾选框在行内部；宿主自己对部分行也没重画 ——
-     * 于是出现「计数与确认页都对、屏幕上部分没勾」的观感问题（§4.1）。
-     * 有任何一行点击失败就**不刷**（不画一个假的勾）。
+     *
+     * 为什么要连行根的 `activated` 一起刷（2026-10-22）：
+     * `AbsListView.performItemClick` 每次都会调 `updateOnScreenCheckedViews()`，把**行根视图**
+     * 的 `activated` 按 `mCheckStates[适配器位置]` 重写。筛选生效时我们的 checked states 用的是
+     * **全量位置**（宿主模型读这份表），两套坐标错位 → 每次合成点击都会把一部分可见行刷回
+     * 「没勾」。宿主若用 `duplicateParentState` / `state_activated` 画勾，只设
+     * `#ct_item.isChecked` 修不回来 —— 这正是「确实全选了，但中间有些股票不显示勾」的来源。
+     * 所以这里按「行 → 全量下标 → 表」取真实状态，`activated` 与 `isChecked` 一起写 ——
+     * 与框架自己给「已勾行」的语义完全一致。
+     *
+     * 没有任何 checked states 可读（`CHOICE_MODE_NONE`）时，只在一次失败都没有时按目标刷，
+     * 免得画一个宿主模型里并不存在的勾。
      */
-    private fun repaintVisible(run: ToggleRun) {
+    private fun refreshVisibleChecked(run: ToggleRun) {
         val lv = run.lv
+        if (!lv.isAttachedToWindow) return
+        val adapter = run.adapter ?: return
+        // 适配器换了：这一轮的映射/行数都已失效，不拿旧现场往新列表上画
+        if (unwrapHeaderAdapter(lv.adapter) !== adapter) return
+        val total = run.total
+        if (total <= 0) return
+        // 行数变了：本轮的映射/下标表整体作废，不拿旧现场往新列表上画
+        if (adapter.count != total) return
+        // header 数变了：所有位置整体偏移，本轮的映射作废
+        if (lv.headerViewsCount != run.headerCount) return
+        val full = run.full
+        val header = run.headerCount
         val first = lv.firstVisiblePosition
+        // 筛选下标表可能已经换过（行情刷新会重算筛选）：逐行核对，对不上就整趟不刷
+        if (full != null) {
+            for (i in 0 until lv.childCount) {
+                val index = first + i - header
+                if (index !in 0 until total) continue
+                val now = StgFilterBridge.fullIndexAt(index, adapter)
+                if (now == null || now != full[index]) return
+            }
+        }
+        val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
+            lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
         for (i in 0 until lv.childCount) {
-            val index = first + i - run.headerCount
-            if (index !in 0 until run.total) continue
-            val ct = lv.getChildAt(i)?.findViewById<View>(run.ctId) as? CheckedTextView ?: continue
-            runCatching { ct.isChecked = run.wantChecked }
+            val index = first + i - header
+            if (index !in 0 until total) continue
+            val row = lv.getChildAt(i) ?: continue
+            val checked = when {
+                multiple -> {
+                    val key = full?.get(index) ?: index
+                    // ⚠️ 歧义行不画：手动点行写的是**适配器位置**（子集下标），
+                    // 全选写的是**全量位置**；当 full[index] 恰好也是另一个子集行的下标时，
+                    // 表里那个 key 可能是「那一行被手动勾上」而不是「这一行被全选勾上」。
+                    // 读它会把别的行的选择画到这一行上 —— 宁可不画，交给宿主自己渲染。
+                    if (full != null && key != index && key in 0 until total) continue
+                    lv.isItemChecked(header + key)
+                }
+                // 没有 checked states 可读（CHOICE_MODE_NONE）：只在一次失败都没有时
+                // 按目标刷 —— 否则屏幕会显示一个宿主模型里并不存在的勾
+                run.failedTotal == 0 -> run.wantChecked
+                else -> continue
+            }
+            runCatching {
+                (row.findViewById<View>(run.ctId) as? CheckedTextView)?.isChecked = checked
+                if (multiple) row.isActivated = checked
+            }
         }
     }
 
@@ -940,5 +1270,23 @@ class StgSelectAllFeature : Feature {
          * 给宿主列表一帧时间完成刷新，避免同一帧里拿到失效的子 View。
          */
         const val TOGGLE_STEP_MS = 16L
+
+        /**
+         * 一轮点完后隔多久重新读 checked states。
+         *
+         * 宿主的行点击监听通常会 `notifyDataSetChanged()`，布局要一两帧才落定；
+         * 读得太早会读到「还没写回」的中间态。48ms ≈ 3 帧，既够宿主落定，
+         * 又短到用户感觉不出停顿。
+         */
+        const val ROUND_SETTLE_MS = 48L
+
+        /**
+         * 一次「全选 / 反选」最多**点几轮**（不含最后那次只核对的读）。
+         *
+         * 补点轮只点「状态仍与目标不同」的行，正常情况下第 2 轮就全部到位、直接收工；
+         * 上限防的是两种病态：宿主连续吞点击、筛选结果一直在变 —— 不能让按钮永远占着
+         * `running`。到上限时记一条 WARN（带剩余行数），交给用户自己再点一次。
+         */
+        const val MAX_ROUNDS = 4
     }
 }
