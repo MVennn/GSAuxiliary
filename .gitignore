@@ -70,6 +70,10 @@ Thumbs.db
 .workbuddy/
 # 旧版记忆目录（内容已归档到 .workbuddy/memory/archive/）
 .workbuddy-ai/
+# CodeGraph 代码索引（本地生成，不进仓库）
+/.codegraph/
+# ZCode 本地插件配置（只对本机生效）
+/.zcode/
 
 # ---------------------------------------------------------------------------
 # 其它

@@ -227,9 +227,15 @@ def check_classname_keep(findings):
         for i, line in enumerate(code, 1):
             if "javaClass.name" not in line and "javaClass.simpleName" not in line:
                 continue
-            # 这一行里提到的、且是我们自己的类名
+            # 只认「以类名本身当判据」的两种写法：字符串字面量里出现类名，
+            # 或 `Name::class`。同一行可能为了别的目的提到类名 —— 例如
+            # `"FilteredAdapter" in a.javaClass.name || StgFilterBridge.isFor(a)`
+            # 里的 StgFilterBridge 只是调用方，不是判据，不能据此要求 -keep。
+            literals = re.findall(r'"([^"]*)"', line)
             for name in own_classes:
-                if not re.search(r"\b%s\b" % re.escape(name), line):
+                in_literal = any(name in s for s in literals)
+                as_class_literal = re.search(r"\b%s\s*::\s*class\b" % re.escape(name), line)
+                if not (in_literal or as_class_literal):
                     continue
                 if re.search(r"-keep\S*\s+.*\b%s\b" % re.escape(name), keep_text):
                     continue

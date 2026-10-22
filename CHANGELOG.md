@@ -15,8 +15,16 @@
   新增 `--notes-only` 只更新两个仓库的说明；`docs/RELEASE.md`、`docs/release-notes/README.md`
   与 3.4.0 母本同步。
 
+### 修复
+
+- 修复 `tools/ci/check_invariants.py` 规则 3 —— 不再把同一行里「别的用途」的类名
+  （如 `StgFilterBridge.isFor(a)`）误判成类名判据，只认字符串字面量与 `X::class`；
+  既有的 `StgSelectAllFeature` proguard-keep 误报清零，8 条不变量规则全过。
+- 修复 `StgSnapAddFeature.kt` —— 删除未使用的 `android.text.TextUtils` import。
+
 ### 清理
 
+- 调整 `.gitignore` —— 忽略 `/.codegraph/`（本地索引）与 `/.zcode/`（本机插件配置）。
 - 清理 仓库磁盘与文档计数 —— 收尾大扫除（`docs/MAINTENANCE.md`）。**不改代码、不改用户可见行为**：
   - `.work/apk/` 只留当前版本 `GSAuxiliary_50-3.4.0.apk`，删掉 8 个旧 / 重复 APK
     （6 个历史构建包，以及 3.3.1 与 3.4.0 的重复副本各一份）；
