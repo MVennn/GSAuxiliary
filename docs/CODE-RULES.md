@@ -55,6 +55,14 @@ Activity / View / PopupWindow / WebView 的引用表用
 `WeakHashMap` 或 `synchronizedList(WeakReference)`；Key 选视图本身或
 decorView root，不选 position（复用会点 A 开 B）。
 
+⚠️ **值的强引用不能反向走到 key**（listener 闭包捕获 decorView、View 的 Context
+是 Activity、代理持有原 adapter、wrapper 捕获 ListView……）—— 有环时弱键等于失效，
+条目永不回收。两种正确形态：
+  ① 强持簿记对象、簿记内部对可能反向的视图用弱引用（`RowViews` 的写法）；
+  ② 确实有环的表，必须在 `Feature.onActivityDestroyed` 里按页面身份显式删除条目。
+**不要**为了断环把簿记对象本身改成弱引用 —— 它没有别的强引用时会被立刻 GC，
+注入/缓存直接停掉（2026-10-20 `9221365` 踩过）。
+
 - 症状：Activity 泄漏、长时间使用后卡顿；列表复用后点错条目。
 
 ## 2. 热路径（每行 / 每帧 / 每次布局回调）

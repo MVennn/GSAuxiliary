@@ -72,6 +72,18 @@
     `postDelayed` 不执行时复位全选的 `running`；列表脱离窗口时中止。
   单测 `StgFilterBridgeTest` 扩到 12 条（新增归属 / 行数 / 列表内容 / 顺序 / 空表）。
 
+- 修复 内存回收 —— 各功能在宿主进程里的页面级记账原先只在关开关 / 热重载时清，
+  离开页面后 `WeakHashMap` 的弱键又被 value→key 环钉住（listener 闭包捕获 `decorView`、
+  `AdapterState.proxy` 持有 key 适配器、底栏 `Injected` 持有 box、行点击 wrapper 捕获
+  ListView……）→ 反复进出策略详情页 / 个股页会持续累积整页视图、适配器和股票列表，
+  越用越卡。现在统一挂 `Activity.onDestroy`，按页面身份释放：
+  PageSync 的布局回调 / 首帧屏障、导航条取色状态、底栏入口注入记账、
+  筛选的适配器状态 / 过滤代理 / 行点击包装 / 空态与列表高度记账、
+  全选注入按钮与计数监听，
+  并清掉进程级筛选快照中属于该页的那一份。布局回调同时改为**弱持 decorView**
+  （listener 本身仍由 ViewTreeObserver 与记账表强持有，注入时机与判据不变）。
+  销毁路径上**只清账、不还原宿主视图**；还原仍然只属于关开关 / 热重载。
+
 ---
 
 ## [3.3.0] — 2026-10-20

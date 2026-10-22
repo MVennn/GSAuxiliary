@@ -1127,6 +1127,53 @@ class StgSelectAllFeature : Feature {
         synchronized(countWatchers) { countWatchers.clear() }
     }
 
+    /**
+     * 页面销毁：释放这一页的注入记账（**不还原宿主视图**）。
+     *
+     * `injected` / `buttonByList` 的值是 TextView（Context 就是 Activity），
+     * `countWatchers` 的 watcher 闭包又持有 ListView —— 三条链都能反向走到弱表的 key，
+     * 于是 WeakHashMap 的弱键等于失效。正常退出多选态时 `removeInjected` 会清掉，
+     * 只有「多选态还开着就离开页面」会留下；这里按页面身份兜底删掉。
+     */
+    override fun onActivityDestroyed(activity: Activity) {
+        val decor = runCatching { activity.window?.decorView }.getOrNull() ?: return
+
+        // 正在跑的一轮若挂在这一页的列表上，先停；它的 postDelayed 可能再也不执行
+        val runningLv = runList?.get()
+        if (runningLv != null && belongsToPage(runningLv, activity, decor)) cancelRun()
+
+        // 注入按钮：只删账，不 removeView（Activity 马上带着视图一起死）。
+        // 不走 removeInjected —— 它会无条件 cancelRun()，可能误杀另一页在途的一轮。
+        val buttons = synchronized(injected) {
+            val anchors = injected.keys.filter { belongsToPage(it, activity, decor) }
+            anchors.mapNotNull { injected.remove(it) }
+        }
+        for (btn in buttons) {
+            removeCountWatcher(btn)
+            val lv = synchronized(buttonByList) {
+                buttonByList.entries.firstOrNull { it.value === btn }?.key
+            }
+            if (lv != null) synchronized(buttonByList) { buttonByList.remove(lv) }
+        }
+
+        // 兜底：按钮被宿主替换 / 已不在 injected 表里的孤儿计数 watcher 与列表记账
+        val counts = synchronized(countWatchers) {
+            countWatchers.entries.filter { belongsToPage(it.key, activity, decor) }
+        }
+        for ((tv, w) in counts) {
+            runCatching { tv.removeTextChangedListener(w.watcher) }
+            synchronized(countWatchers) { countWatchers.remove(tv) }
+        }
+        val lists = synchronized(buttonByList) {
+            buttonByList.keys.filter { belongsToPage(it, activity, decor) }
+        }
+        for (lv in lists) synchronized(buttonByList) { buttonByList.remove(lv) }
+    }
+
+    /** 这个视图是不是属于 [activity] 这一页（Context 或根视图身份，避免误伤别的页面） */
+    private fun belongsToPage(v: View, activity: Activity, decor: View): Boolean =
+        runCatching { v.context === activity || v.rootView === decor }.getOrDefault(false)
+
     // ------------------------------------------------------------ 样式克隆
 
     /** 把源按钮的可见样式逐项复制到目标按钮上，确保「样式一致」 */

@@ -713,6 +713,39 @@ class StockDetailBarFeature : PageSyncFeature() {
         if (entries.isNotEmpty() || swept > 0) noteChange()
     }
 
+    /**
+     * 页面销毁：释放这一页的注入记账（不还原现场）。
+     *
+     * `injected` 的值 `Injected` 持有 box / holder / moreText / button，全是这一页的视图，
+     * 而 View 的 Context 就是 Activity —— 值→key 的强引用链让 WeakHashMap 的弱键失效。
+     * 页面销毁时按 box 的身份把条目删掉，Activity 才能被 GC。
+     */
+    override fun onActivityDestroyed(activity: Activity) {
+        super.onActivityDestroyed(activity)
+        val r = round.get()
+        if (synchronized(injected) { injected.isEmpty() } && r?.window == null) return
+        val decor = runCatching { activity.window?.decorView }.getOrNull() ?: return
+        val doomed = synchronized(injected) {
+            val list = injected.entries.filter { (box, _) -> belongsToPage(box, activity, decor) }
+            list.forEach { injected.remove(it.key) }
+            list.map { it.value }
+        }
+        // 我们主动开面板的那一轮可能还握着 WindowSnapshot(decor)。页面没了就丢掉快照；
+        // 不清 round 本身 —— 让 attemptHandle / 超时按身份自己收尾（它会先比 round）。
+        if (r != null && r.window?.decor === decor) {
+            r.window = null
+            round.compareAndSet(r, null)
+            guardLogged.set(false)
+        }
+        if (doomed.isNotEmpty()) {
+            GLog.i("$id：页面销毁，已释放 ${doomed.size} 份底栏注入记账（未做还原）")
+        }
+    }
+
+    /** 这个视图是不是属于 [activity] 这一页（Context 或根视图身份，避免误伤别的页面） */
+    private fun belongsToPage(v: View, activity: Activity, decor: View): Boolean =
+        runCatching { v.context === activity || v.rootView === decor }.getOrDefault(false)
+
     /** 在 [root] 子树里按 tag 找**任意实例**注入的容器并逐个还原，返回还原了几处 */
     private fun sweepOrphans(root: View?): Int {
         if (root == null) return 0

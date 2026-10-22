@@ -403,11 +403,16 @@ abstract class PageSyncFeature : Feature {
         }
 
         val ref = WeakReference(activity)
+        // 闭包只弱持 decorView：否则 `layoutWatchers` / `paintGates` 的 value 会强引用 key，
+        // WeakHashMap 的弱键永远不可达。listener 本身仍被 ViewTreeObserver 和这两张表强持有，
+        // 页面活着时一个字节的行为都不变；页面销毁后条目可由 GC 正常回收（onDestroy 里还会显式删）。
+        val rootRef = WeakReference(root)
 
         if (!layoutWatchers.containsKey(root)) {
             val listener = ViewTreeObserver.OnGlobalLayoutListener {
                 val a = ref.get() ?: return@OnGlobalLayoutListener
-                runCatching { onLayout(env, a, root) }
+                val r = rootRef.get() ?: return@OnGlobalLayoutListener
+                runCatching { onLayout(env, a, r) }
                     .onFailure { GLog.w("$id：布局回调处理异常", it) }
             }
             layoutWatchers[root] = listener
@@ -421,7 +426,8 @@ abstract class PageSyncFeature : Feature {
         if (!paintGates.containsKey(root)) {
             val gate = ViewTreeObserver.OnPreDrawListener {
                 val a = ref.get() ?: return@OnPreDrawListener true
-                runCatching { onPreDraw(env, a, root) }.getOrElse {
+                val r = rootRef.get() ?: return@OnPreDrawListener true
+                runCatching { onPreDraw(env, a, r) }.getOrElse {
                     GLog.w("$id：首帧屏障处理异常", it)
                     true
                 }
@@ -681,5 +687,32 @@ abstract class PageSyncFeature : Feature {
         }
         synchronized(states) { states.clear() }
         restore()
+    }
+
+    /**
+     * 页面销毁：**只摘这一页**的监听与状态。
+     *
+     * 为什么不能等 `WeakHashMap` 自己清：`layoutWatchers` / `paintGates` 的值是
+     * 闭包，闭包强引用 `root`（也就是这两张表的 key）—— 值→key 的环让弱键永远
+     * 不可达，条目永远不会被清。这里按 `decorView` 身份显式删掉，环就断了。
+     *
+     * 不做 [restore]：Activity 已经销毁，还原宿主现场没有意义，还可能碰已经拆掉的视图。
+     */
+    override fun onActivityDestroyed(activity: Activity) {
+        // 本功能没在任何页面上挂过东西 → 不去碰 Activity 的窗口（getDecorView 本身也有开销）
+        val hasRecords = synchronized(layoutWatchers) { layoutWatchers.isNotEmpty() } ||
+            synchronized(paintGates) { paintGates.isNotEmpty() } ||
+            synchronized(states) { states.isNotEmpty() }
+        if (!hasRecords) return
+        val root = runCatching { activity.window?.decorView }.getOrNull() ?: return
+        val watcher = synchronized(layoutWatchers) { layoutWatchers.remove(root) }
+        if (watcher != null) {
+            runCatching { root.viewTreeObserver.removeOnGlobalLayoutListener(watcher) }
+        }
+        val gate = synchronized(paintGates) { paintGates.remove(root) }
+        if (gate != null) {
+            runCatching { root.viewTreeObserver.removeOnPreDrawListener(gate) }
+        }
+        synchronized(states) { states.remove(root) }
     }
 }

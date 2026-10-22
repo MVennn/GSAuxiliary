@@ -1,11 +1,13 @@
 package io.github.MVennn.GSAuxiliary.feature
 
+import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.util.Reflect
 import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareCardDetailFeature
 import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigFeature
 import io.github.MVennn.GSAuxiliary.feature.dock.DockCleanFeature
@@ -84,6 +86,53 @@ class FeatureManager(private val env: FeatureEnv) {
             }
         }
         GLog.i("功能安装完成：$installed/${features.size}，共 ${bag.size} 个钩子")
+        // 页面销毁时的统一回收点：与功能开关无关，装了就要有，否则页面级记账只能等
+        // 关开关 / 热重载才释放（值→key 环会让弱表永远不生效）。
+        hookActivityDestroy(env, bag)
+    }
+
+    /**
+     * 挂 `Activity.onDestroy`，把「这一页结束了」分发给所有功能。
+     *
+     * 只用于释放按页面记账的引用（见 [Feature.onActivityDestroyed]），
+     * **不在销毁路径上还原宿主现场**。必须走主线程：各功能要碰
+     * ViewTreeObserver / 视图表，`onDestroy` 正常就在主线程，但框架回调不保证。
+     */
+    private fun hookActivityDestroy(env: FeatureEnv, bag: HookBag) {
+        val cls = Reflect.loadClass("android.app.Activity", env.classLoader)
+        if (cls == null) {
+            GLog.w("页面销毁清理：找不到 android.app.Activity，按页释放不会生效")
+            return
+        }
+        var hooked = 0
+        for (m in Reflect.methodsNamed(cls, "onDestroy")) {
+            bag.add(
+                env.xposed.hook(m)
+                    .setId("lifecycle:onDestroy")
+                    .intercept { chain ->
+                        // 在宿主自己的 onDestroy 之前清理：此刻 decorView / window 一定还在，
+                        // 按身份删监听和记账才找得到目标；清完再放行宿主拆页面。
+                        runCatching { dispatchActivityDestroyed(chain.thisObject as? Activity) }
+                            .onFailure { GLog.w("页面销毁清理：分发失败", it) }
+                        chain.proceed()
+                    }
+            )
+            hooked++
+        }
+        if (hooked == 0) GLog.w("页面销毁清理：没挂上 Activity.onDestroy") else
+            GLog.i("页面销毁清理：已挂 $hooked 个 Activity.onDestroy")
+    }
+
+    /** 主线程分发；单个功能清理失败不影响其它功能，也不影响宿主 */
+    private fun dispatchActivityDestroyed(activity: Activity?) {
+        if (activity == null) return
+        val task = Runnable {
+            for (f in features) {
+                runCatching { f.onActivityDestroyed(activity) }
+                    .onFailure { GLog.w("页面销毁清理：功能 [${f.id}] 失败", it) }
+            }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) task.run() else mainHandler.post(task)
     }
 
     /**

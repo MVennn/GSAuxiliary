@@ -393,9 +393,13 @@ class NavBarBlendFeature : Feature {
     private fun attach(env: FeatureEnv, activity: Activity, decor: View) {
         if (watchers.containsKey(decor)) return
         val ref = WeakReference(activity)
+        // 闭包只弱持 decor：否则 watchers 的 value 强引用 key，弱表条目永不回收。
+        // listener 本身仍由 ViewTreeObserver / watchers 强持有，页面活着时行为不变。
+        val decorRef = WeakReference(decor)
         val listener = ViewTreeObserver.OnGlobalLayoutListener {
             val a = ref.get() ?: return@OnGlobalLayoutListener
-            runCatching { onLayout(env, a, decor) }
+            val d = decorRef.get() ?: return@OnGlobalLayoutListener
+            runCatching { onLayout(env, a, d) }
                 .onFailure { GLog.w("$id：布局回调处理异常", it) }
         }
         watchers[decor] = listener
@@ -447,6 +451,29 @@ class NavBarBlendFeature : Feature {
         synchronized(lastRunAt) { lastRunAt.clear() }
         synchronized(deferred) { deferred.clear() }
         if (n > 0) GLog.i("$id：已关闭，$n 个窗口的导航条恢复原样")
+    }
+
+    /**
+     * 页面销毁：只摘这一页的监听与记账。
+     *
+     * `watchers` 的值是闭包，闭包强引用 `decor`（key）—— 不按身份删就永远不回收；
+     * 这里删除后 Activity 才能连同窗口一起被 GC。**不做还原**：窗口已经没了，
+     * 去改 `navigationBarColor` 只会碰一个正在销毁的窗口。
+     */
+    override fun onActivityDestroyed(activity: Activity) {
+        val hasRecords = synchronized(watchers) { watchers.isNotEmpty() } ||
+            synchronized(states) { states.isNotEmpty() } ||
+            synchronized(lastRunAt) { lastRunAt.isNotEmpty() } ||
+            synchronized(deferred) { deferred.isNotEmpty() }
+        if (!hasRecords) return
+        val decor = runCatching { activity.window?.decorView }.getOrNull() ?: return
+        val watcher = synchronized(watchers) { watchers.remove(decor) }
+        if (watcher != null) {
+            runCatching { decor.viewTreeObserver.removeOnGlobalLayoutListener(watcher) }
+        }
+        synchronized(states) { states.remove(decor) }
+        synchronized(lastRunAt) { lastRunAt.remove(decor) }
+        synchronized(deferred) { deferred.remove(decor) }
     }
 
     private fun restore(st: WinState) {

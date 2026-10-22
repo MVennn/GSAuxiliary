@@ -305,6 +305,15 @@ class StgStockFilterFeature : Feature {
 
         /** 装在 ListView 上的过滤代理；null = 当前没有筛选 */
         @Volatile var proxy: FilteredAdapter? = null
+
+        /**
+         * 这笔账属于哪个 Activity（弱引用）。
+         *
+         * 页面销毁时按它精确清掉条目 —— `proxy` 持有 `base`（就是 key 适配器），
+         * 只要这条链在，`WeakHashMap` 的弱键就永远不可达。
+         * 只用于清理归属判定，不参与任何功能判据。
+         */
+        @Volatile var owner: java.lang.ref.WeakReference<Activity>? = null
     }
 
     /**
@@ -693,9 +702,9 @@ class StgStockFilterFeature : Feature {
         //    宿主可能自己 setAdapter 过一次把代理顶掉，也可能只 setAdapter 不发通知 ——
         //    两种情况都得在下一次绑定时把代理装回去。
         if (!isFilterActive(env, adapter)) return
-        val st = stateOf(adapter)
         val ctx = row?.context ?: trackedActivity() ?: return
         val act = findActivity(ctx) ?: trackedActivity() ?: return
+        val st = stateOf(adapter, act)
         val lv = trackedList.get()?.get() ?: findListView(act) ?: return
         if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) return
         val handler = act.window?.decorView?.handler ?: return
@@ -771,7 +780,7 @@ class StgStockFilterFeature : Feature {
             }
         }
 
-        val st = stateOf(adapter)
+        val st = stateOf(adapter, ctx)
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
         val full = readData(adapter) ?: return noteApplySkip("读不到适配器的 data 字段（${adapter.javaClass.name}）")
@@ -1369,7 +1378,7 @@ class StgStockFilterFeature : Feature {
                     val header = lv.headerViewsCount
                     // 每次都重新读：两次点击之间筛选结果可能已经换过，
                     // 而 kept 与 keptIndices 是一起原子替换的，不会读到错位组合。
-                    val idx = stateOf(current).snap?.keptIndices?.getOrNull(position - header)
+                    val idx = stateOf(current, findActivity(lv.context)).snap?.keptIndices?.getOrNull(position - header)
                     if (idx != null) mapped = header + idx
                     // 诊断「筛后点 A 选中 B」时先看这一行：position 是框架给的原始位置（含 header），
                     // header 是 ListView 此刻的 header 数，mapped 是转发给宿主/写 checked states 的位置。
@@ -1474,8 +1483,16 @@ class StgStockFilterFeature : Feature {
         return id
     }
 
-    private fun stateOf(adapter: Any): AdapterState = synchronized(states) {
-        states.getOrPut(adapter) { AdapterState() }
+    /**
+     * 取（必要时新建）适配器记账。
+     *
+     * [owner] 非空时顺手记下这一页 —— 页面销毁清理靠它认领归属，
+     * 否则 `proxy → base(key)` 的强引用环会让 `states` 里的条目永不回收。
+     */
+    private fun stateOf(adapter: Any, owner: Activity? = null): AdapterState = synchronized(states) {
+        states.getOrPut(adapter) { AdapterState() }.also {
+            if (owner != null) it.owner = java.lang.ref.WeakReference(owner)
+        }
     }
 
     /** 记录「代码.市场 → 行内涨跌幅文案」，只在数据项字段缺失时当兜底 */
@@ -1618,6 +1635,81 @@ class StgStockFilterFeature : Feature {
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
     }
+
+    /**
+     * 页面销毁：按这一页的身份清掉全部记账。
+     *
+     * 这是本功能最容易泄漏的地方：`states` 的值 `AdapterState` 持有 `proxy`，
+     * 而 `proxy.base` **就是 `states` 的 key 适配器** —— 值→key 的强引用环让
+     * `WeakHashMap` 的弱键永远不可达，适配器（连同整份 `data` 股票列表和
+     * Activity Context）会一直留在宿主进程里。`wrappedLists` / `proxiedLists` /
+     * `detachedChrome` 同理（值是监听器 / 视图 / 代理，都能反向走到 ListView）。
+     *
+     * **只清账，不拆代理、不还原监听**：Activity 正在销毁，视图马上跟着死；
+     * 在销毁路径上做还原既没意义，也可能碰到已经拆掉的窗口。真正的还原路径
+     * 仍然是 `onConfigChanged(false)` 与 `unwrapRowClick`（功能关闭时用）。
+     */
+    override fun onActivityDestroyed(activity: Activity) {
+        val hasRecords = synchronized(states) { states.isNotEmpty() } ||
+            synchronized(wrappedLists) { wrappedLists.isNotEmpty() } ||
+            synchronized(proxiedLists) { proxiedLists.isNotEmpty() } ||
+            synchronized(detachedChrome) { detachedChrome.isNotEmpty() } ||
+            synchronized(lvOriginalLp) { lvOriginalLp.isNotEmpty() } ||
+            trackedActivityRef.get() != null || trackedList.get() != null
+        if (!hasRecords) return
+        val decor = runCatching { activity.window?.decorView }.getOrNull() ?: return
+
+        // 1) 这一页的 ListView —— 各张表可能各自记过，取并集
+        val lists = LinkedHashSet<ListView>()
+        trackedList.get()?.get()?.let { lv ->
+            if (belongsToPage(lv, activity, decor)) lists.add(lv)
+        }
+        synchronized(wrappedLists) { wrappedLists.keys.toList() }
+            .filterTo(lists) { belongsToPage(it, activity, decor) }
+        synchronized(proxiedLists) { proxiedLists.keys.toList() }
+            .filterTo(lists) { belongsToPage(it, activity, decor) }
+        synchronized(detachedChrome) { detachedChrome.keys.toList() }
+            .filterTo(lists) { belongsToPage(it, activity, decor) }
+        synchronized(lvOriginalLp) { lvOriginalLp.keys.toList() }
+            .filterTo(lists) { belongsToPage(it, activity, decor) }
+
+        // 2) 只清账：代理 / 监听 / 空态视图都随这一页一起回收
+        for (lv in lists) {
+            synchronized(wrappedLists) { wrappedLists.remove(lv) }
+            synchronized(proxiedLists) { proxiedLists.remove(lv) }
+            synchronized(detachedChrome) { detachedChrome.remove(lv) }
+            synchronized(lvOriginalLp) { lvOriginalLp.remove(lv) }
+        }
+
+        // 3) 适配器记账：已记 owner 且正是这一页的才删（旧的 null-owner 条目由热重载兜底）
+        val doomed = synchronized(states) {
+            val list = states.entries.filter { it.value.owner?.get() === activity }
+            list.forEach { states.remove(it.key) }
+            list.map { it.value }
+        }
+
+        // 4) 进程级筛选桥若正是这一页的代理发布的，一并清掉 —— 它是静态强引用，
+        //    不清的话整页（source 列表 + owner 代理 → base 适配器 → Activity）都会被钉住。
+        val proxies = doomed.mapNotNull { it.proxy }
+        if (proxies.any { StgFilterBridge.isFor(it) }) {
+            StgFilterBridge.publish(null)
+        }
+
+        // 5) 自己的当前页弱引用/去重标记别继续指着已销毁的页面
+        if (trackedActivity() === activity) trackedActivityRef.set(null)
+        if (trackedList.get()?.get()?.let { belongsToPage(it, activity, decor) } == true) {
+            trackedList.set(null)
+        }
+        pendingRefilter = false
+        lastSummary = null
+        lastApplySkip = null
+        lastSkipReason = null
+        lastPublishSkip = null
+    }
+
+    /** 这个视图是不是属于 [activity] 这一页（Context 或根视图身份，避免误伤别的页面） */
+    private fun belongsToPage(v: View, activity: Activity, decor: View): Boolean =
+        runCatching { findActivity(v.context) === activity || v.rootView === decor }.getOrDefault(false)
 
     // ------------------------------------------------------------------ 取值与工具
 
