@@ -7,6 +7,14 @@
 
 ## [未发布] — 2026-10-22
 
+### 调整
+
+- 调整 Release 说明 —— 加粗总结的下一行固定是一行反馈入口（绝对地址
+  `https://github.com/MVennn/GSAuxiliary/issues/new/choose`），然后才是 `## 本版内容`；
+  `tools/publish.py` 发布前自动补缺、并把模块仓库的 Issue 地址换回主仓库，
+  新增 `--notes-only` 只更新两个仓库的说明；`docs/RELEASE.md`、`docs/release-notes/README.md`
+  与 3.4.0 母本同步。
+
 ### 清理
 
 - 清理 仓库磁盘与文档计数 —— 收尾大扫除（`docs/MAINTENANCE.md`）。**不改代码、不改用户可见行为**：

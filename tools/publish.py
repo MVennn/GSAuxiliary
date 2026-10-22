@@ -30,9 +30,15 @@ LSPosed 的模块仓库（`Xposed-Modules-Repo/<包名>`）是**独立仓库**�
     python tools/publish.py                    # 构建 + 双仓库发布 + 同步元文件
     python tools/publish.py --skip-build       # 用现有 APK，不重新构建
     python tools/publish.py --notes notes.md   # 指定 Release 说明（Markdown）
+    python tools/publish.py --notes-only       # 只改两个仓库的 Release 说明，不动 APK
     python tools/publish.py --dry-run          # 只打印将要做什么，不写任何东西
     python tools/publish.py --sync-only        # 只同步元文件，不发 Release
     python tools/publish.py --check            # 只查凭据有没有两个仓库的写权限
+
+Release 正文里必须有**反馈入口**（`issues/new/choose`），插在第一行加粗总结之后、
+`## 本版内容` 之前；链接固定写成源码仓库的绝对地址 —— 模块仓库的 Release 页点开
+也要落到主仓库。正文缺这一行时脚本会自动补上，`docs/release-notes/<版本>.md`
+里也照写一份，保证「仓库里的母本 = 线上正文」。
 
 版本号取自 `app/build.gradle.kts` 的 `versionCode` / `versionName`，
 tag 形如 `33-2.13.0`（**versionCode-versionName**，LSPosed 的约定）。
@@ -85,6 +91,15 @@ MODULE_REPO = os.environ.get(
     "GITHUB_MODULE_REPO", "Xposed-Modules-Repo/io.github.MVennn.GSAuxiliary")
 
 API = "https://api.github.com"
+
+# Release 正文里的反馈入口：放在第一行加粗总结之后、「本版内容」之前。
+# 链接必须是**绝对地址且指向源码仓库** —— 模块仓库的 Release 页点开也要落到主仓库；
+# 相对链接或模块仓库地址都会跑到模块仓库自己的 Issue 列表去（那边只有元文件，没人看）。
+ISSUES_URL = SOURCE_URL.rstrip("/") + "/issues/new/choose"
+FEEDBACK_LINE = (
+    "遇到问题、想要新功能，到 [Issues](%s) 反馈 —— 崩溃、开关失灵请附上"
+    "模块版本号与日志（设置页 → 日志 → 导出日志）。" % ISSUES_URL
+)
 
 
 def repo_files():
@@ -383,6 +398,35 @@ def notes_from_changelog(vn):
     return body or ("v" + vn)
 
 
+def with_feedback(notes):
+    """保证正文带反馈入口，且入口指向**源码仓库**。
+
+    两道保险，都只在这里做一次（两个仓库共用同一条正文）：
+
+    1. 正文里出现了模块仓库自己的 Issue 地址（从旧模板抄来的）→ 换成源码仓库，
+       否则用户在 LSPosed 模块页点「反馈」会进到没人看的那个仓库；
+    2. 没有入口行 → 插在第一行加粗总结之后、「本版内容」之前 —— 用户读到
+       本版改了什么之前就先看到去哪儿提问题。
+
+    返回 `(正文, 是否补过入口)`。
+    """
+    own = SOURCE_URL.rstrip("/") + "/issues"
+    body = re.sub(re.escape("https://github.com/%s/issues" % MODULE_REPO), own, notes or "")
+
+    # 入口行不是清单条目；清单里顺带提到 Issue 不算入口
+    for line in body.split("\n"):
+        if own in line and not line.lstrip().startswith(("-", "*")):
+            return body, False
+
+    lines = body.split("\n")
+    for n, line in enumerate(lines):
+        if line.startswith("## "):
+            head = "\n".join(lines[:n]).rstrip("\n")
+            return (head + "\n\n" + FEEDBACK_LINE + "\n\n"
+                    + "\n".join(lines[n:])), True
+    return body.rstrip("\n") + "\n\n" + FEEDBACK_LINE + "\n", True
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -393,6 +437,9 @@ def main():
     ap.add_argument("--sync-only", "--readme-only", dest="sync_only",
                     action="store_true",
                     help="只同步模块仓库的元文件（README/SUMMARY/SOURCE_URL/icon.svg），不发 Release")
+    ap.add_argument("--notes-only", "--repost-notes", dest="notes_only",
+                    action="store_true",
+                    help="只更新两个仓库的 Release 说明（不构建、不传 APK、不同步元文件）")
     ap.add_argument("--check", action="store_true",
                     help="只做前置检查：token 是否对两个仓库都有写权限（不构建、不发布）")
     args = ap.parse_args()
@@ -425,6 +472,22 @@ def main():
         print("! 未指定 --notes，使用 CHANGELOG 的 [%s] 段。" % vn)
         print("! 那段是给开发者的（症状/根因/改法/验证），面向用户建议另写一份传 --notes。")
         print()
+    notes, added = with_feedback(notes)
+    if added:
+        print("      Release 正文已补上反馈入口（%s）" % ISSUES_URL)
+        print()
+
+    if args.notes_only:
+        print("只更新两个仓库的 Release 说明（不动 APK / 元文件）")
+        if args.dry_run:
+            print("      [dry-run] 将更新 %s 与 %s 的 %s" % (SOURCE_REPO, MODULE_REPO, tag))
+            return 0
+        tok = token()
+        for repo in (SOURCE_REPO, MODULE_REPO):
+            upsert_release(tok, repo, tag, vn, notes)
+        print()
+        print("完成（说明已更新，产物未动）。")
+        return 0
 
     if not args.skip_build and not args.dry_run:
         build()

@@ -118,6 +118,7 @@ python tools/publish.py --notes .work/release-notes.md
 
 ```bash
 python tools/publish.py --skip-build          # 用现有 APK，不重新构建
+python tools/publish.py --notes-only          # 只改两个仓库的 Release 说明，不动 APK / 元文件
 python tools/publish.py --sync-only           # 只同步那四个元文件，不发 Release
 python tools/publish.py --dry-run             # 只打印，不写任何东西
 ```
@@ -230,6 +231,12 @@ python tools/ci/verify_apk.py app/build/outputs/apk/release/app-release.apk \
 
 - **正文第一行直接是加粗总结**：不要 `> **一句话**：…` 引言块，也不要
   `# 版本号 — 日期` 标题 —— 参考范本（2.x / 3.x 各版说明）都没有这两块。
+- **加粗总结的下一行固定是反馈入口**（不是清单条目，一行写完），链接写**绝对地址**
+  `https://github.com/MVennn/GSAuxiliary/issues/new/choose`：
+
+  > 两个仓库共用同一份正文，用户在 LSPosed 模块页点「反馈」也必须落到**主仓库**的
+  > Issues —— 相对链接或模块仓库地址会进到只放元文件的那个仓库。`publish.py` 会补缺、
+  > 会把模块仓库的 Issue 地址换回来，但母本里也要写（见 release-notes/README.md）。
 
 - **CHANGELOG 是开发者记录**（症状 / 根因 / 改法 / 验证结果、crash 栈、验证表格），
   **不要**把它整段当 Release 说明 —— 用户看到的是噪音。
