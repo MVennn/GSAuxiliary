@@ -483,7 +483,7 @@ cp keystore.properties.example keystore.properties
 | `python tools/ci/check_release_notes.py` | 发版说明覆盖率：本版改动必须进说明 | 1s |
 | `python tools/ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | 1s |
 | `python tools/ci/check_links.py` | 文档链接：相对链接 / 锚点 / docs 索引覆盖 / 孤儿文档 | 1s |
-| `cmd /c gradlew.bat :app:testReleaseUnitTest` | 125 条单元测试（纯逻辑那一半） | 5s |
+| `cmd /c gradlew.bat :app:testReleaseUnitTest` | 156 条单元测试（纯逻辑那一半） | 5s |
 | `python tools/ci/verify_apk.py --reject-debug-cert <apk>` | 产物红线（24 项） | 2s |
 
 `check_invariants.py` 的 8 条规则：

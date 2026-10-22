@@ -5,6 +5,30 @@
 
 ---
 
+## [未发布] — 2026-10-22
+
+### 清理
+
+- 清理 仓库磁盘与文档计数 —— 收尾大扫除（`docs/MAINTENANCE.md`）。**不改代码、不改用户可见行为**：
+  - `.work/apk/` 只留当前版本 `GSAuxiliary_50-3.4.0.apk`，删掉 8 个旧 / 重复 APK
+    （6 个历史构建包，以及 3.3.1 与 3.4.0 的重复副本各一份）；
+  - `.work/probe/` 删 13 个无引用的截图 / dump，保留 `docs/FEATURE-SNAP-ADD.md` 引用的
+    4 张样张（`feature_01/02/05`、`feature_button`）；
+  - 清掉 `tools/__pycache__`、`tools/probe/{build,out}`、根 `build/`
+    （均为 `.gitignore` 内的可再生产物）。
+  - 体积：仓库 **195M → 180M**，`.work/` **22M → 6.4M**；`app/build/`（140M，当前版本产物）、
+    `.codegraph/`、`.work/backup|notes|lsposed-repo|legal-archive|png-baseline`、
+    `log.mark`、`wifi_serial` 按 `docs/MAINTENANCE.md` 口径保留。
+- 对齐 文档计数 —— `ARCHITECTURE` 功能挂载表 9→11（新增「截图并添加」「行情筛选」两行，
+  并把悬在表外的两行移回表内，界面精简 7→6）；`FEATURE_KEYS` 19→20（补 `STG_SNAP_ADD`）、
+  快照字段 26→27 / `ALL_KEYS` 32→33；`EXTENDING` 调试通道 19→20 个功能键；
+  `BUILD` 单测 125→156；`DOC-RULES` 功能专项 10→11 篇。
+- 验证：`hygiene` / 链接 / 免责 / 发版说明 / 开关 / 契约 / 死代码七项 exit 0；
+  `check_invariants` 仍报既有的 `StgFilterBridge` proguard-keep 误报（exit 1，与历史记录一致）；
+  `testReleaseUnitTest` **156 条全过**。
+
+---
+
 ## [3.4.0] — 2026-10-22
 
 > 本版为功能版本（3.3.1 → 3.4.0）：策略详情多选态新增「截图并添加」。
