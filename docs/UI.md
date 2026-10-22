@@ -115,25 +115,6 @@ Box(根容器，铺 MiuixTheme.colorScheme.surface)
 - **可预测返回时一级菜单就在二级页下方**（第 1 层常驻），不再是黑底
 - 两层各自铺背景，切换过程**不会闪白**（原先 `SizeTransform(clip = false)` 会露窗口底色）
 
-### 1.0.2 顶栏只留标题，副标题只撑高度（3.3.0）
-
-一级页的顶栏**只显示居中的标题**；各板块原先那行副标题
-（「环境概览 / 功能菜单 / …」）**不再显示**，但它原先撑起的高度**要保留** ——
-否则所有板块的顶部留白都会跳一下。
-
-做法（`ui/Glass.kt` 的 `TopBarContent`）：把原来的 `SmallTopAppBar` 当**高度尺** ——
-`titleColor` / `subtitleColor` 全透明、`clearAndSetSemantics {}` 清掉语义，
-只让它参与测量；真正的标题再叠在它上方（扣掉状态栏 inset 后）居中。
-
-> **为什么要清语义**：高度尺里的文字虽然透明，但**读屏仍会念出来** ——
-> 同一行标题会被念两遍。`clearAndSetSemantics {}` 把它从语义树里摘掉。
-
-> ⚠️ **副标题文案本身没删**：`R.string.subtitle_*` 还在，也仍被传进来 ——
-> 它现在只当高度尺用。将来若要恢复显示，把 `TopBarContent` 换回 `SmallTopAppBar` 即可。
-
-玻璃形态（`GlassTopBar`）与纯色形态（非玻璃分支）走的是**同一个** `TopBarContent`，
-差别只在 `barColor`：玻璃传透明（玻璃在下面一层），纯色传 `colorScheme.surface`。
-
 ### 1.0.0 三级页为什么单独一层（3.1.0）
 
 3.1.0 只有一条进度，三级页（方案编辑）直接顶掉二级页的内容，于是：
@@ -169,6 +150,25 @@ exit  = slideOutHorizontally(tween(260)) { if (forward) -it / 8 else it / 8 } + 
 ```
 
 位移只有屏宽的 1/8，是「跟手滑一点」而不是整页推走 —— 整页推会让人误以为换了页面。
+
+### 1.0.2 顶栏只留标题，副标题只撑高度（3.3.0）
+
+一级页的顶栏**只显示居中的标题**；各板块原先那行副标题
+（「环境概览 / 功能菜单 / …」）**不再显示**，但它原先撑起的高度**要保留** ——
+否则所有板块的顶部留白都会跳一下。
+
+做法（`ui/Glass.kt` 的 `TopBarContent`）：把原来的 `SmallTopAppBar` 当**高度尺** ——
+`titleColor` / `subtitleColor` 全透明、`clearAndSetSemantics {}` 清掉语义，
+只让它参与测量；真正的标题再叠在它上方（扣掉状态栏 inset 后）居中。
+
+> **为什么要清语义**：高度尺里的文字虽然透明，但**读屏仍会念出来** ——
+> 同一行标题会被念两遍。`clearAndSetSemantics {}` 把它从语义树里摘掉。
+
+> ⚠️ **副标题文案本身没删**：`R.string.subtitle_*` 还在，也仍被传进来 ——
+> 它现在只当高度尺用。将来若要恢复显示，把 `TopBarContent` 换回 `SmallTopAppBar` 即可。
+
+玻璃形态（`GlassTopBar`）与纯色形态（非玻璃分支）走的是**同一个** `TopBarContent`，
+差别只在 `barColor`：玻璃传透明（玻璃在下面一层），纯色传 `colorScheme.surface`。
 
 ### 1.1 Insets 归属（踩过的坑）
 
@@ -775,28 +775,19 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 
 ## 6. 液态玻璃（顶栏 + 悬浮底栏 + 弹窗）
 
-材质体系只有三个表面：**顶栏**（`GlassTopBar`）、**悬浮底栏**（`LiquidGlassDock`）、
-**弹窗**（`DialogCard`）。三档（完整 / 简约 / 纯色兜底）的定义与逐表面参数矩阵是
-[LIQUID-GLASS](LIQUID-GLASS.md) 的正本；本模块里的实现细节、滑动指示、手势与
-「底栏消失 / 下滑收起」两次踩坑，已移到 [UI-MATERIAL](UI-MATERIAL.md) §6。
-
+材质体系只有三个表面：**顶栏**（`GlassTopBar`）、**悬浮底栏**（`LiquidGlassDock`）、**弹窗**（`DialogCard`）；三档（完整 / 简约 / 纯色兜底）的定义与逐表面参数矩阵是 [LIQUID-GLASS](LIQUID-GLASS.md) 的正本，本模块里的实现细节、滑动指示、手势与「底栏消失 / 下滑收起」两次踩坑已移到 [UI-MATERIAL](UI-MATERIAL.md) §6。
 
 ## 7. 状态管理
 
-口径见 [UI-MATERIAL](UI-MATERIAL.md) §7：配置（`PrefState`，落 `ModulePreferences`）、
-路由（`Routing.kt` 的 `Route` + 两条进度）、纯界面态（`remember` / `rememberSaveable`）。
-**跨 Activity 重建要活下来的必须 `rememberSaveable`**（转屏别把用户从编辑页踢回首页）。
+口径见 [UI-MATERIAL](UI-MATERIAL.md) §7：配置（`PrefState`，落 `ModulePreferences`）、路由（`Routing.kt` 的 `Route` + 两条进度）、纯界面态（`remember` / `rememberSaveable`）；**跨 Activity 重建要活下来的必须 `rememberSaveable`**（转屏别把用户从编辑页踢回首页）。
 
 ## 8. 组件清单
 
-可用组件与「别用哪一个」的清单见 [UI-MATERIAL](UI-MATERIAL.md) §8；新增图标只走
-`ui/AppIcons.kt`，不要引回 `material-icons-extended`（体积代价见
-[UI-HISTORY](UI-HISTORY.md) §10）。
+可用组件与「别用哪一个」的清单见 [UI-MATERIAL](UI-MATERIAL.md) §8；新增图标只走 `ui/AppIcons.kt`，不要引回 `material-icons-extended`（体积代价见 [UI-HISTORY](UI-HISTORY.md) §10）。
 
 ## 9. 改界面时的注意事项
 
-踩坑清单原文已移到 [UI-HISTORY](UI-HISTORY.md) §13（那里本来就是「踩坑史」）。
-动界面前**至少先过一遍**，其中最容易再犯的五条：
+踩坑清单原文已移到 [UI-HISTORY](UI-HISTORY.md) §13（那里本来就是「踩坑史」）。动界面前**至少先过一遍**，其中最容易再犯的五条：
 
 - Miuix 锁 0.9.3、backdrop 锁 1.x（升级会连带 AGP 9 迁移）；
 - 页面底色用 `colorScheme.surface`，用 `background` 会让卡片整片消失；
@@ -806,6 +797,4 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 
 ## 10. 体积 / 系统栏 / 图标（详见踩坑史）
 
-- **安装体积**：见 [UI-HISTORY](UI-HISTORY.md) §10（`material-icons-extended` 是历史主因，现已移除）；
-- **系统栏沉浸**：见 §11（全透明 + 关掉强制对比度 + `WindowInsetsControllerCompat`）；
-- **Launcher 图标**：见 §12（三层矢量 + 五档位图；3.2.0 换成弧线 + 箭镞）。
+口径分三处：**安装体积**见 [UI-HISTORY](UI-HISTORY.md) §10（`material-icons-extended` 是历史主因，现已移除）；**系统栏沉浸**见 §11（全透明 + 关掉强制对比度 + `WindowInsetsControllerCompat`）；**Launcher 图标**见 §12（三层矢量 + 五档位图；3.2.0 换成弧线 + 箭镞）。

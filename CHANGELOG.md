@@ -24,6 +24,22 @@
 
 ### 清理
 
+- 对齐 文档规范（基准仓自查）—— **只动文档，不改代码、不改用户可见行为**：
+  - `docs/UI.md` §1 的三个子小节按编号重排（`1.0.2` 原本排在 `1.0.0` / `1.0.1` 前面）；
+    标题文字逐字未改，`UI-HISTORY` 里指向 `§1.0.0` / `§1.0.2` 的锚点仍然有效。
+  - `docs/UI.md` **812 → 800 行**，回到 `docs/DOC-RULES.md` §6 的体量预算内 ——
+    §6/§7/§8/§9/§10 的正文早已移到 `LIQUID-GLASS` / `UI-MATERIAL` / `UI-HISTORY`，
+    本篇只留转指段，压成一两行；链接与 §9 的「最容易再犯的五条」逐字保留。
+    `UI-MATERIAL`（803 行）经判断**不拆**：它是现状结论不是踩坑史，拆了会断
+    §1.3 / §6 的小节编号连续性。
+  - `docs/DOC-RULES.md` 补 `### 文件命名：全大写 + 连字符` —— 7 个兄弟仓都照本仓
+    这条做，但基准仓自己没写；补上后源头才有正本（含两个例外：release-notes 用
+    版本号不带 `v`、`DISCLAIMER.en.md` 的 `.en` 中缀是既有事实）。
+  - `docs/README.md` 索引补 `tools/README.md` / `tools/probe/README.md` /
+    `tools/contract/dump/README.md` 三行 —— `TOOLS-DOC-RULES` 称 `tools/README.md`
+    是「唯一入口文档」，但它在索引里查不到，违反本仓自己的孤儿零容忍。
+  - 验证：`tools/ci/check_links.py` —— 54 篇 Markdown、249 条相对链接，
+    **0 断链 / 0 失效锚点 / 0 索引漏项 / 0 孤儿**。
 - 调整 `.gitignore` —— 忽略 `/.codegraph/`（本地索引）与 `/.zcode/`（本机插件配置）。
 - 清理 仓库磁盘与文档计数 —— 收尾大扫除（`docs/MAINTENANCE.md`）。**不改代码、不改用户可见行为**：
   - `.work/apk/` 只留当前版本 `GSAuxiliary_50-3.4.0.apk`，删掉 8 个旧 / 重复 APK

@@ -48,7 +48,10 @@
 | [NAMING.md](NAMING.md) | 文案与命名规范：`strings.xml` 里用户可见文案怎么写 |
 | [LIQUID-GLASS.md](LIQUID-GLASS.md) | 液态玻璃材质规范：完整 / 简约两档光效的正本定义、逐表面参数矩阵、版本降级链 |
 | [DOC-RULES.md](DOC-RULES.md) | 文档规则：分类定位、单一正本映射表、链接纪律、变更触发矩阵 |
-| [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md) | tools/ 下的文档规则：README 与脚本注释怎么保持一致 |
+| [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md) | tools/ 下的文档规则：README 与脚本注释怎么保持一致；tools/ 的入口文档是 [`tools/README.md`](../tools/README.md) |
+| tools/ [`README.md`](../tools/README.md) | tools/ 下全部脚本的用法总表：环境变量总表 + 七大类分类总览，每个脚本一节（五要素条目格式） |
+| tools/ [`probe/README.md`](../tools/probe/README.md) | 运行时探针：目标 App 升级 / 加固变严后的运行时侦察工具 |
+| tools/ [`contract/dump/README.md`](../tools/contract/dump/README.md) | 宿主类名 dump 快照：这份 8.6.0 类名的**能证什么、不能证什么**，以及宿主升级后怎么重做全量快照 |
 
 ## 四、参考资料
 

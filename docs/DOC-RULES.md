@@ -19,6 +19,25 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 每篇文档开头必须有一个 **「一句话」引言块**（`> **一句话**：…` 或一行定位语），
 让读者不用往下翻就知道这篇管什么。新文档没有它不算写完。
 
+### 文件命名：全大写 + 连字符
+
+`docs/` 下的 `.md` 一律 **全大写 + 连字符**：`MAINTENANCE.md`、`DOC-RULES.md`、`FEATURE-XXX.md`。
+混用驼峰或下划线（`FeatureStockBar.md` / `feature_stock_bar.md`）会让索引排序和全仓搜索都跟着散。
+
+改名三步（顺序别乱）：
+
+1. **`git mv` 改名** —— 保住 Git 的重命名识别；用 `mv` 出来的是一套「删一篇 + 加一篇」，review 时看不出是同一篇；
+2. **全仓 grep 旧文件名**，把引用方一并改掉 —— 含 `CHANGELOG.md` / `PROGRESS.md` 里指向**现役文档**的链接；
+   纯历史记录里的旧文件名保留原样，那是当时的事实（口径同 §4）；
+3. **跑 `python tools/ci/check_links.py` 收尾** —— 断链 / 失效锚点 / 索引漏项 / 孤儿一次查完。
+
+两个例外：
+
+- **`docs/release-notes/` 下的文件名是版本号本身**（`3.4.0.md`），**不带 `v`** ——
+  `v` 前缀只属于发版 tag。规则正本见 [VERSIONING.md](VERSIONING.md)。
+- **双语规范源用 `.en` 中缀**：`DISCLAIMER.en.md` 不套上面的严格形式。
+  这是既有事实，单列于此说明它不是违规 —— 别让后人当成违规去「修」。
+
 tools/ 目录下的文档规则单独见 [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md)，不在本篇重复。
 
 ## 2. 单一正本原则
@@ -82,7 +101,7 @@ REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md 里的
 | 内部重构 / 底层修复 / 死代码 | 说明里**必须按对象单列一行**（算「修复」，不许打包成「代码整理」） |
 | 改免责全文 | 改 [DISCLAIMER.md](DISCLAIMER.md) / [DISCLAIMER.en.md](DISCLAIMER.en.md) 两个规范源，再跑 `python tools/ci/check_disclaimer_sync.py --write` 同步进两个 `strings.xml`（细则见 [MAINTENANCE.md](MAINTENANCE.md) §3 L3） |
 | 改构建 / 脚本 | [BUILD.md](BUILD.md) / [MAINTENANCE.md](MAINTENANCE.md) 对应段 |
-| 新增 / 删除文档 | [README.md](README.md) 索引（见 §7） |
+| 改名 / 新增 / 删除文档 | [README.md](README.md) 索引（见 §7）+ 全仓 grep 旧文件名同步引用（命名口径见 §1） |
 
 ## 6. 体量预算与样例时效
 
