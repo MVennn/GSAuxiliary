@@ -91,6 +91,16 @@ object ConfigKeys {
     const val STG_SELECT_ALL = "stg_select_all"
 
     /**
+     * 策略详情页「截图并添加」：在多选态底部「确认添加」左侧注入一颗按钮，
+     * 按勾选顺序打开个股详情页逐页截图并存入相册，随后自动触发宿主的
+     * 「确认添加」→「选择分组」。
+     *
+     * 运行时视图注入 + 真实页面截屏；见
+     * [io.github.MVennn.GSAuxiliary.feature.stgsnap.StgSnapAddFeature]。
+     */
+    const val STG_SNAP_ADD = "stg_snap_add"
+
+    /**
      * 策略详情页「筛选股票」：在右上角三点菜单（「修改名称」/「删除策略」）里
      * 注入一个「筛选股票」项，点开一个**复用目标 App 自带筛选面板 UI** 的筛选页，
      * 提供「涨幅 / 跌幅 / 自选」三个开关，筛掉不匹配的股票行。
@@ -373,6 +383,13 @@ object ConfigKeys {
     /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
+     * 它是「截图并添加」的总开关：按钮只在多选态出现，出厂默认关。
+     */
+    const val DEFAULT_STG_SNAP_ADD = false
+
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
      * 三个筛选开关不在这里：它们由目标进程写目标 App 自己的 prefs
      * （见 [STG_STOCK_FILTER]），`DEFAULTS` 里也就不该有它们的键。
      */
@@ -459,7 +476,7 @@ object ConfigKeys {
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
-        STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -480,7 +497,7 @@ object ConfigKeys {
      */
     val FEATURE_KEYS =
         arrayOf(
-            ENABLED, WATCHLIST_BOLD, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+            ENABLED, WATCHLIST_BOLD, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
             NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -519,7 +536,7 @@ object ConfigKeys {
      */
     val SNAPSHOT_KEYS: Set<String> = setOf(
         ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
-        STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -537,6 +554,7 @@ object ConfigKeys {
         STG_DIRECT_QUOTE to DEFAULT_STG_DIRECT_QUOTE,
         STG_QUOTE_SWIPE to DEFAULT_STG_QUOTE_SWIPE,
         STG_SELECT_ALL to DEFAULT_STG_SELECT_ALL,
+        STG_SNAP_ADD to DEFAULT_STG_SNAP_ADD,
         STG_STOCK_FILTER to DEFAULT_STG_STOCK_FILTER,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
         DOCK_CLEAN to DEFAULT_DOCK_CLEAN,

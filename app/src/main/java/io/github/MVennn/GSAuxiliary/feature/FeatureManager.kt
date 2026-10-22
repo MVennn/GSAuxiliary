@@ -20,6 +20,7 @@ import io.github.MVennn.GSAuxiliary.feature.market.MarketOverviewCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketSectorCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.navbar.NavBarBlendFeature
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature
+import io.github.MVennn.GSAuxiliary.feature.stgsnap.StgSnapAddFeature
 import io.github.MVennn.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
 import io.github.MVennn.GSAuxiliary.feature.stockbar.StockDetailBarFeature
@@ -52,6 +53,7 @@ class FeatureManager(private val env: FeatureEnv) {
         WatchlistFeature(),
         StgDirectQuoteFeature(),
         StgSelectAllFeature(),
+        StgSnapAddFeature(),
         StgStockFilterFeature(),
         StockDetailBarFeature(),
         DockCleanFeature(),
@@ -208,6 +210,7 @@ class FeatureManager(private val env: FeatureEnv) {
         stgDirectQuote = false,
         stgQuoteSwipe = false,
         stgSelectAll = false,
+        stgSnapAdd = false,
         stgStockFilter = false,
         stockBarEntry = false,
         dockClean = false,

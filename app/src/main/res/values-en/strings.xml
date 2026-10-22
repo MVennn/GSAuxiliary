@@ -64,6 +64,9 @@
     <string name="feature_select_all_switch">Add "Select all" button</string>
     <string name="feature_select_all_switch_summary">In the strategy multi-select bar, left of "Cancel"</string>
 
+    <string name="feature_snap_add_switch">Add "Screenshot and add" button</string>
+    <string name="feature_snap_add_switch_summary">In the strategy multi-select bottom bar, left of "Confirm add"</string>
+
     <string name="feature_stg_filter_switch">Add "Filter stocks" menu item</string>
     <string name="feature_stg_filter_switch_summary">In the strategy detail top-right "more" menu</string>
 

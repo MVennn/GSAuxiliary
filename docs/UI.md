@@ -420,22 +420,23 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前**十九个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**二十个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
-> **口径说明**：这里的「十九个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
+> **口径说明**：这里的「二十个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
 > `FeatureSpec` 条数）。它与「Feature 实现数」不是一回事 ——
 > 有两组开关各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现，
 > `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现，
-> 所以目录 19 行 ↔ 实现 16 个。
+> 所以目录 20 行 ↔ 实现 17 个。
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
 | 登录 | 隐藏 新股申购 弹窗 | `ipo_dialog_clean` | 无 |
 | 策略页 | 直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
 | 策略页 | 增加 全选 按钮 | `stg_select_all` | 无 |
+| 策略页 | 增加 截图并添加 按钮 | `stg_snap_add` | 无 |
 | 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
 | 股票详情页 | 增加 智能盯盘 入口 | `stock_bar_entry` | 无 |
 | 智能盯盘 | 增加 配置 按钮 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |

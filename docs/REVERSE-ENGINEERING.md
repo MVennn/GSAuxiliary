@@ -253,6 +253,7 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 | 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
 | 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 截图并添加 | `feature/stgsnap/StgSnapAddTargets.kt` |
 | 策略详情页筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 | 底栏隐藏理财入口 | `feature/dock/DockCleanTargets.kt` |
@@ -265,6 +266,62 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 > 该改哪个文件见 [下文 §10](#10-失效预案app-升级后怎么办)。
 
 完整排查流程见 [排错手册 · App 升级后失效](TROUBLESHOOTING.md#6-app-升级后失效)。
+
+---
+
+## 九、结论五：策略详情「截图并添加」（2026-10-22 真机）
+
+服务于「截图并添加」功能（[FEATURE-SNAP-ADD](FEATURE-SNAP-ADD.md)）。探针 + 真机实测：
+
+### 9.1 多选态底栏
+
+```
+#ll_add_zxg_bottom
+  ├─ "已选 " / #tv_bottom_zxg_num "N" / " 只股票"
+  └─ #tv_bottom_add_zxg "确认添加"   [686,0][1080,140]（宽 394、高 140）
+```
+
+「截图并添加」用 `wrap_content` 插在 `#tv_bottom_add_zxg` 前面，实测 255×140；
+左侧「已选 N 只股票」区域从 524px 缩到 218px，文字仍完整。
+
+### 9.2 详情页分页
+
+```
+StockFragAct
+  └─ com.guosen.commonui.LockViewPager #vp_stocks
+       └─ 当前页 #tv_top_stk_name_and_code
+            └─ com.guosen.quotation.logicview.KXChartGroupView #chart_group_kx
+                 └─ m_kxChartInfo.m_kxChartItems（List）
+```
+
+- `LockViewPager` 的 class dump 只有 `setLocked` / `setNestedScroll` /
+  `setViewPagerScrollListener` —— **没有覆写 `setCurrentItem`**。
+- 实测 `setCurrentItem(1, false)` 后 `getCurrentItem()==1`，1.2 秒后可见标题从
+  「兆威机电 003021」变「鸣志电器 603728」。
+- 当前页与相邻预加载页各有一份标题；`getGlobalVisibleRect` 为 true 的那份才是当前页。
+- `PixelCopy` 截 `StockFragAct` 窗口成功（`result=0`，1080×2400）。
+
+### 9.3 Intent 契约
+
+```
+action=quotes.stockDetail
+component=com.guosen.quotation.ui.StockFragAct
+adapter_key=Bundle{ stockList=ArrayList<IntentStockInfo> }
+stockIndex=0（顶层 extra）
+```
+
+用选中子集（2 只）启动，详情页 `StockFragAdapter count=2 current=0`；
+5 只时 `count=5`，可顺序切页。
+
+### 9.4 分组页
+
+`#tv_bottom_add_zxg` 的点击会启动独立 Activity
+`com.guosen.quotation.ui.ChooseGroupAct`（`resultTo=AIStkStgDetailAct`）。
+实测「多选 1 只 → 确认添加 → 分组页 → 返回」后底部仍显示「已选 1 只股票」；
+从详情页返回后 `listChecked=2 bottomCount=2` 一致，程序化 `performClick`
+能正常打开分组页。
+
+> 结论：本功能不需要自己写分组数据，**截图完成后直接复用宿主这条确认链**即可。
 
 ---
 

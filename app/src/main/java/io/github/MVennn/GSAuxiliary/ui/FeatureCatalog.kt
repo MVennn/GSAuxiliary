@@ -155,6 +155,17 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
     ),
 
     FeatureSpec(
+        id = "stg_snap_add",
+        categoryRes = R.string.category_strategy,
+        switchTitleRes = R.string.feature_snap_add_switch,
+        // 副标题说位置：多选态底栏「确认添加」左边
+        switchSummaryRes = R.string.feature_snap_add_switch_summary,
+        enableKey = ConfigKeys.STG_SNAP_ADD,
+        defaultEnabled = ConfigKeys.DEFAULT_STG_SNAP_ADD,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+    ),
+
+    FeatureSpec(
         id = "stg_stock_filter",
         categoryRes = R.string.category_strategy,
         switchTitleRes = R.string.feature_stg_filter_switch,

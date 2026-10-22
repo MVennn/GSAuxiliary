@@ -35,7 +35,7 @@ class ConfigSnapshotFingerprintTest {
      * （`ConfigSnapshot` 的注释里专门警告过这件事）。现在合并成一份，两个测试共用。
      */
     private val booleanNames = listOf(
-        "enabled", "scopeStrategy", "stgDirectQuote", "stgQuoteSwipe", "stgSelectAll",
+        "enabled", "scopeStrategy", "stgDirectQuote", "stgQuoteSwipe", "stgSelectAll", "stgSnapAdd",
         "stgStockFilter", "stockBarEntry", "dockClean", "homeBannerHide", "marketBannerHide",
         "marketSectorCompact", "marketOverviewCompact", "marketStockFilter", "navBarBlend",
         "ipoDialogClean", "aistareQuickEnabled", "aiStareSkipSaveConfirm", "aiStareEmptySave",
@@ -166,6 +166,7 @@ class ConfigSnapshotFingerprintTest {
         "stgDirectQuote" -> b.copy(stgDirectQuote = !b.stgDirectQuote)
         "stgQuoteSwipe" -> b.copy(stgQuoteSwipe = !b.stgQuoteSwipe)
         "stgSelectAll" -> b.copy(stgSelectAll = !b.stgSelectAll)
+        "stgSnapAdd" -> b.copy(stgSnapAdd = !b.stgSnapAdd)
         "stgStockFilter" -> b.copy(stgStockFilter = !b.stgStockFilter)
         "stockBarEntry" -> b.copy(stockBarEntry = !b.stockBarEntry)
         "dockClean" -> b.copy(dockClean = !b.dockClean)

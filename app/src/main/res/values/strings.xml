@@ -65,6 +65,9 @@
     <string name="feature_select_all_switch">增加 全选 按钮</string>
     <string name="feature_select_all_switch_summary">策略详情多选栏取消按钮左边</string>
 
+    <string name="feature_snap_add_switch">增加 截图并添加 按钮</string>
+    <string name="feature_snap_add_switch_summary">策略详情多选态底部，确认添加左边</string>
+
     <string name="feature_stg_filter_switch">增加 筛选股票 菜单项</string>
     <string name="feature_stg_filter_switch_summary">策略详情右上角三点菜单里</string>
 

@@ -88,6 +88,8 @@
 | `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
 | `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
+| `feature/stgsnap/StgSnapAddFeature.kt` · `SnapCaptureJob.kt` | **策略详情「截图并添加」**功能本体（选中读取、子集详情页逐页截图、宿主分组页接力）+ 就绪门禁 / PixelCopy / 相册写入 | 目标进程 |
+| `feature/stgsnap/StgSnapAddTargets.kt` · `SnapSelection.kt` · `StockDetailLauncher.kt` · `SnapReadiness.kt` · `SnapStorage.kt` · `SnapProgressOverlay.kt` · `StgSnapPlan.kt` | 该功能的宿主候选常量、选中读取、Intent 转换、就绪判定、存储、进度条与纯逻辑 | 目标进程 |
 | `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机：方向 + 股票类型两组条件） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
 | `feature/stgfilter/StgFilterPanelBuild.kt` | 面板装配（从 Feature 本体拆出：三点菜单注入、菜单项高度归一化、面板样式复刻） | 目标进程 |
@@ -225,6 +227,7 @@ onHotReloaded(param)
 | **自选高亮 + 名称加粗** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor`（高亮）/ `setTypeface`（加粗） | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色与旧字重（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)）。⚠️ **这个 Feature 承载两个开关**（`enabled` 高亮 / `watchlist_bold` 加粗）—— `FeatureManager` 里**只登记一次**，但 `isEnabled` 的 or 链必须**同时**覆盖两个位，漏一个就是「界面上有开关、底下不装钩子」的假开关（第三轮 H1 的真事） |
 | **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态） | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型；点完隔 48ms（约 3 帧）重读 checked states，有缺口再补点（最多 4 轮点击） | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效；**显示要按 checked states 刷**（`activated` + `isChecked`）—— 筛选时框架按适配器位置重写 `activated`，与全量位置的表错位（见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md) §2.3.2） |
+| **截图并添加** | `StgSnapAddFeature` | `Activity.onResume` + `#tv_stg_add_zxg` 的 `TextWatcher`（进出多选态）+ 宿主 `#tv_bottom_add_zxg` 点击接力 | 在「确认添加」左侧注入克隆按钮；点击读取选中子集 → 一次打开 `StockFragAct`（`stockList` + `stockIndex=0`）→ `vp_stocks.setCurrentItem` 逐页 → **可见标题含目标代码 + K 线 `m_kxChartItems` 非空才 PixelCopy** → 存相册；finish 回策略页后 `performClick` 宿主「确认添加」→ `ChooseGroupAct` | **数据没就绪不截图**（超时只记失败，不存半张图）；**不自己写分组**（完全交给宿主页面）；**截图前隐藏进度条**；`PixelCopy` 失败回退 `decorView.draw`（见 [FEATURE-SNAP-ADD](FEATURE-SNAP-ADD.md)） |
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后给 ListView **套一层过滤代理**（`getCount` 报子集、`getView` 映射回全量；不碰宿主 `data`），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**不能直接换 `data`**（宿主 `onItemClick` 用全量列表取值、`getCount()` 做范围校验，两套语义打架）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
 | **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
 | **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
@@ -249,11 +252,11 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（16 个 Feature 实现 / 19 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
-> 挂钩子改行为 9 个 + 界面精简 7 个。
+> **当前状态（17 个 Feature 实现 / 20 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
+> 挂钩子改行为 10 个 + 界面精简 7 个。
 >
-> **口径说明**：「19 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
-> 「16 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
+> **口径说明**：「20 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
+> 「17 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
 > 各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现（不单列功能行），
@@ -465,6 +468,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 自选高亮 | `feature/watchlist/WatchlistTargets.kt` |
 | 直达标准行情 + 左右滑动 | `feature/strategyquote/StgDirectQuoteTargets.kt` |
 | 多选栏全选 / 反选 | `feature/strategyselect/StgSelectAllTargets.kt` |
+| 截图并添加 | `feature/stgsnap/StgSnapAddTargets.kt` |
 | 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 | 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |

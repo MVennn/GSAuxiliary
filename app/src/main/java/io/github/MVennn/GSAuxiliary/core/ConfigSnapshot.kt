@@ -22,6 +22,8 @@ data class ConfigSnapshot(
     val stgQuoteSwipe: Boolean,
     /** 策略详情页多选栏注入「全选」按钮（一键勾选全部股票） */
     val stgSelectAll: Boolean,
+    /** 策略详情页多选态底部注入「截图并添加」（逐只截图后走宿主分组页） */
+    val stgSnapAdd: Boolean,
     /** 策略详情页三点菜单里注入「筛选股票」（涨幅 / 跌幅 / 自选 三个开关） */
     val stgStockFilter: Boolean,
     /** 个股详情页底栏在「自选」与「更多」之间注入「智能盯盘」快捷入口 */
@@ -79,16 +81,16 @@ data class ConfigSnapshot(
      * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
      * （「重置模块」一次写 23 个键、恢复备份一次写 29 个键）。
      *
-     * 改成「布尔项占低位、逐个异或」之后：**23 个布尔项之间不再有任何碰撞**
+     * 改成「布尔项占低位、逐个异或」之后：**24 个布尔项之间不再有任何碰撞**
      * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON）
      * 再各自混一层异或。
      *
-     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..22，**还剩 9 位**。
+     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..23，**还剩 8 位**。
      * 再加布尔项时 `bit shl 1` 会在第 32 位溢出成 0 → **两个开关静默冲突**
      * （症状：改了其中一个，另一个也跟着变）。所以新增开关时，
      * 这里的个数说明与 `ConfigSnapshotFingerprintTest` 的清单**都要同步更新**。
      *
-     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²³
+     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²⁴
      * （数值项的异或值会落进低位，但已远低于原加权求和的「几千分之一」）。
      */
     val fingerprint: Int = run {
@@ -104,6 +106,7 @@ data class ConfigSnapshot(
         mix(stgDirectQuote)
         mix(stgQuoteSwipe)
         mix(stgSelectAll)
+        mix(stgSnapAdd)
         mix(stgStockFilter)
         mix(stockBarEntry)
         mix(dockClean)
@@ -138,6 +141,7 @@ data class ConfigSnapshot(
             stgDirectQuote = ConfigKeys.DEFAULT_STG_DIRECT_QUOTE,
             stgQuoteSwipe = ConfigKeys.DEFAULT_STG_QUOTE_SWIPE,
             stgSelectAll = ConfigKeys.DEFAULT_STG_SELECT_ALL,
+            stgSnapAdd = ConfigKeys.DEFAULT_STG_SNAP_ADD,
             stgStockFilter = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
             stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
             dockClean = ConfigKeys.DEFAULT_DOCK_CLEAN,

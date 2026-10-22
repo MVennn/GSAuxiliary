@@ -266,6 +266,7 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 | 7 | **界面精简五个**（底栏 / 首页 / 行情市场）：各版块的资源 id | `feature/dock/DockCleanTargets.kt`、`feature/home/HomeBannerTargets.kt`、`feature/market/MarketTargets.kt`（骨架与真机校准见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)） |
 | 8 | **手势导航条同色**：取色带 / 调参常量 | `feature/navbar/NavBarTargets.kt`（见 [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md)） |
 | 9 | **新股申购提醒弹窗净化**：宿主弹窗链路 / 类名 / 方法名 | `feature/ipoclean/IpoCleanTargets.kt`（见 [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md)） |
+| 10 | **截图并添加**：多选/确认按钮 id、列表与字段、详情页分页器 / 标题 / K 线字段 | `feature/stgsnap/StgSnapAddTargets.kt`（见 [FEATURE-SNAP-ADD.md](FEATURE-SNAP-ADD.md)） |
 
 **重新定位类名的方法**：用 `tools/probe/` 里的运行时探针。
 

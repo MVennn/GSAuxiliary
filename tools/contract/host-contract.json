@@ -787,6 +787,90 @@
       "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
     },
     {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "BOTTOM_COUNT_ID_CANDIDATES",
+      "value": "tv_bottom_zxg_num"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CANCEL_BUTTON_ID_CANDIDATES",
+      "value": "tv_stg_add_zxg"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CHECKBOX_ID_CANDIDATES",
+      "value": "ct_item"
+    },
+    {
+      "kind": "class",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CLS_INTENT_STOCK_INFO",
+      "value": "com.guosen.android.quotes.data.IntentStockInfo"
+    },
+    {
+      "kind": "class",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CLS_STG_DETAIL",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "class",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CLS_STOCK_QUOTE",
+      "value": "com.guosen.quotation.ui.StockFragAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CONFIRM_BUTTON_ID_CANDIDATES",
+      "value": "tv_bottom_add_zxg"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "KEY_ADAPTER",
+      "value": "adapter_key"
+    },
+    {
+      "kind": "class",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "KX_GROUP_CLASS",
+      "value": "com.guosen.quotation.logicview.KXChartGroupView"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "PAGER_ID_CANDIDATES",
+      "value": "vp_stocks"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "PAGE_TITLE_ID_CANDIDATES",
+      "value": "tv_top_stk_name_and_code"
+    },
+    {
       "kind": "class",
       "owner": "StgStockFilterTargets.kt",
       "symbol": "CLS_BASE_QUICK_ADAPTER",

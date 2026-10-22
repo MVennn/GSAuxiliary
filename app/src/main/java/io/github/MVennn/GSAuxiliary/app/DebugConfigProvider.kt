@@ -43,6 +43,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_STG_DIRECT = "stg_direct_quote"
         const val COL_STG_SWIPE = "stg_quote_swipe"
         const val COL_STG_SELECT_ALL = "stg_select_all"
+        const val COL_STG_SNAP_ADD = "stg_snap_add"
         const val COL_STG_STOCK_FILTER = "stg_stock_filter"
         const val COL_STOCK_BAR_ENTRY = "stock_bar_entry"
         const val COL_IPO_DIALOG_CLEAN = "ipo_dialog_clean"
@@ -110,7 +111,7 @@ class DebugConfigProvider : ContentProvider() {
         val columns = arrayOf(
             COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
             COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
-            COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_STOCK_FILTER,
+            COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_SNAP_ADD, COL_STG_STOCK_FILTER,
             COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
             COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
             COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
@@ -130,6 +131,7 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.STG_DIRECT_QUOTE, ConfigKeys.DEFAULT_STG_DIRECT_QUOTE)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STG_QUOTE_SWIPE, ConfigKeys.DEFAULT_STG_QUOTE_SWIPE)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.STG_SNAP_ADD, ConfigKeys.DEFAULT_STG_SNAP_ADD)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
@@ -187,6 +189,7 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_STG_DIRECT)?.let { putBoolean(ConfigKeys.STG_DIRECT_QUOTE, it != 0); n++ }
             intOf(COL_STG_SWIPE)?.let { putBoolean(ConfigKeys.STG_QUOTE_SWIPE, it != 0); n++ }
             intOf(COL_STG_SELECT_ALL)?.let { putBoolean(ConfigKeys.STG_SELECT_ALL, it != 0); n++ }
+            intOf(COL_STG_SNAP_ADD)?.let { putBoolean(ConfigKeys.STG_SNAP_ADD, it != 0); n++ }
             intOf(COL_STG_STOCK_FILTER)?.let { putBoolean(ConfigKeys.STG_STOCK_FILTER, it != 0); n++ }
             intOf(COL_STOCK_BAR_ENTRY)?.let { putBoolean(ConfigKeys.STOCK_BAR_ENTRY, it != 0); n++ }
             intOf(COL_IPO_DIALOG_CLEAN)?.let { putBoolean(ConfigKeys.IPO_DIALOG_CLEAN, it != 0); n++ }
