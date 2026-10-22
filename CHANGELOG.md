@@ -7,6 +7,20 @@
 
 ## [未发布] — 2026-10-23
 
+### 页面记账与备份边界（2026-10-23）
+
+- 修复 `StgSnapAddFeature` —— 策略页销毁时无条件释放等详情页的 `pendingItems`。
+  该字段强引用宿主 `StockInfo` 列表，而原判断只在 `pendingStrategy` 指向被销毁页时
+  才清；详情页没起来（`launch` 返回 true 但页面一直没 resume）时会挂到页面销毁。
+  接力只可能从策略页发起，页面没了这批数据就没有归属，一律释放
+- 修复 `ConfigBackup.importJson` —— `Double` 分支静默 `toInt()`：外部编辑过的备份
+  把颜色写成 `1.0E7` 会变成 1，且没有任何日志。现在截断时记一条 WARN
+- 验证 —— `./gradlew :app:compileDebugKotlin --offline` ✓、
+  `:app:testDebugUnitTest --offline` ✓（156 条）、五套静态检查全 exit 0
+  （不变量 8 条 / 开关 20 键 / 契约 178 条 / 死代码 / 免责声明三份同步）；
+  `check-secrets.py` ✓（290 个文件）
+
+
 ### 调整
 
 - 调整 Release 说明 —— 加粗总结的下一行固定是一行反馈入口（绝对地址

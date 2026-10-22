@@ -411,7 +411,9 @@ class StgSnapAddFeature : Feature {
         if (cls == StgSnapAddTargets.CLS_STG_DETAIL) {
             if (lastStrategy?.get() === activity) lastStrategy = null
             if (lastCancel?.get()?.let { findActivity(it) } === activity) lastCancel = null
-            if (pendingStrategy?.get() === activity) clearPending()
+            // 接力只可能从这个策略页发起：页面没了，等详情页的那批宿主数据
+            // （SelectedStock 里持有宿主 StockInfo）就没有归属了，一律释放。
+            if (pendingItems != null || pendingStrategy?.get() === activity) clearPending()
             pendingConfirm = false
         }
         removeForActivity(activity)

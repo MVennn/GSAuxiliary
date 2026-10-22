@@ -134,11 +134,13 @@ def main() -> int:
         try:
             with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
                 for lineno, line in enumerate(fh, 1):
-                    if PLACEHOLDER.search(line):
-                        continue
                     for name, pat in PATTERNS:
                         m = pat.search(line)
                         if not m:
+                            continue
+                        # 占位符只豁免它自己所在的那一段，不再整行放行 ——
+                        # 示例与真值写在同一行时，真值仍会被报出来。
+                        if PLACEHOLDER.search(m.group(0)):
                             continue
                         if name == "本机用户目录":
                             # 截断形式的描述性引用，或占位用户名（C:/Users/You/）

@@ -76,7 +76,13 @@ object ConfigBackup {
             val v = config.opt(key) ?: continue
             when (v) {
                 is Boolean, is Int, is Long, is String -> values[key] = v
-                is Double -> values[key] = v.toInt()
+                is Double -> {
+                    // JSON 没有整数类型：外部编辑过的备份可能把颜色之类的整数
+                    // 写成 1.0E7 这种指数形式。截断会静默改值，这里至少留痕。
+                    val n = v.toInt()
+                    if (n.toDouble() != v) GLog.w("备份键 $key 的小数部分被丢弃：$v -> $n")
+                    values[key] = n
+                }
                 else -> GLog.w("忽略备份里类型不支持的键 $key=${v.javaClass.simpleName}")
             }
         }
