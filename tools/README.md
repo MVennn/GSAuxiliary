@@ -21,7 +21,7 @@
 
 | 分类 | 脚本 |
 |---|---|
-| 环境与设备连接 | env.sh · adbw.sh · dev.sh · stayon.sh |
+| 环境与设备连接 | env.sh · adbw.sh · dev.sh · stayon.sh · rotate.sh |
 | 设备调试与日志 | sh.sh · ui.sh + uidump.py · drive.sh · glog.sh + glog_tail.py |
 | 真机功能验证 | verify.py · sample_colors.py + _color.py · enable_lsposed.py |
 | 品牌视觉与图标 | gen_launcher_icons.py · verify_icons.py · make_social_preview.py（+ 公共库 _png.py） |
@@ -98,6 +98,38 @@ bash tools/stayon.sh status     # 只看当前值，什么都不动
 
 > 只改 `settings system screen_off_timeout`，不碰 `svc power stayon` ——
 > 后者只在充电时生效，而且它把「插电就永不熄屏」写进全局状态，收工容易忘了关。
+
+## rotate.sh
+
+**调试期方向锁定**。有些系统会在无线调试重新连上时把「自动旋转」打开 ——
+手机一横，截图方向与 `dump` 坐标全变，按坐标点的自动化就会点错位置。
+把自动旋转关掉并锁到竖屏，收工再还原：
+
+```bash
+bash tools/rotate.sh            # 锁定：自动旋转关 + 竖屏（首次会把原值备份下来）
+bash tools/rotate.sh off        # 还原（优先用备份里的原值，没备份则自动旋转开 + 0°）
+bash tools/rotate.sh status     # 只看当前值，什么都不动
+```
+
+`on` 的别名是 `lock` / `portrait`，`off` 的别名是 `stop` / `restore` / `unlock`。
+环境变量 `ROTATION_LOCK_USER`（锁定方向，默认 `0`；`0/1/2/3` = 0°/90°/180°/270°）、
+`ROTATION_OFF_AUTO` / `ROTATION_OFF_USER`（没有备份时还原成什么，默认 `1` / `0`）。
+
+原值存在 `.work/rotation.bak`（三行：原 `accelerometer_rotation`、原 `user_rotation`、
+要锁的方向）。**这个文件同时是「锁生效中」的标记**：只要它在，`env.sh` 的
+`wait_device`、`adbw.sh`、`dev.sh` 每次拿到设备都会把锁重新按一遍 ——
+所以系统在重连时把自动旋转打开也会被盖回去。`off` 会删掉它，
+**重复执行 `on` 不会覆盖备份**（只更新要锁的方向）。
+
+依赖：本脚本 `source` `env.sh`（复用 `wait_device` 取设备）；反向地，
+`env.sh` / `adbw.sh` / `dev.sh` 会读取 `.work/rotation.bak` 并补锁。
+
+> 只改 `system accelerometer_rotation` / `system user_rotation` 两个键，
+> 不碰 `wm size` / `wm density`。备份丢了的话，`off` 一律还原成「自动旋转开 + 0°」；
+> 原状态是锁定的，用 `ROTATION_OFF_AUTO=0 bash tools/rotate.sh off`。
+> 设备不在线时 `on` 拉不到原值，会直接报错退出（先连上再跑）。
+> 锁生效期间 `adbw.sh` 每条命令会多一次 adb 往返（约百毫秒）用于补锁 ——
+> 不想付这个开销就在收工前跑 `off`。
 
 ---
 
@@ -568,6 +600,7 @@ python tools/hygiene.py junk      # 构建产物 / 临时目录 / 旧包（只�
 ├── log.mark            glog.sh mark 记录的行号游标
 ├── wifi_serial         env.sh wait_device 缓存的无线调试地址
 ├── screen_timeout.bak  stayon.sh 的息屏超时原值备份
+├── rotation.bak        rotate.sh 的方向锁定原值备份（存在 = 锁生效中）
 ├── icons-check.png     verify_icons.py 的默认输出
 ├── ui*.xml             ui.sh / drive.sh 的控件树 dump（ui.xml / ui_tmp.xml / app_ui.xml …）
 └── *.png / *.raw       drive.sh 截图、手工取色留下的裸帧

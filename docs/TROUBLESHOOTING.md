@@ -363,6 +363,7 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 | 命令报 `device not found` | 中途 adb server 被重启 | 不要并发跑多个 adb 命令 |
 | `su -c` 命令被截断 | 内层命令里含单引号 | `--root` 后的命令里不要用单引号，管道放到宿主机侧 |
 | `content query` 报 `SecurityException` | adb 调试通道只允许 root/shell | 用 `su -c` 执行 |
+| 连上无线调试后手机「自动旋转」被打开，截图 / `dump` 坐标跟着变 | 部分系统在无线调试重连时重置方向 | `bash tools/rotate.sh` 锁定，收工 `bash tools/rotate.sh off` 还原（用法见 [tools/README.md](../tools/README.md)） |
 
 ---
 

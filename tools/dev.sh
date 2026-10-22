@@ -72,4 +72,6 @@ if [ -z "$DEV" ]; then
     exit 1
 fi
 
+apply_rotation_lock "$DEV"
+
 echo "$DEV"

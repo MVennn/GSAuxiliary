@@ -116,6 +116,27 @@ export JAVA_HOME="${JAVA_HOME:-}"
 export TARGET_PKG MODULE_PKG
 
 # ---------------------------------------------------------------------------
+# 调试期方向锁定（tools/rotate.sh 的「持续生效」部分）
+#
+# rotate.sh on 会把「原值 + 要锁的方向」写进 `.work/rotation.bak`。只要这个
+# 文件还在，每次拿到设备 serial 就把锁重新按一遍 —— 无线调试重新连上时，
+# 有些系统会把「自动旋转」再打开，只在 on 那一刻设一次会被它盖掉。
+# 文件不在时直接返回（不产生任何 adb 调用）。
+# ---------------------------------------------------------------------------
+apply_rotation_lock() {
+    local dev="${1:-}" bak lock
+    [ -n "$dev" ] && [ -n "${ADB:-}" ] || return 0
+    bak="${REPO_DIR:-.}/.work/rotation.bak"
+    [ -f "$bak" ] || return 0
+    lock="$(sed -n 3p "$bak" 2>/dev/null | tr -d '\r\n')"
+    case "$lock" in ''|null) lock=0 ;; esac
+    # 一条 shell 命令设两个值：adbw.sh 每条命令都会走到这里，别拆成两次往返
+    "$ADB" -s "$dev" shell \
+        "settings put system accelerometer_rotation 0; settings put system user_rotation $lock" \
+        >/dev/null 2>&1 || true
+}
+
+# ---------------------------------------------------------------------------
 # 等待设备（无线调试下 adb server 冷启动后设备可能还没被发现）
 # 用法: DEV="$(wait_device 60)" || exit 1
 #
@@ -143,6 +164,7 @@ wait_device() {
         if [ -n "$dev" ]; then
             mkdir -p "$(dirname "$cache")" 2>/dev/null
             echo "$dev" > "$cache" 2>/dev/null
+            apply_rotation_lock "$dev"
             echo "$dev"; return 0
         fi
 

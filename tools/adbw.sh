@@ -39,7 +39,7 @@ ensure_dev() {
     "$ADB" start-server >/dev/null 2>&1
     local d
     d="$("$ADB" devices 2>/dev/null | awk -v h="$HOST" '$2=="device" && index($1,h":")==1 {print $1; exit}')"
-    [ -n "$d" ] && { echo "$d"; return 0; }
+    [ -n "$d" ] && { apply_rotation_lock "$d"; echo "$d"; return 0; }
 
     # mDNS 发现端口后连（可能要等几秒广播）
     local i port
@@ -50,7 +50,7 @@ ensure_dev() {
             "$ADB" connect "$HOST:$port" >/dev/null 2>&1
             sleep 1
             d="$("$ADB" devices 2>/dev/null | awk -v h="$HOST" '$2=="device" && index($1,h":")==1 {print $1; exit}')"
-            [ -n "$d" ] && { echo "$d"; return 0; }
+            [ -n "$d" ] && { apply_rotation_lock "$d"; echo "$d"; return 0; }
         fi
         sleep 1
     done
