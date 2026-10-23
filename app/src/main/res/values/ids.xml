@@ -44,4 +44,7 @@
     <item name="gsaux_zxcopy_orig_focusable" type="id" />
     <item name="gsaux_zxcopy_ours_drawable" type="id" />
     <item name="gsaux_zxcopy_ours_listener" type="id" />
+    <item name="gsaux_zxcopy_ours_long_listener" type="id" />
+    <item name="gsaux_zxcopy_orig_long_listener" type="id" />
+    <item name="gsaux_zxcopy_orig_long_clickable" type="id" />
 </resources>

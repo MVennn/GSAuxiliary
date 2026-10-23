@@ -78,6 +78,163 @@
     <!-- 自选 -->
     <string name="feature_zx_copy_switch">自选分组复制</string>
     <string name="feature_zx_copy_switch_summary">自选页右上角编辑按钮换成复制</string>
+    <string name="feature_zx_copy_detail_entry">复制设置</string>
+    <string name="feature_zx_copy_button_entry">复制按钮设置</string>
+    <string name="detail_zx_copy_title">复制设置</string>
+    <string name="detail_zx_copy_button_title">复制按钮设置</string>
+    <string name="detail_zx_copy_edit_title">编辑规则</string>
+
+    <!-- 自选分组复制 · 规则设置 -->
+    <string name="zx_copy_section_button">长按菜单</string>
+    <string name="zx_copy_menu_switch">长按弹出动作菜单</string>
+    <string name="zx_copy_menu_switch_summary">长按复制按钮选择复制、分享或导出</string>
+    <string name="zx_copy_section_rules">规则</string>
+    <string name="zx_copy_new_rule">新建规则</string>
+    <string name="zx_copy_new_rule_prefix">规则</string>
+    <string name="zx_copy_default_badge">默认</string>
+    <string name="zx_copy_menu_set_default">设为默认</string>
+    <string name="zx_copy_menu_move_up">上移</string>
+    <string name="zx_copy_menu_move_down">下移</string>
+    <string name="zx_copy_menu_delete">删除规则</string>
+    <string name="zx_copy_delete_confirm">删除这条复制规则？</string>
+    <string name="zx_copy_delete_last_hint">至少保留一条规则</string>
+    <string name="zx_copy_field_name">规则名称</string>
+    <string name="zx_copy_section_fields">复制字段</string>
+    <string name="zx_copy_add_field">添加字段</string>
+    <string name="zx_copy_field_remove">移除字段</string>
+    <string name="zx_copy_section_format">文本格式</string>
+    <string name="zx_copy_format">格式</string>
+    <string name="zx_copy_format_text">纯文本</string>
+    <string name="zx_copy_format_markdown">Markdown</string>
+    <string name="zx_copy_format_csv">CSV</string>
+    <string name="zx_copy_format_json">JSON</string>
+    <string name="zx_copy_format_template">自定义模板</string>
+    <string name="zx_copy_separator">列分隔符</string>
+    <string name="zx_copy_separator_hint">默认空格</string>
+    <string name="zx_copy_separator_space">空格</string>
+    <string name="zx_copy_separator_tab">制表符</string>
+    <string name="zx_copy_separator_comma">逗号</string>
+    <string name="zx_copy_separator_pipe">竖线</string>
+    <string name="zx_copy_separator_none">无</string>
+    <string name="zx_copy_template">模板</string>
+    <string name="zx_copy_template_hint">占位符：{name} {code} {price} {changePct}</string>
+    <string name="zx_copy_header">表头</string>
+    <string name="zx_copy_header_text">表头文字</string>
+    <string name="zx_copy_footer">页脚</string>
+    <string name="zx_copy_footer_text">页脚文字</string>
+    <string name="zx_copy_footer_text_hint">显示在图片 / PDF 底部</string>
+    <string name="zx_copy_section_footer">页脚</string>
+    <string name="zx_copy_include_group">包含分组名</string>
+    <string name="zx_copy_include_time">包含时间</string>
+    <string name="zx_copy_include_count">包含数量</string>
+    <string name="zx_copy_section_order">排序与空值</string>
+    <string name="zx_copy_sort">排序</string>
+    <string name="zx_copy_sort_screen">屏幕顺序</string>
+    <string name="zx_copy_sort_code">代码</string>
+    <string name="zx_copy_sort_name">名称</string>
+    <string name="zx_copy_sort_zdf_desc">涨幅降序</string>
+    <string name="zx_copy_sort_zdf_asc">涨幅升序</string>
+    <string name="zx_copy_empty">空值</string>
+    <string name="zx_copy_empty_dash">显示 -</string>
+    <string name="zx_copy_empty_blank">留空</string>
+    <string name="zx_copy_section_action">按钮动作</string>
+    <string name="zx_copy_action">点击按钮时</string>
+    <string name="zx_copy_action_clipboard">复制到剪贴板</string>
+    <string name="zx_copy_action_share_text">分享文本</string>
+    <string name="zx_copy_action_image">导出图片</string>
+    <string name="zx_copy_action_pdf">导出 PDF</string>
+    <string name="zx_copy_section_image">图片样式</string>
+    <string name="zx_copy_image_preset">预设</string>
+    <string name="zx_copy_image_simple">简洁列表</string>
+    <string name="zx_copy_image_table">表格</string>
+    <string name="zx_copy_image_card">卡片</string>
+    <string name="zx_copy_image_dark">深色背景</string>
+    <string name="zx_copy_image_show_header">显示页眉</string>
+    <string name="zx_copy_image_show_group">显示分组名</string>
+    <string name="zx_copy_image_show_time">显示时间</string>
+    <string name="zx_copy_image_show_count">显示数量</string>
+    <string name="zx_copy_image_show_footer">显示页脚</string>
+    <string name="zx_copy_image_rows_per_page">每张图片行数</string>
+    <string name="zx_copy_image_color_trend">红涨绿跌</string>
+    <string name="zx_copy_preview_image">预览图片</string>
+    <string name="zx_copy_section_pdf">PDF 样式</string>
+    <string name="zx_copy_pdf_landscape">横向</string>
+    <string name="zx_copy_pdf_long_page">单页长图</string>
+    <string name="zx_copy_pdf_font_size">字号</string>
+    <string name="zx_copy_pdf_margin">页边距</string>
+    <string name="zx_copy_pdf_page_numbers">页码</string>
+    <string name="zx_copy_pdf_zebra">斑马纹</string>
+    <string name="zx_copy_section_actions">规则与导出</string>
+    <string name="zx_copy_set_default">设为默认</string>
+    <string name="zx_copy_section_preview">预览</string>
+    <string name="zx_copy_preview_note">示例数据，实际以当前分组为准</string>
+    <string name="zx_copy_share_after_export">导出后立即分享</string>
+    <string name="zx_copy_action_copy">复制</string>
+    <string name="zx_copy_action_copy_rule">复制为「%1$s」</string>
+    <string name="zx_copy_exporting_image">正在导出图片…</string>
+    <string name="zx_copy_exporting_pdf">正在导出 PDF…</string>
+    <string name="zx_copy_export_image_done">已导出 %1$d 张图片</string>
+    <string name="zx_copy_export_pdf_done">已导出 PDF</string>
+    <string name="zx_copy_export_failed">导出失败</string>
+    <string name="zx_copy_copied">已复制「%1$s」%2$d 只股票</string>
+    <string name="zx_copy_empty_group">当前分组没有股票</string>
+    <string name="zx_copy_share_unavailable">当前系统不支持直接分享，已保存到 App 目录</string>
+    <string name="zx_copy_share_unavailable_path">当前系统不支持直接分享，已保存到 %1$s</string>
+    <string name="zx_copy_preview_title">预览</string>
+    <string name="zx_copy_preview_close">关闭</string>
+    <string name="zx_copy_field_group_basic">基础</string>
+    <string name="zx_copy_field_group_quote">行情</string>
+    <string name="zx_copy_field_group_cap">市值与估值</string>
+    <string name="zx_copy_field_group_range">区间</string>
+    <string name="zx_copy_field_group_other">其他</string>
+
+    <!-- 字段名称：顺序必须与 core/zxcopy/ZxCopyFieldCatalog.ALL 一一对应 -->
+    <string-array name="zx_copy_field_names">
+        <item>名称</item>
+        <item>代码</item>
+        <item>市场</item>
+        <item>最新价</item>
+        <item>涨跌</item>
+        <item>涨幅</item>
+        <item>涨速</item>
+        <item>振幅</item>
+        <item>换手率</item>
+        <item>量比</item>
+        <item>成交额</item>
+        <item>成交量</item>
+        <item>流通市值</item>
+        <item>总市值</item>
+        <item>市盈率</item>
+        <item>市净率</item>
+        <item>股息率</item>
+        <item>今开</item>
+        <item>昨收</item>
+        <item>最高</item>
+        <item>最低</item>
+        <item>均价</item>
+        <item>3日涨幅</item>
+        <item>5日涨幅</item>
+        <item>20日涨幅</item>
+        <item>60日涨幅</item>
+        <item>年初至今</item>
+        <item>行业</item>
+        <item>标签</item>
+        <item>加入时间</item>
+        <item>行情时间</item>
+        <item>主力净流入</item>
+        <item>主力净流入占比</item>
+        <item>现量</item>
+        <item>委比</item>
+    </string-array>
+
+    <!-- 字段分组名称：顺序必须与 ZxCopyFieldCatalog.GROUP_ORDER 一一对应 -->
+    <string-array name="zx_copy_field_groups">
+        <item>基础</item>
+        <item>行情</item>
+        <item>市值与估值</item>
+        <item>区间</item>
+        <item>其他</item>
+    </string-array>
 
     <!-- 底栏 -->
     <string name="feature_dock_clean_switch">隐藏 理财 入口</string>

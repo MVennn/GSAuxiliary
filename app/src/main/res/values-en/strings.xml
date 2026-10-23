@@ -77,6 +77,163 @@
     <!-- Watchlist -->
     <string name="feature_zx_copy_switch">Copy watchlist group</string>
     <string name="feature_zx_copy_switch_summary">Edit button at the top right of Watchlist becomes Copy</string>
+    <string name="feature_zx_copy_detail_entry">Copy settings</string>
+    <string name="feature_zx_copy_button_entry">Copy button settings</string>
+    <string name="detail_zx_copy_title">Copy settings</string>
+    <string name="detail_zx_copy_button_title">Copy button settings</string>
+    <string name="detail_zx_copy_edit_title">Edit rule</string>
+
+    <!-- Copy rules -->
+    <string name="zx_copy_section_button">Long-press menu</string>
+    <string name="zx_copy_menu_switch">Long-press action menu</string>
+    <string name="zx_copy_menu_switch_summary">Long-press the copy button to copy, share or export</string>
+    <string name="zx_copy_section_rules">Rules</string>
+    <string name="zx_copy_new_rule">New rule</string>
+    <string name="zx_copy_new_rule_prefix">Rule</string>
+    <string name="zx_copy_default_badge">Default</string>
+    <string name="zx_copy_menu_set_default">Set as default</string>
+    <string name="zx_copy_menu_move_up">Move up</string>
+    <string name="zx_copy_menu_move_down">Move down</string>
+    <string name="zx_copy_menu_delete">Delete rule</string>
+    <string name="zx_copy_delete_confirm">Delete this copy rule?</string>
+    <string name="zx_copy_delete_last_hint">Keep at least one rule</string>
+    <string name="zx_copy_field_name">Rule name</string>
+    <string name="zx_copy_section_fields">Fields</string>
+    <string name="zx_copy_add_field">Add field</string>
+    <string name="zx_copy_field_remove">Remove field</string>
+    <string name="zx_copy_section_format">Text format</string>
+    <string name="zx_copy_format">Format</string>
+    <string name="zx_copy_format_text">Plain text</string>
+    <string name="zx_copy_format_markdown">Markdown</string>
+    <string name="zx_copy_format_csv">CSV</string>
+    <string name="zx_copy_format_json">JSON</string>
+    <string name="zx_copy_format_template">Custom template</string>
+    <string name="zx_copy_separator">Column separator</string>
+    <string name="zx_copy_separator_hint">Space by default</string>
+    <string name="zx_copy_separator_space">Space</string>
+    <string name="zx_copy_separator_tab">Tab</string>
+    <string name="zx_copy_separator_comma">Comma</string>
+    <string name="zx_copy_separator_pipe">Pipe</string>
+    <string name="zx_copy_separator_none">None</string>
+    <string name="zx_copy_template">Template</string>
+    <string name="zx_copy_template_hint">Placeholders: {name} {code} {price} {changePct}</string>
+    <string name="zx_copy_header">Header</string>
+    <string name="zx_copy_header_text">Header text</string>
+    <string name="zx_copy_footer">Footer</string>
+    <string name="zx_copy_footer_text">Footer text</string>
+    <string name="zx_copy_footer_text_hint">Shown at the bottom of images / PDFs</string>
+    <string name="zx_copy_section_footer">Footer</string>
+    <string name="zx_copy_include_group">Include group name</string>
+    <string name="zx_copy_include_time">Include time</string>
+    <string name="zx_copy_include_count">Include count</string>
+    <string name="zx_copy_section_order">Sort &amp; empty values</string>
+    <string name="zx_copy_sort">Sort</string>
+    <string name="zx_copy_sort_screen">Screen order</string>
+    <string name="zx_copy_sort_code">Code</string>
+    <string name="zx_copy_sort_name">Name</string>
+    <string name="zx_copy_sort_zdf_desc">Change % descending</string>
+    <string name="zx_copy_sort_zdf_asc">Change % ascending</string>
+    <string name="zx_copy_empty">Empty value</string>
+    <string name="zx_copy_empty_dash">Show -</string>
+    <string name="zx_copy_empty_blank">Leave blank</string>
+    <string name="zx_copy_section_action">Button action</string>
+    <string name="zx_copy_action">On tap</string>
+    <string name="zx_copy_action_clipboard">Copy to clipboard</string>
+    <string name="zx_copy_action_share_text">Share text</string>
+    <string name="zx_copy_action_image">Export image</string>
+    <string name="zx_copy_action_pdf">Export PDF</string>
+    <string name="zx_copy_section_image">Image style</string>
+    <string name="zx_copy_image_preset">Preset</string>
+    <string name="zx_copy_image_simple">Simple list</string>
+    <string name="zx_copy_image_table">Table</string>
+    <string name="zx_copy_image_card">Card</string>
+    <string name="zx_copy_image_dark">Dark background</string>
+    <string name="zx_copy_image_show_header">Show header</string>
+    <string name="zx_copy_image_show_group">Show group name</string>
+    <string name="zx_copy_image_show_time">Show time</string>
+    <string name="zx_copy_image_show_count">Show count</string>
+    <string name="zx_copy_image_show_footer">Show footer</string>
+    <string name="zx_copy_image_rows_per_page">Rows per image</string>
+    <string name="zx_copy_image_color_trend">Red up / green down</string>
+    <string name="zx_copy_preview_image">Preview image</string>
+    <string name="zx_copy_section_pdf">PDF style</string>
+    <string name="zx_copy_pdf_landscape">Landscape</string>
+    <string name="zx_copy_pdf_long_page">Single long page</string>
+    <string name="zx_copy_pdf_font_size">Font size</string>
+    <string name="zx_copy_pdf_margin">Margin</string>
+    <string name="zx_copy_pdf_page_numbers">Page numbers</string>
+    <string name="zx_copy_pdf_zebra">Zebra stripes</string>
+    <string name="zx_copy_section_actions">Rule &amp; export</string>
+    <string name="zx_copy_set_default">Set as default</string>
+    <string name="zx_copy_section_preview">Preview</string>
+    <string name="zx_copy_preview_note">Sample data; the current group is used when exporting</string>
+    <string name="zx_copy_share_after_export">Share right after export</string>
+    <string name="zx_copy_action_copy">Copy</string>
+    <string name="zx_copy_action_copy_rule">Copy as \"%1$s\"</string>
+    <string name="zx_copy_exporting_image">Exporting images…</string>
+    <string name="zx_copy_exporting_pdf">Exporting PDF…</string>
+    <string name="zx_copy_export_image_done">Exported %1$d image(s)</string>
+    <string name="zx_copy_export_pdf_done">PDF exported</string>
+    <string name="zx_copy_export_failed">Export failed</string>
+    <string name="zx_copy_copied">Copied %2$d stock(s) from \"%1$s\"</string>
+    <string name="zx_copy_empty_group">This group has no stocks</string>
+    <string name="zx_copy_share_unavailable">Sharing is unavailable on this system; saved to the app folder</string>
+    <string name="zx_copy_share_unavailable_path">Sharing is unavailable on this system; saved to %1$s</string>
+    <string name="zx_copy_preview_title">Preview</string>
+    <string name="zx_copy_preview_close">Close</string>
+    <string name="zx_copy_field_group_basic">Basic</string>
+    <string name="zx_copy_field_group_quote">Quote</string>
+    <string name="zx_copy_field_group_cap">Cap &amp; valuation</string>
+    <string name="zx_copy_field_group_range">Range</string>
+    <string name="zx_copy_field_group_other">Other</string>
+
+    <!-- Field names: order must match core/zxcopy/ZxCopyFieldCatalog.ALL -->
+    <string-array name="zx_copy_field_names">
+        <item>Name</item>
+        <item>Code</item>
+        <item>Market</item>
+        <item>Price</item>
+        <item>Change</item>
+        <item>Change %</item>
+        <item>Speed</item>
+        <item>Amplitude</item>
+        <item>Turnover</item>
+        <item>Volume ratio</item>
+        <item>Amount</item>
+        <item>Volume</item>
+        <item>Float cap</item>
+        <item>Total cap</item>
+        <item>P/E</item>
+        <item>P/B</item>
+        <item>Dividend yield</item>
+        <item>Open</item>
+        <item>Prev close</item>
+        <item>High</item>
+        <item>Low</item>
+        <item>Avg price</item>
+        <item>3-day change</item>
+        <item>5-day change</item>
+        <item>20-day change</item>
+        <item>60-day change</item>
+        <item>YTD change</item>
+        <item>Industry</item>
+        <item>Label</item>
+        <item>Added at</item>
+        <item>Quote time</item>
+        <item>Main net inflow</item>
+        <item>Main inflow %</item>
+        <item>Current volume</item>
+        <item>Order ratio</item>
+    </string-array>
+
+    <!-- Field groups: order must match ZxCopyFieldCatalog.GROUP_ORDER -->
+    <string-array name="zx_copy_field_groups">
+        <item>Basic</item>
+        <item>Quote</item>
+        <item>Cap &amp; valuation</item>
+        <item>Range</item>
+        <item>Other</item>
+    </string-array>
 
     <!-- AI stare -->
     <string name="feature_quick_config_switch">Add \"Config\" button</string>

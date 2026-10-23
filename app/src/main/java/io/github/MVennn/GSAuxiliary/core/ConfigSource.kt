@@ -134,6 +134,12 @@ class ConfigSource(private val xposed: XposedInterface) {
                 zxGroupCopy = p.getBoolean(
                     ConfigKeys.ZX_GROUP_COPY, ConfigKeys.DEFAULT_ZX_GROUP_COPY,
                 ),
+                zxCopyMenu = p.getBoolean(
+                    ConfigKeys.ZX_COPY_MENU, ConfigKeys.DEFAULT_ZX_COPY_MENU,
+                ),
+                zxCopyRules = p.getString(
+                    ConfigKeys.ZX_COPY_RULES, ConfigKeys.DEFAULT_ZX_COPY_RULES,
+                ) ?: ConfigKeys.DEFAULT_ZX_COPY_RULES,
             )
         } catch (t: Throwable) {
             GLog.w("读取配置失败，使用默认值", t)

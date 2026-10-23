@@ -3,6 +3,7 @@ package io.github.MVennn.GSAuxiliary.ui
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +44,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.SpanStyle
@@ -209,6 +212,43 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     modifier = Modifier.weight(1f),
                 )
             }
+        }
+
+        is ImageDialogSpec -> Column(
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            spec.title?.let { title ->
+                Text(
+                    text = title,
+                    color = MiuixTheme.colorScheme.onSurfaceContainer,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                )
+            }
+            Image(
+                bitmap = spec.image,
+                contentDescription = spec.title,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .padding(horizontal = 12.dp)
+                    // 只裁预览图本身，输出到相册 / PDF 的图仍是直角
+                    .clip(RoundedCornerShape(16.dp)),
+            )
+            // 与「重置模块」确认弹窗同一颗按钮：18dp 圆角、同样的高度与灰底
+            DialogButton(
+                text = spec.closeText,
+                emphasized = false,
+                onClick = { controller.dismiss() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+            )
         }
 
         is AgreementDialogSpec -> {

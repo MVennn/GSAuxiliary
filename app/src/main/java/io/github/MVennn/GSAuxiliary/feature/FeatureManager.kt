@@ -233,5 +233,7 @@ class FeatureManager(private val env: FeatureEnv) {
         aiStareSaveBackToStock = false,
         aiStarePickScheme = false,
         zxGroupCopy = false,
+        zxCopyMenu = false,
+        zxCopyRules = ConfigKeys.DEFAULT_ZX_COPY_RULES,
     )
 }

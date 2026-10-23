@@ -62,6 +62,10 @@ data class ConfigSnapshot(
     val aiStarePickScheme: Boolean,
     /** 自选页右上角的编辑按钮换成复制按钮（复制当前分组的名称 + 代码） */
     val zxGroupCopy: Boolean,
+    /** 长按复制按钮弹动作菜单（复制 / 分享文本 / 导出图片 / 导出 PDF） */
+    val zxCopyMenu: Boolean,
+    /** 复制规则数据（JSON 字符串，结构见 ZxCopyRuleStore） */
+    val zxCopyRules: String,
 ) {
     /**
      * 稳定指纹，用于「配置真的变了没」的判断。
@@ -83,16 +87,16 @@ data class ConfigSnapshot(
      * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
      * （「重置模块」一次写 23 个键、恢复备份一次写 29 个键）。
      *
-     * 改成「布尔项占低位、逐个异或」之后：**25 个布尔项之间不再有任何碰撞**
-     * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON）
-     * 再各自混一层异或。
+     * 改成「布尔项占低位、逐个异或」之后：**26 个布尔项之间不再有任何碰撞**
+     * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON /
+     * 复制规则 JSON）再各自混一层异或。
      *
-     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..24，**还剩 7 位**。
+     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..25，**还剩 6 位**。
      * 再加布尔项时 `bit shl 1` 会在第 32 位溢出成 0 → **两个开关静默冲突**
      * （症状：改了其中一个，另一个也跟着变）。所以新增开关时，
      * 这里的个数说明与 `ConfigSnapshotFingerprintTest` 的清单**都要同步更新**。
      *
-     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²⁵
+     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²⁶
      * （数值项的异或值会落进低位，但已远低于原加权求和的「几千分之一」）。
      */
     val fingerprint: Int = run {
@@ -127,10 +131,12 @@ data class ConfigSnapshot(
         mix(aiStareSaveBackToStock)
         mix(aiStarePickScheme)
         mix(zxGroupCopy)
+        mix(zxCopyMenu)
         // 数值项各自混一层：黄金比例常数（Fibonacci hashing 的标准做法）
         h = h xor (color * 0x9E3779B1.toInt())
         h = h xor (logLevel * 0x85EBCA6B.toInt())
         h = h xor aiStareQuickConfig.hashCode()
+        h = h xor zxCopyRules.hashCode()
         h
     }
 
@@ -164,6 +170,8 @@ data class ConfigSnapshot(
             aiStareSaveBackToStock = ConfigKeys.DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
             aiStarePickScheme = ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME,
             zxGroupCopy = ConfigKeys.DEFAULT_ZX_GROUP_COPY,
+            zxCopyMenu = ConfigKeys.DEFAULT_ZX_COPY_MENU,
+            zxCopyRules = ConfigKeys.DEFAULT_ZX_COPY_RULES,
         )
     }
 }

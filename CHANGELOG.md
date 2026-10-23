@@ -20,10 +20,31 @@
   真机：全部 / 自选各 206 只、持仓股空分组、关开关还原、重开并返回后恢复；
   `assembleRelease` + `verify_apk` + 五套静态检查通过。详见
   `docs/FEATURE-ZX-COPY.md`。
-- 验证 —— `:app:compileReleaseKotlin` / `:app:testReleaseUnitTest` ✓（新增 8 条
-  `ZxCopyPlan` 单测）；`check_switches` 21 个目录行 / 21 个功能键 / 28 个快照字段一致；
-  `check_contract` 198 条；`check_invariants` 8 条；`check_dead_symbols` ✓；
-  `check-secrets` ✓。
+- 验证 —— `:app:compileReleaseKotlin` / `:app:testReleaseUnitTest` ✓（规则编解码 /
+  字段格式化 / 五种输出格式 / 容错，共 200 条全过）；`check_switches` 21 个目录行 /
+  21 个功能键 / 30 个快照字段一致；`check_contract` 304 条；`check_invariants` 8 条；
+  `check_dead_symbols` ✓；`check-secrets` ✓。
+
+- 增加 自选分组复制的**规则设置与导出** —— 在自选页复制按钮上扩展：
+  - **规则**：多条命名规则、一条默认；字段自选与排序（名称/代码/最新价/涨跌/涨幅/
+    涨速/振幅/换手率/量比/流通市值/总市值/成交额/市盈率/市净率/行业/今开昨收高低/
+    3·5·20·60 日涨幅/年初至今等 35 项）；纯文本 / Markdown / CSV / JSON / 自定义模板；
+    列分隔符选择器（空格/制表符/逗号/竖线/无）、排序、空值策略、分组/时间/数量。
+  - **导出**：图片三预设（简洁列表/表格/卡片，深浅色、红涨绿跌、每 30 行分页多图）、
+    PDF 默认 A4 竖版表格（可选横版/单页长图，页码/页眉页脚/斑马纹），落 MediaStore
+    相册/下载并拉起系统分享；Android 8/9 退到 App 目录并提示路径。
+  - **交互**：短按按默认规则的默认动作执行；长按弹动作菜单（复制/按其它规则复制/
+    分享文本/导出图片/导出 PDF），菜单开关 `zx_copy_menu`（默认开）。
+  - **设置 UI**：功能卡展开两个二级入口 —— **复制设置**（规则列表 + 编辑页，与
+    「方案设置」同构）与 **复制按钮设置**（只放长按菜单开关）；列分隔符改选择器
+    （去掉格式与表头之间的空白）；排序与空值、页脚两块上移；页脚字段去掉上方小标签、说明挪到字段下方；移除编辑页底部
+    的文本预览；所有行尾 `⋮` / `↓` / `›` 统一垂直居中。
+  - 新增配置键 `zx_copy_rules`（JSON，参数组）与 `zx_copy_menu`（布尔，参数组）；
+    `core/zxcopy/` 7 个共享文件 + `feature/zxcopy/` 7 个宿主文件 + 4 个 UI 页。
+  - 文档：[`docs/FEATURE-ZX-COPY-RULES.md`](docs/FEATURE-ZX-COPY-RULES.md)。
+  - 真机：两个二级入口、规则列表、编辑页格式/字段/分隔符/页脚、图片导出
+    （含流通市值列，7 张进相册）、PDF 导出（`Download/GSAuxiliary`，6 页）、
+    长按菜单（含边框）均已验证；菜单开关关态、`zdf` 等百分比的原始量纲待复验。
 
 ### 多选全选的对钩与宿主模型（2026-10-23）
 

@@ -71,6 +71,10 @@ def targets_files():
         for fn in filenames:
             if fn.endswith("Targets.kt") or fn == "HostFields.kt":
                 out.append(os.path.join(dirpath, fn))
+    # 自选分组复制的字段候选放在 core（设置页与目标进程共用），单独登记
+    core_host_fields = os.path.join(SRC, "core", "zxcopy", "ZxCopyHostFields.kt")
+    if os.path.exists(core_host_fields):
+        out.append(core_host_fields)
     return sorted(out)
 
 
@@ -99,10 +103,11 @@ def is_host_identifier(name, value):
     # 宿主包路径（类名 / 包前缀）
     if value.startswith("com."):
         return True
-    # 宿主字段名（Java / Kotlin 驼峰）：常量名以 _FIELD 结尾。
-    # 例：`MODEL_FIELD = "checkCodes"`、`KX_INFO_FIELD = "m_kxChartInfo"`。
+    # 宿主字段名（Java / Kotlin 驼峰）：常量名以 _FIELD / _FIELDS 结尾。
+    # 例：`MODEL_FIELD = "checkCodes"`、`KX_INFO_FIELD = "m_kxChartInfo"`、
+    # `NAME_FIELDS = arrayOf("stkName", "stockName")`。
     # 这类名字含大写，不会命中下面的「资源 id 全小写」规则。
-    if re.search(r"_FIELD$", name) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", value):
+    if re.search(r"_FIELDS?$", name) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", value):
         return True
     # 资源 id：全小写 + 下划线，且**不是**我们自己的 key
     # （`adapter_key` 这类 Intent extra 的 key 是我们自己定的，不归宿主管）

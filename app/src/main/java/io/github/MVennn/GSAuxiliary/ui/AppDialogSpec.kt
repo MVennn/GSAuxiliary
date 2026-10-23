@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
 
 /** 弹窗内容的公共接口：都带一个可选的「触发控件位置」，用来做锚定定位 */
 internal sealed interface DialogSpec {
@@ -44,6 +45,19 @@ internal class ConfirmDialogSpec(
     val confirmText: String,
     val cancelText: String,
     val onConfirm: () -> Unit,
+    override val anchor: Rect? = null,
+) : DialogSpec
+
+/**
+ * 图片预览弹窗：贴屏幕底部、从下往上滑入（与「重置模块」确认弹窗同一个壳）。
+ *
+ * 弹层材质跟随 App 主题 / 液态玻璃设置；**不再按图片深浅给整窗铺底色** ——
+ * 浅色模式下弹出一张黑底的图，不应该把标题和关闭按钮也一起变黑。
+ */
+internal class ImageDialogSpec(
+    val image: ImageBitmap,
+    val title: String?,
+    val closeText: String,
     override val anchor: Rect? = null,
 ) : DialogSpec
 
@@ -120,6 +134,12 @@ internal class DialogController {
     }
 
     fun showConfirm(s: ConfirmDialogSpec) {
+        closing = false
+        spec = s
+    }
+
+    /** 弹出图片预览（贴底、从下往上滑入） */
+    fun showImage(s: ImageDialogSpec) {
         closing = false
         spec = s
     }

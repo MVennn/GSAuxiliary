@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -15,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -65,7 +68,6 @@ internal fun FeatureTab(
     }
 }
 
-/** 单个功能：开关 + （开启后展开的）二级菜单入口 */
 @Composable
 private fun FeatureEntry(
     spec: FeatureSpec,
@@ -94,17 +96,28 @@ private fun FeatureEntry(
             BasicComponent(
                 title = stringResource(spec.detailEntryRes!!),
                 summary = spec.detailEntrySummaryRes?.let { stringResource(it) },
-                endActions = { ArrowRightIcon() },
+                endActions = { CenteredArrow() },
                 onClick = { onOpenDetail(spec, false) },
             )
-            // 第二个二级入口（目前只有「增加 配置 按钮」有）：同一个功能挂两个设置页
+            // 第二个二级入口（「一键配置」的配置按钮设置 / 「自选分组复制」的复制按钮设置）
             spec.detailEntry2Res?.let { entry2 ->
                 BasicComponent(
                     title = stringResource(entry2),
-                    endActions = { ArrowRightIcon() },
+                    endActions = { CenteredArrow() },
                     onClick = { onOpenDetail(spec, true) },
                 )
             }
         }
+    }
+}
+
+/** `endActions` 默认 Top 对齐；包一层居中 Row，`›` 才和相邻行的 `⋮` 在一条中线 */
+@Composable
+private fun RowScope.CenteredArrow(enabled: Boolean = true) {
+    Row(
+        modifier = Modifier.align(Alignment.CenterVertically),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ArrowRightIcon(enabled)
     }
 }

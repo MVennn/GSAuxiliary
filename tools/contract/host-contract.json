@@ -25,6 +25,24 @@
       "value": "cam"
     },
     {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "mCodeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
+    },
+    {
       "kind": "class",
       "owner": "AiStareCardDetailTargets.kt",
       "symbol": "CLS_INTENT_STOCK_INFO",
@@ -35,6 +53,42 @@
       "owner": "AiStareCardDetailTargets.kt",
       "symbol": "CODE_FIELDS",
       "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mStkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stockCode"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "stockCode"
     },
     {
       "kind": "id",
@@ -51,8 +105,50 @@
     {
       "kind": "id",
       "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "mData"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "mDataList"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "mDatas"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "mItems"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "DATA_FIELDS",
+      "value": "mList"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
       "symbol": "KEY_ADAPTER",
       "value": "adapter_key"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mStkMarket"
     },
     {
       "kind": "id",
@@ -64,7 +160,19 @@
       "kind": "id",
       "owner": "AiStareCardDetailTargets.kt",
       "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
       "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "AiStareCardDetailTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "stkMarket"
     },
     {
       "kind": "class",
@@ -739,6 +847,18 @@
       "value": "router_ai_stk_detail"
     },
     {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
+    },
+    {
       "kind": "class",
       "owner": "StgDirectQuoteTargets.kt",
       "symbol": "CLS_ENGINE_ACT",
@@ -765,6 +885,24 @@
     {
       "kind": "id",
       "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mStkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
       "symbol": "KEY_ADAPTER",
       "value": "adapter_key"
     },
@@ -772,7 +910,37 @@
       "kind": "id",
       "owner": "StgDirectQuoteTargets.kt",
       "symbol": "MARKET_FIELDS",
+      "value": "mMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mStkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgDirectQuoteTargets.kt",
+      "symbol": "MARKET_FIELDS",
       "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
     },
     {
       "kind": "id",
@@ -791,6 +959,24 @@
       "owner": "StgSelectAllTargets.kt",
       "symbol": "CODE_FIELDS",
       "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mStkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
     },
     {
       "kind": "id",
@@ -815,6 +1001,18 @@
       "owner": "StgSnapAddTargets.kt",
       "symbol": "BOTTOM_COUNT_ID_CANDIDATES",
       "value": "tv_bottom_zxg_num"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
     },
     {
       "kind": "id",
@@ -855,6 +1053,24 @@
     {
       "kind": "id",
       "owner": "StgSnapAddTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mStkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
       "symbol": "CONFIRM_BUTTON_ID_CANDIDATES",
       "value": "tv_bottom_add_zxg"
     },
@@ -886,13 +1102,49 @@
       "kind": "id",
       "owner": "StgSnapAddTargets.kt",
       "symbol": "MARKET_FIELDS",
+      "value": "mMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mStkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "MARKET_FIELDS",
       "value": "market"
     },
     {
       "kind": "id",
       "owner": "StgSnapAddTargets.kt",
       "symbol": "NAME_FIELDS",
+      "value": "mStkName"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "m_stkName"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "NAME_FIELDS",
       "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "stockName"
     },
     {
       "kind": "id",
@@ -905,6 +1157,18 @@
       "owner": "StgSnapAddTargets.kt",
       "symbol": "PAGE_TITLE_ID_CANDIDATES",
       "value": "tv_top_stk_name_and_code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
     },
     {
       "kind": "class",
@@ -927,6 +1191,18 @@
     {
       "kind": "id",
       "owner": "StgStockFilterTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
       "symbol": "COL_TITLE_ID",
       "value": "ll_top"
     },
@@ -941,6 +1217,18 @@
       "owner": "StgStockFilterTargets.kt",
       "symbol": "LAYOUT_EMPTY",
       "value": "empty_ai_stk"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
     },
     {
       "kind": "id",
@@ -970,7 +1258,67 @@
       "kind": "id",
       "owner": "StgStockFilterTargets.kt",
       "symbol": "NAME_FIELDS",
+      "value": "m_stkName"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "NAME_FIELDS",
       "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "stockName"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "changePercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "mPercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "mStkZdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_changePercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_stkChangeRate"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_stkPercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_stkZdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "PERCENT_FIELDS",
+      "value": "m_stkZdfRate"
     },
     {
       "kind": "id",
@@ -1007,6 +1355,24 @@
       "owner": "StgStockFilterTargets.kt",
       "symbol": "TARGET_ADAPTERS",
       "value": "com.guosen.quotation.adapter.aistk.AIStkAdapter"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "TYPE_FLAG_FIELDS",
+      "value": "isCyb"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "TYPE_FLAG_FIELDS",
+      "value": "isKCPlate"
+    },
+    {
+      "kind": "id",
+      "owner": "StgStockFilterTargets.kt",
+      "symbol": "TYPE_FLAG_FIELDS",
+      "value": "isXXLD"
     },
     {
       "kind": "class",
@@ -1075,6 +1441,18 @@
       "value": "tv_bottom_zx"
     },
     {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CAM_FIELDS",
+      "value": "m_codeAndMarket"
+    },
+    {
       "kind": "class",
       "owner": "WatchlistTargets.kt",
       "symbol": "CLS_BASE_QUICK_ADAPTER",
@@ -1085,6 +1463,30 @@
       "owner": "WatchlistTargets.kt",
       "symbol": "CODE_FIELDS",
       "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "mCode"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "mMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "WatchlistTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
     },
     {
       "kind": "id",
@@ -1112,9 +1514,261 @@
     },
     {
       "kind": "id",
-      "owner": "ZxGroupCopyTargets.kt",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ADD_TIME_FIELDS",
+      "value": "addTime"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "AMOUNT_FIELDS",
+      "value": "cjje"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "AMPLITUDE_FIELDS",
+      "value": "zf"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "AVG_PRICE_FIELDS",
+      "value": "mAverage"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "CHANGE_FIELDS",
+      "value": "zd"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "CHANGE_PCT_FIELDS",
+      "value": "zdf"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
       "symbol": "CODE_FIELDS",
-      "value": "code"
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "m_stkCode"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "stockCode"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "DIVIDEND_FIELDS",
+      "value": "mGxl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "FLOAT_CAP_FIELDS",
+      "value": "money_ltsz"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "HIGH_FIELDS",
+      "value": "highPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "INDUSTRY_FIELDS",
+      "value": "mBelongHyName"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "LABEL_FIELDS",
+      "value": "m_stkLable"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "LOW_FIELDS",
+      "value": "lowPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "MAIN_FUND_FIELDS",
+      "value": "moneyInout"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "MAIN_FUND_PCT_FIELDS",
+      "value": "moneyInoutZl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "m_stkMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "stkName"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "stockName"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "NOW_VOL_FIELDS",
+      "value": "nowVol"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "OPEN_FIELDS",
+      "value": "jrkp"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PB_FIELDS",
+      "value": "sjl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PE_FIELDS",
+      "value": "peStatic"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PE_FIELDS",
+      "value": "peTTM"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PE_FIELDS",
+      "value": "syl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PREV_CLOSE_FIELDS",
+      "value": "zrsp"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PRICE_DATE_FIELDS",
+      "value": "priceDate"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "mPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "price"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "stockPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "zxj"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "SPEED_FIELDS",
+      "value": "zs"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "TOTAL_CAP_FIELDS",
+      "value": "money_zsz"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "TURNOVER_FIELDS",
+      "value": "hsl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "VOLUME_FIELDS",
+      "value": "cjsl"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "VOLUME_RATIO_FIELDS",
+      "value": "lb"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "WEI_BI_FIELDS",
+      "value": "wb"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ZDF20_FIELDS",
+      "value": "zdf_20_day"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ZDF3_FIELDS",
+      "value": "zdf_3_day"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ZDF5_FIELDS",
+      "value": "zdf_5_day"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ZDF60_FIELDS",
+      "value": "zdf_60_day"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxCopyHostFields.kt",
+      "symbol": "ZDF_YEAR_FIELDS",
+      "value": "zdf_year"
     },
     {
       "kind": "id",
@@ -1139,24 +1793,6 @@
       "owner": "ZxGroupCopyTargets.kt",
       "symbol": "LIST_CONTAINER_ID",
       "value": "stklv_zxg"
-    },
-    {
-      "kind": "id",
-      "owner": "ZxGroupCopyTargets.kt",
-      "symbol": "MARKET_FIELDS",
-      "value": "market"
-    },
-    {
-      "kind": "id",
-      "owner": "ZxGroupCopyTargets.kt",
-      "symbol": "NAME_FIELDS",
-      "value": "m_name"
-    },
-    {
-      "kind": "id",
-      "owner": "ZxGroupCopyTargets.kt",
-      "symbol": "NAME_FIELDS",
-      "value": "name"
     },
     {
       "kind": "id",

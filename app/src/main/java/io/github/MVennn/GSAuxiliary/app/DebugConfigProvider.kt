@@ -64,6 +64,8 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_NAV_BAR_BLEND = "nav_bar_blend"
         const val COL_WATCHLIST_BOLD = "watchlist_bold"
         const val COL_ZX_GROUP_COPY = "zx_group_copy"
+        const val COL_ZX_COPY_MENU = "zx_copy_menu"
+        const val COL_ZX_COPY_RULES = "zx_copy_rules"
     }
 
     override fun onCreate(): Boolean {
@@ -121,6 +123,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
             COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
             COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD, COL_ZX_GROUP_COPY,
+            COL_ZX_COPY_MENU, COL_ZX_COPY_RULES,
         )
         val values = arrayOf<Any>(
             if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
@@ -153,6 +156,8 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.NAV_BAR_BLEND, ConfigKeys.DEFAULT_NAV_BAR_BLEND)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.ZX_GROUP_COPY, ConfigKeys.DEFAULT_ZX_GROUP_COPY)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.ZX_COPY_MENU, ConfigKeys.DEFAULT_ZX_COPY_MENU)) 1 else 0,
+            ModulePreferences.getString(ConfigKeys.ZX_COPY_RULES, ConfigKeys.DEFAULT_ZX_COPY_RULES),
         )
         // 列与值必须等长 —— `MatrixCursor.addRow` 长度不等会抛 IllegalArgumentException
         if (columns.size != values.size) {
@@ -211,8 +216,13 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_NAV_BAR_BLEND)?.let { putBoolean(ConfigKeys.NAV_BAR_BLEND, it != 0); n++ }
             intOf(COL_WATCHLIST_BOLD)?.let { putBoolean(ConfigKeys.WATCHLIST_BOLD, it != 0); n++ }
             intOf(COL_ZX_GROUP_COPY)?.let { putBoolean(ConfigKeys.ZX_GROUP_COPY, it != 0); n++ }
+            intOf(COL_ZX_COPY_MENU)?.let { putBoolean(ConfigKeys.ZX_COPY_MENU, it != 0); n++ }
             if (values.containsKey(COL_AISTARE_SCHEMES)) {
                 putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
+                n++
+            }
+            if (values.containsKey(COL_ZX_COPY_RULES)) {
+                putString(ConfigKeys.ZX_COPY_RULES, values.getAsString(COL_ZX_COPY_RULES))
                 n++
             }
         }

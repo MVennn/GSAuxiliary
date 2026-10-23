@@ -1,5 +1,7 @@
 package io.github.MVennn.GSAuxiliary.core
 
+import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRuleStore
+
 /**
  * 配置键与默认值。
  *
@@ -55,6 +57,23 @@ object ConfigKeys {
      * 见 [io.github.MVennn.GSAuxiliary.feature.zxcopy.ZxGroupCopyFeature]。
      */
     const val ZX_GROUP_COPY = "zx_group_copy"
+
+    /**
+     * 自选复制按钮的**长按动作菜单**：长按弹出「复制 / 分享文本 / 导出图片 / 导出 PDF」。
+     *
+     * 这是 [ZX_GROUP_COPY] 下面的**子参数**（与 [STG_QUOTE_SWIPE] 同类），
+     * 归 [FEATURE_PARAM_KEYS]，默认开启；关掉后长按不弹菜单，短按仍按默认规则复制。
+     */
+    const val ZX_COPY_MENU = "zx_copy_menu"
+
+    /**
+     * 自选复制的**规则数据**（JSON 字符串，结构见
+     * [io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRuleStore]）。
+     *
+     * 归 [FEATURE_PARAM_KEYS]（重置 = 恢复出厂规则），不归 [FEATURE_KEYS] ——
+     * 它是数据不是开关。目标进程要读它，所以进 [ConfigSnapshot]。
+     */
+    const val ZX_COPY_RULES = "zx_copy_rules"
 
     /**
      * 是否已阅读并同意免责声明。
@@ -435,6 +454,22 @@ object ConfigKeys {
     const val DEFAULT_ZX_GROUP_COPY = false
 
     /**
+     * 子参数，默认开启：长按复制按钮弹动作菜单。
+     *
+     * 与 [DEFAULT_STG_QUOTE_SWIPE] 同理 —— 它是功能打开后才有意义的子选项，
+     * 重置时回到「开启」，而不是被关掉。
+     */
+    const val DEFAULT_ZX_COPY_MENU = true
+
+    /**
+     * 出厂复制规则：一条「默认」规则，字段 `名称 代码`、纯文本、剪贴板。
+     *
+     * 用 `val` 而不是 `const val`：JSON 由 [ZxCopyRuleStore] 生成，避免在源码里
+     * 手写两份容易漂移的结构。
+     */
+    val DEFAULT_ZX_COPY_RULES: String = ZxCopyRuleStore.defaultJson()
+
+    /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
      * 它是 2.18.0 新增的行情筛选维度（涨跌与自选），出厂默认关。
@@ -500,7 +535,7 @@ object ConfigKeys {
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
-        ZX_GROUP_COPY,
+        ZX_GROUP_COPY, ZX_COPY_MENU, ZX_COPY_RULES,
         DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
         LOG_LEVEL,
     )
@@ -536,6 +571,7 @@ object ConfigKeys {
     val FEATURE_PARAM_KEYS = arrayOf(
         COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, AISTARE_QUICK_CONFIG,
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
+        ZX_COPY_MENU, ZX_COPY_RULES,
     )
 
     /**
@@ -562,7 +598,7 @@ object ConfigKeys {
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
-        ZX_GROUP_COPY,
+        ZX_GROUP_COPY, ZX_COPY_MENU, ZX_COPY_RULES,
     )
 
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
@@ -594,6 +630,8 @@ object ConfigKeys {
         AISTARE_SAVE_BACK_TO_STOCK to DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
         AISTARE_PICK_SCHEME to DEFAULT_AISTARE_PICK_SCHEME,
         ZX_GROUP_COPY to DEFAULT_ZX_GROUP_COPY,
+        ZX_COPY_MENU to DEFAULT_ZX_COPY_MENU,
+        ZX_COPY_RULES to DEFAULT_ZX_COPY_RULES,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,
         GLASS_EFFECT to DEFAULT_GLASS_EFFECT,

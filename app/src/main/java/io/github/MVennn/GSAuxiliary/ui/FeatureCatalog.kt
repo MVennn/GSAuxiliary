@@ -108,8 +108,8 @@ internal data class FeatureSpec(
     @StringRes val detailEntryRes: Int? = null,
     @StringRes val detailEntrySummaryRes: Int? = null,
     /**
-     * **第二个**二级入口（可空）。目前只有「增加 配置 按钮」用到：
-     * 一个功能下同时挂「方案设置」与「配置按钮设置」两个页面。
+     * **第二个**二级入口（可空）。目前「自选分组复制」用：
+     * 一个功能下同时挂「复制规则」与「复制按钮设置」两个页面。
      */
     @StringRes val detailEntry2Res: Int? = null,
 ) {
@@ -326,7 +326,9 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         switchSummaryRes = R.string.feature_zx_copy_switch_summary,
         enableKey = ConfigKeys.ZX_GROUP_COPY,
         defaultEnabled = ConfigKeys.DEFAULT_ZX_GROUP_COPY,
-        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+        detailTitleRes = R.string.detail_zx_copy_title,
+        detailEntryRes = R.string.feature_zx_copy_detail_entry,
+        detailEntry2Res = R.string.feature_zx_copy_button_entry,
     ),
 
     // ---- 显示：只改看到的样子 ----

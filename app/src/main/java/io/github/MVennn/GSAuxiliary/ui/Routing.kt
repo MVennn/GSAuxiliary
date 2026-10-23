@@ -38,6 +38,12 @@ internal sealed interface Route {
     data class QuickConfigEdit(val schemeId: String) : Route
     /** 配置按钮设置：多方案时是否弹选择层 */
     data object QuickConfigButton : Route
+    /** 自选分组复制的规则列表（二级） */
+    data object ZxCopyRules : Route
+    /** 复制按钮设置（二级）：长按动作菜单开关 */
+    data object ZxCopyButton : Route
+    /** 复制规则编辑页（三级）：带规则 id（规则被删时页面自己回落空态） */
+    data class ZxCopyRuleEdit(val ruleId: String) : Route
     /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
@@ -60,6 +66,9 @@ private object RouteSaver : Saver<Route, String> {
         Route.QuickConfig -> "quick_config"
         is Route.QuickConfigEdit -> "quick_config_edit:" + value.schemeId
         Route.QuickConfigButton -> "quick_config_button"
+        Route.ZxCopyRules -> "zx_copy_rules"
+        Route.ZxCopyButton -> "zx_copy_button"
+        is Route.ZxCopyRuleEdit -> "zx_copy_rule_edit:" + value.ruleId
         Route.AiStareSaveBehavior -> "aistare_save_behavior"
         Route.WatchlistDetail -> "watchlist_detail"
         Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
@@ -72,6 +81,10 @@ private object RouteSaver : Saver<Route, String> {
         value.startsWith("quick_config_edit:") ->
             Route.QuickConfigEdit(value.removePrefix("quick_config_edit:"))
         value == "quick_config_button" -> Route.QuickConfigButton
+        value == "zx_copy_rules" -> Route.ZxCopyRules
+        value == "zx_copy_button" -> Route.ZxCopyButton
+        value.startsWith("zx_copy_rule_edit:") ->
+            Route.ZxCopyRuleEdit(value.removePrefix("zx_copy_rule_edit:"))
         value == "aistare_save_behavior" -> Route.AiStareSaveBehavior
         value == "watchlist_detail" -> Route.WatchlistDetail
         value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
@@ -79,6 +92,18 @@ private object RouteSaver : Saver<Route, String> {
         value == "notice" -> Route.Notice
         else -> Route.Home
     }
+}
+
+/**
+ * 三级页 → 它压在下面的那个二级页；不是三级页返回 null。
+ *
+ * 现在有两个三级页（方案编辑 / 复制规则编辑），返回目标、二级层画哪一页、
+ * 可预测返回推哪一层，都从这里取，别再写死 `Route.QuickConfig`。
+ */
+private fun editParent(route: Route): Route? = when (route) {
+    is Route.QuickConfigEdit -> Route.QuickConfig
+    is Route.ZxCopyRuleEdit -> Route.ZxCopyRules
+    else -> null
 }
 
 /**
@@ -136,8 +161,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
     //  - 退出动画期间 `route` 已经不是它了，但那一层还得继续画完 —— 靠这两个变量记住。
     //
     // （组合期写 state 会让这一帧多跑一遍组合，值是确定的，最多两遍就收敛。）
-    val editRouteNow = route as? Route.QuickConfigEdit
-    val subRouteNow = if (editRouteNow != null) Route.QuickConfig else route
+    val editRouteNow: Route? = route.takeIf { editParent(it) != null }
+    val subRouteNow = editParent(route) ?: route
     var shownSub by remember { mutableStateOf(subRouteNow) }
     var shownEdit by remember { mutableStateOf(editRouteNow) }
     if (subRouteNow != Route.Home && subRouteNow != shownSub) shownSub = subRouteNow
@@ -146,10 +171,10 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
     val predictiveBack = rememberPredictiveBack()
     // 二级 / 三级各自的滑动进度：0 = 完全滑出屏幕右侧，1 = 完全盖住下面那层
     val subProgress = remember { Animatable(if (route == Route.Home) 0f else 1f) }
-    val editProgress = remember { Animatable(if (route is Route.QuickConfigEdit) 1f else 0f) }
+    val editProgress = remember { Animatable(if (editParent(route) != null) 1f else 0f) }
 
-    // 返回目标：方案编辑页回方案列表（不是首页），其余二级页回首页
-    fun backTarget(): Route = if (route is Route.QuickConfigEdit) Route.QuickConfig else Route.Home
+    // 返回目标：三级页回它自己的二级页，其余二级页回首页
+    fun backTarget(): Route = editParent(route) ?: Route.Home
 
     // 常规前进 / 返回：把对应层的进度动画到目标值
     LaunchedEffect(route) {
@@ -163,7 +188,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                 subProgress.animateTo(0f, tween(RouteAnimMillis))
             }
 
-            is Route.QuickConfigEdit -> {
+            is Route.QuickConfigEdit, is Route.ZxCopyRuleEdit -> {
                 subProgress.animateTo(1f, tween(RouteAnimMillis))
                 editProgress.animateTo(1f, tween(RouteAnimMillis))
             }
@@ -185,8 +210,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
 
     if (predictiveBack) {
         PredictiveBackHandler(enabled = route != Route.Home) { flow ->
-            // 手势只推动最上面那一层：三级页返回时底下是二级页，不是首页
-            val onEdit = route is Route.QuickConfigEdit
+            // 手势只推动最上面那一层：三级页返回时底下是它自己的二级页，不是首页
+            val onEdit = editParent(route) != null
             try {
                 flow.collect { (if (onEdit) editProgress else subProgress).snapTo(1f - it.progress) }
                 route = backTarget()
@@ -252,6 +277,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                         "aistare_quick_config#2" -> Route.QuickConfigButton
                         // 保存成功后：是否直接退回个股详情页
                         "aistare_skip_save_confirm" -> Route.AiStareSaveBehavior
+                        "zx_group_copy" -> Route.ZxCopyRules
+                        "zx_group_copy#2" -> Route.ZxCopyButton
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -324,6 +351,22 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             QuickConfigButtonScreen()
                         }
 
+                        Route.ZxCopyRules -> SubScreen(
+                            title = stringResource(R.string.detail_zx_copy_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            ZxCopyRuleScreen(
+                                onEdit = { ruleId -> route = Route.ZxCopyRuleEdit(ruleId) },
+                            )
+                        }
+
+                        Route.ZxCopyButton -> SubScreen(
+                            title = stringResource(R.string.detail_zx_copy_button_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            ZxCopyButtonScreen()
+                        }
+
                         Route.AiStareSaveBehavior -> SubScreen(
                             title = stringResource(R.string.feature_skip_save_detail_title),
                             onBack = { route = Route.Home },
@@ -346,6 +389,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                         }
 
                         is Route.QuickConfigEdit -> Unit
+                        is Route.ZxCopyRuleEdit -> Unit
                         Route.Home -> Unit
                     }
                 }
@@ -359,15 +403,29 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             .graphicsLayer { translationX = size.width * (1f - pe) }
                             .background(background),
                     ) {
-                        SubScreen(
-                            title = stringResource(R.string.detail_quick_edit_title),
-                            onBack = { route = Route.QuickConfig },
-                        ) {
-                            QuickConfigEditScreen(
-                                schemeId = editRoute.schemeId,
-                                // 方案被删掉就回列表，不停在空白的三级页
-                                onDeleted = { route = Route.QuickConfig },
-                            )
+                        when (editRoute) {
+                            is Route.QuickConfigEdit -> SubScreen(
+                                title = stringResource(R.string.detail_quick_edit_title),
+                                onBack = { route = Route.QuickConfig },
+                            ) {
+                                QuickConfigEditScreen(
+                                    schemeId = editRoute.schemeId,
+                                    // 方案被删掉就回列表，不停在空白的三级页
+                                    onDeleted = { route = Route.QuickConfig },
+                                )
+                            }
+
+                            is Route.ZxCopyRuleEdit -> SubScreen(
+                                title = stringResource(R.string.detail_zx_copy_edit_title),
+                                onBack = { route = Route.ZxCopyRules },
+                            ) {
+                                ZxCopyRuleEditScreen(
+                                    ruleId = editRoute.ruleId,
+                                    onDeleted = { route = Route.ZxCopyRules },
+                                )
+                            }
+
+                            else -> Unit
                         }
                     }
                 }

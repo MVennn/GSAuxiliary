@@ -6,6 +6,8 @@ import android.view.ViewGroup
 import android.widget.AbsListView
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.GLog
+import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFieldCatalog
+import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRow
 import io.github.MVennn.GSAuxiliary.util.IdCache
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.reflect.Field
@@ -14,7 +16,8 @@ import java.util.WeakHashMap
 import kotlin.math.abs
 
 /**
- * 读取「自选」页**当前显示分组**里的全部股票。
+ * 读取「自选」页**当前显示分组**里的全部股票，并把字段按
+ * [ZxCopyFieldCatalog] 格式化成 [ZxCopyRow]。
  *
  * ## 为什么读当前页的适配器，而不是 `ZXWorkflow.getStocksByGroupId()`
  *
@@ -23,7 +26,7 @@ import kotlin.math.abs
  * 不是真实分组（`getAllGroups()` 里只有「全部」「自选」），走 API 还得特判。
  *
  * 当前页的 `InterceptListView` 适配器里，条目就是 `StockInfo`（`stkName` +
- * `m_stkCode` + `m_stkMarket`），排序也与屏幕一致 —— 所见即所得，三种 tab 统一。
+ * `m_stkCode` + 全部行情字段），排序也与屏幕一致 —— 所见即所得，三种 tab 统一。
  *
  * ## 视图结构（实测）
  *
@@ -35,39 +38,28 @@ import kotlin.math.abs
  *             └─ InterceptListView        ← 真正的 AbsListView
  * ```
  *
- * 所以这里按「页 → 容器 → 第一个 AbsListView」找，不假设 `#stklv_zxg` 自己是列表。
+ * ## 字段读取
  *
- * ## 读不到字段时的兜底
- *
- * 条目字段按类缓存（规则 2.1）；名称 / 代码仍为空时，用
- * `adapter.getView(i, null, list)` 现绑一行，读行内
- * `#tv_item_stk_name` / `#tv_item_stk_code` 的文本。再读不到代码就跳过该条
- * （**绝不猜代码**），读不到名称则只复制代码。
+ * 条目类 → 字段映射按类缓存（规则 2.1）；每个字段按候选顺序取第一个非空。
+ * 名称 / 代码仍为空时，用 `adapter.getView(i, null, list)` 现绑一行读
+ * `#tv_item_stk_name` / `#tv_item_stk_code` 兜底。再读不到代码就跳过该条
+ * （**绝不猜代码**）。
  */
 object ZxGroupStocks {
 
-    /** 一次读取的结果；[groupName] 取不到时为 null（Toast 里省略分组名） */
+    /** 一次读取的结果 */
     data class Snapshot(
         val groupName: String?,
-        val stocks: List<ZxCopyPlan.Stock>,
+        val rows: List<ZxCopyRow>,
+        val timestamp: Long = System.currentTimeMillis(),
     )
 
-    /** 条目类 → 解析好的字段（规则 2.1：按类缓存，失败也缓存） */
-    private class ItemFields(
-        val name: List<Field>,
-        val code: List<Field>,
-        val market: List<Field>,
-        val cam: List<Field>,
-    )
+    /** 条目类 → 字段 id → 反射字段（失败也缓存，避免每只股票重扫继承链） */
+    private class FieldAccess(val byId: Map<String, Field>)
 
     private val fieldsByClass =
-        Collections.synchronizedMap(WeakHashMap<Class<*>, ItemFields>())
+        Collections.synchronizedMap(WeakHashMap<Class<*>, FieldAccess>())
 
-    /**
-     * 读当前分组。失败返回 null（调用方提示复制失败）；空分组返回空列表。
-     *
-     * @param ids 调用方已经预热过的 id 解析器（[ZxGroupCopyFeature] 在布局回调里用过）
-     */
     fun read(activity: Activity, ids: IdCache): Snapshot? {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return null
 
@@ -102,35 +94,54 @@ object ZxGroupStocks {
 
         val nameId = ids.of(ZxGroupCopyTargets.NAME_ID)
         val codeId = ids.of(ZxGroupCopyTargets.CODE_ID)
-        val stocks = ArrayList<ZxCopyPlan.Stock>(count)
+        val rows = ArrayList<ZxCopyRow>(count)
+        val seen = HashSet<String>(count)
         var skipped = 0
+
         for (i in 0 until count) {
             val item = runCatching { adapter.getItem(i) }.getOrNull()
-            var name = item?.let { firstString(it, fieldsOf(it.javaClass).name) }
-            var code = item?.let { codeOf(it) }
-            var market = item?.let { marketOf(it) }
+            val values = HashMap<String, String>(ZxCopyFieldCatalog.ALL.size)
+            val sort = HashMap<String, Double>(8)
 
-            if (name.isNullOrBlank() || code.isNullOrBlank()) {
-                // 行情未回填 / 条目不是 StockInfo：现绑一行读文本兜底
-                val row = runCatching { adapter.getView(i, null, list) }.getOrNull()
-                if (name.isNullOrBlank() && nameId != 0) {
-                    name = row?.findViewById<TextView>(nameId)?.text?.toString()
-                }
-                if (code.isNullOrBlank() && codeId != 0) {
-                    code = row?.findViewById<TextView>(codeId)?.text?.toString()
+            if (item != null) {
+                val access = fieldsOf(item.javaClass)
+                for (spec in ZxCopyFieldCatalog.ALL) {
+                    val field = access.byId[spec.id] ?: continue
+                    val raw = runCatching { field.get(item) }.getOrNull() ?: continue
+                    val text = ZxCopyFieldCatalog.format(spec, raw) ?: continue
+                    values[spec.id] = text
+                    ZxCopyFieldCatalog.sortValue(spec, raw)?.let { sort[spec.id] = it }
                 }
             }
 
-            val n = ZxCopyPlan.normalizeName(name)
-            val c = ZxCopyPlan.normalizeCode(code)
-            if (c == null) {
+            if (values["name"] == null || values["code"] == null) {
+                val row = runCatching { adapter.getView(i, null, list) }.getOrNull()
+                if (values["name"] == null && nameId != 0) {
+                    val t = row?.findViewById<TextView>(nameId)?.text?.toString()
+                    ZxCopyFieldCatalog.byId("name")?.let { spec ->
+                        ZxCopyFieldCatalog.format(spec, t)?.let { values["name"] = it }
+                    }
+                }
+                if (values["code"] == null && codeId != 0) {
+                    val t = row?.findViewById<TextView>(codeId)?.text?.toString()
+                    ZxCopyFieldCatalog.byId("code")?.let { spec ->
+                        ZxCopyFieldCatalog.format(spec, t)?.let { values["code"] = it }
+                    }
+                }
+            }
+
+            val code = values["code"]
+            if (code.isNullOrBlank()) {
                 skipped++
                 continue
             }
-            stocks.add(ZxCopyPlan.Stock(n, c, market))
+            val market = values["market"].orEmpty()
+            if (!seen.add("$code.$market")) continue
+            rows.add(ZxCopyRow(values, sort))
         }
+
         if (skipped > 0) GLog.w("自选分组复制：$skipped 条读不到代码，已跳过")
-        return Snapshot(groupName, stocks)
+        return Snapshot(groupName, rows)
     }
 
     // ------------------------------------------------------------------ 定位
@@ -205,44 +216,20 @@ object ZxGroupStocks {
         return title.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
     }
 
-    // ------------------------------------------------------------------ 条目字段
+    // ------------------------------------------------------------------ 字段
 
-    private fun fieldsOf(cls: Class<*>): ItemFields = synchronized(fieldsByClass) {
+    private fun fieldsOf(cls: Class<*>): FieldAccess = synchronized(fieldsByClass) {
         fieldsByClass[cls]?.let { return it }
-        val f = ItemFields(
-            name = ZxGroupCopyTargets.NAME_FIELDS.mapNotNull { Reflect.findField(cls, it) },
-            code = ZxGroupCopyTargets.CODE_FIELDS.mapNotNull { Reflect.findField(cls, it) },
-            market = ZxGroupCopyTargets.MARKET_FIELDS.mapNotNull { Reflect.findField(cls, it) },
-            cam = ZxGroupCopyTargets.CAM_FIELDS.mapNotNull { Reflect.findField(cls, it) },
-        )
-        fieldsByClass[cls] = f
-        f
-    }
-
-    private fun firstString(item: Any, fields: List<Field>): String? {
-        for (f in fields) {
-            val v = runCatching { f.get(item) }.getOrNull() as? String
-            if (!v.isNullOrBlank()) return v
+        val map = HashMap<String, Field>(ZxCopyFieldCatalog.ALL.size)
+        for (spec in ZxCopyFieldCatalog.ALL) {
+            for (name in spec.candidates) {
+                val f = Reflect.findField(cls, name) ?: continue
+                map[spec.id] = f
+                break
+            }
         }
-        return null
-    }
-
-    private fun codeOf(item: Any): String? {
-        val f = fieldsOf(item.javaClass)
-        firstString(item, f.cam)?.let { cam ->
-            val dot = cam.indexOf('.')
-            val code = if (dot > 0) cam.substring(0, dot) else cam
-            if (code.isNotBlank()) return code
-        }
-        return firstString(item, f.code)
-    }
-
-    private fun marketOf(item: Any): String? {
-        val f = fieldsOf(item.javaClass)
-        firstString(item, f.cam)?.let { cam ->
-            val dot = cam.indexOf('.')
-            if (dot > 0 && dot < cam.length - 1) return cam.substring(dot + 1)
-        }
-        return firstString(item, f.market)
+        val access = FieldAccess(map)
+        fieldsByClass[cls] = access
+        access
     }
 }

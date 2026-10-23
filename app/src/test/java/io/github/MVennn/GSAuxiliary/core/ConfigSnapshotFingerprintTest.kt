@@ -41,7 +41,7 @@ class ConfigSnapshotFingerprintTest {
         "ipoDialogClean", "aistareQuickEnabled", "aiStareSkipSaveConfirm", "aiStareEmptySave",
         "aiStareCardDetail", "aiStareSaveBackToStock", "aiStarePickScheme",
         // ⚠️ 新加的开关必须加进这里（2026-10-20 加的两个 + 2026-10-23 的自选分组复制）
-        "watchlistBold", "marketIndexHide", "zxGroupCopy",
+        "watchlistBold", "marketIndexHide", "zxGroupCopy", "zxCopyMenu",
     )
 
     private fun base() = ConfigSnapshot.DEFAULT
@@ -186,6 +186,7 @@ class ConfigSnapshotFingerprintTest {
         "watchlistBold" -> b.copy(watchlistBold = !b.watchlistBold)
         "marketIndexHide" -> b.copy(marketIndexHide = !b.marketIndexHide)
         "zxGroupCopy" -> b.copy(zxGroupCopy = !b.zxGroupCopy)
+        "zxCopyMenu" -> b.copy(zxCopyMenu = !b.zxCopyMenu)
         else -> error("未知字段 $name")
     }
 

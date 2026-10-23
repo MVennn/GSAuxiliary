@@ -31,6 +31,7 @@
 | [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md) | 策略详情页「筛选股票」（八项两组，与行情页那颗面板共用模型） |
 | [FEATURE-MARKET-FILTER.md](FEATURE-MARKET-FILTER.md) | 行情页「涨跌与自选」筛选项 + 筛排行榜 |
 | [FEATURE-ZX-COPY.md](FEATURE-ZX-COPY.md) | 自选页「编辑 → 复制」按钮：复制当前分组的名称 + 代码 |
+| [FEATURE-ZX-COPY-RULES.md](FEATURE-ZX-COPY-RULES.md) | 自选复制规则：字段自选、Markdown / CSV / 图片 / PDF 导出与分享 |
 | [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md) | 隐藏 新股申购 弹窗，含真机校准手册 |
 | [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) | 手势导航条同色 |
 | [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) | 界面精简（底栏 / 首页 / 行情市场，含「隐藏 指数概览」），含真机校准手册 |

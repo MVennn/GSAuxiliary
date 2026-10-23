@@ -52,18 +52,6 @@ object ZxGroupCopyTargets {
     const val NAME_ID = "tv_item_stk_name"
     const val CODE_ID = "tv_item_stk_code"
 
-    /** 条目（StockInfo）上的名称字段候选 */
-    val NAME_FIELDS = arrayOf("stkName", "m_stkName", "m_name", "name", "mName")
-
-    /** 条目上的代码字段候选（`m_stkCode` 继承自 StockData） */
-    val CODE_FIELDS = arrayOf("m_stkCode", "stkCode", "code", "mCode")
-
-    /** 条目上的市场字段候选（只用于去重，不写进剪贴板） */
-    val MARKET_FIELDS = arrayOf("m_stkMarket", "stkMarket", "market", "mMarket")
-
-    /** 「代码.市场」组合字段候选（优先于 code + market） */
-    val CAM_FIELDS = arrayOf("codeAndMarket", "m_codeAndMarket")
-
     /** 复制按钮的无障碍描述（只进目标进程，硬编码中文） */
     const val COPY_DESC = "复制分组股票"
 

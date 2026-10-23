@@ -205,8 +205,11 @@ internal fun DialogHost(
     val navBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
 
     val anchor = spec.anchor
-    // 贴底弹出：确认弹窗 / 同意弹窗，且没有锚点
-    val sheet = (spec is ConfirmDialogSpec || spec is AgreementDialogSpec) && anchor == null
+    // 贴底弹出：确认弹窗 / 同意弹窗 / 图片预览，且没有锚点
+    val sheet = (
+        spec is ConfirmDialogSpec || spec is AgreementDialogSpec ||
+            spec is ImageDialogSpec
+        ) && anchor == null
 
     // 进度：0 = 收起（初始态）、1 = 完全展开。
     // `remember(spec)` 让每换一个弹窗都重新从 0 开始 —— 于是「入场」天然成立，
