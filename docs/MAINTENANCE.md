@@ -39,6 +39,11 @@
 **不要**在并发会话还开着的时候删 `.work/`：那里是几个会话共用的中转站，
 另一个会话可能正在往里写。先确认没人跑着任务，再清。
 
+> ⚠️ **本轮的进度文件不要落在 `.work/` 里**：2026-10-23 实测，把 `PROGRESS.md` 写在
+> `.work/` 下会被 L1 那一步连同临时物一起删掉（删得没错，但进度得重建一遍）。
+> 跨轮任务把进度放 `.work/PROGRESS-<日期>.md` 也一样躲不过。要么先執行 L1 再开进度文件，
+> 要么把跨轮进度写进本文件 §6。
+
 ---
 
 ## 3. 四层清理
@@ -57,6 +62,7 @@ python tools/hygiene.py junk
 | `.gradle/`、`.kotlin/` | 能 | 工程级缓存与 Kotlin 会话目录，自动重建 |
 | `tools/probe/build/`、`tools/probe/out/` | 能 | 探针的中间产物与 APK（`tools/probe/build.sh` 重新生成） |
 | `.work/` 下的临时物 | 能 | 截图、旧 APK、日志、`commit-msg*.txt`、实验脚本、解出的宿主缓存 |
+| `.work/host/` | 能（先看用途） | 从设备 `adb pull` 下来的宿主 `base.apk`（~144M）与 `aapt2 dump` 结果。宿主逆向结论**已经沉淀进 `docs/*.md`** 就不用留原件；但本机 PATH 里没有 adb、设备也不总在线，删之前先确认结论已入库 |
 | `.work/lsposed-repo/` | **不能** | 发布用的模块仓库克隆，`tools/publish.py` 依赖它 |
 | `.work/apk/` | 保留最新一份 | 只留当前版本一个可安装包，别堆十几个历史 APK |
 | `.work/log.mark`、`.work/wifi_serial` | **不能** | 日志游标与无线调试地址，删了下一次要重新找 |
@@ -169,6 +175,7 @@ README 免责段只是**摘要**，不承载全文；改全文时如果摘要要
 
 | 日期 | 做了什么 | 结果 |
 |---|---|---|
+| 2026-10-23 | 收尾大扫除（L1 + L2 + L3 + L4）：删 19 条零引用 `zx_copy_*` 文案（values / values-en 各一份）、3 条未使用 import；清 `.work/` 229 项与 `app/build` / `build` / `.gradle` / `.kotlin` / `tools/__pycache__`；顺带并入已有的 `gradle.properties`（Kotlin 编译改 in-process）与 `check-secrets.py` 仓名笔误修复 | 仓库 **381M → 36M**，`.work/` **195M → 1.8M**；`assembleRelease` 从零编过（3.5.0 / code 51）、`verify_apk` 红线全过、单测 **200 条**全过，五项静态检查 exit 0；复扫 hygiene 剩 res 0 / members 0 / imports 0（decls 仅 `DebugConfigProvider` 误报）。提交 `bbaee6e` 已推送 |
 | 2026-10-22 | 收尾大扫除（L1 磁盘 + L3 文档对账）：`.work/` 只留当前版本 `GSAuxiliary_50-3.4.0.apk`，删掉 8 个旧 / 重复 APK 与 13 个无引用探针文件；清 `tools/__pycache__`、`tools/probe/{build,out}`、根 `build/`；对齐功能与单测计数 | 仓库 **195M → 180M**，`.work/` **22M → 6.4M**；`app/build/` 140M 按 §3 L1 口径保留；单测 **156 条**全过，七项检查 exit 0（`check_invariants` 仍只有既有的 `StgFilterBridge` proguard-keep 误报） |
 
 ### 2026-10-17（上一轮明细）
