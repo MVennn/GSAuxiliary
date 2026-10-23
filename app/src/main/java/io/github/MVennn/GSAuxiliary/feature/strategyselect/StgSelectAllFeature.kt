@@ -1,11 +1,14 @@
 package io.github.MVennn.GSAuxiliary.feature.strategyselect
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.TypedValue
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Checkable
 import android.widget.CheckedTextView
 import android.widget.LinearLayout
 import android.widget.ListView
@@ -13,6 +16,7 @@ import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
@@ -40,8 +44,10 @@ import java.util.WeakHashMap
  *  - 会重算文案的时机：① 进入多选态注入时；② 底部「已选 N」计数变化时
  *    （手动点行、宿主自己改选中都会更新它）；③ 本按钮被点击后。
  *  - 判定：**行状态**里勾上的行数 == 适配器总行数 → 文案「反选」（点击取消全部），
- *    否则「全选」（点击勾选全部）。行状态读框架的 checked states（与「确认添加」同一份表），
- *    不可用时才逐行现绑探针；**不读屏上那颗勾选框**（合成点击后它可能没被重画，2026-10-21）。
+ *    否则「全选」（点击勾选全部）。行状态**优先读宿主自己的选中模型**
+ *    `AIStkStgDetailAct.checkCodes`（底部计数 / 确认添加的来源），读不到才退回
+ *    框架的 checked states / 逐行探针；**不读屏上那颗勾选框**
+ *    （合成点击后它可能没被重画，2026-10-21）。
  *
  * ## 点完要核对（2026-10-22）
  *
@@ -96,6 +102,40 @@ class StgSelectAllFeature : Feature {
     @Volatile private var checkboxIdCache = 0
 
     @Volatile private var countIdCache = 0
+
+    /**
+     * 宿主选中模型字段 `AIStkStgDetailAct.checkCodes` 的解析结果。
+     *
+     * [hostModelResolved] 与它分开：解析失败也要记住（只解析一次），
+     * 否则每轮全选都会重扫一遍继承链。只对目标 Activity 解析 ——
+     * 别的页面没有这个字段，别把「找错页面」记成「宿主没这个字段」。
+     */
+    @Volatile private var hostModelField: java.lang.reflect.Field? = null
+    @Volatile private var hostModelResolved = false
+
+    /** 行数据对象 → 股票代码（反射一次就够；数据对象不随滚动变化） */
+    private val codeByItem = Collections.synchronizedMap(WeakHashMap<Any, String>())
+
+    /** 条目类 → 解析好的代码字段（规则 2.1：按类缓存，失败也缓存） */
+    private class CodeFields(val code: java.lang.reflect.Field?, val cam: java.lang.reflect.Field?)
+
+    private val codeFieldsByClass =
+        Collections.synchronizedMap(WeakHashMap<Class<*>, CodeFields>())
+
+    /** 「模型可读但行代码映射不全」只记一次日志，避免每轮刷屏 */
+    @Volatile private var modelMapFailedLogged = false
+
+    /** 「模型元素不是代码」只记一次，避免每次点击 / 计数变化都刷一条 WARN */
+    @Volatile private var modelElementBadLogged = false
+
+    /** 「字段解析成功但读值失败」只记一次（规则 3.3：早退要能自证原因） */
+    @Volatile private var modelReadFailedLogged = false
+
+    /** 显示刷新里读行状态 / 写视图异常只记一次，避免每帧刷屏 */
+    @Volatile private var refreshRowFailedLogged = false
+
+    /** 「某行取不到代码」只记一次（带条目类名），供 App 升级后定位宿主结构 */
+    @Volatile private var rowCodeMissLogged = false
 
     /**
      * 是否有一轮「全选 / 反选」还在分帧跑。
@@ -407,6 +447,8 @@ class StgSelectAllFeature : Feature {
         val full: IntArray?,
         val before: BooleanArray,
         val hostCount: Int,
+        /** 宿主选中模型快照（`checkCodes`）；null = 读不到 / 不可用 */
+        val hostCodes: List<String>?,
     ) {
         val checked: Int get() = before.count { it }
     }
@@ -448,7 +490,10 @@ class StgSelectAllFeature : Feature {
         /** 本轮开始时宿主底部的「已选 N」（读不到 = -1），只用于日志 */
         var hostCount = -1
 
-        /** 本轮 / 累计的点击失败次数（异常或没被宿主接住），只用于日志与显示刷新的保守判断 */
+        /** 本轮开始时宿主选中模型（`checkCodes`）的快照；读不到 = null */
+        var hostCodes: List<String>? = null
+
+        /** 本轮 / 累计的点击失败次数（异常或没被接住），只用于日志与显示刷新的保守判断 */
         var failedThisRound = 0
         var failedTotal = 0
 
@@ -462,6 +507,7 @@ class StgSelectAllFeature : Feature {
             click = plan
             cursor = 0
             hostCount = shot.hostCount
+            hostCodes = shot.hostCodes
             failedThisRound = 0
             round++
         }
@@ -480,7 +526,9 @@ class StgSelectAllFeature : Feature {
      * 可见勾选框（§4.1 的已知观感局限）→ 已勾行看起来没勾 → 下一轮又点一次 → 正好把它点掉，
      * 用户看到的就是「做过一次全选后，下次全选部分选不中」。
      *
-     * 状态来源优先级（见 [StgSelectAllPlan.stateSource]）：
+     * 状态来源优先级：
+     *  0. 宿主选中模型 `AIStkStgDetailAct.checkCodes`（能读且行代码映射完整）→ 直接按它判；
+     *     它是底部计数 / 确认添加的来源，能看见「宿主静默忽略了一次合成点击」；
      *  1. 宿主计数为 0 → 一行都没选中，不必逐行问；
      *  2. 框架的 checked states（与「确认添加」读的是同一份表）→ O(行数)、不建视图；
      *  3. 只有它不可用 / 与宿主计数矛盾时才逐行现绑探针（`Adapter.getView(i, null, lv)`）。
@@ -589,8 +637,64 @@ class StgSelectAllFeature : Feature {
         }
         val mapping = full ?: IntArray(total) { it }
         val hostCount = selectedCount(lv)
-        val before = readRowStates(lv, adapter, ctId, total, hostCount, mapping, full != null, retry)
-        return Shot(adapter, lv.headerViewsCount, total, full, before, hostCount)
+
+        // 宿主模型优先（2026-10-23）：`checkCodes` 是宿主自己的那份 List，
+        // 底部计数 / 确认添加都以它为准。checked states 是框架层的另一份表，
+        // 合成点击会在调宿主监听器之前就把它写成目标态 —— 只读表看不见
+        // 「宿主静默忽略了一次点击」。模型读不到 / 行代码映射不全时才退回表。
+        val hostCodes = readHostModel(lv)
+
+        // 首轮：宿主计数为 0 但模型非空 —— 两份数据已经分叉（计数滞后 / 模型是
+        // 上一页的残值）。这时拿模型判会把「反选」变成「全选」，反向点击。
+        // 补点轮不适用：合成点击比计数刷新快，计数为 0 是常态。
+        if (!retry && hostCount == 0 && !hostCodes.isNullOrEmpty()) {
+            GLog.w(
+                "策略全选：宿主计数为 0 但模型有 ${hostCodes.size} 项，放弃本次操作" +
+                    "（两份数据不一致，请重试）",
+            )
+            return null
+        }
+
+        val modelBefore = hostCodes?.let {
+            modelRowStates(adapter, total, it, full != null, hostCount)
+        }
+        if (hostCodes != null && modelBefore == null) noteModelUnusable("模型与列表/计数不一致")
+
+        // 模型与 checked states 分叉时只记日志、仍按模型（2026-10-23 复核）：
+        // 表是 `performItemClick` 自己写过的，宿主静默忽略一次点击时表里就是目标态；
+        // 拿表当裁判会把用户这次报的「模型漏行」重新盖回去。计数只用于
+        // 「0 vs 非空」这种硬分叉（见上面的早退）和 `statesFromCodes` 的可用性判据。
+        val tableChecked = tableRowStates(lv, total, mapping)?.count { it }
+        if (modelBefore != null && tableChecked != null &&
+            tableChecked != modelBefore.count { it }
+        ) {
+            GLog.w(
+                "策略全选：宿主模型与 checked states 不一致" +
+                    "（模型 ${modelBefore.count { it }} / 表 $tableChecked / 计数 $hostCount），按模型",
+            )
+        }
+        val before = modelBefore
+            ?: readRowStates(lv, adapter, ctId, total, hostCount, mapping, full != null, retry)
+
+        // 只有模型**确实被采用**时才把它记进 Shot：否则显示刷新会拿一份
+        // 已经被判不可信的模型去画「全没勾」。
+        val usableCodes = if (modelBefore != null) hostCodes else null
+
+        if (usableCodes != null && modelBefore != null) {
+            GLog.i(
+                "策略全选：宿主模型 checkCodes=${usableCodes.size} 项，" +
+                    "列表已勾 ${modelBefore.count { it }}/$total",
+            )
+            val dup = StgSelectAllPlan.duplicateCodes(usableCodes)
+            if (dup.isNotEmpty()) {
+                GLog.w(
+                    "策略全选：宿主模型里有重复代码 " +
+                        dup.joinToString { LogMask.code(it) } +
+                        "（共 ${usableCodes.size} 项）",
+                )
+            }
+        }
+        return Shot(adapter, lv.headerViewsCount, total, full, before, hostCount, usableCodes)
     }
 
     /**
@@ -615,9 +719,9 @@ class StgSelectAllFeature : Feature {
     }
 
     /**
-     * 每一行**点击前**的勾选态。
+     * 每一行**点击前**的勾选态 —— 只在宿主模型不可用时才走这里。
      *
-     * 优先读框架的 checked states（宿主确认添加读的就是它，且 O(行数) 不建视图）；
+     * 优先读框架的 checked states（O(行数) 不建视图）；
      * 不可用或与宿主计数矛盾时逐行现绑探针。**不读屏上那颗勾选框** —— 它可能没被重画。
      *
      * @param retry 补点轮：以 checked states 为准（首轮的宿主计数在补点轮里可能滞后，
@@ -779,7 +883,14 @@ class StgSelectAllFeature : Feature {
             return
         }
         val posted = lv.postDelayed(
-            { runCatching { clickNext(env, run) } },
+            {
+                runCatching { clickNext(env, run) }
+                    .onFailure {
+                        // 不能让异常把 running 永久留在 true（按钮从此失效）
+                        GLog.w("全选：运行中异常，收尾", it)
+                        endRun()
+                    }
+            },
             TOGGLE_STEP_MS,
         )
         if (!posted) finishRun(env, run, "列表已脱离窗口")
@@ -850,6 +961,17 @@ class StgSelectAllFeature : Feature {
                 return
             }
         }
+        // 视图也要摆成「点击前」（2026-10-23）：宿主的多选模型是 Activity 里的
+        // `checkCodes`（List），行点击处理会按这一行的勾选态决定「加还是删」。
+        // 只预置框架表、不预置视图时，视图若因上一轮合成点击 / 宿主没重画而停在旧状态，
+        // 宿主就按旧状态算方向：该勾的删掉、该删的勾上 —— 用户看到的正是
+        // 「全选后个别行没勾，再点一下计数反而 +1（模型里被加了重复项）」。
+        // 行根是 `CheckedFrameLayout`（Checkable），`#ct_item` 是它里面的勾选框，
+        // 两处一起摆（宿主按哪个读都对）。
+        runCatching {
+            (row as? Checkable)?.let { it.isChecked = !run.wantChecked }
+            (row.findViewById<View>(run.ctId) as? CheckedTextView)?.isChecked = !run.wantChecked
+        }
         try {
             var handled = false
             StgFilterBridge.runWithRemapBypassed {
@@ -873,7 +995,16 @@ class StgSelectAllFeature : Feature {
             finishRun(env, run, "列表已脱离窗口")
             return
         }
-        val posted = run.lv.postDelayed({ runCatching { nextRound(env, run) } }, delayMs)
+        val posted = run.lv.postDelayed(
+            {
+                runCatching { nextRound(env, run) }
+                    .onFailure {
+                        GLog.w("全选：补点轮异常，收尾", it)
+                        endRun()
+                    }
+            },
+            delayMs,
+        )
         if (!posted) finishRun(env, run, "列表已脱离窗口")
     }
 
@@ -892,9 +1023,10 @@ class StgSelectAllFeature : Feature {
             finishRun(env, run, "列表已脱离窗口")
             return
         }
-        if (lv.choiceMode == ListView.CHOICE_MODE_NONE) {
-            // 没有 checked states：唯一能读的是探针，而探针与点击链对不上时会把
-            // 已勾上的行反复点掉 —— 宁可不补。
+        if (lv.choiceMode == ListView.CHOICE_MODE_NONE && run.hostCodes == null) {
+            // 既没有 checked states、也没有宿主模型：唯一能读的是探针，
+            // 而探针与点击链对不上时会把已勾上的行反复点掉 —— 宁可不补。
+            // 有宿主模型时可以继续核对（模型与 ListView 的 choiceMode 无关）。
             finishRun(env, run, null)
             return
         }
@@ -1037,30 +1169,60 @@ class StgSelectAllFeature : Feature {
                 if (now == null || now != full[index]) return
             }
         }
+        // 宿主模型优先：按「这一行是哪只股票」判，彻底绕开筛选时
+        // 「全选写全量位置、手动点写子集位置」的两套坐标。
+        // 现场读不到（页面正在销毁等）时退回本轮开始时的快照，只影响显示。
+        // 没有筛选时「计数 > 0 但模型空表」视为不可用（与 modelRowStates 同一判据），
+        // 免得把已勾行全画成没勾。
+        val hostCodes = (readHostModel(lv) ?: run.hostCodes)
+            ?.takeIf { run.full != null || run.hostCount <= 0 || it.isNotEmpty() }
+        val hostSet = hostCodes?.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
             lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
         for (i in 0 until lv.childCount) {
             val index = first + i - header
             if (index !in 0 until total) continue
             val row = lv.getChildAt(i) ?: continue
-            val checked = when {
-                multiple -> {
-                    val key = full?.get(index) ?: index
-                    // ⚠️ 歧义行不画：手动点行写的是**适配器位置**（子集下标），
-                    // 全选写的是**全量位置**；当 full[index] 恰好也是另一个子集行的下标时，
-                    // 表里那个 key 可能是「那一行被手动勾上」而不是「这一行被全选勾上」。
-                    // 读它会把别的行的选择画到这一行上 —— 宁可不画，交给宿主自己渲染。
-                    if (full != null && key != index && key in 0 until total) continue
-                    lv.isItemChecked(header + key)
+            val checked = runCatching {
+                when {
+                    hostSet != null -> {
+                        val code = rowCode(adapter, index) ?: return@runCatching null
+                        hostSet.contains(StgSelectAllPlan.normalizeCode(code))
+                    }
+                    multiple -> {
+                        val key = full?.get(index) ?: index
+                        // ⚠️ 歧义行不画：手动点行写的是**适配器位置**（子集下标），
+                        // 全选写的是**全量位置**；当 full[index] 恰好也是另一个子集行的下标时，
+                        // 表里那个 key 可能是「那一行被手动勾上」而不是「这一行被全选勾上」。
+                        // 读它会把别的行的选择画到这一行上 —— 宁可不画，交给宿主自己渲染。
+                        if (full != null && key != index && key in 0 until total) {
+                            return@runCatching null
+                        }
+                        lv.isItemChecked(header + key)
+                    }
+                    // 没有 checked states 可读（CHOICE_MODE_NONE）：只在一次失败都没有时
+                    // 按目标刷 —— 否则屏幕会显示一个宿主模型里并不存在的勾
+                    run.failedTotal == 0 -> run.wantChecked
+                    else -> null
                 }
-                // 没有 checked states 可读（CHOICE_MODE_NONE）：只在一次失败都没有时
-                // 按目标刷 —— 否则屏幕会显示一个宿主模型里并不存在的勾
-                run.failedTotal == 0 -> run.wantChecked
-                else -> continue
-            }
+            }.onFailure {
+                if (!refreshRowFailedLogged) {
+                    refreshRowFailedLogged = true
+                    GLog.w("全选：刷新行显示时读状态失败（后续同类只静默跳过）", it)
+                }
+            }.getOrNull() ?: continue
             runCatching {
+                // 行根是 `CheckedFrameLayout`（Checkable）：框架的
+                // `updateOnScreenCheckedViews()` / `setupChild()` 刷的就是它。
+                // 只设 `#ct_item` 会被下一次布局按行根状态盖掉，勾时有时无。
+                (row as? Checkable)?.let { it.isChecked = checked }
                 (row.findViewById<View>(run.ctId) as? CheckedTextView)?.isChecked = checked
                 if (multiple) row.isActivated = checked
+            }.onFailure {
+                if (!refreshRowFailedLogged) {
+                    refreshRowFailedLogged = true
+                    GLog.w("全选：写行勾选显示失败（后续同类只静默跳过）", it)
+                }
             }
         }
     }
@@ -1068,9 +1230,9 @@ class StgSelectAllFeature : Feature {
     /**
      * 按当前选中状态刷新按钮文案：已全选 → 「反选」，否则 → 「全选」。
      *
-     * 判据与 [toggleAll] 对齐（同一套 `stateSource` 优先级，不看屏上勾选框）：
-     * 有 checked states 就用它（O(行数)、不建视图）；只有探针档为了文案不逐行建视图，
-     * 退回宿主计数。两边判据不一致会出现「文案写着全选、点下去却在取消」
+     * 判据与 [toggleAll] 对齐：宿主模型可用就用它（它是底部计数 / 确认添加的来源）；
+     * 否则走同一套 `stateSource` 优先级 —— 有 checked states 就用它（O(行数)、不建视图），
+     * 只有探针档为了文案不逐行建视图，退回宿主计数。两边判据不一致会出现「文案写着全选、点下去却在取消」
      * （筛选后宿主计数含被筛掉的行时）。
      */
     private fun updateLabel(env: FeatureEnv, lv: ListView, button: TextView) {
@@ -1081,7 +1243,16 @@ class StgSelectAllFeature : Feature {
         val hostCount = selectedCount(button)
         val tableChecked = if (total > 0) tableRowStates(lv, total, full)?.count { it } else null
         val source = StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered != null)
+        // 宿主模型优先：它才是底部计数 / 确认添加的来源。读不到才退回原来的判据。
+        val modelStates = if (total > 0) {
+            readHostModel(lv)?.let {
+                modelRowStates(realAdapter, total, it, filtered != null, hostCount)
+            }
+        } else {
+            null
+        }
         val allChecked = when {
+            modelStates != null -> modelStates.all { it }
             source == StgSelectAllPlan.StateSource.TABLE -> tableChecked == total
             // 计数读不到（-1）时别拿它比：`-1 == total` 恒 false，文案会永远写「全选」，
             // 而动作侧（PROBE）可能判成「反选」。表可用就退回表。
@@ -1241,6 +1412,162 @@ class StgSelectAllFeature : Feature {
         return a as? android.widget.ListAdapter
     }
 
+    /**
+     * 用宿主模型算每一行状态；模型不可用 / 不可信时返回 null（调用方退回表）。
+     *
+     * 可用性判据统一在 [StgSelectAllPlan.statesFromCodes]：任一行代码读不到、
+     * 或**没有筛选**时「计数 > 0 但模型空表 / 一只都对不上」都返回 null ——
+     * 后者通常意味着模型的代码格式变了（如 `市场.代码`），拿它判会把
+     * 「已勾」全判成「没勾」，点一遍反而全取消。
+     */
+    private fun modelRowStates(
+        adapter: android.widget.ListAdapter,
+        total: Int,
+        codes: List<String>,
+        filtered: Boolean,
+        hostCount: Int,
+    ): BooleanArray? {
+        val rowCodes = ArrayList<String?>(total)
+        for (i in 0 until total) rowCodes.add(rowCode(adapter, i))
+        val states = StgSelectAllPlan.statesFromCodes(rowCodes, codes, filtered, hostCount)
+            ?: return null
+        return states
+    }
+
+    /**
+     * 读宿主自己的选中模型：`AIStkStgDetailAct.checkCodes`（List，元素是股票代码）。
+     *
+     * 读不到 / 元素不是代码形态 → null（调用方退回 checked states）。
+     * 只对目标 Activity 解析并缓存结果；别的页面没有这个字段，不能把
+     * 「找错页面」记成「宿主没这个字段」。
+     */
+    private fun readHostModel(v: View): List<String>? {
+        val activity = findActivity(v) ?: return null
+        if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return null
+        val field = resolveHostModelField(activity) ?: return null
+        val raw = runCatching { field.get(activity) as? List<*> }.getOrNull()
+        if (raw == null) {
+            if (!modelReadFailedLogged) {
+                modelReadFailedLogged = true
+                GLog.w(
+                    "策略全选：读宿主模型 ${StgSelectAllTargets.MODEL_FIELD} 失败" +
+                        "（字段类型 / 访问异常），退回 checked states",
+                )
+            }
+            return null
+        }
+        return runCatching {
+            val out = ArrayList<String>(raw.size)
+            for (e in raw) {
+                val code = when (e) {
+                    null -> continue
+                    is String -> e
+                    else -> (Reflect.readField(e, *StgSelectAllTargets.CODE_FIELDS) as? String)
+                        ?: (Reflect.readField(e, *StgSelectAllTargets.CAM_FIELDS) as? String)
+                        ?: e.toString()
+                }
+                if (!StgSelectAllPlan.isCodeLike(code)) {
+                    if (!modelElementBadLogged) {
+                        modelElementBadLogged = true
+                        GLog.w(
+                            "策略全选：宿主模型元素不是股票代码（${maskCode(code)}），" +
+                                "退回 checked states",
+                        )
+                    }
+                    return null
+                }
+                out.add(code)
+            }
+            out
+        }.onFailure { GLog.w("策略全选：遍历宿主模型失败，退回 checked states", it) }
+            .getOrNull()
+    }
+
+    /** 解析并缓存 `checkCodes` 字段；只解析一次（失败也记住） */
+    private fun resolveHostModelField(activity: Activity): java.lang.reflect.Field? {
+        hostModelField?.let { return it }
+        if (hostModelResolved) return null
+        synchronized(this) {
+            if (hostModelResolved) return hostModelField
+            val f = runCatching {
+                Reflect.findField(activity.javaClass, StgSelectAllTargets.MODEL_FIELD)
+            }.getOrNull()
+            hostModelField = f
+            hostModelResolved = true
+            if (f == null) {
+                GLog.i(
+                    "策略全选：读不到宿主选中模型 ${StgSelectAllTargets.MODEL_FIELD}，" +
+                        "退回 checked states",
+                )
+            } else {
+                GLog.i("策略全选：已解析宿主选中模型字段 ${StgSelectAllTargets.MODEL_FIELD}")
+            }
+            return f
+        }
+    }
+
+    /** 某一行数据对象里的股票代码；读不到 / 不像代码 → null */
+    private fun rowCode(adapter: android.widget.ListAdapter, index: Int): String? {
+        val item = runCatching { adapter.getItem(index) }.getOrNull()
+        if (item == null) {
+            noteRowCodeMiss(index, "item=null adapter=${adapter.javaClass.name}")
+            return null
+        }
+        // 字符串条目本身就是代码：不进 codeByItem（value 会强引用 key，弱键失效）
+        if (item is String) return item.takeIf { StgSelectAllPlan.isCodeLike(it) }
+        synchronized(codeByItem) { codeByItem[item] }?.let { return it }
+        val fields = synchronized(codeFieldsByClass) {
+            codeFieldsByClass.getOrPut(item.javaClass) { resolveCodeFields(item.javaClass) }
+        }
+        val code = fields.code?.let { f ->
+            runCatching { f.get(item) as? String }.getOrNull()
+        } ?: fields.cam?.let { f ->
+            runCatching { f.get(item) as? String }.getOrNull()
+        }
+        if (code == null || !StgSelectAllPlan.isCodeLike(code)) {
+            noteRowCodeMiss(index, "item=${item.javaClass.name} code=${maskCode(code)}")
+            return null
+        }
+        synchronized(codeByItem) { codeByItem[item] = code }
+        return code
+    }
+
+    private fun resolveCodeFields(cls: Class<*>): CodeFields {
+        val code = StgSelectAllTargets.CODE_FIELDS.firstNotNullOfOrNull {
+            Reflect.findField(cls, it)
+        }
+        val cam = StgSelectAllTargets.CAM_FIELDS.firstNotNullOfOrNull {
+            Reflect.findField(cls, it)
+        }
+        return CodeFields(code, cam)
+    }
+
+    /** 裸代码用 [LogMask.code]，带市场后缀用 [LogMask.stock] */
+    private fun maskCode(code: String?): String =
+        if (code != null && code.contains('.')) LogMask.stock(code) else LogMask.code(code)
+
+    private fun noteRowCodeMiss(index: Int, what: String) {
+        if (rowCodeMissLogged) return
+        rowCodeMissLogged = true
+        GLog.w("策略全选：第 $index 行取不到股票代码（$what），宿主模型不可用")
+    }
+
+    private fun noteModelUnusable(reason: String) {
+        if (modelMapFailedLogged) return
+        modelMapFailedLogged = true
+        GLog.w("策略全选：宿主模型不可用（$reason），退回 checked states")
+    }
+
+    /** 从任意 View 找到宿主 Activity（Context 链） */
+    private fun findActivity(view: View): Activity? {
+        var ctx: Context? = view.context
+        while (ctx is ContextWrapper) {
+            if (ctx is Activity) return ctx
+            ctx = ctx.baseContext
+        }
+        return ctx as? Activity
+    }
+
     private fun findListView(v: View): ListView? {
         val root = v.rootView ?: return null
         val id = listViewId(v)
@@ -1314,18 +1641,22 @@ class StgSelectAllFeature : Feature {
 
         /**
          * 逐行触发勾选时，每一行之间间隔的毫秒数。
-         * 给宿主列表一帧时间完成刷新，避免同一帧里拿到失效的子 View。
+         *
+         * 宿主每点一行都会 `notifyDataSetChanged()`；16ms（一帧）时布局经常还没跑完，
+         * 下一行拿到的仍是旧绑定的子 View。2026-10-23 用户反馈「勾得太快，个别行
+         * 的对钩会漏」之后放到 40ms（≈ 2~3 帧）：33 行约 1.3 秒，仍然是一眼看完的速度，
+         * 但给宿主的「模型更新 → 通知 → 重新绑定」留出确定性窗口。
          */
-        const val TOGGLE_STEP_MS = 16L
+        const val TOGGLE_STEP_MS = 40L
 
         /**
-         * 一轮点完后隔多久重新读 checked states。
+         * 一轮点完后隔多久重新读状态。
          *
-         * 宿主的行点击监听通常会 `notifyDataSetChanged()`，布局要一两帧才落定；
-         * 读得太早会读到「还没写回」的中间态。48ms ≈ 3 帧，既够宿主落定，
-         * 又短到用户感觉不出停顿。
+         * 宿主的行点击监听通常会 `notifyDataSetChanged()`，布局要两三帧才落定；
+         * 读得太早会读到「还没写回」的中间态。120ms ≈ 7 帧，给宿主模型与视图
+         * 一次完整的刷新窗口（尤其是有行情推送 / 数据刷新的时候）。
          */
-        const val ROUND_SETTLE_MS = 48L
+        const val ROUND_SETTLE_MS = 120L
 
         /**
          * 一次「全选 / 反选」最多**点几轮**（不含最后那次只核对的读）。

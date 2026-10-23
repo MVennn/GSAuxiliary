@@ -485,7 +485,7 @@ python tools/publish.py --check            # 只查凭据有没有两个仓库�
 |---|---|---|
 | `ci/check_invariants.py` | 8 条静态不变量（Miuix Overlay、rememberSaveable、proguard keep、假开关、宿主候选名、中英资源键对齐、日志打码、跨容器搬 View） | `--report` 只报告、不改退出码 |
 | `ci/check_switches.py` | 功能开关全链路：目录行 ↔ 配置键 ↔ 快照字段 ↔ 出厂默认值 | 无 |
-| `ci/check_contract.py` | 宿主契约双向核对：代码里认的宿主标识 ↔ 契约清单 | `--dump <宿主类名快照>` 一并确认哪些候选名现在还认得到 |
+| `ci/check_contract.py` | 宿主契约双向核对：代码里认的宿主标识 ↔ 契约清单（含 `*_FIELD` 驼峰字段名，如 `checkCodes`） | `--dump <宿主类名快照>` 一并确认哪些候选名现在还认得到 |
 | `ci/check_dead_symbols.py` | 死代码：顶层符号没人调用 / 只在测试里被调用 | `--changed` 只查本分支新增的符号 |
 | `ci/check_release_notes.py` | 发版说明覆盖率：本版用户可感知的改动必须进说明 | `--notes <说明文件>` 指定要核对的说明 |
 | `ci/check_disclaimer_sync.py` | 免责声明四个副本同步：中英各自逐字比对 + 中英结构对齐 | `--write` 从 md 规范源重新生成两个 `strings.xml` 的 `disclaimer_full` |

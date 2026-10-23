@@ -65,6 +65,26 @@ object StgSelectAllTargets {
         "com.guosen.quotation.ui.aistk.AIStkStgDetailAct",
     )
 
+    /**
+     * 宿主的多选模型：`AIStkStgDetailAct.checkCodes`（`List`，元素是股票代码）。
+     *
+     * 2026-10-23 探针实测（`PAGE[STG]` 实例字段 dump）。它才是「已选 N」与
+     * 「确认添加」的真实来源；ListView 的 checked states 只是框架层的另一份表，
+     * 两份表会因宿主静默忽略点击 / 刷新而分叉。读不到时功能退回表判据。
+     */
+    const val MODEL_FIELD = "checkCodes"
+
+    /** 行数据对象里的股票代码字段（与「截图并添加」同一套候选） */
+    val CODE_FIELDS = arrayOf("m_stkCode", "mStkCode", "code", "mCode")
+
+    /**
+     * 行数据对象里的「代码.市场」组合字段。
+     *
+     * 实测（2026-10-23）宿主条目只暴露 `m_codeAndMarket` 这类组合字段时，
+     * 单看 [CODE_FIELDS] 会一行都取不到代码 → 宿主模型整趟不可用。
+     */
+    val CAM_FIELDS = arrayOf("codeAndMarket", "m_codeAndMarket")
+
     /** 多选态时该按钮的文案（命中即表示已进入多选态） */
     const val CANCEL_TEXT = "取消"
 

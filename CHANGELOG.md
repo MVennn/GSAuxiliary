@@ -7,6 +7,29 @@
 
 ## [未发布] — 2026-10-23
 
+### 多选全选的对钩与宿主模型（2026-10-23）
+
+- 修复「策略详情页多选全选」—— 全选后个别行的对钩不显示，再点一下计数反而 +1。
+  根因三层：① 宿主行根是 `CheckedFrameLayout`（`Checkable`），原显示刷新只写
+  `#ct_item.isChecked` / 行根 `activated`，下一次布局按行根状态重写；② 补点轮只读
+  `performItemClick` 自己写过的 checked states，看不见宿主模型
+  （`AIStkStgDetailAct.checkCodes`）漏行 / 重复；③ 16ms 一行快过宿主
+  `notifyDataSetChanged → 布局 → 重新绑定`。
+  现在：状态判据优先读宿主 `checkCodes`（行代码按 `m_stkCode` / `m_codeAndMarket`
+  候选提取，任何一行读不到就整趟退回 checked states）；显示刷新连行根 `Checkable`
+  一起写；合成点击前把行视图也预置成「点击前」；逐行间隔 16 → 40ms、
+  轮间静置 48 → 120ms。模型里有重复代码只记 WARN（打码），不直接改宿主 List；
+  首轮「计数 0 但模型非空」直接放弃本次操作（两份数据分叉时反向点击比不点更糟）；
+  行代码字段按条目类缓存（失败也缓存），避免宿主字段变更时每轮重扫继承链。
+  真机：100e / 27 只全选后计数 27、屏上可见 `#ct_item` 全部 `checked=true`；
+  补 `CAM_FIELDS` 与复核加固后宿主登录态失效，**第二轮未复验**。
+  详见 `docs/FEATURE-SELECT-ALL.md` §4.4、`docs/REVIEW-2026-10.md` §6.5。
+- 修复 `tools/ci/check_contract.py` —— 宿主字段名（`*_FIELD` 的驼峰值，如
+  `checkCodes` / `m_kxChartInfo`）之前不会进契约清单；现在纳入提取，
+  清单 179 → 184 条。
+- 验证 —— `:app:testDebugUnitTest` / `:app:testReleaseUnitTest` 各 171 条全过
+  （新增 10 条模型判据单测）、`:app:assembleRelease` ✓；七套静态检查 exit 0。
+
 ### 页面记账与备份边界（2026-10-23）
 
 - 修复 `StgSnapAddFeature` —— 策略页销毁时无条件释放等详情页的 `pendingItems`。
@@ -23,6 +46,12 @@
 
 ### 调整
 
+- 调整「截图并添加」底栏宽度 —— 用户反馈两颗按钮占得太宽，左侧「已选 N 只股票」
+  被挤成两行。注入按钮不再照抄宿主「确认添加」的 394px 固定宽，改成
+  `wrap_content` + 左右各 12dp；宿主确认按钮同步收窄到「文字宽 + 左右各 12dp」，
+  原宽记在它自己的 keyed tag 上，离开多选态 / 关开关 / 热重载时还原。
+  真机实测：`截图并添加` 323px、`确认添加` 273px（原 361 + 394），
+  左侧可用区 325 → 484px，「已选 0 只股票」单行。
 - 调整 Release 说明 —— 加粗总结的下一行固定是一行反馈入口（绝对地址
   `https://github.com/MVennn/GSAuxiliary/issues/new/choose`），然后才是 `## 本版内容`；
   `tools/publish.py` 发布前自动补缺、并把模块仓库的 Issue 地址换回主仓库，

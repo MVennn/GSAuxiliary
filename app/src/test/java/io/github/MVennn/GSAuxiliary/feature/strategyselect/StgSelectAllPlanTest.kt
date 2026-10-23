@@ -4,6 +4,8 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -182,6 +184,120 @@ class StgSelectAllPlanTest {
         assertEquals(
             StgSelectAllPlan.StateSource.PROBE,
             StgSelectAllPlan.stateSource(hostCount = 2, tableChecked = 5, filtered = false, retry = true),
+        )
+    }
+
+    // ---------------------------------------------------------- 宿主选中模型
+
+    @Test
+    fun `按宿主模型算行状态 忽略市场后缀`() {
+        val states = StgSelectAllPlan.statesFromCodes(
+            listOf("600000", "002368", "920575"),
+            listOf("600000.1", "920575.5"),
+        )
+        assertNotNull(states)
+        assertContentEquals(booleanArrayOf(true, false, true), states)
+    }
+
+    @Test
+    fun `宿主模型里一只都没选时全部为 false`() {
+        val states = StgSelectAllPlan.statesFromCodes(
+            listOf("600000", "002368"),
+            emptyList(),
+        )
+        assertNotNull(states)
+        assertContentEquals(booleanArrayOf(false, false), states)
+    }
+
+    @Test
+    fun `任何一行代码读不到就不拿模型判`() {
+        // 读不到 ≠ 没选：拿模型判会把这一行当成没勾，点下去反而取消
+        assertNull(
+            StgSelectAllPlan.statesFromCodes(
+                listOf("600000", null, "920575"),
+                listOf("600000.1"),
+            ),
+        )
+    }
+
+    @Test
+    fun `空列表返回空状态`() {
+        assertContentEquals(
+            BooleanArray(0),
+            StgSelectAllPlan.statesFromCodes(emptyList(), listOf("600000")),
+        )
+    }
+
+    @Test
+    fun `重复代码按首次重复顺序列出`() {
+        assertEquals(
+            listOf("600000", "002368"),
+            StgSelectAllPlan.duplicateCodes(
+                listOf("600000.1", "600000.1", "002368", "002368.0", "920575"),
+            ),
+        )
+    }
+
+    @Test
+    fun `代码形态识别`() {
+        assertTrue(StgSelectAllPlan.isCodeLike("600000"))
+        assertTrue(StgSelectAllPlan.isCodeLike("920575.5"))
+        assertTrue(StgSelectAllPlan.isCodeLike("00700"))
+        assertFalse(StgSelectAllPlan.isCodeLike("StockInfo{code=600000}"))
+        assertFalse(StgSelectAllPlan.isCodeLike(""))
+    }
+
+    // ---------------------------------------------------------- 模型可用性（防反向点击）
+
+    @Test
+    fun `没有筛选时 计数大于零但模型空表视为不可用`() {
+        // 两份数据分叉：拿空模型判会把已勾行全判成没勾，点一遍反而全取消
+        assertNull(
+            StgSelectAllPlan.statesFromCodes(
+                listOf("600000"),
+                emptyList(),
+                filtered = false,
+                hostCount = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun `没有筛选时 计数大于零但模型一只都对不上视为不可用`() {
+        assertNull(
+            StgSelectAllPlan.statesFromCodes(
+                listOf("600000", "002368"),
+                listOf("000001.0"),
+                filtered = false,
+                hostCount = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun `筛选生效时 空模型不拿计数判分叉`() {
+        // 筛选时计数含被筛掉的行：模型为空只代表这一页没选中
+        assertNotNull(
+            StgSelectAllPlan.statesFromCodes(
+                listOf("600000"),
+                emptyList(),
+                filtered = true,
+                hostCount = 3,
+            ),
+        )
+    }
+
+    @Test
+    fun `计数为 0 时模型空表仍可用`() {
+        // 计数为 0 = 一行都没选，空模型与它一致；
+        // 「计数 0 + 模型非空」的分叉由 takeShot 的首轮保护处理，不在这里。
+        assertNotNull(
+            StgSelectAllPlan.statesFromCodes(
+                listOf("600000"),
+                emptyList(),
+                filtered = false,
+                hostCount = 0,
+            ),
         )
     }
 }

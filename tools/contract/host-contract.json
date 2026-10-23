@@ -439,10 +439,22 @@
       "value": "com.guosen.quotation.logicview.KXChartGroupView"
     },
     {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_KX_INFO_FIELD",
+      "value": "m_kxChartInfo"
+    },
+    {
       "kind": "class",
       "owner": "HostFields.kt",
       "symbol": "HOST_KX_ITEM",
       "value": "com.guosen.android.quotes.data.kx.KXChartItem"
+    },
+    {
+      "kind": "id",
+      "owner": "HostFields.kt",
+      "symbol": "HOST_KX_ITEMS_FIELD",
+      "value": "m_kxChartItems"
     },
     {
       "kind": "class",
@@ -777,8 +789,20 @@
     {
       "kind": "id",
       "owner": "StgSelectAllTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
       "symbol": "COUNT_ID_CANDIDATES",
       "value": "tv_bottom_zxg_num"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "MODEL_FIELD",
+      "value": "checkCodes"
     },
     {
       "kind": "class",
@@ -845,6 +869,18 @@
       "owner": "StgSnapAddTargets.kt",
       "symbol": "KX_GROUP_CLASS",
       "value": "com.guosen.quotation.logicview.KXChartGroupView"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "KX_INFO_FIELD",
+      "value": "m_kxChartInfo"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSnapAddTargets.kt",
+      "symbol": "KX_ITEMS_FIELD",
+      "value": "m_kxChartItems"
     },
     {
       "kind": "id",

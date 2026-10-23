@@ -79,4 +79,65 @@ internal object StgSelectAllPlan {
         for (i in before.indices) if (before[i] != wantChecked) out[k++] = i
         return out
     }
+
+    // ---------------------------------------------------------- 宿主选中模型
+
+    /**
+     * 用宿主自己的选中模型（`AIStkStgDetailAct.checkCodes`）算每一行的状态。
+     *
+     * 为什么需要它（2026-10-23 用户反馈）：合成点击走的是
+     * `AbsListView.performItemClick` —— 它在调到宿主监听器之前就按取反把
+     * `mCheckStates` 写好了（框架 `AbsListView.java:1231`）。宿主监听器要是静默忽略
+     * 某次点击，表里仍是目标态，补点轮永远发现不了「宿主模型里其实没这一行」；
+     * 反过来，表被宿主刷新清掉时，表又会把已经勾上的行判成没勾。
+     * `checkCodes` 是宿主自己维护的那份 List（底部计数 / 确认添加都以它为准），
+     * 用它核对才能看到真实结果。
+     *
+     * @param rowCodes 每一行的股票代码（读不到的行传 null）
+     * @param selected 宿主模型里的代码（可能带市场后缀，如 `600000.1`）
+     * @param filtered 当前是否在筛选（筛选时计数含被筛掉的行，不能拿计数判分叉）
+     * @param hostCount 底部「已选 N」（读不到传 -1）
+     * @return 每行是否选中；**任何一行代码读不到就返回 null** —— 调用方必须退回
+     *         checked states / 探针，绝不能把「读不到」当成「没选」。
+     *         没有筛选时「计数 > 0 但模型空表 / 一只都对不上」也返回 null：
+     *         那说明两份数据已经分叉，拿模型判会把「已勾」当「没勾」→ 反向点击。
+     */
+    fun statesFromCodes(
+        rowCodes: List<String?>,
+        selected: Collection<String>,
+        filtered: Boolean = false,
+        hostCount: Int = -1,
+    ): BooleanArray? {
+        if (rowCodes.isEmpty()) return BooleanArray(0)
+        if (rowCodes.any { it == null }) return null
+        val set = selected.mapTo(HashSet()) { normalizeCode(it) }
+        val out = BooleanArray(rowCodes.size) { set.contains(normalizeCode(rowCodes[it]!!)) }
+        if (!filtered && hostCount > 0 && (selected.isEmpty() || out.none { it })) return null
+        return out
+    }
+
+    /** 代码归一化：去掉市场后缀（`600000.1` → `600000`）与空白 */
+    fun normalizeCode(code: String): String = code.substringBefore('.').trim()
+
+    /** 是不是「股票代码」形态（A 股 6 位 / 港股 5 位）；用来识别宿主模型结构没变 */
+    fun isCodeLike(code: String): Boolean = CODE_RE.matches(normalizeCode(code))
+
+    /**
+     * 重复代码（按第一次重复出现的顺序）。
+     *
+     * 宿主模型是 `List`，行点击处理若按视图状态决定「加/删」，一次方向判错就会把
+     * 同一只股票 add 两次 —— 底部计数 +1、但并没有多选出一只。这里只用于日志，
+     * 不直接改宿主 List（改完计数控件不会同步，反而更难收拾）。
+     */
+    fun duplicateCodes(codes: List<String>): List<String> {
+        val seen = HashSet<String>()
+        val dup = LinkedHashSet<String>()
+        for (c in codes) {
+            val n = normalizeCode(c)
+            if (!seen.add(n)) dup.add(n)
+        }
+        return dup.toList()
+    }
+
+    private val CODE_RE = Regex("\\d{5,6}")
 }
