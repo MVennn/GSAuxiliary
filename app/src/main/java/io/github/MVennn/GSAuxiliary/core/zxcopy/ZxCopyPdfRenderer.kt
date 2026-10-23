@@ -3,7 +3,6 @@ package io.github.MVennn.GSAuxiliary.core.zxcopy
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.text.TextPaint

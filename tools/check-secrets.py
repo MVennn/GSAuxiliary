@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""公开仓敏感信息扫描：凭据 + 本机路径 + 真实邮箱（GoldSunEnhance）。
+"""公开仓敏感信息扫描：凭据 + 本机路径 + 真实邮箱（GSAuxiliary）。
 
 用法：
     python tools/check-secrets.py            # 扫描已跟踪文件

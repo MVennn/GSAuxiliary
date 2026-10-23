@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -48,7 +47,6 @@ import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFieldCatalog
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFormat
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyImageRenderer
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRuleStore
-import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
