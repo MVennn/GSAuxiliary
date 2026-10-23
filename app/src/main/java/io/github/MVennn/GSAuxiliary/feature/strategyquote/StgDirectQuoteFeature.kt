@@ -203,20 +203,24 @@ class StgDirectQuoteFeature : Feature {
         // IntentStockInfo，它的 CAM 字段并不存在，字符串匹配会 -1 → index 退回 0 → 点击第 N 只
         // 却打开第 1 只（不崩但进错股）。转换时元素就在手上，引用比对最稳。
         val converted = ArrayList<Any>()
+        // 转换时顺手记「代码.市场 → converted 下标」。converted 会因为转换失败跳过元素，
+        // 与 originalList 不等长 —— 事后拿原始下标去索引 converted 会指到另一只股票。
+        val plan = ArrayList<Pair<String?, Boolean>>()
         var index = -1
         if (originalList != null) {
             for (e in originalList) {
-                val isi = toIntentStockInfo(cls, e) ?: continue
+                val isi = toIntentStockInfo(cls, e)
+                plan.add(codeAndMarket(e) to (isi != null))
+                if (isi == null) continue
                 if (index < 0 && e === clicked) index = converted.size
                 converted.add(isi)
             }
         }
-        // 引用比对没命中（少见）→ 退到「原始列表里按 cam 找下标」，再映射回 converted
+        // 引用比对没命中（少见）→ 用同一轮转换时记下的映射查
         if (index < 0 && originalList != null) {
             val cam = codeAndMarket(clicked)
             if (cam != null) {
-                val origIdx = originalList.indexOfFirst { codeAndMarket(it) == cam }
-                if (origIdx in converted.indices) index = origIdx
+                index = DirectQuoteIndex.build(plan)[cam] ?: -1
             }
         }
         if (converted.isEmpty()) {
@@ -368,5 +372,30 @@ class StgDirectQuoteFeature : Feature {
             if (s.isNotEmpty()) return "$code.$s"
         }
         return null
+    }
+}
+
+/**
+ * 「原始列表 → 转换后列表」的下标映射。
+ *
+ * `toIntentStockInfo` 失败的元素会被跳过，所以 `converted` 与 `originalList` 不等长。
+ * 兜底查下标时必须用转换那一轮记下的映射 —— 拿原始下标去索引 `converted`
+ * 会指到另一只股票（点第 N 只、打开第 M 只，不崩但进错股）。
+ */
+internal object DirectQuoteIndex {
+
+    /**
+     * @param entries 原始顺序上的（代码.市场, 是否转换成功）
+     * @return 代码.市场 → 在 converted 里的下标
+     */
+    fun build(entries: List<Pair<String?, Boolean>>): Map<String, Int> {
+        val out = HashMap<String, Int>(entries.size * 2)
+        var convertedSize = 0
+        for ((cam, ok) in entries) {
+            if (!ok) continue
+            if (cam != null) out[cam] = convertedSize
+            convertedSize++
+        }
+        return out
     }
 }

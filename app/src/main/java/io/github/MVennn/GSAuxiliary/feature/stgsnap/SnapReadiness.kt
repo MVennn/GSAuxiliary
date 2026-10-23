@@ -2,6 +2,7 @@ package io.github.MVennn.GSAuxiliary.feature.stgsnap
 
 import android.app.Activity
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
@@ -28,7 +29,12 @@ internal object SnapReadiness {
     @Volatile private var kxClass: Class<*>? = null
     @Volatile private var kxInfoField: java.lang.reflect.Field? = null
     @Volatile private var kxItemsField: java.lang.reflect.Field? = null
-    @Volatile private var kxResolveFailed = false
+
+    /** 上次反射解析失败的时刻（`elapsedRealtime`，0 = 没失败过）。 */
+    @Volatile private var kxFailedAt = 0L
+
+    /** 反射解析失败后的重试间隔。 */
+    private const val KX_RETRY_MS = 30_000L
 
     @Volatile private var titleIdCache = 0
     @Volatile private var klineTabTextCache: String = StgSnapAddTargets.KLINE_TAB_TEXT
@@ -39,7 +45,7 @@ internal object SnapReadiness {
         kxClass = null
         kxInfoField = null
         kxItemsField = null
-        kxResolveFailed = false
+        kxFailedAt = 0L
         titleIdCache = 0
     }
 
@@ -104,30 +110,39 @@ internal object SnapReadiness {
     private fun resolveKx(env: FeatureEnv): Class<*>? {
         if (env.classLoader !== classLoader) reset(env.classLoader)
         kxClass?.let { return it }
-        if (kxResolveFailed) return null
+        // 永久熔断的代价太大：第一次进详情页太早、KXChartGroupView 还没加载时，
+        // 整个进程都会退化成「标题 + 静置」，K 线就绪门禁形同虚设。改成退避重试。
+        val now = SystemClock.elapsedRealtime()
+        if (kxFailedAt != 0L && now - kxFailedAt < KX_RETRY_MS) return null
         val cls = Reflect.loadClass(StgSnapAddTargets.KX_GROUP_CLASS, env.classLoader)
         if (cls == null) {
-            kxResolveFailed = true
-            GLog.w("截图并添加：找不到 ${StgSnapAddTargets.KX_GROUP_CLASS}")
-            return null
+            return failKx("截图并添加：找不到 ${StgSnapAddTargets.KX_GROUP_CLASS}")
         }
         val info = Reflect.findField(cls, StgSnapAddTargets.KX_INFO_FIELD)
         if (info == null) {
-            kxResolveFailed = true
-            GLog.w("截图并添加：${StgSnapAddTargets.KX_GROUP_CLASS} 没有 ${StgSnapAddTargets.KX_INFO_FIELD}")
-            return null
+            return failKx("截图并添加：${StgSnapAddTargets.KX_GROUP_CLASS} 没有 ${StgSnapAddTargets.KX_INFO_FIELD}")
         }
         val infoCls = info.type
         val items = Reflect.findField(infoCls, StgSnapAddTargets.KX_ITEMS_FIELD)
         if (items == null) {
-            kxResolveFailed = true
-            GLog.w("截图并添加：${infoCls.simpleName} 没有 ${StgSnapAddTargets.KX_ITEMS_FIELD}")
-            return null
+            return failKx("截图并添加：${infoCls.simpleName} 没有 ${StgSnapAddTargets.KX_ITEMS_FIELD}")
         }
         kxClass = cls
         kxInfoField = info
         kxItemsField = items
+        kxFailedAt = 0L
         return cls
+    }
+
+    /**
+     * 记一次解析失败并进入退避窗口。首次失败打 WARN（用户导出日志时能看见），
+     * 窗口内的重复失败降 DEBUG，避免每页都刷一条。
+     */
+    private fun failKx(message: String): Class<*>? {
+        val first = kxFailedAt == 0L
+        kxFailedAt = SystemClock.elapsedRealtime()
+        if (first) GLog.w(message) else GLog.d("$message（退避中，${KX_RETRY_MS / 1000} 秒后重试）")
+        return null
     }
 
     private fun titleId(activity: Activity): Int {
