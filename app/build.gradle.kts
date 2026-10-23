@@ -72,8 +72,8 @@ android {
         applicationId = "io.github.MVennn.GSAuxiliary"
         minSdk = 27
         targetSdk = 36
-        versionCode = 50
-        versionName = "3.4.0"
+        versionCode = 51
+        versionName = "3.5.0"
 
         // 构建时间（设置界面「模块」页展示用）。配置期求值，随每次构建刷新。
         // 注意：必须用顶部 import 的 SimpleDateFormat —— 脚本里 `java` 会被解析成
