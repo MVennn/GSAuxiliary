@@ -63,6 +63,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_MARKET_INDEX_HIDE = "market_index_hide"
         const val COL_NAV_BAR_BLEND = "nav_bar_blend"
         const val COL_WATCHLIST_BOLD = "watchlist_bold"
+        const val COL_ZX_GROUP_COPY = "zx_group_copy"
     }
 
     override fun onCreate(): Boolean {
@@ -119,7 +120,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_DOCK_CLEAN, COL_HOME_BANNER_HIDE,
             COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
             COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
-            COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD,
+            COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD, COL_ZX_GROUP_COPY,
         )
         val values = arrayOf<Any>(
             if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
@@ -151,6 +152,7 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.MARKET_INDEX_HIDE, ConfigKeys.DEFAULT_MARKET_INDEX_HIDE)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.NAV_BAR_BLEND, ConfigKeys.DEFAULT_NAV_BAR_BLEND)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD)) 1 else 0,
+            if (ModulePreferences.getBoolean(ConfigKeys.ZX_GROUP_COPY, ConfigKeys.DEFAULT_ZX_GROUP_COPY)) 1 else 0,
         )
         // 列与值必须等长 —— `MatrixCursor.addRow` 长度不等会抛 IllegalArgumentException
         if (columns.size != values.size) {
@@ -208,6 +210,7 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_MARKET_INDEX_HIDE)?.let { putBoolean(ConfigKeys.MARKET_INDEX_HIDE, it != 0); n++ }
             intOf(COL_NAV_BAR_BLEND)?.let { putBoolean(ConfigKeys.NAV_BAR_BLEND, it != 0); n++ }
             intOf(COL_WATCHLIST_BOLD)?.let { putBoolean(ConfigKeys.WATCHLIST_BOLD, it != 0); n++ }
+            intOf(COL_ZX_GROUP_COPY)?.let { putBoolean(ConfigKeys.ZX_GROUP_COPY, it != 0); n++ }
             if (values.containsKey(COL_AISTARE_SCHEMES)) {
                 putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
                 n++

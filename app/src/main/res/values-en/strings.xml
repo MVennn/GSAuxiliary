@@ -47,6 +47,7 @@
     <string name="category_dock">Dock</string>
     <string name="category_home">Home</string>
     <string name="category_market">Market</string>
+    <string name="category_watchlist">Watchlist</string>
     <string name="category_display">Display</string>
 
     <!-- Sign-in -->
@@ -72,6 +73,10 @@
 
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
     <string name="feature_stock_bar_switch_summary">Stock detail bottom bar, between Watchlist and More</string>
+
+    <!-- Watchlist -->
+    <string name="feature_zx_copy_switch">Copy watchlist group</string>
+    <string name="feature_zx_copy_switch_summary">Edit button at the top right of Watchlist becomes Copy</string>
 
     <!-- AI stare -->
     <string name="feature_quick_config_switch">Add \"Config\" button</string>

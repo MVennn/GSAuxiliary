@@ -48,6 +48,7 @@
     <string name="category_dock">底栏</string>
     <string name="category_home">首页</string>
     <string name="category_market">行情市场</string>
+    <string name="category_watchlist">自选</string>
     <string name="category_display">显示</string>
 
     <!-- 登录 -->
@@ -73,6 +74,10 @@
 
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
     <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
+
+    <!-- 自选 -->
+    <string name="feature_zx_copy_switch">自选分组复制</string>
+    <string name="feature_zx_copy_switch_summary">自选页右上角编辑按钮换成复制</string>
 
     <!-- 底栏 -->
     <string name="feature_dock_clean_switch">隐藏 理财 入口</string>

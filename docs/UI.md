@@ -420,16 +420,16 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前**二十个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**二十一个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
-> **口径说明**：这里的「二十个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
+> **口径说明**：这里的「二十一个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
 > `FeatureSpec` 条数）。它与「Feature 实现数」不是一回事 ——
 > 有两组开关各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现，
 > `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现，
-> 所以目录 20 行 ↔ 实现 17 个。
+> 所以目录 21 行 ↔ 实现 18 个。
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
@@ -450,6 +450,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | 无 |
 | 行情市场 | 隐藏 指数概览 | `market_index_hide` | 无 |
 | 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
+| 自选 | 自选分组复制 | `zx_group_copy` | 无 |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
 | 显示 | 自选股名称加粗 | `watchlist_bold` | 无 |

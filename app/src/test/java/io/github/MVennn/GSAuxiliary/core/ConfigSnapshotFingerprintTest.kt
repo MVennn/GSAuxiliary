@@ -40,8 +40,8 @@ class ConfigSnapshotFingerprintTest {
         "marketSectorCompact", "marketOverviewCompact", "marketStockFilter", "navBarBlend",
         "ipoDialogClean", "aistareQuickEnabled", "aiStareSkipSaveConfirm", "aiStareEmptySave",
         "aiStareCardDetail", "aiStareSaveBackToStock", "aiStarePickScheme",
-        // ⚠️ 新加的开关必须加进这里（2026-10-20 加的两个）
-        "watchlistBold", "marketIndexHide",
+        // ⚠️ 新加的开关必须加进这里（2026-10-20 加的两个 + 2026-10-23 的自选分组复制）
+        "watchlistBold", "marketIndexHide", "zxGroupCopy",
     )
 
     private fun base() = ConfigSnapshot.DEFAULT
@@ -185,6 +185,7 @@ class ConfigSnapshotFingerprintTest {
         "aiStarePickScheme" -> b.copy(aiStarePickScheme = !b.aiStarePickScheme)
         "watchlistBold" -> b.copy(watchlistBold = !b.watchlistBold)
         "marketIndexHide" -> b.copy(marketIndexHide = !b.marketIndexHide)
+        "zxGroupCopy" -> b.copy(zxGroupCopy = !b.zxGroupCopy)
         else -> error("未知字段 $name")
     }
 

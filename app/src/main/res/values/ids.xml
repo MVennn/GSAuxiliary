@@ -26,4 +26,22 @@
     -->
     <item name="gsaux_watchlist_original_color" type="id" />
     <item name="gsaux_watchlist_original_typeface" type="id" />
+
+    <!--
+      自选页「编辑 → 复制」按钮的现场留档（挂在那个 ImageView 上）。
+
+      为什么全部挂在视图 tag 上（规则 1.2）：热重载后新实例的记账表是空的，
+      只能靠视图上的标记认出「这颗按钮已经被上一个实例换过」；否则新实例会把
+      我们的复制图标当成宿主原图记下来，关开关时还原不回去。
+    -->
+    <item name="gsaux_zxcopy_patched" type="id" />
+    <item name="gsaux_zxcopy_orig_drawable" type="id" />
+    <item name="gsaux_zxcopy_orig_listener" type="id" />
+    <item name="gsaux_zxcopy_orig_tint" type="id" />
+    <item name="gsaux_zxcopy_orig_scale" type="id" />
+    <item name="gsaux_zxcopy_orig_cd" type="id" />
+    <item name="gsaux_zxcopy_orig_clickable" type="id" />
+    <item name="gsaux_zxcopy_orig_focusable" type="id" />
+    <item name="gsaux_zxcopy_ours_drawable" type="id" />
+    <item name="gsaux_zxcopy_ours_listener" type="id" />
 </resources>

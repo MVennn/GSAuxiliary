@@ -7,6 +7,24 @@
 
 ## [未发布] — 2026-10-23
 
+### 新增
+
+- 增加 自选分组复制 —— 自选页；右上角搜索图标左边的「编辑」（铅笔）按钮换成复制图标，
+  点一下把**当前显示分组**里的全部股票按「名称 代码」一行一只复制到剪贴板
+  （例 `金山办公 688111`）。数据读当前页 `InterceptListView` 适配器
+  （`stkName` + `m_stkCode` / `codeAndMarket`），不依赖 `ZXWorkflow` 那个没有名称的
+  `StockData`；同一「代码.市场」去重、空分组只提示不覆盖剪贴板。
+  原图 / 原监听 / 原 tint / 原 scaleType / 原 contentDescription 全部挂在 ImageView 的
+  keyed tag 上，关开关还原铅笔与「自选管理」入口，热重载后新实例也认得出。
+  新增配置键 `zx_group_copy`（默认关）、功能分区「自选」。
+  真机：全部 / 自选各 206 只、持仓股空分组、关开关还原、重开并返回后恢复；
+  `assembleRelease` + `verify_apk` + 五套静态检查通过。详见
+  `docs/FEATURE-ZX-COPY.md`。
+- 验证 —— `:app:compileReleaseKotlin` / `:app:testReleaseUnitTest` ✓（新增 8 条
+  `ZxCopyPlan` 单测）；`check_switches` 21 个目录行 / 21 个功能键 / 28 个快照字段一致；
+  `check_contract` 198 条；`check_invariants` 8 条；`check_dead_symbols` ✓；
+  `check-secrets` ✓。
+
 ### 多选全选的对钩与宿主模型（2026-10-23）
 
 - 修复「策略详情页多选全选」—— 全选后个别行的对钩不显示，再点一下计数反而 +1。

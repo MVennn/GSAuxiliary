@@ -1109,6 +1109,90 @@
       "owner": "WatchlistTargets.kt",
       "symbol": "TARGET_ADAPTERS",
       "value": "com.guosen.quotation.adapter.aistk.AIStkAdapter"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "CODE_FIELDS",
+      "value": "code"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "CODE_ID",
+      "value": "tv_item_stk_code"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "EDIT_BUTTON_ID",
+      "value": "iv_top_manager"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "GROUP_INDICATOR_ID",
+      "value": "indicator_zx_group"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "LIST_CONTAINER_ID",
+      "value": "stklv_zxg"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "MARKET_FIELDS",
+      "value": "market"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "m_name"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "NAME_FIELDS",
+      "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "NAME_ID",
+      "value": "tv_item_stk_name"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "PAGER_ID",
+      "value": "vp_zx_group"
+    },
+    {
+      "kind": "class",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "PAGES",
+      "value": "com.guosen.app.goldsun.ui.MainAct"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "TITLE_CONTAINER_ID",
+      "value": "title_container"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "TOP_BAR_ID",
+      "value": "common_top"
+    },
+    {
+      "kind": "id",
+      "owner": "ZxGroupCopyTargets.kt",
+      "symbol": "ZX_INDICATOR_ID",
+      "value": "indicator_zx"
     }
   ]
 }

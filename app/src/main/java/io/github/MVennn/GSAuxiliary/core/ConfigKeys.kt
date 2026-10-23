@@ -47,6 +47,16 @@ object ConfigKeys {
     const val WATCHLIST_BOLD = "watchlist_bold"
 
     /**
+     * 自选页右上角的「编辑」（铅笔）按钮换成「复制」按钮。
+     *
+     * 点一下把**当前显示分组**里的全部股票按「名称 代码」一行一只复制到剪贴板，
+     * 例：`金山办公 688111`。原「自选管理」入口随之不再出现。
+     *
+     * 见 [io.github.MVennn.GSAuxiliary.feature.zxcopy.ZxGroupCopyFeature]。
+     */
+    const val ZX_GROUP_COPY = "zx_group_copy"
+
+    /**
      * 是否已阅读并同意免责声明。
      *
      * 只用于模块自己的界面（首次启动的同意弹窗）。
@@ -420,6 +430,13 @@ object ConfigKeys {
     /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
+     * 它是「自选分组复制」的总开关：打开后自选页的编辑按钮才换成复制按钮。
+     */
+    const val DEFAULT_ZX_GROUP_COPY = false
+
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
+     *
      * 它是 2.18.0 新增的行情筛选维度（涨跌与自选），出厂默认关。
      */
     const val DEFAULT_MARKET_STOCK_FILTER = false
@@ -483,6 +500,7 @@ object ConfigKeys {
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
+        ZX_GROUP_COPY,
         DESKTOP_ICON, LIQUID_GLASS, GLASS_EFFECT, LANGUAGE, THEME, PREDICTIVE_BACK,
         LOG_LEVEL,
     )
@@ -503,6 +521,7 @@ object ConfigKeys {
             NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
             AISTARE_QUICK_ENABLED, AISTARE_SKIP_SAVE_CONFIRM, AISTARE_EMPTY_SAVE,
             AISTARE_CARD_DETAIL,
+            ZX_GROUP_COPY,
         )
 
     /**
@@ -543,6 +562,7 @@ object ConfigKeys {
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
         AISTARE_SKIP_SAVE_CONFIRM, AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         AISTARE_EMPTY_SAVE, AISTARE_CARD_DETAIL,
+        ZX_GROUP_COPY,
     )
 
     /** 全部配置键的出厂默认值；备份文件的 `defaults` 与「重置模块」都以此为准 */
@@ -573,6 +593,7 @@ object ConfigKeys {
         AISTARE_CARD_DETAIL to DEFAULT_AISTARE_CARD_DETAIL,
         AISTARE_SAVE_BACK_TO_STOCK to DEFAULT_AISTARE_SAVE_BACK_TO_STOCK,
         AISTARE_PICK_SCHEME to DEFAULT_AISTARE_PICK_SCHEME,
+        ZX_GROUP_COPY to DEFAULT_ZX_GROUP_COPY,
         DESKTOP_ICON to DEFAULT_DESKTOP_ICON,
         LIQUID_GLASS to DEFAULT_LIQUID_GLASS,
         GLASS_EFFECT to DEFAULT_GLASS_EFFECT,

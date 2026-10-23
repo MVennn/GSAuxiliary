@@ -8,7 +8,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * ## 功能分区归属标准
  *
  * 功能列表按 [FeatureSpec.categoryRes] 分组，**组内顺序 = [FEATURE_CATALOG] 里的出现顺序**
- * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前八个分区：
+ * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前九个分区：
  *
  * | 分区 | 一句话判据 | 归属范围（举例） |
  * |---|---|---|
@@ -19,6 +19,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
  * | **首页** `category_home` | **只改首页的结构** —— 隐藏 / 压缩首页上某一块 | 隐藏快捷入口下方的横幅、隐藏首页某个卡片 … |
  * | **行情市场** `category_market` | **只改行情市场页的结构** —— 隐藏 / 压缩该页的某一块 | 隐藏滚动横幅与快捷入口、板块显示单行、市场概览高度优化 … |
+ * | **自选** `category_watchlist` | **只改「自选」页的交互** —— 顶栏按钮、分组操作 | 编辑按钮换复制、分组管理 … |
  * | **显示** `category_display` | **只改变「看到的样子」** —— 颜色、字号、图标、布局、动效；不改交互语义 | 自选股名称高亮、名称加粗 / 字号、涨跌幅色块、盘口数字着色、K 线指标叠加 … |
  *
  * ### 归类时怎么判断
@@ -34,12 +35,12 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  *
  * ### 页面级分区与「显示」怎么分
  *
- * 底栏 / 首页 / 行情市场这三个分区虽然改的也是布局，但它们**只对某一个页面成立**
- * —— 换个页面就不存在这个横幅、这个底栏格子。按判据 3，这类功能进**页面级分区**，
- * 不进通用的「显示」；反过来，「自选股名称高亮」换到任何列表页都成立，
- * 所以它留在「显示」。
+ * 底栏 / 首页 / 行情市场 / 自选这四个分区虽然改的也是页面上的东西，但它们
+ * **只对某一个页面成立** —— 换个页面就不存在这个横幅、这个底栏格子、这颗按钮。
+ * 按判据 3，这类功能进**页面级分区**，不进通用的「显示」；反过来，
+ * 「自选股名称高亮」换到任何列表页都成立，所以它留在「显示」。
  *
- * 一句话记法：**显示 = 通用的观感；底栏 / 首页 / 行情市场 = 只属于那一页的结构调整。**
+ * 一句话记法：**显示 = 通用的观感；底栏 / 首页 / 行情市场 / 自选 = 只属于那一页的调整。**
  *
  * ### 交互类分区怎么选（策略页 / 股票详情页）
  *
@@ -51,7 +52,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  *   （不为了一个功能同时挂两个分区）。
  *
  * 分区顺序按「上游 → 具体页面 → 通用外观」排：
- * 登录 → 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 显示。
+ * 登录 → 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 自选 → 显示。
  *
  * ### 边界与例外
  *
@@ -314,6 +315,18 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         enableKey = ConfigKeys.MARKET_STOCK_FILTER,
         defaultEnabled = ConfigKeys.DEFAULT_MARKET_STOCK_FILTER,
         // 三个筛选项的勾选在**目标 App 自己的筛选面板**里，不在模块设置里 —— 没有二级菜单
+    ),
+
+    // ---- 自选：只改自选页的交互 ----
+    FeatureSpec(
+        id = "zx_group_copy",
+        categoryRes = R.string.category_watchlist,
+        switchTitleRes = R.string.feature_zx_copy_switch,
+        // 副标题说位置与变化：顶栏那颗铅笔平时只是个图标，不写不知道换的是哪一颗
+        switchSummaryRes = R.string.feature_zx_copy_switch_summary,
+        enableKey = ConfigKeys.ZX_GROUP_COPY,
+        defaultEnabled = ConfigKeys.DEFAULT_ZX_GROUP_COPY,
+        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
     // ---- 显示：只改看到的样子 ----

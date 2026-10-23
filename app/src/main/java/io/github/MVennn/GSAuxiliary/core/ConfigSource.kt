@@ -131,6 +131,9 @@ class ConfigSource(private val xposed: XposedInterface) {
                 aiStarePickScheme = p.getBoolean(
                     ConfigKeys.AISTARE_PICK_SCHEME, ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME,
                 ),
+                zxGroupCopy = p.getBoolean(
+                    ConfigKeys.ZX_GROUP_COPY, ConfigKeys.DEFAULT_ZX_GROUP_COPY,
+                ),
             )
         } catch (t: Throwable) {
             GLog.w("读取配置失败，使用默认值", t)

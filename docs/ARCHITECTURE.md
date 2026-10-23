@@ -220,7 +220,7 @@ onHotReloaded(param)
 功能之间**互相独立**：各自挂自己的钩子、各自读同一个 `ConfigSnapshot`。
 没有一个功能依赖另一个功能的运行结果。
 
-**挂钩子改行为 / 注入视图**（共 11 个）：
+**挂钩子改行为 / 注入视图**（共 12 个）：
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
@@ -235,6 +235,7 @@ onHotReloaded(param)
 | **智能盯盘价格页一键配置** | `AiStareQuickConfigFeature` | `WebView#setWebViewClient`（动态抓实际子类 `HybirdWebView$4`）→ 其 `onPageFinished` + `StockInfo` 构造器（宿主行情缓存） | URL 命中价格页 → 注入 JS（`addJavascriptInterface("gsaux")` 自建桥，不进宿主命令漏斗）→ 在「保存」右侧插「配置」按钮；点按钮 → 子线程取数（① 宿主 → ② 腾讯 → ③ 东财 → ④ 页面 DOM，按通道能力降级）→ `QuickConfigEngine` 算价 → `evaluateJavascript` 回填两个输入框并派发 input/change | **H5 页走脚本注入**（分界约定，见 [FEATURE-AISTARE-QUICK-CONFIG](FEATURE-AISTARE-QUICK-CONFIG.md) 附记）；取数失败**不写值**；套用后**不自动点保存**；关开关即时摘按钮（`init(enabled=false)`）。功能目录里的「跳过保存确认」「空数据保存」两个开关也由本功能实现（注入脚本的两个能力位），不单列功能行 |
 | **我的盯盘卡片跳个股详情页** | `AiStareCardDetailFeature` | `ListView#setAdapter`（命中 `#listMyStare` / `AIStareIndexAct`）→ 动态挂 adapter `getView` + `Activity.onResume` | 给「我的盯盘」卡片（`#layoutContent`）挂点击：从 adapter item 取 `codeAndMarket`，拿不到才退回「6 位代码 + 沪/深前缀猜市场」，`startActivity(quotes.stockDetail + IntentStockInfo)` 进详情页 | **不用 position 存股票**（复用会张冠李戴），用「卡片视图 → 代码.市场」弱表；编辑 / 删除是子视图自消费点击，不碰；只认沪 / 深，其余宁可不跳（见 [FEATURE-AISTARE-CARD-DETAIL](FEATURE-AISTARE-CARD-DETAIL.md)） |
 | **行情市场筛选涨跌与自选** | `MarketFilterFeature` | `Dialog#show`（**前置**注入，宿主自己的筛选面板）+ `PageSyncFeature` 骨架（改排行榜行） | 往宿主的「沪深京A」筛选面板里追加「涨跌与自选」三行（与策略详情页那颗面板**共用同一份状态与文案**），点确定落盘；按这三行把排行榜里不匹配的行**收起**（高度归零 + GONE） | **注入必须前置**（面板一 `show` 就量过尺寸，之后 `addView` 会被裁掉）；判定**只看视图**（`Dialog` 是框架类、全 App 都在弹）；关开关能**撤掉**注入的三行并把宿主「确定」的监听还原（规则 1.1）；**不碰**宿主自己的类型过滤那五行（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md)） |
+| **自选分组复制** | `ZxGroupCopyFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调）+ `#iv_top_manager` 的 `OnClickListener` | 自选页顶栏的铅笔「编辑」换成复制图标；点击读当前分组页 `InterceptListView` 适配器，把 `stkName` + `m_stkCode` 按「名称 代码」一行一只写剪贴板 | **`#iv_top_manager` 同名 3 处** —— 先用 `#indicator_zx` 认页、上溯 `#common_top` 再取按钮；**原图 / 原监听挂 keyed tag**，关开关还原铅笔与「自选管理」入口；`StockListView` **不是** ListView，要往页内找 `AbsListView`（见 [FEATURE-ZX-COPY](FEATURE-ZX-COPY.md)） |
 
 **界面精简**（其余 6 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
@@ -254,11 +255,11 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（17 个 Feature 实现 / 20 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
-> 挂钩子改行为 11 个 + 界面精简 6 个。
+> **当前状态（18 个 Feature 实现 / 21 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
+> 挂钩子改行为 12 个 + 界面精简 6 个。
 >
-> **口径说明**：「20 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
-> 「17 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
+> **口径说明**：「21 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
+> 「18 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
 > 各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现（不单列功能行），
@@ -267,7 +268,8 @@ onHotReloaded(param)
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`
 > （智能盯盘价格页一键配置）与 `aistare_card_detail`
-> （我的盯盘卡片跳个股详情页）—— 它们都已在上表，不再是「前瞻」。
+> （我的盯盘卡片跳个股详情页），2026-10-23 补上了 `zx_group_copy`
+> （自选分组复制）—— 它们都已在上表，不再是「前瞻」。
 
 ## 3.3 染色主流程（自选高亮）
 

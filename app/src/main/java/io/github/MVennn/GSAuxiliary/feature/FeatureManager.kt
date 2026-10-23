@@ -25,6 +25,7 @@ import io.github.MVennn.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
 import io.github.MVennn.GSAuxiliary.feature.stockbar.StockDetailBarFeature
 import io.github.MVennn.GSAuxiliary.feature.watchlist.WatchlistFeature
+import io.github.MVennn.GSAuxiliary.feature.zxcopy.ZxGroupCopyFeature
 
 /**
  * 功能注册表。
@@ -67,6 +68,7 @@ class FeatureManager(private val env: FeatureEnv) {
         IpoDialogCleanFeature(),
         AiStareQuickConfigFeature(),
         AiStareCardDetailFeature(),
+        ZxGroupCopyFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */
@@ -230,5 +232,6 @@ class FeatureManager(private val env: FeatureEnv) {
         aiStareCardDetail = false,
         aiStareSaveBackToStock = false,
         aiStarePickScheme = false,
+        zxGroupCopy = false,
     )
 }
