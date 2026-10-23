@@ -20,6 +20,7 @@ import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
+import kotlin.math.ceil
 
 /**
  * 功能：策略详情多选态底部「确认添加」左侧注入「截图并添加」。
@@ -42,8 +43,8 @@ class StgSnapAddFeature : Feature {
     private val watchers =
         Collections.synchronizedMap(WeakHashMap<TextView, WeakReference<TextWatcher>>())
 
-    /** 锚点按钮 → 注入的「截图并添加」 */
-    private val injected = Collections.synchronizedMap(WeakHashMap<TextView, TextView>())
+    /** 锚点按钮 → 注入的「截图并添加」+ 被收窄的宿主确认按钮 */
+    private val injected = Collections.synchronizedMap(WeakHashMap<TextView, Injected>())
 
     private var lastStrategy: WeakReference<Activity>? = null
     private var lastCancel: WeakReference<TextView>? = null
@@ -159,15 +160,16 @@ class StgSnapAddFeature : Feature {
     }
 
     private fun sync(env: FeatureEnv, activity: Activity, cancel: TextView, retry: Boolean) {
-        if (!env.config.stgSnapAdd) {
-            removeInjected(cancel)
-            return
-        }
-        if (cancel.text?.toString() != StgSnapAddTargets.CANCEL_TEXT) {
-            removeInjected(cancel)
-            return
-        }
         val confirm = findView(activity, StgSnapAddTargets.CONFIRM_BUTTON_ID_CANDIDATES)
+        if (!env.config.stgSnapAdd || cancel.text?.toString() != StgSnapAddTargets.CANCEL_TEXT) {
+            removeInjected(cancel)
+            // 关开关 / 退出多选态：清掉上一个实例可能留下的孤儿按钮，并还原宿主宽度
+            if (confirm != null) {
+                (confirm.parent as? ViewGroup)?.let { removeStaleButtons(it) }
+                restoreConfirm(confirm)
+            }
+            return
+        }
         if (confirm == null) {
             if (retry) {
                 cancel.post {
@@ -185,25 +187,28 @@ class StgSnapAddFeature : Feature {
             return
         }
         val existing = injected[cancel]
-        if (existing != null && existing.parent === confirm.parent) return
+        if (existing != null && existing.confirm === confirm) {
+            if (existing.button.parent === confirm.parent) {
+                // 重进页面 / 锚点文案变化时补一次（宿主把宽度改回去的话）
+                shrinkConfirm(confirm)
+                return
+            }
+        }
         if (existing != null) removeInjected(cancel)
         inject(env, activity, cancel, confirm)
     }
 
     private fun inject(env: FeatureEnv, activity: Activity, cancel: TextView, confirm: View) {
         val parent = confirm.parent as? ViewGroup ?: return
+        // 热重载 / 记账丢失时上一颗按钮可能还在树上：先按 tag 摘掉，避免叠两颗
+        removeStaleButtons(parent)
+        val pad = Density.dp(confirm, BUTTON_H_PADDING_DP)
         val button = TextView(confirm.context).apply {
             text = StgSnapAddTargets.BUTTON_TEXT
             copyStyle(confirm as? TextView, this)
-            // 源按钮是固定宽 + 文字居中；我们用 wrap_content，文字会贴边。
-            // 补 10dp 水平内边距，让文字左右都有余量（实测仍不挤「已选 N」）。
-            val extra = Density.dp(confirm, 10f)
-            setPadding(
-                paddingLeft + extra,
-                paddingTop,
-                paddingRight + extra,
-                paddingBottom,
-            )
+            // 宿主「确认添加」是 394px 固定宽，照抄会把左侧「已选 N 只股票」挤成两行。
+            // 两颗按钮统一成「文字宽 + 左右各 12dp」，文字居中。
+            setPadding(pad, paddingTop, pad, paddingBottom)
             gravity = android.view.Gravity.CENTER
             isClickable = true
             isFocusable = true
@@ -222,22 +227,10 @@ class StgSnapAddFeature : Feature {
             confirm.height > 0 -> confirm.height
             else -> ViewGroup.LayoutParams.MATCH_PARENT
         }
-        val srcWidth = when {
-            confirm.width > 0 -> confirm.width
-            confirm.layoutParams != null && confirm.layoutParams.width > 0 -> confirm.layoutParams.width
-            else -> 0
-        }
-        val textWidth = button.paint.measureText(button.text.toString()).toInt() +
-            button.paddingLeft + button.paddingRight
-        val width = if (srcWidth > 0) {
-            (srcWidth - Density.dp(confirm, 12f)).coerceAtLeast(textWidth)
-        } else {
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        }
         val lp: ViewGroup.LayoutParams = if (parent is LinearLayout) {
-            LinearLayout.LayoutParams(width, height)
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, height)
         } else {
-            ViewGroup.MarginLayoutParams(width, height)
+            ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, height)
         }
         val index = parent.indexOfChild(confirm)
         runCatching { parent.addView(button, index, lp) }
@@ -245,27 +238,94 @@ class StgSnapAddFeature : Feature {
                 GLog.w("截图并添加：插入按钮失败", it)
                 return
             }
-        injected[cancel] = button
-        // 注入时底栏可能还没量过；等一帧后按确认按钮的实测宽度补一次，
-        // 让两颗按钮几乎等宽、文字有足够左右余量（不再贴边）。
-        if (srcWidth <= 0) {
-            parent.post {
-                val now = confirm.width
-                if (now > 0 && button.parent === parent) {
-                    val target = (now - Density.dp(confirm, 12f)).coerceAtLeast(textWidth)
-                    val p = button.layoutParams
-                    p.width = target
-                    button.layoutParams = p
-                }
-            }
-        }
+        injected[cancel] = Injected(button, confirm)
+        shrinkConfirm(confirm)
         GLog.i("截图并添加：已在确认添加左侧注入按钮")
     }
 
-    private fun removeInjected(cancel: TextView) {
-        val button = injected.remove(cancel) ?: return
-        runCatching { (button.parent as? ViewGroup)?.removeView(button) }
-        runCatching { button.setOnClickListener(null) }
+    /**
+     * 把宿主「确认添加」从固定宽收窄到「文字宽 + 左右各 12dp」。
+     *
+     * 原宽记在按钮自己的 keyed tag 上（**只存 Int**：热重载会换 classloader，
+     * 模块自有类的实例在新实例里 `as?` 读不出来，还会把旧 classloader 钉在宿主 View 上）。
+     * 不碰 `minWidth` —— 固定 px 的 layoutParams 在 EXACTLY 测量下直接生效，
+     * 改 `minWidth` 反而会把宿主的 EMS 模式写成 PIXELS。
+     */
+    private fun shrinkConfirm(confirm: View) {
+        val tv = confirm as? TextView ?: return
+        val lp = tv.layoutParams ?: return
+        // wrap_content / match_parent：本来就不是固定宽，不动宿主
+        if (lp.width <= 0) return
+        if (tv.text.isNullOrEmpty()) return
+        val target = buttonWidth(tv)
+        if (lp.width <= target) return
+        val original = (tv.getTag(KEY_CONFIRM_BACKUP) as? Int) ?: lp.width
+        if (tv.getTag(KEY_CONFIRM_BACKUP) == null) {
+            tv.setTag(KEY_CONFIRM_BACKUP, lp.width)
+        }
+        lp.width = target
+        tv.layoutParams = lp
+        GLog.i("截图并添加：确认添加按钮收窄到 ${target}px（原 ${original}px）")
+    }
+
+    /** 「文字宽 + 左右各 12dp」，且不低于宿主原有左右内边距之和（保证不裁字） */
+    private fun buttonWidth(tv: TextView): Int {
+        val pad = Density.dp(tv, BUTTON_H_PADDING_DP)
+        val textPx = ceil(tv.paint.measureText(tv.text?.toString().orEmpty())).toInt()
+        return maxOf(textPx + pad * 2, textPx + tv.paddingLeft + tv.paddingRight) + 1
+    }
+
+    private fun restoreConfirm(confirm: View) {
+        val tv = confirm as? TextView ?: return
+        val original = when (val tag = tv.getTag(KEY_CONFIRM_BACKUP)) {
+            null -> return
+            is Int -> tag
+            else -> {
+                GLog.w("截图并添加：确认添加按钮的备份类型异常（${tag.javaClass.name}），跳过还原")
+                return
+            }
+        }
+        val lp = tv.layoutParams
+        if (lp == null) {
+            GLog.w("截图并添加：确认添加按钮没有 layoutParams，宽度还原留到下次")
+            return
+        }
+        // 先还原再清 tag：还原失败时备份还在，下一次还能再试
+        runCatching {
+            lp.width = original
+            tv.layoutParams = lp
+        }.onSuccess {
+            tv.setTag(KEY_CONFIRM_BACKUP, null)
+        }.onFailure { GLog.w("截图并添加：还原确认添加按钮宽度失败", it) }
+    }
+
+    /** 热重载兜底：按 keyed tag 在整棵视图树里找回被收窄的确认按钮并还原 */
+    private fun restoreOrphanConfirm(root: View?) {
+        if (root == null) return
+        if (root.getTag(KEY_CONFIRM_BACKUP) != null) {
+            restoreConfirm(root)
+            return
+        }
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) restoreOrphanConfirm(root.getChildAt(i))
+        }
+    }
+
+    private fun removeStaleButtons(parent: ViewGroup) {
+        for (i in parent.childCount - 1 downTo 0) {
+            if (parent.getChildAt(i).tag == StgSnapAddTargets.BUTTON_TAG) {
+                runCatching { parent.removeViewAt(i) }
+                GLog.i("截图并添加：移除上一个实例遗留的按钮")
+            }
+        }
+    }
+
+    private fun removeInjected(cancel: TextView, restoreHost: Boolean = true) {
+        val item = injected.remove(cancel) ?: return
+        runCatching { (item.button.parent as? ViewGroup)?.removeView(item.button) }
+        runCatching { item.button.setOnClickListener(null) }
+        // 销毁路径只摘自己的视图，不还原宿主现场（Feature.onActivityDestroyed 契约）
+        if (restoreHost) restoreConfirm(item.confirm)
     }
 
     private fun copyStyle(src: TextView?, dst: TextView) {
@@ -425,21 +485,27 @@ class StgSnapAddFeature : Feature {
             if (findActivity(key) !== activity) continue
             val w = watchers.remove(key)?.get()
             if (w != null) runCatching { key.removeTextChangedListener(w) }
-            removeInjected(key)
+            // 页面要销毁了：只摘自己注入的视图，宿主按钮的宽度留给新页面
+            removeInjected(key, restoreHost = false)
         }
     }
 
     /** 关开关 / 热重载：所有页面上的注入按钮和 watcher 都撤掉 */
     private fun clearState() {
-        val keys = synchronized(watchers) { watchers.keys.toList() }
-        for (key in keys) {
+        val root = lastStrategy?.get()?.window?.decorView
+        val watcherKeys = synchronized(watchers) { watchers.keys.toList() }
+        val injectedKeys = synchronized(injected) { injected.keys.toList() }
+        for (key in watcherKeys) {
             val w = watchers.remove(key)?.get()
             if (w != null) runCatching { key.removeTextChangedListener(w) }
-            removeInjected(key)
         }
+        // 两表理论上同键；万一失配，也不能让注入按钮和收窄宽度留在树上
+        for (key in injectedKeys) removeInjected(key)
         injected.clear()
         lastStrategy = null
         lastCancel = null
+        // 旧实例可能已经把按钮摘了却没来得及还原宽度（热重载竞态），按 tag 兜底扫一遍
+        restoreOrphanConfirm(root)
     }
 
     private fun clearPending() {
@@ -488,5 +554,20 @@ class StgSnapAddFeature : Feature {
     private fun toastCurrent(message: String) {
         val activity = lastStrategy?.get() ?: return
         toast(activity, message)
+    }
+
+    /** 一次注入的现场：我们自己插的按钮 + 被收窄的宿主确认按钮 */
+    private class Injected(val button: TextView, val confirm: View)
+
+    private companion object {
+        /** 两颗按钮的宽度基准：文字左右各留 12dp（2026-10-23 用户反馈太宽挤成两行） */
+        const val BUTTON_H_PADDING_DP = 12f
+
+        /**
+         * 确认按钮原宽的 keyed tag；字符串哈希做 key，宿主不会用同一个。
+         *
+         * 值只存 `Int`：热重载会换 classloader，模块自有类的实例在新实例里读不出来。
+         */
+        val KEY_CONFIRM_BACKUP = "gsaux.stgsnap.confirm_backup".hashCode()
     }
 }
