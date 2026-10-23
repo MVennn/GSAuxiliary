@@ -25,6 +25,8 @@ Make GoldenSun Great Again！
 
 ## 环境要求
 
+国信金太阳**不锁版本**：模块按控件名、类名与接口特征定位，宿主升级到新版本后无需等模块跟进适配，直接可用。
+
 安卓 8.1+，以及**较新的 LSPosed**（需要现代 Xposed API 102 与热重载能力）。过旧的 LSPosed 版本、太极 / LSPatch / EdXposed 等其它 Xposed 实现会**静默不加载**（表现为已启用但零日志、零生效）；如何判断框架新旧见 [排错手册](https://github.com/MVennn/GSAuxiliary/blob/main/docs/TROUBLESHOOTING.md#8-热重载相关)。
 
 ## 安装
