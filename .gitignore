@@ -72,6 +72,10 @@ Thumbs.db
 .workbuddy-ai/
 # CodeGraph 代码索引（本地生成，不进仓库）
 /.codegraph/
+# CodeGraph 生成的 agent 说明（内容与全局 AGENTS.md 重复，属本机工具文件）
+/AGENTS.md
+# 会话断点台账（按全局 AGENTS.md 协议维护的本地工作日志）
+/PROGRESS.md
 # ZCode 本地插件配置（只对本机生效）
 /.zcode/
 
