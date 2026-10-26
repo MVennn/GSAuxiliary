@@ -81,6 +81,8 @@ internal fun zxCopyPreview(
     fieldNames: Array<String>,
     formatTexts: List<String>,
     actionTexts: List<String>,
+    /** 「X 等 N 项」的格式串，由调用方按当前语言传入（%1$s = 前缀，%2$d = 总数） */
+    moreFormat: String = "%1\$s 等 %2\$d 项",
 ): String {
     val labels = rule.fields.map { id ->
         val index = ZxCopyFieldCatalog.index(id)
@@ -89,7 +91,7 @@ internal fun zxCopyPreview(
     val fields = if (labels.size <= 3) {
         labels.joinToString(" ")
     } else {
-        labels.take(3).joinToString(" ") + " 等 ${labels.size} 项"
+        String.format(moreFormat, labels.take(3).joinToString(" "), labels.size)
     }
     val format = formatTexts.getOrElse(zxCopyFormatIndex(rule.format)) { rule.format }
     val action = actionTexts.getOrElse(zxCopyActionIndex(rule.action)) { rule.action }

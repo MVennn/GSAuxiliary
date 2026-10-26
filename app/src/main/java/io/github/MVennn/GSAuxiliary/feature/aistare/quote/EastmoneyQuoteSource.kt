@@ -182,7 +182,10 @@ class EastmoneyQuoteSource : QuoteSource {
     private fun plausible(latest: BigDecimal, prevClose: BigDecimal): Boolean {
         if (prevClose.signum() <= 0) return false
         val ratio = latest.divide(prevClose, 4, RoundingMode.HALF_UP)
-        return ratio > BigDecimal("0.65") && ratio < BigDecimal("1.35")
+        // 新股上市前 5 日、以及无涨跌幅限制的时段，单日涨幅可远超 35%；
+        // 旧的 (0.65, 1.35) 会把合法快照整份丢弃。放宽到 0.4~2.5，仍能
+        // 挡住 0 / 十倍量级的脏数据。
+        return ratio > BigDecimal("0.4") && ratio < BigDecimal("2.5")
     }
 
     /** 1（深）→ 0，2（沪）→ 1；其它（港股 / 美股 / 认不出的市场号）不猜 */

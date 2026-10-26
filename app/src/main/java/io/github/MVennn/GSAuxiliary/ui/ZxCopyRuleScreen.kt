@@ -93,6 +93,14 @@ internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {
         stringResource(R.string.zx_copy_menu_delete),
     )
     val newPrefix = stringResource(R.string.zx_copy_new_rule_prefix)
+    val moreItemsFormat = stringResource(R.string.preview_more_items)
+    // 元信息前缀随规则 JSON 带去目标进程，必须在这里按当前语言取一次
+    val metaLabels = mapOf(
+        "group" to stringResource(R.string.meta_group_prefix),
+        "time" to stringResource(R.string.meta_time_prefix),
+        "count" to stringResource(R.string.meta_count_prefix),
+        "countUnit" to stringResource(R.string.meta_count_unit),
+    )
 
     var justAdded by remember { mutableStateOf<String?>(null) }
     var removing by remember { mutableStateOf<String?>(null) }
@@ -109,7 +117,7 @@ internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {
         Card(modifier = Modifier.cardPadding()) {
             data.rules.forEachIndexed { index, rule ->
                 key(rule.id) {
-                    val preview = zxCopyPreview(rule, fieldNames, formatTexts, actionTexts)
+                    val preview = zxCopyPreview(rule, fieldNames, formatTexts, actionTexts, moreItemsFormat)
                     val row: @Composable () -> Unit = {
                         CopyRuleRow(
                             name = rule.name,
@@ -197,9 +205,10 @@ internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {
                     val id = ZxCopyRuleStore.newId(data.rules)
                     val name = ZxCopyRuleStore.newName(data.rules.map { it.name }, newPrefix)
                     val rule = ZxCopyRuleStore.duplicate(source, id, name).copy(
+                        metaLabels = metaLabels,
                         preview = zxCopyPreview(
                             source.copy(id = id, name = name),
-                            fieldNames, formatTexts, actionTexts,
+                            fieldNames, formatTexts, actionTexts, moreItemsFormat,
                         ),
                     )
                     writeZxCopyRules(data.copy(rules = data.rules + rule))

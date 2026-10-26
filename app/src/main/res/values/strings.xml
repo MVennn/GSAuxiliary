@@ -473,4 +473,13 @@
         <item>信息</item>
         <item>调试</item>
     </string-array>
+
+    <!-- 导出/预览文案：写入规则 JSON 时按当前语言生成，目标进程不再取资源 -->
+    <string name="meta_group_prefix">分组：</string>
+    <string name="meta_time_prefix">时间：</string>
+    <string name="meta_count_prefix">数量：</string>
+    <string name="meta_count_unit">\u0020只</string>
+    <string name="preview_more_items">%1$s 等 %2$d 项</string>
+    <string name="zx_copy_preview_all">全部</string>
+    <string name="zx_copy_preview_custom">自选分组</string>
 </resources>

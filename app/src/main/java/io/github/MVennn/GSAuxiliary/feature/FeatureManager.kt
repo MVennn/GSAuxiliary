@@ -80,12 +80,15 @@ class FeatureManager(private val env: FeatureEnv) {
                 GLog.i("跳过功能 [${f.id}]：当前配置下未启用")
                 continue
             }
+            val mark = bag.mark()
             try {
                 f.install(env, bag)
                 synchronized(installedIds) { installedIds.add(f.id) }
                 installed++
                 GLog.i("已安装功能 [${f.id}] ${f.title}")
             } catch (t: Throwable) {
+                // 半装钩子必须回滚，否则下次配置变化重装会叠成双份。
+                bag.rollbackTo(mark)
                 GLog.e("安装功能 [${f.id}] 失败", t)
             }
         }
@@ -154,10 +157,12 @@ class FeatureManager(private val env: FeatureEnv) {
                 val newlyInstalled = f.isEnabled(cfg) &&
                     synchronized(installedIds) { installedIds.add(f.id) }
                 if (!newlyInstalled) continue
+                val mark = bag.mark()
                 try {
                     f.install(env, bag)
                     GLog.i("运行中补装功能 [${f.id}] ${f.title}")
                 } catch (t: Throwable) {
+                    bag.rollbackTo(mark)
                     synchronized(installedIds) { installedIds.remove(f.id) }
                     GLog.e("运行中补装功能 [${f.id}] 失败", t)
                 }

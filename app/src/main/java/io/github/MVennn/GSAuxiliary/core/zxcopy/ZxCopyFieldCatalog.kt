@@ -231,12 +231,14 @@ object ZxCopyFieldCatalog {
     private fun moneyValue(text: String): Double? {
         val s = text.trim().replace(",", "")
         if (s.isEmpty()) return null
+        // 先剥"元"再判单位：宿主可能给 "1.5亿元" / "1.5万元"，按旧顺序
+        // 先剥 亿/万 时两者都不命中，剥掉"元"后剩 "1.5亿" 解析失败。
+        val body = s.removeSuffix("元")
         val unit = when {
-            s.endsWith("亿") -> 1e8
-            s.endsWith("万") -> 1e4
+            body.endsWith("亿") -> 1e8
+            body.endsWith("万") -> 1e4
             else -> 1.0
         }
-        val body = s.removeSuffix("亿").removeSuffix("万").removeSuffix("元").trim()
-        return body.toDoubleOrNull()?.times(unit)
+        return body.removeSuffix("亿").removeSuffix("万").trim().toDoubleOrNull()?.times(unit)
     }
 }

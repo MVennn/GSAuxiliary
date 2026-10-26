@@ -48,7 +48,16 @@ class GszxApp : Application() {
         GLog.i("模块 App 启动：配置仓库与服务监听就绪")
     }
 
+    private var lastAppliedLevel = Int.MIN_VALUE
+
     private fun applyLogLevel() {
-        GLog.level = ModulePreferences.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL)
+        val level = ModulePreferences.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL)
+        GLog.level = level
+        // 冷启动时框架还没连上，active() 是本地文件 —— 把最近一次生效的等级
+        // 缓存到本地，否则「关闭」档在启动窗口内拦不住日志。
+        if (level != lastAppliedLevel) {
+            lastAppliedLevel = level
+            ModulePreferences.setLocalInt(ConfigKeys.LOG_LEVEL, level)
+        }
     }
 }

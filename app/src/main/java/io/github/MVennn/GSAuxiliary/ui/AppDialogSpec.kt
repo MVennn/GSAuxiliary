@@ -129,17 +129,22 @@ internal class DialogController {
     private var afterDismiss: (() -> Unit)? = null
 
     fun showChoice(s: ChoiceDialogSpec) {
+        // 新弹窗开启意味着旧弹窗的上下文已作废：如果旧弹窗正在播退出动画
+        // （afterDismiss 已排队），那个动作不能再落到新弹窗关闭时执行。
+        afterDismiss = null
         closing = false
         spec = s
     }
 
     fun showConfirm(s: ConfirmDialogSpec) {
+        afterDismiss = null
         closing = false
         spec = s
     }
 
     /** 弹出图片预览（贴底、从下往上滑入） */
     fun showImage(s: ImageDialogSpec) {
+        afterDismiss = null
         closing = false
         spec = s
     }
@@ -149,6 +154,7 @@ internal class DialogController {
         // 已经在显示同一个同意弹窗时不要再赋值：`remember(spec)` 的勾选状态会被重置，
         // 用户勾了之后如果外层恰好重组一次，勾就会莫名其妙掉回未勾选。
         if (spec is AgreementDialogSpec && !closing) return
+        afterDismiss = null
         closing = false
         spec = s
     }

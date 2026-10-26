@@ -131,16 +131,25 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
     val pdfFontChoices = listOf("8", "10", "12", "14")
     val pdfMarginChoices = listOf("24", "36", "48", "60")
 
+    val moreItemsFormat = stringResource(R.string.preview_more_items)
+    // 元信息前缀随规则 JSON 带去目标进程（导出时不再取资源）
+    val metaLabels = mapOf(
+        "group" to stringResource(R.string.meta_group_prefix),
+        "time" to stringResource(R.string.meta_time_prefix),
+        "count" to stringResource(R.string.meta_count_prefix),
+        "countUnit" to stringResource(R.string.meta_count_unit),
+    )
+
     fun labelsFor(r: ZxCopyRuleStore.Rule) = zxCopyLabels(r, fieldNames)
     fun previewFor(r: ZxCopyRuleStore.Rule) =
-        zxCopyPreview(r, fieldNames, formatTexts, actionTexts)
+        zxCopyPreview(r, fieldNames, formatTexts, actionTexts, moreItemsFormat)
 
     fun update(transform: (ZxCopyRuleStore.Rule) -> ZxCopyRuleStore.Rule) {
         if (!alive) return
         val updatedRules = data.rules.map { r ->
             if (r.id == ruleId) {
                 val t = transform(r)
-                t.copy(labels = labelsFor(t), preview = previewFor(t))
+                t.copy(labels = labelsFor(t), metaLabels = metaLabels, preview = previewFor(t))
             } else {
                 r
             }
@@ -170,8 +179,10 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
     val pageDialogs = LocalDialogController.current
     val previewTitle = stringResource(R.string.zx_copy_preview_title)
     val previewClose = stringResource(R.string.zx_copy_preview_close)
-    val previewMeta = remember {
-        ZxCopyFormat.Meta("全部", System.currentTimeMillis(), 3, "自选分组")
+    val previewAll = stringResource(R.string.zx_copy_preview_all)
+    val previewCustom = stringResource(R.string.zx_copy_preview_custom)
+    val previewMeta = remember(previewAll, previewCustom) {
+        ZxCopyFormat.Meta(previewAll, System.currentTimeMillis(), 3, previewCustom)
     }
 
     /** 刚添加 / 正在移除的字段：字段行的展开 / 收起动画靠它们驱动 */

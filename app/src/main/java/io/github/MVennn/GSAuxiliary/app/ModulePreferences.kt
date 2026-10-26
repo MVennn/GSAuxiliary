@@ -38,6 +38,15 @@ object ModulePreferences {
     /** 变更通知统一切到主线程，UI 订阅方不必自己 post */
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /**
+     * 断连期间被改过的键（存在本地文件里）。
+     *
+     * 重连时只补「远端没有的键」会把断连期间的修改整体丢掉 —— 正常使用后
+     * 几乎所有功能键都已存在于远端。这个集合记录「用户在 LOCAL 后端写过什么」，
+     * 重连时这些键以本地值为准（本地较新），并区分删除（键已不存在 → 远端也删）。
+     */
+    private const val DIRTY_KEY = "__gszx_local_dirty"
+
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> notifyChanged() }
 
@@ -93,29 +102,57 @@ object ModulePreferences {
         val localAll = lp.all
         if (localAll.isEmpty()) return
         val remoteAll = runCatching { rp.all }.getOrNull() ?: return
-        val missing = localAll.filterKeys { it !in remoteAll }
-        if (missing.isEmpty()) return
+        val dirty = (localAll[DIRTY_KEY] as? Set<*>)?.mapNotNull { it as? String }?.toSet() ?: emptySet()
+        val missing = localAll.filterKeys { it !in remoteAll && it != DIRTY_KEY }
+        if (missing.isEmpty() && dirty.isEmpty()) return
         GLog.i(
-            "框架重连：远端已有 ${remoteAll.size} 个键，" +
-                "本地暂存的 ${missing.size} 个缺失键已补写（远端已有键保持不动）"
+            "框架重连：远端已有 ${remoteAll.size} 个键，本地暂存 ${missing.size} 个缺失键、" +
+                "${dirty.size} 个断连期间改过的键"
         )
-        runCatching {
+        var written = 0
+        var removed = 0
+        val ok = runCatching {
             val e = rp.edit()
             for ((k, v) in missing) {
-                when (v) {
-                    is Boolean -> e.putBoolean(k, v)
-                    is Int -> e.putInt(k, v)
-                    is Long -> e.putLong(k, v)
-                    is Float -> e.putFloat(k, v)
-                    is String -> e.putString(k, v)
-                    is Set<*> -> {
-                        @Suppress("UNCHECKED_CAST")
-                        e.putStringSet(k, v as Set<String>)
-                    }
+                putValue(e, k, v)
+                written++
+            }
+            // 断连期间写过的键以本地为准：本地有值就覆盖远端，本地已删除就删远端。
+            for (k in dirty) {
+                if (k == DIRTY_KEY) continue
+                val v = localAll[k]
+                if (v == null) {
+                    e.remove(k)
+                    removed++
+                } else {
+                    putValue(e, k, v)
+                    written++
                 }
             }
-            if (e.commit()) GLog.i("已把本地暂存的 ${missing.size} 项配置迁移到 remote preferences")
-        }.onFailure { GLog.w("迁移本地配置失败", it) }
+            e.commit()
+        }.getOrElse { t ->
+            GLog.w("迁移本地配置失败", t)
+            false
+        }
+        if (ok) {
+            lp.edit().remove(DIRTY_KEY).commit()
+            GLog.i("已把本地配置同步到 remote preferences（写 $written 项、删 $removed 项）")
+        }
+    }
+
+    /** 按类型写入一个偏好值。 */
+    private fun putValue(e: SharedPreferences.Editor, key: String, value: Any) {
+        when (value) {
+            is Boolean -> e.putBoolean(key, value)
+            is Int -> e.putInt(key, value)
+            is Long -> e.putLong(key, value)
+            is Float -> e.putFloat(key, value)
+            is String -> e.putString(key, value)
+            is Set<*> -> {
+                @Suppress("UNCHECKED_CAST")
+                e.putStringSet(key, value as Set<String>)
+            }
+        }
     }
 
     fun backend(): Backend = when {
@@ -157,6 +194,17 @@ object ModulePreferences {
      * 那些必须经 `remote` 同步给目标进程。
      */
     fun getLocalBoolean(key: String, def: Boolean): Boolean = local?.getBoolean(key, def) ?: def
+
+    /** 读**只属于本机**的整型状态（永远走本地文件，见 [getLocalBoolean]）。 */
+    fun getLocalInt(key: String, def: Int): Int = local?.getInt(key, def) ?: def
+
+    /** 写本机专用状态（见 [getLocalBoolean]）。 */
+    fun setLocalInt(key: String, value: Int): Boolean = runCatching {
+        local?.edit()?.putInt(key, value)?.commit() ?: false
+    }.getOrElse { t ->
+        GLog.w("写入本机状态失败: $key", t)
+        false
+    }
 
     /** 写本机专用状态（见 [getLocalBoolean]）。写本地文件同样会触发 [observe] 回调。 */
     fun setLocalBoolean(key: String, value: Boolean): Boolean = runCatching {
@@ -255,14 +303,33 @@ object ModulePreferences {
      */
     fun edit(block: SharedPreferences.Editor.() -> Unit): Boolean {
         val target = active() ?: return false
+        // LOCAL 后端写入要在本地记下「哪些键被改过」，重连时才能把断连期间的
+        // 修改（含删除）覆盖回远端，而不是被远端旧值静默吃掉。
+        val before = if (target === local) runCatching { target.all.toMap() }.getOrNull() else null
         return runCatching {
             val e = target.edit()
             e.block()
-            e.commit()
+            val ok = e.commit()
+            if (ok && before != null) recordDirty(before, target)
+            ok
         }.getOrElse { t ->
             GLog.w("写入配置失败", t)
             false
         }
+    }
+
+    /** 把本次写入改到的键并进本地 dirty 集合（删除的键也要记，重连时删远端）。 */
+    private fun recordDirty(before: Map<String, *>, target: SharedPreferences) {
+        runCatching {
+            val after = target.all
+            val changed = (before.keys + after.keys).filter { key ->
+                key != DIRTY_KEY && before[key] != after[key]
+            }
+            if (changed.isEmpty()) return
+            val previous = (target.getStringSet(DIRTY_KEY, null) ?: emptySet()).toMutableSet()
+            previous.addAll(changed)
+            target.edit().putStringSet(DIRTY_KEY, previous).commit()
+        }.onFailure { GLog.w("记录本地改动失败", it) }
     }
 
     fun observe(listener: () -> Unit) {

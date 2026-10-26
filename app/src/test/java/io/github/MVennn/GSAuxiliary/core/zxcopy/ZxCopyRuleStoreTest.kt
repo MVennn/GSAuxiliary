@@ -57,6 +57,23 @@ class ZxCopyRuleStoreTest {
         assertTrue(back.pdf.landscape)
         assertEquals(12, back.pdf.fontSize)
         assertEquals("涨幅", back.labels["changePct"])
+        assertEquals(ZxCopyRuleStore.defaultMetaLabels(), back.metaLabels)
+    }
+
+    @Test
+    fun `metaLabels 的空串（英文数量单位）能原样往返`() {
+        val source = ZxCopyRuleStore.defaultData().defaultRule()!!.copy(
+            metaLabels = mapOf(
+                "group" to "Group: ",
+                "time" to "Time: ",
+                "count" to "Count: ",
+                "countUnit" to "",
+            ),
+        )
+        val json = ZxCopyRuleStore.encode(ZxCopyRuleStore.Data(source.id, listOf(source)))
+        val back = ZxCopyRuleStore.decode(json).defaultRule()!!
+        assertEquals("Group: ", back.metaLabels["group"])
+        assertEquals("", back.metaLabels["countUnit"])
     }
 
     @Test

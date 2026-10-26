@@ -9,6 +9,8 @@ import android.widget.ListView
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
+import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllPlan
+import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllTargets
 import io.github.MVennn.GSAuxiliary.util.Reflect
 
 /** 选中读取的结果。失败时带一条用户看得懂的原因。 */
@@ -49,7 +51,7 @@ internal object SnapSelection {
         val mapping = full ?: IntArray(total) { it }
         val header = lv.headerViewsCount
 
-        val checked: BooleanArray = readChecked(lv, adapter, total, mapping, header)
+        val checked: BooleanArray = readChecked(activity, lv, adapter, total, mapping, header)
             ?: return SelectionResult.Fail(
                 "checked states / 探针都读不到",
                 "读不到勾选状态，请重进多选态再试",
@@ -98,8 +100,9 @@ internal object SnapSelection {
         return SelectionResult.Ok(items)
     }
 
-    /** 优先 checked states；CHOICE_MODE_NONE 时逐行现绑探针读 #ct_item */
+    /** 优先宿主模型；读不到再读 checked states，最后逐行现绑探针读 #ct_item */
     private fun readChecked(
+        activity: Activity,
         lv: ListView,
         adapter: ListAdapter,
         total: Int,
@@ -107,6 +110,8 @@ internal object SnapSelection {
         header: Int,
     ): BooleanArray? {
         if (lv.choiceMode != ListView.CHOICE_MODE_NONE) {
+            // 宿主模型 checkCodes 是「确认添加」的真实来源，优先按它判。
+            readFromHostModel(activity, adapter, total)?.let { return it }
             val out = BooleanArray(total)
             for (i in 0 until total) {
                 out[i] = runCatching { lv.isItemChecked(header + full[i]) }.getOrDefault(false)
@@ -122,6 +127,34 @@ internal object SnapSelection {
             out[i] = ct.isChecked
         }
         return out
+    }
+
+    /**
+     * 按宿主模型 `AIStkStgDetailAct.checkCodes` 判定每一行。
+     *
+     * 筛选生效时 checked states 是「混合坐标」的：手动点行写适配器位置
+     * （header + 子集下标），「全选」预置的是全量位置。只读一种坐标会漏读
+     * 手动勾选的行、或把别的行误判为已勾。宿主模型没有这个问题，读不到时
+     * 才退回 checked states。
+     */
+    private fun readFromHostModel(
+        activity: Activity,
+        adapter: ListAdapter,
+        total: Int,
+    ): BooleanArray? {
+        if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return null
+        val field = Reflect.findField(activity.javaClass, StgSelectAllTargets.MODEL_FIELD) ?: return null
+        val raw = runCatching { field.get(activity) as? List<*> }.getOrNull() ?: return null
+        val codes = raw.mapNotNull { e -> e?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
+        if (codes.isEmpty()) return null
+        val rowCodes = ArrayList<String?>(total)
+        for (i in 0 until total) {
+            val item = runCatching { adapter.getItem(i) }.getOrNull()
+            rowCodes.add(item?.let { readCam(it) })
+        }
+        val states = StgSelectAllPlan.statesFromCodes(rowCodes, codes, filtered = true) ?: return null
+        GLog.d("截图并添加：按宿主模型 ${StgSelectAllTargets.MODEL_FIELD} 判定（${codes.size} 项）")
+        return states
     }
 
     private fun readCam(item: Any): String? {

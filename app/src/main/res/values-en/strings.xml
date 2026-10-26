@@ -467,4 +467,13 @@
         <item>Info</item>
         <item>Debug</item>
     </string-array>
+
+    <!-- Export/preview texts: generated in the current language when a rule is saved -->
+    <string name="meta_group_prefix">Group:\u0020</string>
+    <string name="meta_time_prefix">Time:\u0020</string>
+    <string name="meta_count_prefix">Count:\u0020</string>
+    <string name="meta_count_unit"></string>
+    <string name="preview_more_items">%1$s +%2$d more</string>
+    <string name="zx_copy_preview_all">All</string>
+    <string name="zx_copy_preview_custom">Custom group</string>
 </resources>

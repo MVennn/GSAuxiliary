@@ -205,12 +205,19 @@ object ZxCopyFormat {
     // ------------------------------------------------------------------ 公共
 
     private fun metaLines(rule: ZxCopyRuleStore.Rule, meta: Meta): List<String> {
+        // 前缀随规则 JSON 带过来（设置页写入时按当前语言生成）；
+        // 老规则没有 metaLabels，回落到中文默认值。
+        val labels = rule.metaLabels
         val lines = ArrayList<String>(3)
         if (rule.includeGroup && !meta.groupName.isNullOrBlank()) {
-            lines.add("分组：" + meta.groupName)
+            lines.add((labels["group"] ?: "分组：") + meta.groupName)
         }
-        if (rule.includeTime) lines.add("时间：" + formatTime(meta.timestamp))
-        if (rule.includeCount) lines.add("数量：" + meta.count + " 只")
+        if (rule.includeTime) {
+            lines.add((labels["time"] ?: "时间：") + formatTime(meta.timestamp))
+        }
+        if (rule.includeCount) {
+            lines.add((labels["count"] ?: "数量：") + meta.count + (labels["countUnit"] ?: " 只"))
+        }
         return lines
     }
 

@@ -68,6 +68,22 @@ object ZxCopyRuleStore {
     private val ACTIONS = setOf(ACTION_CLIPBOARD, ACTION_SHARE_TEXT, ACTION_IMAGE, ACTION_PDF)
     private val IMAGE_PRESETS = setOf(IMAGE_SIMPLE, IMAGE_TABLE, IMAGE_CARD)
 
+    /**
+     * 元信息（分组 / 时间 / 数量）的前缀键。
+     *
+     * 目标进程没有模块资源上下文，所以这些文案和 [Rule.labels] 一样，
+     * 在设置页写入时按当前语言生成并随规则 JSON 带过去。
+     */
+    val META_LABEL_KEYS = listOf("group", "time", "count", "countUnit")
+
+    /** 老规则（没有 metaLabels 字段）回落到中文默认值，保持旧行为。 */
+    fun defaultMetaLabels(): Map<String, String> = mapOf(
+        "group" to "分组：",
+        "time" to "时间：",
+        "count" to "数量：",
+        "countUnit" to " 只",
+    )
+
     // ------------------------------------------------------------ 数据模型
 
     data class ImageStyle(
@@ -106,6 +122,8 @@ object ZxCopyRuleStore {
         val fields: List<String>,
         /** 字段 id → 当前语言标签（Markdown / CSV / 图片 / PDF 表头用） */
         val labels: Map<String, String>,
+        /** 元信息前缀（分组/时间/数量/数量单位），写入时按当前语言生成 */
+        val metaLabels: Map<String, String>,
         val format: String,
         val separator: String,
         val rowSeparator: String,
@@ -145,6 +163,7 @@ object ZxCopyRuleStore {
             isDefault = true,
             fields = listOf("name", "code"),
             labels = mapOf("name" to "名称", "code" to "代码"),
+            metaLabels = defaultMetaLabels(),
             format = FORMAT_TEXT,
             separator = " ",
             rowSeparator = "\n",
@@ -224,6 +243,15 @@ object ZxCopyRuleStore {
                 ?: fid
         }
 
+        val metaLabels = HashMap<String, String>(defaultMetaLabels())
+        val metaJson = o.optJSONObject("metaLabels")
+        if (metaJson != null) {
+            for (key in META_LABEL_KEYS) {
+                // has() 区分「没有这个字段」与「合法空串」（英文的数量单位就是空串）
+                if (metaJson.has(key)) metaLabels[key] = metaJson.optString(key)
+            }
+        }
+
         val format = o.optString("format").takeIf { it in FORMATS } ?: FORMAT_TEXT
         val sort = o.optString("sort").takeIf { it in SORTS } ?: SORT_SCREEN
         val empty = o.optString("empty").takeIf { it in EMPTIES } ?: EMPTY_DASH
@@ -238,6 +266,7 @@ object ZxCopyRuleStore {
             isDefault = o.optBoolean("isDefault", false),
             fields = fields,
             labels = labels,
+            metaLabels = metaLabels,
             format = format,
             separator = separator,
             rowSeparator = rowSeparator,
@@ -314,6 +343,9 @@ object ZxCopyRuleStore {
         val labels = JSONObject()
         for ((k, v) in r.labels) labels.put(k, v)
         o.put("labels", labels)
+        val metaLabels = JSONObject()
+        for ((k, v) in r.metaLabels) metaLabels.put(k, v)
+        o.put("metaLabels", metaLabels)
         o.put("format", r.format)
         o.put("separator", r.separator)
         o.put("rowSeparator", r.rowSeparator)

@@ -134,6 +134,8 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
     )
     val upLabel = stringResource(R.string.quick_slot_up_short)
     val downLabel = stringResource(R.string.quick_slot_down_short)
+    // 预览串会存进方案 JSON（目标进程不取资源），所以在这里按当前语言取一次
+    val moreItemsFormat = stringResource(R.string.preview_more_items)
 
     if (scheme == null) {
         // 从来没有过这个方案（例如在别处删掉后才进来）：安静回方案列表，
@@ -180,7 +182,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             SchemeNameField(
                 schemeId = scheme.id,
                 initial = scheme.name,
-                onRename = { text -> update { it.copy(name = text, preview = previewOf(it, termNames, upLabel, downLabel)) } },
+                onRename = { text -> update { it.copy(name = text, preview = previewOf(it, termNames, upLabel, downLabel, moreItemsFormat)) } },
             )
         }
 
@@ -194,7 +196,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             aggTexts = aggTexts,
             onChanged = { slot ->
                 update { s ->
-                    s.copy(up = slot, preview = previewOf(s.copy(up = slot), termNames, upLabel, downLabel))
+                    s.copy(up = slot, preview = previewOf(s.copy(up = slot), termNames, upLabel, downLabel, moreItemsFormat))
                 }
             },
         )
@@ -207,7 +209,7 @@ internal fun QuickConfigEditScreen(schemeId: String, onDeleted: () -> Unit) {
             aggTexts = aggTexts,
             onChanged = { slot ->
                 update { s ->
-                    s.copy(down = slot, preview = previewOf(s.copy(down = slot), termNames, upLabel, downLabel))
+                    s.copy(down = slot, preview = previewOf(s.copy(down = slot), termNames, upLabel, downLabel, moreItemsFormat))
                 }
             },
         )
@@ -808,18 +810,17 @@ internal fun previewOf(
     termNames: Array<String>,
     upLabel: String,
     downLabel: String,
+    /** 「X 等 N 项」的格式串，由调用方按当前语言传入 */
+    moreFormat: String = "%1\$s 等 %2\$d 项",
 ): String {
     fun slotText(slot: QuickConfigStore.Slot): String {
         val first = slot.terms.firstOrNull() ?: return "—"
         val name = termNames.getOrElse(QuickConfigCatalog.index(first.source)) { first.source }
         return if (slot.terms.size > 1) {
-            stringResQuick(name, slot.terms.size)
+            String.format(moreFormat, name, slot.terms.size)
         } else {
             name
         }
     }
     return upLabel + " " + slotText(scheme.up) + " · " + downLabel + " " + slotText(scheme.down)
 }
-
-/** 非 composable 上下文里的「X 等 n 项」拼接（目标进程也要用，不能取资源） */
-private fun stringResQuick(name: String, count: Int): String = "$name 等${count}项"

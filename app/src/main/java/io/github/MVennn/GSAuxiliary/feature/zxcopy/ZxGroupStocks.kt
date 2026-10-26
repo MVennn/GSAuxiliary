@@ -158,7 +158,9 @@ object ZxGroupStocks {
         }.getOrNull()
         if (current != null && current in 0 until pager.childCount) {
             val c = pager.getChildAt(current)
-            if (c != null && c.width > 0) return c
+            // 子视图顺序是插入序：分组删除/重排触发重建后可能不等于页序。
+            // 只有 left 贴近 pager 左内边距（当前页位置）时才认它，否则走兜底。
+            if (c != null && c.width > 0 && abs(c.left - pager.paddingLeft) <= 1) return c
         }
         var best: View? = null
         var bestDist = Int.MAX_VALUE

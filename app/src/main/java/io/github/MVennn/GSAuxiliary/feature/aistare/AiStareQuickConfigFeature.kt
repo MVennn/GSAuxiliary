@@ -18,6 +18,7 @@ import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.aistare.quote.HostQuoteSource
 import io.github.MVennn.GSAuxiliary.feature.aistare.quote.QuoteFetcher
+import io.github.MVennn.GSAuxiliary.feature.stgfilter.findActivity
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import org.json.JSONTokener
 import java.lang.ref.WeakReference
@@ -717,7 +718,9 @@ class AiStareQuickConfigFeature : Feature {
             for (ref in snapshot) {
                 val wv = ref.get() ?: continue
                 runCatching {
-                    val act = wv.context as? android.app.Activity ?: return@runCatching
+                    // WebView 的 context 可能被 ContextThemeWrapper 包一层，
+                    // 直接 as? Activity 会静默跳过，页面就不会刷新。
+                    val act = findActivity(wv.context) ?: return@runCatching
                     if (act.isFinishing) return@runCatching
                     if (act.javaClass.name != AISTARE_INDEX_ACT) return@runCatching
                     wv.reload()

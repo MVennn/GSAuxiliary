@@ -35,8 +35,8 @@ internal class StgFilterPanelBuild(private val feature: StgStockFilterFeature) {
     /** 三点菜单窗口被我们改过的原始高度，撤销时还原 */
     private val popupOriginalHeight = Collections.synchronizedMap(WeakHashMap<PopupWindow, Int>())
 
-    /** 菜单容器归一化前的 lp.height（多数场景容器无 lp，为 null 不还原） */
-    @Volatile private var parentOriginalHeight: Int? = null
+    /** 菜单容器归一化前的 lp.height，按容器记账（多个菜单实例互不覆盖） */
+    private val parentOriginalHeight = Collections.synchronizedMap(WeakHashMap<ViewGroup, Int>())
 
     // ------------------------------------------------------------------ 菜单注入
 
@@ -148,7 +148,7 @@ internal class StgFilterPanelBuild(private val feature: StgStockFilterFeature) {
             c.layoutParams = p
         }
         // 审查 2026-10-17 低-10：容器原 lp.height 非 null 时存档，还原时按原值放回
-        parentOriginalHeight = parent.layoutParams?.height?.takeIf { it > 0 }
+        parent.layoutParams?.height?.takeIf { it > 0 }?.let { parentOriginalHeight[parent] = it }
         val lp = parent.layoutParams ?: return
         lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
         parent.layoutParams = lp
@@ -164,9 +164,8 @@ internal class StgFilterPanelBuild(private val feature: StgStockFilterFeature) {
             c.layoutParams = p
         }
         // 审查 2026-10-17 低-10：归一化改过容器 lp.height 的，按存档原值还原
-        parentOriginalHeight?.let {
+        parentOriginalHeight.remove(parent)?.let {
             parent.layoutParams?.height = it
-            parentOriginalHeight = null
         }
     }
 
