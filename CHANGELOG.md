@@ -41,6 +41,19 @@
   `check_dead_symbols` / `hygiene imports` 全过；200 条单测与 `verify_apk` 通过；
   真机待验（设备离线，包已备）。
 
+### 修复全选在宿主 8.7.0 上的坐标错位（2026-10-27）
+
+- 修复 显示缺勾 —— 策略页「全选 / 反选」；宿主 8.7.0 的 `AIStkStgDetailAct.checkCodes`
+  字段仍在但**恒为空**（真机实测：手动点一行、全选 3 只后 `checkCodes.size` 都是 0，
+  底部计数正常），选中态只在框架的 checked states 里。8.6.0 时代为了让 `checkCodes`
+  读到，checked states 写在**全量位置**；8.7.0 的框架 `setupChild` 与宿主 `getView`
+  都按**适配器位置**读表，筛选下两套坐标错位，屏幕上一个勾都没有（用户第三次报）。
+  现在合成点击与手动点行完全一致：传适配器位置、不绕过筛选回映射；`tableRowStates` /
+  探针 / 显示刷新 / `SnapSelection` 统一读适配器位置；`readHostModel` 把空表当不可用
+  （否则会与底部计数分叉，把整屏勾抹掉）。
+- 验证 —— 真机（魅族 20 / Android 16 / 宿主 8.7.0）：未筛选全选 3/3、反选 0/3；
+  筛选下全选 1/1、反选 0/1，按钮文案与计数同步，截屏确认勾可见。
+
 ### 修复编译（2026-10-27）
 
 - 修复 `ModulePreferences.kt` 的 dirty 键合并编不过 —— `SharedPreferences.all` 的值类型是

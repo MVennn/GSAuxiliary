@@ -164,38 +164,36 @@ toggleAll()
     `mCheckStates`（框架 `AbsListView.java:1231-1232`，且无条件 `handled=true`），
     下一轮读表只会看到目标态。这类漏选只能靠真机日志与宿主行为去查（§4.3）。
 
-### 2.3.1 与「策略详情页筛选股票」叠加（2026-10-20 真机修复）
+### 2.3.1 与「策略详情页筛选股票」叠加
 
 筛选用一层**过滤代理**挂在 ListView 上：列表里第 N 行对应宿主全量数据的 `keptIndices[N]`。
-这里有两套坐标，**不能混用**：
+三套坐标：
 
 | 坐标 | 谁在用 |
 |---|---|
-| **子集下标**（0..保留数-1） | 过滤代理的 `getView` / `getItem`；`performItemClick` 的 `position` 初值 |
-| **适配器位置**（header + 子集下标） | `AbsListView.mCheckStates`、屏幕上的 `CheckedTextView`、`mCheckedItemCount` |
-| **全量下标**（宿主 `data` 的 0..N-1） | 宿主的多选模型（`checkCodes` 等）；手动点行要转给宿主的 `position` 是 `header + 全量下标` |
+| **子集下标**（0..保留数-1） | 过滤代理的 `getView` / `getItem` |
+| **适配器位置**（header + 子集下标） | `AbsListView.mCheckStates`、屏幕上的 `CheckedTextView`、`mCheckedItemCount`、宿主 `getView` |
+| **全量下标**（宿主 data 的 0..N-1） | 筛选包装器转发给宿主监听器的 position |
 
-事故现场（50e / 21 只 / 涨家筛选后可见 301330、300815、002956）：
+> **2026-10-27 起：合成点击与手动点行走同一套坐标（适配器位置）。**
+> 宿主 8.7.0 的 `AIStkStgDetailAct.checkCodes` 字段仍然存在，但**恒为空**（真机实测：
+> 手动点一行、全选 3 只，`checkCodes.size` 都是 0，底部计数正常）—— 选中态只在框架的
+> checked states 里。8.6.0 时代为了让 `checkCodes` 读到，checked states 写在**全量位置**；
+> 8.7.0 上框架 `setupChild` / 宿主 `getView` 都按**适配器位置**读表，两套坐标错位，
+> 筛选下屏幕上一个勾都没有（用户第三次报「全选所有钩子都不勾」）。
+> 现在：
+> 1. **合成点击传适配器位置**（`pos = header + 子集下标`），**不**用
+>    `runWithRemapBypassed` —— 筛选包装器自己会把 position 换成全量下标再转给宿主监听器，
+>    与用户手动点行完全一致；
+> 2. `tableRowStates` / `probeRowStates` / 显示刷新 / `SnapSelection` 统一读适配器位置；
+> 3. `readHostModel` 把**空表当不可用**（返回 null），不再把「模型为空」当成「一只没选」——
+>    否则会和底部计数分叉，把整屏勾抹掉。
+> 宿主模型可用时（8.6.0）仍然优先按它判，坐标无关。
 
-- 旧实现把**子集下标**交给 `performItemClick`，再由筛选 wrapper 在转发给宿主监听器时换成全量下标；
-- 但 `AbsListView.performItemClick` 在调到 wrapper **之前**就用传入的 position 写了
-  `mCheckStates` —— 宿主的多选模型读的正是这份表；
-- 结果：界面勾着 A/B/C，`确认添加` 收到的却是全量前 3 只（688787、688768、600178）。
-  第一次可能刚好加进去，第二次这 3 只已经在自选里 → 宿主提示「已在该组合」。
-
-修复分两半，缺一不可：
-
-1. **合成点击直接传全量下标**：`pos = header + fullIndexAt(index)`，并用
-   `StgFilterBridge.runWithRemapBypassed { … }` 让筛选 wrapper **原样放行**
-   （否则它会把全量下标再当子集下标映射一次）。这样框架写的 checked states 与宿主收到的
-   position 都是全量坐标。放行标记也覆盖过滤代理的 `getItem` / `getItemId` ——
-   `setItemChecked(全量下标)` 维护 `mCheckedIdStates` 时不会再映射一次（2026-10-21）。
-2. **手动点行只改转发给宿主的 position，不搬 checked states**（2026-10-21 真机修正）：
-   框架按**适配器位置**（header + 子集下标）取反写 `mCheckStates`，屏幕上的
-   `CheckedTextView` 与 `mCheckedItemCount` 读的就是这一格；宿主需要的是
-   `header + 全量下标`。两边各用各的坐标 —— 把状态搬到全量位置会让勾选落到**下一行**
-   （真机：点第 3 行勾中第 4 行）。宿主模型由 `onItemClick(mapped)` 更新，实测分组页
-   能正确识别被点股票是否在自选里。
+历史背景（8.6.0 真机，保留）：旧实现把子集下标交给 `performItemClick`，而当时宿主的
+多选模型读的是 `mCheckStates`，于是界面勾着 A/B/C、`确认添加` 收到的却是全量前 3 只；
+当时的修法是合成点击传全量下标 + 放行回映射。**那条只适用于 `checkCodes` 还会更新的
+宿主版本**，8.7.0 起已废弃（见上）。
 
 另外，**可见行必须传真实子 View**：宿主的点击处理会就地把这一行的勾选框打上；
 用脱离列表的探针 View 只会改到探针，屏幕上看不到勾。屏外行仍然用探针 View。
@@ -230,6 +228,8 @@ toggleAll()
 > （那份表此时就是准的），不再整行跳过。只在显示与目标不一致时才写，
 > 不会每帧 `invalidate`。**仍然只改显示**：不写 checked states、不碰宿主模型
 > （用户验收口径：勾只是给别人看的，计数 / 确认添加由宿主自己维护）。
+> 宿主模型不可用（8.7.0 起 `checkCodes` 恒空）时它**直接不画** —— 此时框架按适配器位置
+> 自己渲染就是对的，插手只会把正确状态盖掉（见 §2.3.1）。
 
 每次刷之前逐行核对筛选下标表是否还是当前这份，对不上就整趟不刷（绝不拿旧表往新列表上画）。
 **歧义行不画**：手动点行写的是适配器位置、全选写的是全量位置；当某行的全量下标恰好也是

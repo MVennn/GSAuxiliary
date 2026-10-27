@@ -337,13 +337,13 @@ class StgSelectAllFeature : Feature {
         if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
         val ctId = checkboxId(lv)
         if (ctId == 0) return
-        val codes = readHostModel(lv) ?: return
-        // 与 takeShot / refreshVisibleChecked 同一口径：模型与底部计数硬分叉时**不画**。
-        // 空表不是 null —— 不挡的话模型暂时为空时会把整屏勾每帧抹掉（比不修还糟）。
-        // 筛选下计数含被筛掉的行，「模型空表 + 计数 > 0」不一定是分叉，不能据此挡。
-        val filtered = isFilterProxy(adapter)
+        val codes = readHostModel(lv)
+        // 宿主模型不可用（2026-10-27 起宿主 8.7.0 的 `checkCodes` 恒空）：
+        // 显示由框架按**适配器位置**自己维护（与手动点行同一套坐标），这里不插手 ——
+        // 插手只会把正确状态盖掉。
+        if (codes == null) return
+        // 模型非空、计数却是 0 —— 两份数据硬分叉，不画
         val hostCount = selectedCount(lv)
-        if (!filtered && hostCount > 0 && codes.isEmpty()) return
         if (hostCount == 0 && codes.isNotEmpty()) return
         val selected = codes.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
@@ -364,8 +364,8 @@ class StgSelectAllFeature : Feature {
                 val hit = selected.contains(StgSelectAllPlan.normalizeCode(code))
                 if (hit) matchedAny = true
                 hit
-            } else if (!filtered && multiple) {
-                // 没有筛选时两套坐标是同一套：checked states 就是准的，别整行漏掉
+            } else if (multiple) {
+                // 读不到行代码就退回 checked states（适配器位置，与手动点行同一套）
                 lv.isItemChecked(header + index)
             } else {
                 continue
@@ -868,7 +868,7 @@ class StgSelectAllFeature : Feature {
         // 表是 `performItemClick` 自己写过的，宿主静默忽略一次点击时表里就是目标态；
         // 拿表当裁判会把用户这次报的「模型漏行」重新盖回去。计数只用于
         // 「0 vs 非空」这种硬分叉（见上面的早退）和 `statesFromCodes` 的可用性判据。
-        val tableChecked = tableRowStates(lv, total, mapping)?.count { it }
+        val tableChecked = tableRowStates(lv, total)?.count { it }
         if (modelBefore != null && tableChecked != null &&
             tableChecked != modelBefore.count { it }
         ) {
@@ -941,7 +941,7 @@ class StgSelectAllFeature : Feature {
         filtered: Boolean,
         retry: Boolean,
     ): BooleanArray {
-        val table = tableRowStates(lv, total, full)
+        val table = tableRowStates(lv, total)
         val tableChecked = table?.count { it }
         return when (StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered, retry)) {
             // 宿主计数是「全量选中数」：为 0 就表示没有任何行被选中
@@ -951,17 +951,22 @@ class StgSelectAllFeature : Feature {
                 if (table != null && !retry) {
                     GLog.w("全选：checked states（$tableChecked）与宿主计数（$hostCount）不一致，改用探针")
                 }
-                probeRowStates(lv, adapter, ctId, total, full)
+                probeRowStates(lv, adapter, ctId, total)
             }
         }
     }
 
-    /** 从框架的 checked states 读（全量坐标）；宿主不用 ListView 多选模式时返回 null */
-    private fun tableRowStates(lv: ListView, total: Int, full: IntArray): BooleanArray? {
+    /**
+     * 从框架的 checked states 读。
+     *
+     * 2026-10-27 起统一用**适配器位置**（header + 子集下标）：宿主 8.7.0 的 `checkCodes`
+     * 已不承载选中态，框架、宿主 `getView`、手动点行读写的都是这一格。
+     */
+    private fun tableRowStates(lv: ListView, total: Int): BooleanArray? {
         if (lv.choiceMode == ListView.CHOICE_MODE_NONE) return null
         val header = lv.headerViewsCount
         val out = BooleanArray(total)
-        for (i in 0 until total) out[i] = lv.isItemChecked(header + full[i])
+        for (i in 0 until total) out[i] = lv.isItemChecked(header + i)
         return out
     }
 
@@ -976,7 +981,6 @@ class StgSelectAllFeature : Feature {
         adapter: android.widget.ListAdapter,
         ctId: Int,
         total: Int,
-        full: IntArray,
     ): BooleanArray {
         val header = lv.headerViewsCount
         val out = BooleanArray(total)
@@ -986,7 +990,7 @@ class StgSelectAllFeature : Feature {
             val ct = probe?.findViewById<View>(ctId) as? CheckedTextView
             if (ct == null) {
                 missing++
-                out[i] = lv.isItemChecked(header + full[i])
+                out[i] = lv.isItemChecked(header + i)
             } else {
                 out[i] = ct.isChecked
             }
@@ -1048,15 +1052,13 @@ class StgSelectAllFeature : Feature {
             }
         }
 
-        // ⚠️ 「视图位置」与「数据位置」在筛选生效时是两套坐标（2026-10-20 真机）：
-        // ListView 上挂的是过滤代理，`performItemClick` 的 position 是**子集下标**；
-        // 而宿主的多选模型从 ListView 的 checked states 取值，框架又是用**传入的
-        // position** 写这份表。所以合成点击必须直接把**全量下标**传进去：
-        // 框架写对位置、宿主收到对位置，回映射层用 [StgFilterBridge.runWithRemapBypassed]
-        // 原样放行（否则它会把全量下标再当子集下标映射一次）。
-        val pos = run.headerCount + (full?.get(index) ?: index)   // 传给宿主的**全量**位置
-        val proxyPos = run.headerCount + index                     // 列表里那一行的实际位置（子集）
-        val childIdx = proxyPos - lv.firstVisiblePosition
+        // 2026-10-27：宿主 8.7.0 起 `checkCodes` 不再承载选中状态（实测永远为空），
+        // 选中态只在框架的 checked states 里，而框架/宿主 `getView`/手动点行用的都是
+        // **适配器位置**（header + 子集下标）。所以合成点击必须和手动点行**完全同一条路径**：
+        // 传适配器位置、不做回映射绕过 —— 筛选包装器自己会把 position 换成全量下标
+        // 再转给宿主监听器，checked states 与屏幕上的勾选框都留在适配器位置。
+        val pos = run.headerCount + index                     // 适配器位置（与手动点行一致）
+        val childIdx = pos - lv.firstVisiblePosition
         val visible = childIdx in 0 until lv.childCount
         // 可见行传真实子 View（宿主的点击处理会**就地**把这一行的勾选框打上）；
         // 屏外行现造探针 View（宿主用 position 定位，不看 View 是否在屏上）。
@@ -1156,10 +1158,9 @@ class StgSelectAllFeature : Feature {
         }
         if (prev != null) {
             try {
-                // `pos` 是全量坐标；筛选期间代理已关掉 stable id
-                // （见 FilteredAdapter.hasStableIds），但放行标记仍要带上 ——
-                // 若宿主自己覆写了 id 逻辑，不能让它再映射一次。
-                StgFilterBridge.runWithRemapBypassed { lv.setItemChecked(pos, !run.wantChecked) }
+                // `pos` 是适配器位置（与手动点行一致）：框架的 checked states 与屏幕上的
+                // 勾选框都读这一格，筛选包装器自己负责把 position 换成全量下标转给宿主。
+                lv.setItemChecked(pos, !run.wantChecked)
             } catch (t: Throwable) {
                 noteFailure(run, "第 $index 行预置勾选态失败，跳过（下一轮再试）", t)
                 return
@@ -1178,9 +1179,9 @@ class StgSelectAllFeature : Feature {
         }
         try {
             var handled = false
-            StgFilterBridge.runWithRemapBypassed {
-                handled = lv.performItemClick(row, pos, id)
-            }
+            // 不绕过回映射：筛选包装器会把适配器位置换成全量下标再转给宿主监听器，
+            // 与手动点行完全一致（2026-10-27）。
+            handled = lv.performItemClick(row, pos, id)
             if (!handled) {
                 // 普通多选模式下不可达（框架无条件 handled=true）；单选/模态已被守卫挡掉。
                 // 保留这一支只为兜住框架行为变化，不做回滚（原因见函数注释）。
@@ -1417,23 +1418,12 @@ class StgSelectAllFeature : Feature {
                         val code = rowCode(adapter, index)
                         when {
                             code != null -> hostSet.contains(StgSelectAllPlan.normalizeCode(code))
-                            // 没有筛选时两套坐标是同一套：checked states 就是准的。
-                            // 别因为读不到行代码把这一行整趟漏掉（2026-10-27 第三次报「有些行不显示勾」）
-                            full == null && multiple -> lv.isItemChecked(header + index)
+                            // 读不到行代码就退回 checked states（适配器位置，与手动点行同一套）
+                            multiple -> lv.isItemChecked(header + index)
                             else -> null
                         }
                     }
-                    multiple -> {
-                        val key = full?.get(index) ?: index
-                        // ⚠️ 歧义行不画：手动点行写的是**适配器位置**（子集下标），
-                        // 全选写的是**全量位置**；当 full[index] 恰好也是另一个子集行的下标时，
-                        // 表里那个 key 可能是「那一行被手动勾上」而不是「这一行被全选勾上」。
-                        // 读它会把别的行的选择画到这一行上 —— 宁可不画，交给宿主自己渲染。
-                        if (full != null && key != index && key in 0 until total) {
-                            return@runCatching null
-                        }
-                        lv.isItemChecked(header + key)
-                    }
+                    multiple -> lv.isItemChecked(header + index)
                     // 没有 checked states 可读（CHOICE_MODE_NONE）：只在一次失败都没有时
                     // 按目标刷 —— 否则屏幕会显示一个宿主模型里并不存在的勾
                     run.failedTotal == 0 -> run.wantChecked
@@ -1470,7 +1460,7 @@ class StgSelectAllFeature : Feature {
         val filtered = fullIndices(realAdapter, total)
         val full = filtered ?: IntArray(total) { it }
         val hostCount = selectedCount(button)
-        val tableChecked = if (total > 0) tableRowStates(lv, total, full)?.count { it } else null
+        val tableChecked = if (total > 0) tableRowStates(lv, total)?.count { it } else null
         val source = StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered != null)
         // 宿主模型优先：它才是底部计数 / 确认添加的来源。读不到才退回原来的判据。
         val modelStates = if (total > 0) {
@@ -1717,6 +1707,10 @@ class StgSelectAllFeature : Feature {
                 }
                 out.add(code)
             }
+            // 空表 = 不可用（2026-10-27 真机：宿主 8.7.0 的 `checkCodes` 恒空，
+            // 选中态只在框架的 checked states 里）。空表若当「一只没选」用，
+            // 会和底部计数分叉，把整屏勾抹掉。
+            if (out.isEmpty()) return null
             out
         }.onFailure { GLog.w("策略全选：遍历宿主模型失败，退回 checked states", it) }
             .getOrNull()

@@ -48,10 +48,9 @@ internal object SnapSelection {
                 "当前筛选状态读不到，请先关闭筛选再试",
             )
         }
-        val mapping = full ?: IntArray(total) { it }
         val header = lv.headerViewsCount
 
-        val checked: BooleanArray = readChecked(activity, lv, adapter, total, mapping, header)
+        val checked: BooleanArray = readChecked(activity, lv, adapter, total, header)
             ?: return SelectionResult.Fail(
                 "checked states / 探针都读不到",
                 "读不到勾选状态，请重进多选态再试",
@@ -106,7 +105,6 @@ internal object SnapSelection {
         lv: ListView,
         adapter: ListAdapter,
         total: Int,
-        full: IntArray,
         header: Int,
     ): BooleanArray? {
         if (lv.choiceMode != ListView.CHOICE_MODE_NONE) {
@@ -114,7 +112,10 @@ internal object SnapSelection {
             readFromHostModel(activity, adapter, total)?.let { return it }
             val out = BooleanArray(total)
             for (i in 0 until total) {
-                out[i] = runCatching { lv.isItemChecked(header + full[i]) }.getOrDefault(false)
+                // 2026-10-27：checked states 一律按**适配器位置**（header + 子集下标）读 ——
+                // 与手动点行、框架 `setupChild`、宿主 `getView` 同一套坐标。
+                // 宿主 8.7.0 的 `checkCodes` 已恒空，这条是主路径。
+                out[i] = runCatching { lv.isItemChecked(header + i) }.getOrDefault(false)
             }
             return out
         }
