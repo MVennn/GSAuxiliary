@@ -35,6 +35,8 @@
   checked states），退出多选态 / 关开关 / 页面销毁即摘。行代码从过滤代理的
   `getItem` 取，彻底绕开两套坐标；未筛选时读不到代码退回 checked states，
   不再整行跳过。用户验收口径：勾只是给别人看的，计数 / 确认添加由宿主维护。
+  另加一道硬护栏：模型非空但当前列表**一只都对不上**时整屏不画（记一条 WARN）——
+  宿主换了字段 / 代码格式变了时，最多不帮忙，绝不会把已勾的行每帧刷回没勾。
 - 验证 —— 编译通过；`check_invariants` / `check_contract` / `check_switches` /
   `check_dead_symbols` / `hygiene imports` 全过；200 条单测与 `verify_apk` 通过；
   真机待验（设备离线，包已备）。

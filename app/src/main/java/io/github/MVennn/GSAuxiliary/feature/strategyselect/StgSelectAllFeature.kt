@@ -215,6 +215,9 @@ class StgSelectAllFeature : Feature {
     /** 绘制前画勾持续异常只记一条（每帧都失败会刷屏） */
     @Volatile private var visualFailLogged = false
 
+    /** 「模型与当前列表一只都对不上」只记一条，供真机日志定位宿主字段变化 */
+    @Volatile private var modelMismatchLogged = false
+
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgSelectAll
 
     // ------------------------------------------------------------------ 安装
@@ -347,6 +350,10 @@ class StgSelectAllFeature : Feature {
             lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
         val header = lv.headerViewsCount
         val first = lv.firstVisiblePosition
+        // 先把这一屏算完再写：要确认模型和列表确实对得上，才允许动手
+        val rows = ArrayList<View>(lv.childCount)
+        val wanted = ArrayList<Boolean>(lv.childCount)
+        var matchedAny = false
         for (i in 0 until lv.childCount) {
             val index = first + i - header
             if (index !in 0 until total) continue
@@ -354,13 +361,34 @@ class StgSelectAllFeature : Feature {
             val code = rawCodeOfItem(runCatching { adapter.getItem(index) }.getOrNull())
                 ?.takeIf { StgSelectAllPlan.isCodeLike(it) }
             val checked = if (code != null) {
-                selected.contains(StgSelectAllPlan.normalizeCode(code))
+                val hit = selected.contains(StgSelectAllPlan.normalizeCode(code))
+                if (hit) matchedAny = true
+                hit
             } else if (!filtered && multiple) {
                 // 没有筛选时两套坐标是同一套：checked states 就是准的，别整行漏掉
                 lv.isItemChecked(header + index)
             } else {
                 continue
             }
+            rows.add(row)
+            wanted.add(checked)
+        }
+        // 硬护栏：模型非空、这一屏却一只都对不上 —— 模型不可信（上一页残值 / 宿主换了字段 /
+        // 代码格式变了）。这时**整屏不画**，最多不帮忙，绝不能把已经勾上的行每帧刷回没勾
+        // （2026-10-27 真机：全选后一个勾都没有）。
+        if (codes.isNotEmpty() && !matchedAny && rows.isNotEmpty()) {
+            if (!modelMismatchLogged) {
+                modelMismatchLogged = true
+                GLog.w(
+                    "全选：宿主模型与当前列表一只都对不上" +
+                        "（模型 ${codes.size} 项 / 计数 $hostCount / 可见 ${rows.size} 行），本次不画",
+                )
+            }
+            return
+        }
+        for (k in rows.indices) {
+            val row = rows[k]
+            val checked = wanted[k]
             val root = row as? Checkable
             val ct = row.findViewById<View>(ctId) as? CheckedTextView
             if (root?.isChecked == checked && ct?.isChecked == checked &&
@@ -1355,6 +1383,30 @@ class StgSelectAllFeature : Feature {
         val hostSet = hostCodes?.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
             lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
+        // 与 [paintVisibleRows] 同一道硬护栏：没有筛选、计数 > 0、模型非空，但这一屏
+        // 一只都对不上 —— 模型不可信（上一页残值 / 宿主换了字段），整趟不画。
+        if (hostSet != null && hostSet.isNotEmpty() && full == null && run.hostCount > 0) {
+            var matchedAny = false
+            for (i in 0 until lv.childCount) {
+                val index = first + i - header
+                if (index !in 0 until total) continue
+                val code = rowCode(adapter, index) ?: continue
+                if (hostSet.contains(StgSelectAllPlan.normalizeCode(code))) {
+                    matchedAny = true
+                    break
+                }
+            }
+            if (!matchedAny) {
+                if (!modelMismatchLogged) {
+                    modelMismatchLogged = true
+                    GLog.w(
+                        "全选：宿主模型与当前列表一只都对不上" +
+                            "（模型 ${hostSet.size} 项 / 计数 ${run.hostCount}），本次不刷显示",
+                    )
+                }
+                return
+            }
+        }
         for (i in 0 until lv.childCount) {
             val index = first + i - header
             if (index !in 0 until total) continue
