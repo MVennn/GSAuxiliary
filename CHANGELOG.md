@@ -9,6 +9,42 @@
 
 > 本批为审查修复，**未发版**（版本号未动，见 `docs/VERSIONING.md` §5）。
 
+### 修复批量截图越截越慢（2026-10-27）
+
+- 修复 内存累积 —— 个股详情页底栏「智能盯盘」入口；注入记账只在 `Activity.onDestroy`
+  清，分页器销毁掉的页仍留一条过期记录。`Injected` 强持有 WeakHashMap 的 key（盒子），
+  弱键永远不可达，盒子沿父链把**整页视图树**钉在内存里。「截图并添加」在同一个
+  `StockFragAct` 里翻 90 页时，约 50 页开始 GC 抖动、90 页龟速。
+  现在每趟 `sync()` 先按「盒子不在窗口上」清掉过期记账（判据与 `settled()` 的过期分支
+  一致，只丢账、不还原），`needsFollowUp` 每次布局遍历的表也从 N 条压回 1~3 条。
+  该泄漏同样影响普通自选列表长距离滑动，只是不易撞到上限。
+- 验证 —— SDK 装到仓库内 `.work/android-sdk`（`local.properties` 已指过去，该文件被
+  gitignore），`:app:compileReleaseKotlin` / `:app:testReleaseUnitTest`（200 条）/
+  `:app:assembleRelease` 全过；`check_invariants` / `check_contract` / `check_switches` /
+  `check_dead_symbols` / `verify_apk --reject-debug-cert` 全过。用户复测 90 只未再出现
+  越截越慢；内存曲线因设备中途断开只采到一个点（PSS 359MB），未做完整对比。
+
+### 修复全选的对钩显示（2026-10-27）
+
+- 修复 显示缺勾 —— 策略页「全选 / 反选」；前两次只修了「点完那一刻」的显示
+  （收尾刷一次 + 下一帧 pre-draw 再刷一次），宿主之后任何一次重新绑行
+  （行情推送 / 筛选重算 / 从别的页面回来）都会由 `setupChild()` 按「适配器位置」
+  重写行根，筛选下与全选写的「全量位置」错位，勾又消失。
+  现在多选态期间在列表上常驻一个「绘制前」回调：每一帧按宿主 `checkCodes`
+  把可见行画对（只写行根 `Checkable` / `#ct_item` / `activated`，不碰宿主模型和
+  checked states），退出多选态 / 关开关 / 页面销毁即摘。行代码从过滤代理的
+  `getItem` 取，彻底绕开两套坐标；未筛选时读不到代码退回 checked states，
+  不再整行跳过。用户验收口径：勾只是给别人看的，计数 / 确认添加由宿主维护。
+- 验证 —— 编译通过；`check_invariants` / `check_contract` / `check_switches` /
+  `check_dead_symbols` / `hygiene imports` 全过；200 条单测与 `verify_apk` 通过；
+  真机待验（设备离线，包已备）。
+
+### 修复编译（2026-10-27）
+
+- 修复 `ModulePreferences.kt` 的 dirty 键合并编不过 —— `SharedPreferences.all` 的值类型是
+  `Any?`，`putValue` 要 `Any`；上一批（`cc97cee`）当时本机缺 SDK 未编译，所以没暴露。
+  补一条判空（`SharedPreferences` 的值不会是 null）后才编得过。
+
 ### 全仓审查修复（2026-10-26）
 
 - 修复 断连期间的配置改动在重连后被静默丢弃 —— 原来只补「远端没有的键」，

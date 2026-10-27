@@ -181,9 +181,10 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     /** 这一份现场算不算「看过一眼、确实落地」—— [needsFollowUp] 的判据 */
     private fun settled(e: Injected): Boolean {
-        // 盒子已经不在窗口上（分页器把那一页销毁了）：这份记账只是**过期**，不是「没落地」——
-        // 宿主把那一页翻回来是**新的**视图对象，会走一次全新的注入。不这么判的话，
-        // 一根残留记账就能让本页永远不进限速闸（滚动期每帧全量重扫）。
+        // 盒子不在窗口上（分页器刚把那一页销毁、还没来得及走 [purgeDetachedPages]）：
+        // 这份记账只是**过期**，不是「没落地」—— 宿主重新铺开这一页时记账已经失效，
+        // 会走一次全新的注入。不这么判的话，一根残留记账就能让本页永远不进限速闸
+        // （滚动期每帧全量重扫）。
         if (!e.box.isAttachedToWindow) return true
         if (e.holder.parent !== e.box) return false
         if (e.button.parent !== e.holder) return false
@@ -410,6 +411,8 @@ class StockDetailBarFeature : PageSyncFeature() {
      * 返回 `false` = 底栏在、却一个都没同步成功 —— 这才是真异常，交给基类累计次数并打快照。
      */
     override fun sync(env: FeatureEnv, activity: Activity): Boolean {
+        // 分页器销毁掉的页只留一条过期记账：每趟先清掉，再对齐当前页面
+        purgeDetachedPages()
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         seenDecors[root] = true   // 留个扫描起点给热重载兜底清理（弱引用，页面销毁自动失效）
         val barId = resolveId(root.context, IdKey.BOTTOM_BAR)
@@ -434,6 +437,26 @@ class StockDetailBarFeature : PageSyncFeature() {
             }
         }
         return true
+    }
+
+    /**
+     * 丢掉「那一页已经被分页器销毁」的记账。
+     *
+     * 值 [Injected] 强持有 key（`box`），WeakHashMap 的弱键永远不可达，条目只能手动删；
+     * 而 `box` 沿父链挂着**整页视图树**（K 线、行情头、五档都在里面）。详情页一个
+     * Activity 里翻多少页就攒多少条，只增不删会一路涨到 GC 抖动 —— 「截图并添加」
+     * 一次翻 90 只时 50 页就开始掉帧（2026-10-26 真机反馈）。
+     *
+     * 判据与 [settled] 的过期分支一致：盒子不在窗口上就是那一页没了。视图已随页面
+     * 销毁，**只丢账、不还原**（与 [onActivityDestroyed] 同一口径）。
+     */
+    private fun purgeDetachedPages() {
+        val n = synchronized(injected) {
+            val dead = injected.keys.filter { !it.isAttachedToWindow }
+            dead.forEach { injected.remove(it) }
+            dead.size
+        }
+        if (n > 0) GLog.d("底栏入口：清理 $n 份已销毁页面的注入记账")
     }
 
     /**

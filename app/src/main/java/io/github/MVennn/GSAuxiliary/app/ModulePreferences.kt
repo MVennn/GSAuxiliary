@@ -114,6 +114,8 @@ object ModulePreferences {
         val ok = runCatching {
             val e = rp.edit()
             for ((k, v) in missing) {
+                // `SharedPreferences.all` 的值不会是 null，但平台签名给的是 Any?
+                if (v == null) continue
                 putValue(e, k, v)
                 written++
             }

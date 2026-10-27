@@ -197,6 +197,24 @@ class StgSelectAllFeature : Feature {
     private val buttonByList =
         Collections.synchronizedMap(WeakHashMap<ListView, TextView>())
 
+    /**
+     * 当前处于多选态、已经注入按钮的那个列表（弱引用）。
+     *
+     * 「绘制前画勾」回调（[installVisualSync]）靠它判断该不该继续画：
+     * 退出多选态时置空，回调看到不匹配就自摘。
+     */
+    @Volatile private var activeList: WeakReference<ListView>? = null
+
+    /** 多选态期间挂在列表上的「绘制前画勾」回调（与 [activeList] 同生命周期） */
+    private var visualLv: WeakReference<ListView>? = null
+
+    /** 注册时的那份 VTO：脱窗后 `lv.viewTreeObserver` 会换一个新的，必须按这一份摘 */
+    private var visualVto: android.view.ViewTreeObserver? = null
+    private var visualListener: android.view.ViewTreeObserver.OnPreDrawListener? = null
+
+    /** 绘制前画勾持续异常只记一条（每帧都失败会刷屏） */
+    @Volatile private var visualFailLogged = false
+
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgSelectAll
 
     // ------------------------------------------------------------------ 安装
@@ -230,6 +248,143 @@ class StgSelectAllFeature : Feature {
         }
         if (hooked == 0) GLog.e("全选：没挂上 Activity.onResume") else
             GLog.i("策略全选：已挂 $hooked 个 Activity.onResume")
+    }
+
+    /**
+     * 多选态期间常驻的「画勾」回调：**每一帧绘制之前**按宿主选中模型把可见行画对。
+     *
+     * 为什么必须在「绘制前」而不是 `getView` 里（2026-10-27 第三次报「有些行不显示勾」）：
+     * `AbsListView.obtainView()` 调完 `getView` 之后还有一步 `setupChild()`，它会按
+     * `mCheckStates[适配器位置]` 再写一次行根 `Checkable` —— 筛选生效时全选写的是
+     * **全量位置**，两套坐标错位，`getView` 里画的会被这一下盖掉。`OnPreDraw` 落在
+     * 布局之后、这一帧画出来之前，是唯一「画完不会再被框架改回去」的时点。
+     *
+     * 前两次修的都是「点完那一刻」：收尾刷一次 + 下一帧 pre-draw 再刷一次。宿主之后
+     * 任何一次 `notifyDataSetChanged`（行情推送、筛选重算、从别的页面回来）都会重新绑行，
+     * 勾就又回去了 —— 所以这里改成多选态期间**常驻**。
+     *
+     * **只改显示**：不写 checked states、不碰宿主模型。用户验收口径就是
+     * 「勾只是给别人看的，计数 / 确认添加由宿主自己维护」。
+     */
+    private fun installVisualSync(lv: ListView) {
+        // 同一份列表 + 同一个 VTO 才算已装：列表被摘挂过时 lv.viewTreeObserver 会换一份
+        if (visualLv?.get() === lv && visualListener != null && visualVto === lv.viewTreeObserver) return
+        removeVisualSync()
+        val vto = lv.viewTreeObserver
+        if (!vto.isAlive) return
+        val listener = object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (activeList?.get() !== lv) {
+                    // 已退出多选态：按**注册时那份 VTO** 自摘（脱窗后 lv.viewTreeObserver 已不是它）
+                    runCatching { if (vto.isAlive) vto.removeOnPreDrawListener(this) }
+                    if (visualListener === this) {
+                        visualVto = null
+                        visualListener = null
+                        visualLv = null
+                    }
+                    return true
+                }
+                runCatching { paintVisibleRows(lv) }
+                    .onFailure {
+                        if (!visualFailLogged) {
+                            visualFailLogged = true
+                            GLog.w("全选：绘制前画勾失败（后续同类只静默跳过）", it)
+                        }
+                    }
+                return true
+            }
+        }
+        runCatching { vto.addOnPreDrawListener(listener) }
+            .onFailure {
+                GLog.w("全选：挂绘制前画勾失败", it)
+                return
+            }
+        visualLv = WeakReference(lv)
+        visualVto = vto
+        visualListener = listener
+    }
+
+    private fun removeVisualSync() {
+        val vto = visualVto
+        val l = visualListener
+        visualVto = null
+        visualListener = null
+        visualLv = null
+        if (vto != null && l != null) {
+            runCatching { if (vto.isAlive) vto.removeOnPreDrawListener(l) }
+        }
+    }
+
+    /**
+     * 把**屏上可见**行的勾按宿主模型画对（只改显示）。
+     *
+     * 按「这一行是哪只股票」判，彻底绕开筛选时「全选写全量位置、手动点写子集位置」
+     * 的两套坐标 —— 行代码从过滤代理的 `getItem` 取，代理自己会把子集下标映射回全量。
+     * 模型读不到就什么都不画（拿一份不可信的模型画「全没勾」比不画更糟）。
+     *
+     * 只在显示与目标不一致时才写：`isChecked` / `activated` 会 `invalidate`，
+     * 无条件写会让多选态期间每一帧都重绘。
+     */
+    private fun paintVisibleRows(lv: ListView) {
+        if (!lv.isAttachedToWindow) return
+        val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
+        val total = adapter.count
+        if (total <= 0) return
+        val activity = findActivity(lv) ?: return
+        if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
+        val ctId = checkboxId(lv)
+        if (ctId == 0) return
+        val codes = readHostModel(lv) ?: return
+        // 与 takeShot / refreshVisibleChecked 同一口径：模型与底部计数硬分叉时**不画**。
+        // 空表不是 null —— 不挡的话模型暂时为空时会把整屏勾每帧抹掉（比不修还糟）。
+        // 筛选下计数含被筛掉的行，「模型空表 + 计数 > 0」不一定是分叉，不能据此挡。
+        val filtered = isFilterProxy(adapter)
+        val hostCount = selectedCount(lv)
+        if (!filtered && hostCount > 0 && codes.isEmpty()) return
+        if (hostCount == 0 && codes.isNotEmpty()) return
+        val selected = codes.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
+        val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
+            lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
+        val header = lv.headerViewsCount
+        val first = lv.firstVisiblePosition
+        for (i in 0 until lv.childCount) {
+            val index = first + i - header
+            if (index !in 0 until total) continue
+            val row = lv.getChildAt(i) ?: continue
+            val code = rawCodeOfItem(runCatching { adapter.getItem(index) }.getOrNull())
+                ?.takeIf { StgSelectAllPlan.isCodeLike(it) }
+            val checked = if (code != null) {
+                selected.contains(StgSelectAllPlan.normalizeCode(code))
+            } else if (!filtered && multiple) {
+                // 没有筛选时两套坐标是同一套：checked states 就是准的，别整行漏掉
+                lv.isItemChecked(header + index)
+            } else {
+                continue
+            }
+            val root = row as? Checkable
+            val ct = row.findViewById<View>(ctId) as? CheckedTextView
+            if (root?.isChecked == checked && ct?.isChecked == checked &&
+                (!multiple || row.isActivated == checked)
+            ) {
+                continue
+            }
+            writeRowChecked(lv, row, checked, ctId)
+        }
+    }
+
+    /**
+     * 把一行的勾选显示写成 [checked]。
+     *
+     * 行根是 `CheckedFrameLayout`（`Checkable`）：框架 `setupChild()` /
+     * `updateOnScreenCheckedViews()` 刷的就是它，只改 `#ct_item` 会被下一次布局盖掉。
+     * `activated` 只在多选模式下写（宿主用 `state_activated` 画整行选中态）。
+     */
+    private fun writeRowChecked(lv: ListView, row: View, checked: Boolean, ctId: Int) {
+        (row as? Checkable)?.let { it.isChecked = checked }
+        (row.findViewById<View>(ctId) as? CheckedTextView)?.isChecked = checked
+        val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
+            lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
+        if (multiple && row.isActivated != checked) row.isActivated = checked
     }
 
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
@@ -316,6 +471,8 @@ class StgSelectAllFeature : Feature {
         if (existing != null && existing.parent === anchor.parent) {
             // 已注入：只刷新一下文案（例如从别处切回多选态）
             findListView(anchor)?.let { lv ->
+                activeList = WeakReference(lv)
+                installVisualSync(lv)
                 buttonByList[lv] = existing
                 ensureCountWatcher(env, lv, existing)
                 updateLabel(env, lv, existing)
@@ -342,6 +499,8 @@ class StgSelectAllFeature : Feature {
 
         val lv = findListView(anchor)
         if (lv != null) {
+            activeList = WeakReference(lv)
+            installVisualSync(lv)
             buttonByList[lv] = button
             ensureCountWatcher(env, lv, button)
             updateLabel(env, lv, button)
@@ -431,11 +590,28 @@ class StgSelectAllFeature : Feature {
 
     private fun removeInjected(anchor: TextView) {
         cancelRun()
-        val btn = injected.remove(anchor) ?: return
+        val btn = injected.remove(anchor)
+        if (btn == null) {
+            // 记账可能已被清（热重载 / 宿主换视图）。按**页面**判，不按列表对象：
+            // 同一页把 #lvStks 换掉也要放手；另一页仍在多选态时不能误杀。
+            val act = runCatching { findActivity(anchor) }.getOrNull()
+            val active = activeList?.get()
+            if (act != null && active != null && findActivity(active) === act) {
+                activeList = null
+                removeVisualSync()
+            }
+            return
+        }
         runCatching { (btn.parent as? ViewGroup)?.removeView(btn) }
         removeCountWatcher(btn)
         val lv = buttonByList.entries.firstOrNull { it.value === btn }?.key
-        if (lv != null) buttonByList.remove(lv)
+        if (lv != null) {
+            buttonByList.remove(lv)
+            if (activeList?.get() === lv) {
+                activeList = null
+                removeVisualSync()
+            }
+        }
     }
 
     /** 某一次「读现场」的结果：适配器 / 总行数 / 映射 / 每一行的当前状态 */
@@ -1186,8 +1362,14 @@ class StgSelectAllFeature : Feature {
             val checked = runCatching {
                 when {
                     hostSet != null -> {
-                        val code = rowCode(adapter, index) ?: return@runCatching null
-                        hostSet.contains(StgSelectAllPlan.normalizeCode(code))
+                        val code = rowCode(adapter, index)
+                        when {
+                            code != null -> hostSet.contains(StgSelectAllPlan.normalizeCode(code))
+                            // 没有筛选时两套坐标是同一套：checked states 就是准的。
+                            // 别因为读不到行代码把这一行整趟漏掉（2026-10-27 第三次报「有些行不显示勾」）
+                            full == null && multiple -> lv.isItemChecked(header + index)
+                            else -> null
+                        }
                     }
                     multiple -> {
                         val key = full?.get(index) ?: index
@@ -1212,12 +1394,7 @@ class StgSelectAllFeature : Feature {
                 }
             }.getOrNull() ?: continue
             runCatching {
-                // 行根是 `CheckedFrameLayout`（Checkable）：框架的
-                // `updateOnScreenCheckedViews()` / `setupChild()` 刷的就是它。
-                // 只设 `#ct_item` 会被下一次布局按行根状态盖掉，勾时有时无。
-                (row as? Checkable)?.let { it.isChecked = checked }
-                (row.findViewById<View>(run.ctId) as? CheckedTextView)?.isChecked = checked
-                if (multiple) row.isActivated = checked
+                writeRowChecked(lv, row, checked, run.ctId)
             }.onFailure {
                 if (!refreshRowFailedLogged) {
                     refreshRowFailedLogged = true
@@ -1285,6 +1462,9 @@ class StgSelectAllFeature : Feature {
         cancelRun()
         val anchors = synchronized(injected) { injected.keys.toList() }
         for (a in anchors) removeInjected(a)
+        // 绘制前回调不再画任何行（removeInjected 已经清过；这里兜「记账丢了」的路径）
+        activeList = null
+        removeVisualSync()
         // ⚠️ 按钮撤了还不够：watcher 也得摘（规则 1.1：install 落下的每一笔都要能撤掉）。
         // 原先只摘按钮 → 「取消」按钮**永久**挂着一个 watcher（闭包持有 env → 钉住旧实例）。
         val watched = synchronized(watchers) { watchers.keys.toList() }
@@ -1312,6 +1492,13 @@ class StgSelectAllFeature : Feature {
         // 正在跑的一轮若挂在这一页的列表上，先停；它的 postDelayed 可能再也不执行
         val runningLv = runList?.get()
         if (runningLv != null && belongsToPage(runningLv, activity, decor)) cancelRun()
+
+        // 绘制前回调只认「正在画勾」的那个列表；页面没了就别再往上画
+        val painting = activeList?.get()
+        if (painting != null && belongsToPage(painting, activity, decor)) {
+            activeList = null
+            removeVisualSync()
+        }
 
         // 注入按钮：只删账，不 removeView（Activity 马上带着视图一起死）。
         // 不走 removeInjected —— 它会无条件 cancelRun()，可能误杀另一页在途的一轮。
@@ -1513,8 +1700,24 @@ class StgSelectAllFeature : Feature {
             noteRowCodeMiss(index, "item=null adapter=${adapter.javaClass.name}")
             return null
         }
+        val code = rawCodeOfItem(item)
+        if (code == null || !StgSelectAllPlan.isCodeLike(code)) {
+            noteRowCodeMiss(index, "item=${item.javaClass.name} code=${maskCode(code)}")
+            return null
+        }
+        return code
+    }
+
+    /**
+     * 数据对象里的原始代码字符串（未校验形态）；读不到 → null。
+     *
+     * 与 [rowCode] 分开是为了让行绑定钩子能直接拿数据对象取代码（那边没有适配器下标，
+     * 只有 `getView` 的 position），校验与日志仍留在 [rowCode]。
+     */
+    private fun rawCodeOfItem(item: Any?): String? {
+        if (item == null) return null
         // 字符串条目本身就是代码：不进 codeByItem（value 会强引用 key，弱键失效）
-        if (item is String) return item.takeIf { StgSelectAllPlan.isCodeLike(it) }
+        if (item is String) return item
         synchronized(codeByItem) { codeByItem[item] }?.let { return it }
         val fields = synchronized(codeFieldsByClass) {
             codeFieldsByClass.getOrPut(item.javaClass) { resolveCodeFields(item.javaClass) }
@@ -1524,11 +1727,7 @@ class StgSelectAllFeature : Feature {
         } ?: fields.cam?.let { f ->
             runCatching { f.get(item) as? String }.getOrNull()
         }
-        if (code == null || !StgSelectAllPlan.isCodeLike(code)) {
-            noteRowCodeMiss(index, "item=${item.javaClass.name} code=${maskCode(code)}")
-            return null
-        }
-        synchronized(codeByItem) { codeByItem[item] = code }
+        if (code != null) synchronized(codeByItem) { codeByItem[item] = code }
         return code
     }
 
