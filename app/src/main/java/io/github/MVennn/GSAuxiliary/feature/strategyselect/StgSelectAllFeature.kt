@@ -250,12 +250,162 @@ class StgSelectAllFeature : Feature {
     /** 「模型与当前列表一只都对不上」只记一条，供真机日志定位宿主字段变化 */
     @Volatile private var modelMismatchLogged = false
 
+    /** 正在回写宿主模型（防止宿主/我们自己的计数回调递归） */
+    @Volatile private var syncingModel = false
+    @Volatile private var modelSyncLogged = false
+    @Volatile private var modelSyncFailedLogged = false
+
+    /** 已经挂过「按下时校正模型」触摸监听的「确认添加」按钮（弱引用键） */
+    private val confirmTouchSynced =
+        Collections.synchronizedMap(WeakHashMap<View, Boolean>())
+
+    /** 「确认添加」提交前捕获的真实选择（只在筛选下非空） */
+    @Volatile private var confirmSelection: Selection? = null
+
+    /** 捕获选择时所在的那个列表：改写提交包前用它确认页面还在（没换页 / 没销毁） */
+    private var confirmList: WeakReference<ListView>? = null
+
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgSelectAll
 
     // ------------------------------------------------------------------ 安装
 
     override fun install(env: FeatureEnv, bag: HookBag) {
         watchActivities(env, bag)
+        // 筛选下宿主的提交包是按位置取的错票，必须在「选择分组」页消费前改回来
+        // （见 [hookChooseGroupIntent]）。
+        hookChooseGroupIntent(env, bag)
+    }
+
+    /**
+     * 在「选择分组」页消费之前，把提交包里的股票代码改回**屏幕上真正勾着的那几只**。
+     *
+     * ## 为什么必须改（2026-10-28 真机定位）
+     *
+     * 宿主按「适配器位置」去索引它自己的**全量列表**来组这个提交包。筛选生效时列表上是
+     * 我们的过滤代理，位置被压缩成子集下标 —— 实测同一次操作：
+     *
+     * ```
+     * 屏幕勾着   = 605333,002683,603728,603583,000700,603160,601808,002129,300432…
+     * 实际提交   = 300006,301529,301550,300718,301275,603868,603626,002472,603337…
+     * ```
+     *
+     * 两串一个都不重合 → 「确认添加」永远加错票：屏幕上的那些一只都没进分组
+     * （用户看到的就是「漏股票」），重复确认又只得到「已在该组合」（宿主去重的是错票）。
+     *
+     * ## 为什么改在这里
+     *
+     * 提交包由宿主自己算好塞进 Intent，页面在 `onCreate` 里消费它。这是唯一一个
+     * 「宿主已算完、页面还没用」的可拦截点：不用改宿主代码、不用动 checked states
+     * （那套坐标同时决定屏上勾选框），也不会影响没有筛选的普通路径
+     * （[confirmSelection] 只在筛选下捕获）。
+     */
+    private fun hookChooseGroupIntent(env: FeatureEnv, bag: HookBag) {
+        val cls = Reflect.loadClass("android.app.Activity", env.classLoader) ?: return
+        for (m in Reflect.methodsNamed(cls, "onCreate")) {
+            bag.add(
+                env.xposed.hook(m)
+                    .setId("stg_select_all:choose_group_intent")
+                    .intercept { chain ->
+                        runCatching {
+                            val act = chain.thisObject as? Activity
+                            if (act != null && act.javaClass.name == CHOOSE_GROUP_ACT) {
+                                act.intent?.let { fixGroupIntentCodes(it) }
+                            }
+                        }
+                        chain.proceed()
+                    },
+            )
+        }
+    }
+
+    /** 「确认添加」按下 / 选择变化时捕获的真实选择 */
+    private class Selection(
+        val codes: Array<String>,
+        val markets: Array<String>,
+        val prices: Array<String>?,
+    )
+
+    /**
+     * 捕获「屏幕上真正勾着」的股票（代码 / 市场 / 价格），供 [fixGroupIntentCodes] 使用。
+     *
+     * 只认**筛选生效**的页面：没筛时两套坐标一致，宿主本来就对，别多此一举。
+     * 任何一行读不全就整组作废（宁可不改，也不能把错误的包换成另一个错误的包）。
+     */
+    private fun captureSelection(lv: ListView) {
+        val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
+        val total = adapter.count
+        if (total <= 0) return
+        if (fullIndices(adapter, total) == null) {
+            confirmSelection = null
+            return
+        }
+        val header = lv.headerViewsCount
+        val codes = ArrayList<String>(total)
+        val markets = ArrayList<String>(total)
+        val prices = ArrayList<String>(total)
+        var pricesOk = true
+        for (i in 0 until total) {
+            if (!lv.isItemChecked(header + i)) continue
+            val item = runCatching { adapter.getItem(i) }.getOrNull() ?: return
+            val raw = rawCodeOfItem(item) ?: return
+            val code = raw.substringBefore('.').trim()
+            val market = raw.substringAfter('.', "").trim()
+            if (code.isEmpty() || market.isEmpty()) return
+            codes.add(code)
+            markets.add(market)
+            val price = StgSelectAllTargets.PRICE_FIELDS.firstNotNullOfOrNull { name ->
+                runCatching { Reflect.findField(item.javaClass, name)?.get(item) }.getOrNull()
+            }
+            when (price) {
+                null -> pricesOk = false
+                is String -> prices.add(price)
+                is Number -> prices.add(price.toString())
+                else -> pricesOk = false
+            }
+        }
+        confirmList = WeakReference(lv)
+        confirmSelection = if (codes.isEmpty()) null else Selection(
+            codes.toTypedArray(),
+            markets.toTypedArray(),
+            if (pricesOk && prices.size == codes.size) prices.toTypedArray() else null,
+        )
+    }
+
+    /** 就地把宿主提交包里的 `codes` / `markets`（能读到价时连同 `prices`）换成真实股票 */
+    private fun fixGroupIntentCodes(intent: android.content.Intent) {
+        val sel = confirmSelection ?: return
+        // 只在「捕获选择的那张列表还在窗口上」时改写：同名的选择分组页也可能从
+        // 自选 / 个股页打开，那时这份捕获已经过期，改写会张冠李戴。
+        if (confirmList?.get()?.isAttachedToWindow != true) {
+            GLog.w("策略全选：选择分组页不是从策略详情进来的，跳过提交代码校正")
+            return
+        }
+        @Suppress("DEPRECATION")
+        val codes = intent.getStringArrayExtra(GROUP_EXTRA_CODES) ?: return
+        if (codes.size != sel.codes.size) return
+        if (codes.contentEquals(sel.codes)) return
+        GLog.i(
+            "策略全选：确认添加的提交代码已校正" +
+                "（${codes.size} 只，原为全量同下标的另一批）",
+        )
+        if (GLog.isDebug) {
+            GLog.d(
+                "策略全选：提交代码 " + codes.joinToString { LogMask.code(it) } +
+                    " → " + sel.codes.joinToString { LogMask.code(it) },
+            )
+        }
+        intent.putExtra(GROUP_EXTRA_CODES, sel.codes)
+        @Suppress("DEPRECATION")
+        val markets = intent.getStringArrayExtra(GROUP_EXTRA_MARKETS)
+        if (markets != null && markets.size == sel.codes.size) {
+            intent.putExtra(GROUP_EXTRA_MARKETS, sel.markets)
+        }
+        @Suppress("DEPRECATION")
+        val prices = intent.getStringArrayExtra(GROUP_EXTRA_PRICES)
+        val fixedPrices = sel.prices
+        if (prices != null && prices.size == sel.codes.size && fixedPrices != null) {
+            intent.putExtra(GROUP_EXTRA_PRICES, fixedPrices)
+        }
     }
 
     /** 挂 `Activity.onResume`，只对策略详情页做「挂 watcher + 同步」这件事 */
@@ -599,10 +749,41 @@ class StgSelectAllFeature : Feature {
                         .onFailure { GLog.w("全选：重新锁定确认添加异常", it) }
                     runCatching { updateLabel(env, lv, button) }
                         .onFailure { GLog.w("全选：刷新按钮文案异常", it) }
+                    // 手动点行同样会记错票（见 [syncHostModel]）：计数一变就按屏幕校正一次。
+                    // 再排到下一帧补一次 —— 宿主的选中模型可能在点击回调返回后才写。
+                    runCatching { syncHostModel(lv) }
+                        .onFailure { GLog.w("全选：校正宿主模型异常", it) }
+                    lv.post { runCatching { syncHostModel(lv) } }
                 }
             }
             tv.addTextChangedListener(watcher)
             countWatchers[tv] = CountWatch(watcher, button)
+        }
+        installConfirmTouchSync(lv)
+    }
+
+    /**
+     * 在「确认添加」按下的一瞬间再校正一次宿主模型（见 [syncHostModel]）。
+     *
+     * 只挂 `OnTouchListener`、**不动点击监听**：返回 false 让宿主照常收到点击，
+     * 这样即使宿主把选中模型推迟到点击时才从 checked states 重建，我们也抢在它前面改好。
+     * 宿主自己已有触摸监听时不抢（`hasOnTouchListener`），宁可不修也不打断它的手势。
+     */
+    private fun installConfirmTouchSync(lv: ListView) {
+        val btn = findConfirmButton(lv) ?: return
+        // `View.hasOnTouchListener` 不是公开 API，反射问一句；读不到按「没有」处理。
+        val hasTouch = runCatching {
+            android.view.View::class.java.getMethod("hasOnTouchListener")
+                .invoke(btn) as? Boolean ?: false
+        }.getOrDefault(false)
+        if (hasTouch) return
+        if (confirmTouchSynced.put(btn, true) != null) return
+        btn.setOnTouchListener { _, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+                runCatching { syncHostModel(lv) }
+                runCatching { captureSelection(lv) }
+            }
+            false
         }
     }
 
@@ -887,26 +1068,36 @@ class StgSelectAllFeature : Feature {
         // 「宿主静默忽略了一次点击」。模型读不到 / 行代码映射不全时才退回表。
         val hostCodes = readHostModel(lv)
 
-        // 首轮：宿主计数为 0 但模型非空 —— 两份数据已经分叉（计数滞后 / 模型是
-        // 上一页的残值）。这时拿模型判会把「反选」变成「全选」，反向点击。
-        // 补点轮不适用：合成点击比计数刷新快，计数为 0 是常态。
-        if (!retry && hostCount == 0 && !hostCodes.isNullOrEmpty()) {
-            GLog.w(
-                "策略全选：宿主计数为 0 但模型有 ${hostCodes.size} 项，放弃本次操作" +
-                    "（两份数据不一致，请重试）",
+        // 首轮：宿主计数为 0 但模型非空 —— **模型是上一批的残值**，不是「已经选了很多」。
+        // 2026-10-28 真机：确认添加返回策略详情后，宿主把底部计数清成 0，却没清
+        // `checkCodes`（残留上一批的 19 项）。旧判据把这种状态当成「两份数据分叉」整轮
+        // 放弃，日志只打一行 WARN、界面上按钮毫无反应 —— 用户看到的就是「全选摁不动」。
+        // 计数是宿主每次点击都会重写的、更可信的一份：为 0 就按「一只没选」处理，
+        // **不拿残值模型判方向**（拿它判会把「全选」变成反向取消）。补点轮不适用：
+        // 合成点击比计数刷新快，计数为 0 是常态。
+        val staleModelSize = if (!retry && hostCount == 0) hostCodes?.size ?: 0 else 0
+        if (staleModelSize > 0) {
+            GLog.i(
+                "策略全选：宿主计数为 0 但模型残留 $staleModelSize 项" +
+                    "（多半是上一批确认添加后宿主没清），按「一只没选」处理",
             )
-            return null
+            // 计数为 0 = 宿主自己认为一只没选：把这批残值清掉，否则后面的逐次校正
+            // 会因「模型条数 ≠ 勾选行数」而一直跳过（见 [syncHostModel] 的安全阀）。
+            clearHostModel(lv)
         }
+        val modelCodes = if (staleModelSize > 0) null else hostCodes
 
-        val modelBefore = hostCodes?.let {
+        val modelBefore = modelCodes?.let {
             modelRowStates(adapter, total, it, full != null, hostCount)
         }
-        if (hostCodes != null && modelBefore == null) noteModelUnusable("模型与列表/计数不一致")
+        if (modelCodes != null && modelBefore == null) {
+            noteModelUnusable("模型与列表/计数不一致")
+        }
 
         // 模型与 checked states 分叉时只记日志、仍按模型（2026-10-23 复核）：
         // 表是 `performItemClick` 自己写过的，宿主静默忽略一次点击时表里就是目标态；
         // 拿表当裁判会把用户这次报的「模型漏行」重新盖回去。计数只用于
-        // 「0 vs 非空」这种硬分叉（见上面的早退）和 `statesFromCodes` 的可用性判据。
+        // 「0 vs 非空」这种硬分叉（见上面的 [staleModelSize]）和 `statesFromCodes` 的可用性判据。
         val tableChecked = tableRowStates(lv, total)?.count { it }
         if (modelBefore != null && tableChecked != null &&
             tableChecked != modelBefore.count { it }
@@ -1229,6 +1420,10 @@ class StgSelectAllFeature : Feature {
         } catch (t: Throwable) {
             noteFailure(run, "触发行点击失败 index=$index（下一轮按表核对）", t)
         }
+        // 宿主记下的可能是「全量列表同下标」的另一只票（见 [syncHostModel]）：
+        // 每次合成点击后立刻按屏幕上的真实代码校正一次，确认添加才会提交对的票。
+        runCatching { syncHostModel(lv) }
+            .onFailure { GLog.w("全选：点击后校正宿主模型异常", it) }
     }
 
     /** 把「下一轮」排到稍后；列表已脱离窗口就直接收尾 */
@@ -1276,6 +1471,10 @@ class StgSelectAllFeature : Feature {
         }
         // 注意：header 数变了不用在这里单独处理 —— takeShot 会按**当前** header 读状态，
         // run.load 也会把 headerCount 一起换掉。
+        // 每轮核对前先把宿主模型校正到「屏幕上的真实代码」：上一轮的合成点击是异步
+        // 落到宿主模型里的，逐次校正可能赶不上；这里状态已经稳定，条数也对得上。
+        runCatching { syncHostModel(lv) }
+            .onFailure { GLog.w("全选：补点轮校正宿主模型异常", it) }
         val shot = takeShot(lv, run.ctId, retry = true)
         if (shot == null) {
             finishRun(env, run, "重新读状态失败")
@@ -1935,6 +2134,155 @@ class StgSelectAllFeature : Feature {
         GLog.w("策略全选：宿主模型不可用（$reason），退回 checked states")
     }
 
+    /**
+     * 清空宿主选中模型。
+     *
+     * 只在**可证伪**的状态下调用：底部计数为 0（宿主自己也认为一只没选），
+     * 模型却还留着上一批的条目。清掉它才能让后续的逐次校正（[syncHostModel]）
+     * 建立在「模型条数 == 勾选行数」这个前提上。
+     */
+    private fun clearHostModel(lv: ListView) {
+        val activity = findActivity(lv) ?: return
+        if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
+        val field = resolveHostModelField(activity) ?: return
+        @Suppress("UNCHECKED_CAST")
+        val raw = runCatching { field.get(activity) as? MutableList<Any?> }.getOrNull() ?: return
+        if (raw.isEmpty()) return
+        runCatching { raw.clear() }
+            .onFailure {
+                if (!modelSyncFailedLogged) {
+                    modelSyncFailedLogged = true
+                    GLog.w("策略全选：清空宿主残留模型失败", it)
+                }
+            }
+    }
+
+    /**
+     * 把宿主自己的选中模型（`checkCodes`）校正成「屏幕上真正勾着的那几只」。
+     *
+     * ## 为什么必须校正（2026-10-28 真机定位）
+     *
+     * 宿主按**适配器位置**去索引它自己的**全量列表**取票。筛选生效时列表上是我们的
+     * 过滤代理，位置被压缩成子集下标 —— 于是「你选的是子集第 1 行（605333 沪光股份）」，
+     * 宿主记下的却是全量第 1 只（300006）。真机日志现场：
+     *
+     * ```
+     * 模型   = [300006, 301550, 301529, …]
+     * 全量   = [300006.2, 301550.1, 301529.1, …]     ← 模型 = 全量前 N 只
+     * 筛后行 = [605333.2, 002683.1, 603728.2, …]     ← 12 行里命中 0 行
+     * ```
+     *
+     * 「确认添加」以这份模型为准，所以**加进分组的是另一批股票**：屏幕上勾着的那些
+     * 一只都没进去（用户看到的就是「漏股票」），而重复确认又只会得到「已在该组合」
+     * （宿主去重的是那批错票）。
+     *
+     * ## 校正规则（逐项重映射，不整份盲替）
+     *
+     * 宿主每点一行就追加一只「全量[子集下标]」的错票，所以模型常常是**混合体**
+     * （一部分已经是对的、一部分错位）。规则：
+     *  - 已在「勾选行真实代码」里的 → 保留；
+     *  - 等于某个**已勾选行**的位置错位票 → 换成该行真实代码；
+     *  - 等于某个**未勾选行**的位置错位票 → 丢掉（残值）；
+     *  - 其余（解释不了的）→ 原样保留，绝不乱删；
+     *  - 最后补齐「已勾选但模型里还没有」的行。
+     *
+     * 多选态期间筛选面板打不开，不存在「在别处选中、当前被筛掉」的行，
+     * 所以这套改写不会丢用户的选择。
+     */
+    private fun syncHostModel(lv: ListView) {
+        if (syncingModel) return
+        // 「回映射放行」期间（宿主的行点击回调里）代理的 `getItem` 会把位置原样透传，
+        // 读出来是**全量同下标**的另一只票。这时拿它当真实代码去校正只会把模型写坏
+        // （2026-10-28 真机踩过：校正后模型成了「一只对 + 一只错位」的混合体）。
+        // 计数监听就在那个回调用触发，所以这里直接跳过，等下一帧的 post 再校正。
+        if (StgFilterBridge.isRemapBypassed()) return
+        val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
+        val total = adapter.count
+        if (total <= 0) return
+        // 没筛选时两套坐标一致，宿主本来就记对了
+        val full = fullIndices(adapter, total) ?: return
+        val activity = findActivity(lv) ?: return
+        if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
+        val field = resolveHostModelField(activity) ?: return
+        @Suppress("UNCHECKED_CAST")
+        val raw = runCatching { field.get(activity) as? MutableList<Any?> }.getOrNull() ?: return
+
+        // 宿主计数为 0 = 它自己认为一只没选；这时模型里还留着东西就是残值
+        // （真机：「反选」收尾、确认添加返回后都是这个形态）。直接清掉，
+        // 否则补点轮会把这批残值当成「还勾着 6 只」，一直点到补点上限。
+        if (selectedCount(lv) == 0) {
+            if (raw.isNotEmpty()) {
+                runCatching { raw.clear() }
+                    .onFailure {
+                        if (!modelSyncFailedLogged) {
+                            modelSyncFailedLogged = true
+                            GLog.w("策略全选：清空宿主残留模型失败", it)
+                        }
+                    }
+            }
+            return
+        }
+
+        val header = lv.headerViewsCount
+        val expected = ArrayList<String>(total)
+        val checked = BooleanArray(total)
+        val twinToTrue = HashMap<String, String>(total)
+        val twinStale = HashSet<String>(total)
+        for (i in 0 until total) {
+            checked[i] = lv.isItemChecked(header + i)
+            val trueCode = if (checked[i]) {
+                StgSelectAllPlan.normalizeCode(rowCode(adapter, i) ?: return)
+            } else {
+                null
+            }
+            if (trueCode != null) expected.add(trueCode)
+            val twin = StgFilterBridge.sourceItemAt(i, adapter)
+                ?.let { rawCodeOfItem(it) }
+                ?.let { StgSelectAllPlan.normalizeCode(it) }
+            if (twin == null) continue
+            if (trueCode != null) twinToTrue[twin] = trueCode else twinStale.add(twin)
+        }
+        val expectedSet = HashSet(expected)
+        // 已勾选行的真实代码优先，别被同值的残值规则误删
+        twinStale.removeAll(expectedSet)
+
+        val current = raw.map { StgSelectAllPlan.normalizeCode(it?.toString().orEmpty()) }
+        val repaired = ArrayList<String>(maxOf(current.size, expected.size))
+        val seen = HashSet<String>(current.size * 2)
+        for (c in current) {
+            val keep = when {
+                c in expectedSet -> c
+                twinToTrue.containsKey(c) -> twinToTrue.getValue(c)
+                c in twinStale -> null
+                else -> c
+            }
+            if (keep != null && seen.add(keep)) repaired.add(keep)
+        }
+        for (t in expected) if (seen.add(t)) repaired.add(t)
+        if (repaired == current) return
+
+        syncingModel = true
+        try {
+            raw.clear()
+            raw.addAll(repaired)
+            if (!modelSyncLogged) {
+                modelSyncLogged = true
+                GLog.i(
+                    "策略全选：宿主模型已校正为筛后真实代码" +
+                        "（${repaired.size} 项，筛选映射 ${full.size} 行）",
+                )
+            }
+        } catch (t: Throwable) {
+            if (!modelSyncFailedLogged) {
+                modelSyncFailedLogged = true
+                GLog.w("策略全选：校正宿主模型失败（后续不再尝试）", t)
+            }
+        } finally {
+            syncingModel = false
+        }
+        runCatching { captureSelection(lv) }
+    }
+
     /** 从任意 View 找到宿主 Activity（Context 链） */
     private fun findActivity(view: View): Activity? {
         var ctx: Context? = view.context
@@ -2029,6 +2377,14 @@ class StgSelectAllFeature : Feature {
     private companion object {
         /** 注入按钮与「取消」按钮之间的间距（dp） */
         const val GAP_DP = 16f
+
+        /** 确认添加后宿主的「选择分组」页 */
+        const val CHOOSE_GROUP_ACT = "com.guosen.quotation.ui.ChooseGroupAct"
+
+        /** 提交包的三个 extras（2026-10-28 真机 dump 出来的键名） */
+        const val GROUP_EXTRA_CODES = "codes"
+        const val GROUP_EXTRA_MARKETS = "markets"
+        const val GROUP_EXTRA_PRICES = "prices"
 
         /**
          * 逐行触发勾选时，每一行之间间隔的毫秒数。

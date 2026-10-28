@@ -97,6 +97,14 @@ object StgSelectAllTargets {
      */
     val CAM_FIELDS = arrayOf("codeAndMarket", "m_codeAndMarket")
 
+    /**
+     * 行数据对象里的「最新价」字段候选。
+     *
+     * 只用于「确认添加」提交包 `prices` 的对齐（见 `StgSelectAllFeature#captureSelection`）：
+     * 宿主按位置取到的价也是错票的价，能读到就一起换掉；读不到就整组不动。
+     */
+    val PRICE_FIELDS = arrayOf("price", "mPrice", "stockPrice", "zxj", "lastPrice")
+
     /** 多选态时该按钮的文案（命中即表示已进入多选态） */
     const val CANCEL_TEXT = "取消"
 

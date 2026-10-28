@@ -125,6 +125,20 @@ object StgFilterBridge {
         }
     }
 
+    /**
+     * 宿主**全量列表**的第 [index] 项；快照不属于 [owner] / 越界返回 null。
+     *
+     * 供「筛选下宿主按位置取票」的对齐校正用（2026-10-28）：宿主拿适配器位置去索引
+     * 自己的全量列表，筛选时位置被压缩成子集下标，于是记下的是 `全量[子集下标]`
+     * 那另一只票。要判断一份模型是不是这种「位置错位」的残值，就得拿到全量列表
+     * 同下标的条目来比。
+     */
+    fun sourceItemAt(index: Int, owner: Any? = null): Any? {
+        val snap = current ?: return null
+        if (owner != null && snap.owner !== owner) return null
+        return snap.source.getOrNull(index)
+    }
+
     /** 从宿主的全量列表里，按筛选结果挑出该留下的条目（保序） */
     fun keepOnly(source: List<*>?): List<Any>? {
         val snap = current ?: return null
