@@ -60,6 +60,18 @@ object StgSelectAllTargets {
         "tv_bottom_zxg_num",
     )
 
+    /**
+     * 底部「确认添加」按钮（宿主自己的 `TextView`）。
+     *
+     * 2026-10-28 真机：全选是逐行合成点击（`TOGGLE_STEP_MS = 40ms`），30 只就要一秒多；
+     * 运行期间这颗按钮**没有任何闸门** —— 用户点早了，宿主只快照到「已经点过的那几行」，
+     * 后面的行勾上了却加不进去（实测 72 只只进了 18 只）。所以运行期间由
+     * `StgSelectAllFeature` 临时把它置灰锁住，跑完再恢复。
+     */
+    val CONFIRM_BUTTON_ID_CANDIDATES = arrayOf(
+        "tv_bottom_add_zxg",
+    )
+
     /** 需要「挂 TextWatcher 观察多选态切换」的页面（Activity 类名，实测） */
     val WATCH_ACTIVITIES = arrayOf(
         "com.guosen.quotation.ui.aistk.AIStkStgDetailAct",

@@ -981,6 +981,12 @@
     {
       "kind": "id",
       "owner": "StgSelectAllTargets.kt",
+      "symbol": "CONFIRM_BUTTON_ID_CANDIDATES",
+      "value": "tv_bottom_add_zxg"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
       "symbol": "COUNT_ID_CANDIDATES",
       "value": "tv_bottom_zxg_num"
     },

@@ -58,6 +58,14 @@ import java.util.WeakHashMap
  * 补点轮以 checked states 为准（那是我们自己刚写过的表）；**没有筛选**时若表与宿主计数
  * 分叉，说明宿主模型漏了行，退回探针按模型补。
  *
+ * ## 运行期间锁住「确认添加」（2026-10-28）
+ *
+ * 全选是逐行异步点击（`TOGGLE_STEP_MS = 40ms`），运行中宿主「确认添加」完全可点。
+ * 点早了宿主只快照到**当时已点过的前缀** —— 真机 72 只实测只进了 18 只，而屏幕稍后
+ * 会把 72 行全部画上勾，看起来像"全选了却没全加进去"。所以跑第一行前把该按钮置灰
+ * 禁用（只动 `enabled / clickable / alpha`，**不替换宿主的点击监听**），「已选 N」
+ * 每变一次重新压一遍，收尾 / 中止 / 关开关时还原（见 [gateConfirm] / [ungateConfirm]）。
+ *
  * ⚠️ **补点救不了「宿主监听器静默忽略」**：`performItemClick` 在调到监听器之前就把
  * `mCheckStates` 按取反写好了，下一轮读表只会看到目标态。这类漏选只能靠真机日志与
  * 宿主行为去查（见 `docs/FEATURE-SELECT-ALL.md` §4.3）。
@@ -102,6 +110,30 @@ class StgSelectAllFeature : Feature {
     @Volatile private var checkboxIdCache = 0
 
     @Volatile private var countIdCache = 0
+
+    @Volatile private var confirmIdCache = 0
+
+    /**
+     * 运行期间被锁住的宿主「确认添加」。
+     *
+     * 全选是逐行合成点击（40ms/行），运行中用户点「确认添加」，宿主只会快照到
+     * 当前已点过的那几行 —— 这就是 2026-10-28 真机复现的「全选了但只有一部分进自选」
+     * （72 只只进了 18 只）。这里在跑第一行之前把它置灰/禁用，收尾时按记下的
+     * 原 `enabled / clickable / alpha` 还原；**不替换宿主的点击监听**（没有 getter，
+     * 换了就还不回去）。
+     */
+    @Volatile private var confirmGate: ConfirmGate? = null
+
+    /** 「确认添加」id 解析失败只记一条 */
+    @Volatile private var confirmGateMissLogged = false
+
+    /** 一次「锁住确认添加」的还原账 */
+    private class ConfirmGate(
+        val button: WeakReference<TextView>,
+        val enabled: Boolean,
+        val clickable: Boolean,
+        val alpha: Float,
+    )
 
     /**
      * 宿主选中模型字段 `AIStkStgDetailAct.checkCodes` 的解析结果。
@@ -561,6 +593,10 @@ class StgSelectAllFeature : Feature {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
+                    // 宿主可能每次计数变化都重设 `enabled`（例如「已选 > 0 才可点」），
+                    // 所以运行期间每变一次就重新压一遍闸门；不动文案以外的东西。
+                    runCatching { reassertGate(lv) }
+                        .onFailure { GLog.w("全选：重新锁定确认添加异常", it) }
                     runCatching { updateLabel(env, lv, button) }
                         .onFailure { GLog.w("全选：刷新按钮文案异常", it) }
                 }
@@ -791,6 +827,9 @@ class StgSelectAllFeature : Feature {
             val run = ToggleRun(lv, button, ctId, wantChecked, runSeq.incrementAndGet())
             run.load(shot, click)
             run.clickRounds = 1
+            // 开跑前先锁住宿主的「确认添加」：点早了宿主只快照到已点过的前缀
+            // （2026-10-28 真机：72 只只进了 18 只）。收尾 / 中止时在 [endRun] 还原。
+            gateConfirm(v)
             clickNext(env, run)
         } finally {
             // 任何早退 / 异常都不能把 running 留在 true（否则按钮从此失效）
@@ -1273,6 +1312,8 @@ class StgSelectAllFeature : Feature {
     private fun endRun() {
         running = false
         runList = null
+        // 无论正常收尾、补点上限还是异常中止，都必须把「确认添加」解锁
+        ungateConfirm()
     }
 
     /** 取消正在跑的一轮（关开关 / 退出多选态 / 热重载） */
@@ -1497,6 +1538,91 @@ class StgSelectAllFeature : Feature {
         return runCatching { tv.text?.toString()?.trim()?.toIntOrNull() ?: -1 }.getOrDefault(-1)
     }
 
+    // ------------------------------------------------ 运行期间锁住宿主「确认添加」
+
+    /**
+     * 把宿主「确认添加」压成禁用态（半透明），直到本轮全选收尾。
+     *
+     * 为什么必须锁（2026-10-28 真机复现）：全选是逐行合成点击，30 只就要一秒多；
+     * 运行期间点「确认添加」，宿主只快照到当前已点过的行 —— 72 只实测只进了 18 只，
+     * 而屏幕上稍后会把 72 行全部画上勾，看起来像"全选了却没全加进去"。
+     *
+     * **不替换宿主的点击监听**（没有 getter，换了还不回去），只动 `enabled / clickable /
+     * alpha` 三个可还原的属性；原值记在 [ConfirmGate] 里，[endRun] 统一还原。
+     */
+    private fun gateConfirm(v: View) {
+        val btn = findConfirmButton(v)
+        if (btn == null) {
+            if (!confirmGateMissLogged) {
+                confirmGateMissLogged = true
+                GLog.w(
+                    "全选：#${StgSelectAllTargets.CONFIRM_BUTTON_ID_CANDIDATES.joinToString()} 解析失败，" +
+                        "运行期间无法锁定确认添加（功能照常，仍可能被点早）",
+                )
+            }
+            return
+        }
+        val current = confirmGate
+        if (current != null && current.button.get() === btn) {
+            applyGate(btn)
+            return
+        }
+        ungateConfirm()
+        confirmGate = ConfirmGate(WeakReference(btn), btn.isEnabled, btn.isClickable, btn.alpha)
+        applyGate(btn)
+        GLog.i("策略全选：运行中已锁定「确认添加」（跑完自动恢复）")
+    }
+
+    /** 压一次禁用态（幂等；宿主重设 enabled 后由「已选 N」监听再压一遍） */
+    private fun applyGate(btn: TextView) {
+        runCatching {
+            if (btn.isEnabled) btn.isEnabled = false
+            if (btn.isClickable) btn.isClickable = false
+            if (btn.alpha != GATED_ALPHA) btn.alpha = GATED_ALPHA
+        }.onFailure {
+            if (!confirmGateMissLogged) {
+                confirmGateMissLogged = true
+                GLog.w("全选：置灰「确认添加」失败（后续同类只静默跳过）", it)
+            }
+        }
+    }
+
+    /**
+     * 运行中随时把闸门压回去。
+     *
+     * 宿主若在计数变化时把按钮 `enabled` 重设回去，光在开跑时禁一次不够；
+     * 计数控件每变一次就调这里。宿主把按钮对象换了（重建底栏）时，
+     * 先还原旧按钮、再按新按钮当前状态重新记账。
+     */
+    private fun reassertGate(lv: ListView) {
+        val gate = confirmGate ?: return
+        val btn = findConfirmButton(lv) ?: return
+        if (gate.button.get() !== btn) {
+            ungateConfirm()
+            gateConfirm(btn)
+        } else {
+            applyGate(btn)
+        }
+    }
+
+    /** 还原宿主「确认添加」的原状态；没有账 / 视图已回收时安全跳过 */
+    private fun ungateConfirm() {
+        val gate = confirmGate ?: return
+        confirmGate = null
+        val btn = gate.button.get() ?: return
+        runCatching {
+            btn.isEnabled = gate.enabled
+            btn.isClickable = gate.clickable
+            btn.alpha = gate.alpha
+        }.onFailure { GLog.w("全选：恢复「确认添加」失败", it) }
+    }
+
+    private fun findConfirmButton(v: View): TextView? {
+        val id = confirmId(v)
+        if (id == 0) return null
+        return v.rootView?.findViewById<View>(id) as? TextView
+    }
+
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         // 关掉功能时，把所有已注入的按钮撤掉
         if (cfg.stgSelectAll) return
@@ -1530,6 +1656,12 @@ class StgSelectAllFeature : Feature {
      */
     override fun onActivityDestroyed(activity: Activity) {
         val decor = runCatching { activity.window?.decorView }.getOrNull() ?: return
+
+        // 页面要销毁：落在这页上的「确认添加」闸门**只丢账、不还原** ——
+        // 还原只属于正常收尾 / 关开关 / 热重载，销毁路径不碰宿主视图。
+        confirmGate?.button?.get()?.let { btn ->
+            if (belongsToPage(btn, activity, decor)) confirmGate = null
+        }
 
         // 正在跑的一轮若挂在这一页的列表上，先停；它的 postDelayed 可能再也不执行
         val runningLv = runList?.get()
@@ -1876,6 +2008,20 @@ class StgSelectAllFeature : Feature {
         return id
     }
 
+    private fun confirmId(v: View): Int {
+        var id = confirmIdCache
+        if (id != 0) return id
+        for (name in StgSelectAllTargets.CONFIRM_BUTTON_ID_CANDIDATES) {
+            val r = resolveId(v.resources, name)
+            if (r != 0) {
+                id = r
+                break
+            }
+        }
+        if (id != 0) confirmIdCache = id
+        return id
+    }
+
     private fun resolveId(res: android.content.res.Resources, name: String): Int =
         runCatching { res.getIdentifier(name, "id", StgSelectAllTargets.TARGET_PKG) }
             .getOrDefault(0)
@@ -1911,5 +2057,8 @@ class StgSelectAllFeature : Feature {
          * `running`。到上限时记一条 WARN（带剩余行数），交给用户自己再点一次。
          */
         const val MAX_ROUNDS = 4
+
+        /** 运行期间「确认添加」被锁住时的透明度（原值在收尾时还原） */
+        const val GATED_ALPHA = 0.45f
     }
 }
