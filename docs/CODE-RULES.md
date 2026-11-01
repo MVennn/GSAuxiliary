@@ -279,7 +279,7 @@ Miuix 0.9.4 实测被 `minAgpVersion = 9.1.0` 硬拦（Compose 1.12.0 全家桶�
 
 - 用户名位置就是省略号：`C:\Users\...\provider_config.json`
 - 用户名用尖括号占位：`C:\Users\<名字>\...`
-- 用户名后紧跟 `\...` 截断：`C:\Users\SansK\...`
+- 用户名后紧跟 `\...` 截断：`C:\Users\某用户\...`
 
 **完整路径一律不放行。** 这条只对文档类文件生效
 （`CHANGELOG.md` / `PROGRESS.md` / `SECURITY.md` / `CONTRIBUTING.md` / `docs/` /
@@ -333,7 +333,7 @@ python tools/check-secrets.py --all
    转义，写出的测试文件内容是坏的，注入测试假通过。写含反斜杠的测试内容要用
    Python 的 `chr(92)`。
 3. **replace-text 只匹配字面量**：重写历史时，文档里引用泄漏原文的写法
-   （如 `git grep Users.SansK`，没有 `C:\` 前缀）匹配不到，要单独列规则。
+   （如 `git grep Users.某用户`，没有 `C:\` 前缀）匹配不到，要单独列规则。
 4. **模板多行块替换**：按单行字符串替换跨多行的配置块会留下孤儿行导致
    IndentationError；先在源里 `assert` 锚点存在再替换，失败即中止。
 5. **守卫脚本自己的注释会被自己的规则拦到** —— 注释里别出现完整路径字面量。
