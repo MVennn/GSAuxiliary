@@ -1011,7 +1011,15 @@ class StgSelectAllFeature : Feature {
             // 开跑前先锁住宿主的「确认添加」：点早了宿主只快照到已点过的前缀
             // （2026-10-28 真机：72 只只进了 18 只）。收尾 / 中止时在 [endRun] 还原。
             gateConfirm(v)
-            clickNext(env, run)
+            // 首次 clickNext 是同步调用，不在下面 postDelayed 的护栏里；此刻 started
+            // 已经为 true，finally 兜不到它 —— 一旦抛出，running 卡在 true、闸门不解，
+            // 「确认添加」从此置灰直到换页 / 关开关。与异步两处调用（clickNext /
+            // nextRound 的 postDelayed 回调）同一待遇：失败就地 endRun()，按钮下一击可重来。
+            runCatching { clickNext(env, run) }
+                .onFailure {
+                    GLog.w("全选：首轮点击链异常，收尾", it)
+                    endRun()
+                }
         } finally {
             // 任何早退 / 异常都不能把 running 留在 true（否则按钮从此失效）
             if (!started) {
