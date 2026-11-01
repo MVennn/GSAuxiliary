@@ -178,7 +178,7 @@ bash tools/probe/build.sh
 ### 踩过的坑（脚本里已处理）
 
 1. **原生工具不认 MSYS 路径**
-   `javac` / `d8` / `aapt2` 是原生 Windows 程序，`/f/<工作区>/...` 会被 MSYS 改写成 `\f\Project\...` 然后报 `file not found`。
+   `javac` / `d8` / `aapt2` 是原生 Windows 程序，`/f/<工作区>/...` 会被 MSYS 改写成 `\f\<工作区>\...` 然后报 `file not found`。
    → 脚本统一用 `winpath()` 转成 `F:/...`，并 `export MSYS_NO_PATHCONV=1` 夺回控制权。
 
 2. **`d8.bat` 自己读 `JAVA_HOME`**

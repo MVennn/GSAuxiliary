@@ -382,7 +382,7 @@ bash tools/probe/build.sh
 
 1. **原生工具不认 MSYS 路径**
    `javac` / `d8` / `aapt2` 都是原生程序，`/f/<工作区>/...` 会被它们理解成
-   `\f\Project\...` 而找不到文件。脚本里统一用 `winpath()` 转成 `<盘>:/<工作区>/...`。
+   `\f\<工作区>\...` 而找不到文件。脚本里统一用 `winpath()` 转成 `<盘>:/<工作区>/...`。
 
 2. **`d8.bat` 会自己读 `JAVA_HOME`**
    如果 `JAVA_HOME` 是 MSYS 形式（`/c/Program Files/Java/jdk-21`），
