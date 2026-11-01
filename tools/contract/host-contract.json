@@ -997,6 +997,36 @@
       "value": "checkCodes"
     },
     {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "lastPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "mPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "price"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "stockPrice"
+    },
+    {
+      "kind": "id",
+      "owner": "StgSelectAllTargets.kt",
+      "symbol": "PRICE_FIELDS",
+      "value": "zxj"
+    },
+    {
       "kind": "class",
       "owner": "StgSelectAllTargets.kt",
       "symbol": "WATCH_ACTIVITIES",
