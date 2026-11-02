@@ -26,6 +26,8 @@ import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
 import io.github.MVennn.GSAuxiliary.feature.stockbar.StockDetailBarFeature
 import io.github.MVennn.GSAuxiliary.feature.watchlist.WatchlistFeature
 import io.github.MVennn.GSAuxiliary.feature.zxcopy.ZxGroupCopyFeature
+import io.github.libxposed.api.error.HookFailedError
+import io.github.libxposed.api.error.XposedFrameworkError
 
 /**
  * 功能注册表。
@@ -89,7 +91,7 @@ class FeatureManager(private val env: FeatureEnv) {
             } catch (t: Throwable) {
                 // 半装钩子必须回滚，否则下次配置变化重装会叠成双份。
                 bag.rollbackTo(mark)
-                GLog.e("安装功能 [${f.id}] 失败", t)
+                GLog.e("安装功能 [${f.id}] 失败${hookFailureHint(t)}", t)
             }
         }
         GLog.i("功能安装完成：$installed/${features.size}，共 ${bag.size} 个钩子")
@@ -164,7 +166,7 @@ class FeatureManager(private val env: FeatureEnv) {
                 } catch (t: Throwable) {
                     bag.rollbackTo(mark)
                     synchronized(installedIds) { installedIds.remove(f.id) }
-                    GLog.e("运行中补装功能 [${f.id}] 失败", t)
+                    GLog.e("运行中补装功能 [${f.id}] 失败${hookFailureHint(t)}", t)
                 }
             }
             for (f in features) {
@@ -172,6 +174,21 @@ class FeatureManager(private val env: FeatureEnv) {
                     .onFailure { GLog.w("功能 [${f.id}] 处理配置变化失败", it) }
             }
         }
+    }
+
+    /**
+     * 挂钩失败时的日志后缀。
+     *
+     * API 102 把失败分成两类异常：`HookFailedError` 是框架**明确拒绝**这次挂钩
+     * （方法不可挂钩、与已有钩子冲突等），`XposedFrameworkError` 是框架自身实现
+     * 出错。以前两者都落到 `Throwable` 的笼统分支，日志只有一句「安装失败」，
+     * 排查得翻堆栈才知道是「我们写错了」还是「框架不收」。这里把类型标进消息，
+     * 行为完全不变（仍然回滚 + 记日志），只是让日志一行能定位。
+     */
+    private fun hookFailureHint(t: Throwable): String = when (t) {
+        is HookFailedError -> "：框架拒绝挂钩（HookFailedError）"
+        is XposedFrameworkError -> "：框架实现异常（XposedFrameworkError）"
+        else -> ""
     }
 
     /**

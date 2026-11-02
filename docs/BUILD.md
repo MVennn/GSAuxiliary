@@ -154,6 +154,20 @@ androidx / Compose / Miuix 自带几十种语言，`shrinkResources` 删不掉�
 3.2.0 后实测 APK 1 628 KB → 1 504 KB（-124 KB）。新增语言时记得往 `localeFilters` 里加，
 否则 `values-xx` 会被无声丢掉（应用内语言只有中 / 英两档，加之前先确认是否真需要）。
 
+**只打宿主跑得起来的 ABI**（`ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }`）：
+宿主 APK 自己只带这两个 ABI（见 [REVERSE-ENGINEERING](REVERSE-ENGINEERING.md) §一），
+x86 / x86_64 的 `libandroidx.graphics.path.so` 永远用不到。2026-11-02 实测 −36 KB
+（库本体 + 16 KB 页对齐填充）。将来真要跑模拟器，先确认宿主有 x86 版本，再加回来。
+
+**许可正文只带一份**：依赖库自带的 4 份 `META-INF/**/LICENSE.txt`（内容 MD5 完全相同）
+用 `packaging.resources.excludes` 排除，改由 `app/src/main/assets/LICENSE.txt` 带一份 —— 它是根目录
+`LICENSE` 的副本（与 `app/src/main/assets/NOTICE.txt` ← 根 `NOTICE` 同一约定），Apache-2.0 §4(a)
+「随分发包附一份许可」仍然满足。实测 −10.6 KB。**改根 `LICENSE` 时记得同步这份副本。**
+
+2026-11-02 这一轮（上面两条 + 关于页头像 JPG→WebP）合计：
+release APK 1 649 423 B → **1 592 556 B（−56.9 KB，−3.4%）**，逐项构成见
+[UI-HISTORY](UI-HISTORY.md) §10.3。
+
 **keep 规则的底线**（`app/proguard-rules.pro`）：凡是「R8 从代码里看不出、
 但运行期确实会被反射/系统调用」的入口都必须显式 keep，目前包括 ——
 
@@ -185,6 +199,10 @@ dexdump -f /tmp/apkx/classes*.dex | grep "Lio/github/MVennn/GSAuxiliary/GszxModu
 
 # 红线：libxposed api 必须为 0 个
 dexdump -f /tmp/apkx/classes*.dex | grep -c "Class descriptor.*Lio/github/libxposed/api"
+
+# 原生库只应有 ARM 两个 ABI（x86 的库永远用不到，见上文）
+aapt2 dump badging "$APK" | grep "^native-code"
+#   期望：native-code: 'arm64-v8a' 'armeabi-v7a'
 
 # 清单里不能有 legacy 元数据 —— 精确查那几个 key，别用 grep -i xposed
 aapt2 dump xmltree --file AndroidManifest.xml "$APK" \

@@ -291,8 +291,9 @@ internal fun AboutTab(
 /**
  * 作者卡：圆形头像 + 名字 + 账号，整卡可点（跳个人主页）。
  *
- * 头像用的是作者头像（本地 `drawable-nodpi/about_developer_avatar.jpg`，240×240，
- * `drawable-nodpi` 保证不随密度放大）。外面那道 2dp 白边与参考实现一致 ——
+ * 头像用的是作者头像（本地 `drawable-nodpi/about_developer_avatar.webp`，240×240，
+ * `drawable-nodpi` 保证不随密度放大）。3.5.5 起由 JPEG 换成 WebP（同分辨率、
+ * quality 82），视觉无差别，体积 17.7 KB → 8.2 KB。外面那道 2dp 白边与参考实现一致 ——
  * 没有它，深色照片贴在深色卡片上会糊成一坨、看不出是圆的。
  */
 @Composable

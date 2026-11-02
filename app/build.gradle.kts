@@ -86,6 +86,20 @@ android {
 
         // 第三方 UI 库版本，供设置界面「模块」页展示
         buildConfigField("String", "MIUIX_VERSION", "\"$miuixVersion\"")
+
+        // ------------------------------------------------------------------
+        // 只打包 ARM 两个 ABI
+        //
+        // 依据：宿主（国信金太阳）APK 自己就只带 arm64-v8a / armeabi-v7a
+        // （见 docs/REVERSE-ENGINEERING.md §一）。本模块的 .so 只可能跑在
+        // 宿主跑得起来的设备上 —— x86 / x86_64 那份 libandroidx.graphics.path.so
+        // 永远用不到，纯占体积（连同 16 KB 页对齐的填充约 36 KB）。
+        //
+        // 将来真要跑模拟器，宿主本身也得有 x86 版本才有意义；那时再加回来。
+        // ------------------------------------------------------------------
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
@@ -163,6 +177,12 @@ android {
                 "/META-INF/versions/**",
                 "kotlin/**",
                 "DebugProbesKt.bin",
+                // 依赖库里重复的 Apache-2.0 全文（annotation / collection /
+                // collection-ktx / lifecycle-common 各一份，内容 MD5 完全相同，
+                // 压缩后仍占 14 KB）。许可正文改由 `assets/LICENSE.txt` 带一份
+                // —— 根目录 LICENSE 的副本，Apache-2.0 §4(a) 要求的「分发包里
+                // 附一份许可」仍然满足，且不再有 4 份一字不差的重复。
+                "/META-INF/**/LICENSE.txt",
             )
         }
     }

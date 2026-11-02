@@ -48,10 +48,13 @@ class GszxModule : XposedModule() {
         GLog.level = LogLevel.INFO
 
         val process = param.processName
-        if (process.isEmpty() || !process.startsWith(TargetApp.PACKAGE)) {
+        // API 102 的 isSystemServer 是明确的进程判定，优先级高于按名字猜：
+        // system_server 里永远没有宿主，误勾作用域时若在这里继续走下去，
+        // onPackageReady 会给整个系统进程挂钩子。名字前缀判断保留作兜底。
+        if (param.isSystemServer || process.isEmpty() || !process.startsWith(TargetApp.PACKAGE)) {
             // API 102：明确告诉框架「本入口不再需要后续回调」，
             // 框架会释放对入口实例的引用，也不再调用 onPackageLoaded / onPackageReady 等。
-            GLog.i("进程 [$process] 不在作用域内，detach")
+            GLog.i("进程 [$process]${if (param.isSystemServer) "（system_server）" else ""} 不在作用域内，detach")
             detach()
             return
         }
@@ -59,7 +62,7 @@ class GszxModule : XposedModule() {
         GLog.i(
             "=== GSAuxiliary v${BuildConfig.VERSION_NAME} 载入 ===" +
                     " process=$process pid=${Process.myPid()}" +
-                    " framework=${frameworkName} ${frameworkVersion}" +
+                    " framework=${frameworkName} ${frameworkVersion}(${frameworkVersionCode})" +
                     " api=${apiVersion} caps=0x${java.lang.Long.toHexString(frameworkProperties)}"
         )
     }

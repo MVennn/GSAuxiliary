@@ -184,8 +184,8 @@
    ▼
 onModuleLoaded(param)                    ← 一次
    │   ├─ GLog.install { … }             把日志出口接到框架
-   │   ├─ 进程不在作用域？ → detach()    告诉框架不再需要后续回调
-   │   └─ 打印版本 / 框架 / API / caps
+   │   ├─ isSystemServer / 进程不在作用域？ → detach()   告诉框架不再需要后续回调
+   │   └─ 打印版本 / 框架（含 versionCode）/ API / caps
    │
    ▼
 onPackageLoaded(param)                   （本模块未使用）
