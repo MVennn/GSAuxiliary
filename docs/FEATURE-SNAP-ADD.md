@@ -18,6 +18,7 @@
 | 数据没加载完怎么办 | **不截图**：当前页标题必须含目标代码，且可见 `KXChartGroupView.m_kxChartInfo.m_kxChartItems` 非空；超时只记失败、翻下一页，绝不保存半张图 |
 | 分组 | 不自己做分组面板、不调分组写接口：截完 `finish()` 回策略页，`performClick()` 宿主「确认添加」，由 `ChooseGroupAct` 让用户选组 |
 | 截图存哪 | Android 10+ `MediaStore` → `Pictures/GSAuxiliary/<yyyyMMdd_HHmmss>/01_名称_代码.png`；旧系统回退 App 外部目录 |
+| 截图速度 | 存盘与翻页**并行**：PixelCopy 拿到像素就切下一页，PNG 编码 + 相册写入在 worker 继续；在途上限 2 张，位图复用 |
 
 ---
 
@@ -91,8 +92,8 @@ Intent(action = "quotes.stockDetail")
        └─ 逐页：
             setCurrentItem(i,false)
               → 等标题含目标代码 + K 线 m_kxChartItems 非空
-              → 进度条 INVISIBLE → 等 48ms → PixelCopy
-              → 后台 PNG + 相册写入 → 下一页
+            → 进度条 INVISIBLE → 等 48ms → PixelCopy
+            → 后台 PNG + 相册写入（**不挡翻页**）→ 下一页
             超时：只记失败，不截图
   └─ 完成：移除进度条，finish() 回策略页
        └─ 策略页 onResume：核对「已选 N」与启动前一致
@@ -113,8 +114,24 @@ Intent(action = "quotes.stockDetail")
 2. 可见的 `#tv_top_stk_name_and_code` 文本包含目标 6 位代码；
 3. 可见的 `KXChartGroupView` 的 `m_kxChartInfo.m_kxChartItems` 非空。
 
-超时：第一页 9 秒，后续页 6 秒（每 120ms 轮询）。不满足就不截。
+超时：第一页 9 秒，后续页 6 秒（每 48ms 轮询）。不满足就不截。
 找不到「日K」页签时退化为「标题命中 + 静置 900ms」，并记日志（宿主换控件时才会走到）。
+
+### 2.2 存盘与翻页并行（2026-11-02）
+
+整条链路里最贵的是 PNG 编码 + `MediaStore` 三次 IPC，而它与下一页的数据加载无关。
+现在 PixelCopy 成功就把位图交给单线程 worker，主线程**立刻翻下一页**：
+
+- 在途存盘上限 `MAX_INFLIGHT_SAVES = 2`：满了暂停翻页，存完一张由
+  `afterSaveStep()` 接上；位图按页复用（池 2 张），峰值原生内存约 2×10.4MB；
+- 顺序由文件名编号保证（`01_…` 由下标生成），与写盘完成先后无关；
+- 收尾必须等「所有页都翻过 + 在途清零」，否则会丢掉最后几张；
+- 取消语义不变：立即停翻页，队列里已提交的存盘照常写完。
+
+每页记录 `切页 / 就绪 / 拷贝 / 存盘` 四段耗时：明细在 DEBUG（`第 i/N 只 用时…`，含 native/Java 堆），
+收尾 INFO 打 `总耗时（页均）` 与 `前5页 / 后5页` 各段均值 + native/Java 堆。
+判读「越截越慢」：**就绪**变慢 = 宿主行情请求/页面累积；**存盘**变慢 = MediaProvider/GC；
+四段一起变慢 = 主线程被宿主拖慢或热降频。
 
 ---
 
@@ -151,6 +168,14 @@ Intent(action = "quotes.stockDetail")
 样张（本地留存）：`.work/probe/feature_01.png`、`feature_02.png`、`feature_05.png`、
 `.work/probe/feature_button.png`。
 
+> 2026-11-02 的速度整改（存盘并行 + 轮询 48ms + 位图复用）已做真机对比（魅族 20 / Android 16 / 宿主 8.7.0）：
+> - 同一策略 **19 只**：点按钮 → 自动弹分组页 **17.59s → 12.42s**（0.93 → 0.65 s/页）；
+> - 同一策略 **99 只**：串行版点击→最后一张落盘/回策略页 **约 91~93s（0.93 s/页）**，
+>   并行版点击→自动弹分组页 **54.87s（0.55 s/页）**；两次都保存 99 张、顺序一致。
+> - 两次 99 只的逐页节奏都是平的（串行 0.89~1.00、并行 0.44~0.56 s/页），
+>   **本次未复现「30 只以后越来越慢」**；能确认的是串行版每页成本恒定偏高，并行后整体快约 1.7 倍。
+>   截图内容与顺序无变化。验收口径见 §5 第 10 条。
+
 ---
 
 ## 5. 验收清单
@@ -165,6 +190,8 @@ Intent(action = "quotes.stockDetail")
 7. 取消 / 返回 / 切后台：任务停止，无僵尸进度条，不误点确认。
 8. 关开关即时移除按钮；重开并重进多选态后回来。
 9. release 包无 `io/github/libxposed/api` 类定义；日志 INFO 不出现完整代码。
+10. 40 只批次：`成功 + 未就绪/失败 = 总数`；收尾 INFO 有 `总耗时` 与前 5 / 后 5 页分段均值；
+    下 20 只的 `存盘` 均值不应随页数增长（存盘已与翻页解耦）。
 
 ---
 
@@ -180,4 +207,4 @@ Intent(action = "quotes.stockDetail")
 | 分组页不弹 | `CONFIRM_BUTTON_ID_CANDIDATES` / `BOTTOM_COUNT_ID_CANDIDATES` |
 
 日志关键字：`截图并添加：读取选中` / `开始 N 只（日K=` / `第 i/N 只数据未就绪` /
-`完成 N 只，成功 X` / `自动触发宿主确认添加`。
+`完成 N 只，成功 X` / `自动触发宿主确认添加` / `总耗时`（含前5/后5页分段均值）/ `第 i/N 只 用时`（DEBUG）。

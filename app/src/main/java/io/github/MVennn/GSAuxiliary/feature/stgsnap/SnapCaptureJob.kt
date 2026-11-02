@@ -3,12 +3,15 @@ package io.github.MVennn.GSAuxiliary.feature.stgsnap
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Debug
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.PixelCopy
 import android.view.View
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
+import java.util.ArrayDeque
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -21,11 +24,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  * start → 找 vp_stocks → 校验 adapter.count == 选中数
  *   → 点「日K」→ 逐页：setCurrentItem(i,false)
  *        → 等就绪（标题代码匹配 + K 线 m_kxChartItems 非空）
- *        → 隐藏进度条 → PixelCopy → 后台写相册 → 下一页
- *   → 完成：移除进度条，回调结果，finish() 回策略页
+ *        → 隐藏进度条 → PixelCopy → 交给后台写相册 → **立刻翻下一页**
+ *   → 完成：等写相册全部落地，移除进度条，回调结果，finish() 回策略页
  * ```
  *
  * **数据没就绪的一页不截图**：超时后只记失败、直接翻下一页，绝不保存半张图。
+ *
+ * **存盘不挡翻页**：PNG 压缩与 MediaStore 写入是整条链路里最贵的一段，却和下一页的
+ * 数据加载无关。PixelCopy 拿到像素后就把位图交给单线程 worker，主线程马上去切下一页；
+ * 在途存盘最多 [StgSnapAddTargets.MAX_INFLIGHT_SAVES] 张（挡住「宿主页瞬间就绪」时
+ * 位图无限排队），满了就暂停翻页，存完一张再续。正常路径下每页只多等一次宿主加载，
+ * 不再串上编码与落盘。位图按页复用（池 [POOL_SIZE] 张），减少 10MB 大对象的分配抖动。
  *
  * 所有 View / Pager / Bitmap 操作都在主线程；只有 PNG 压缩与写盘在单线程 worker。
  */
@@ -44,6 +53,24 @@ internal class SnapCaptureJob(
         val error: String? = null,
     )
 
+    /**
+     * 一页的分阶段耗时（毫秒）。[saveMs] 在存盘完成时回填 —— 并行之后它和下一页
+     * 的加载重叠，看的是「这一张真正写完要多久」，不是墙钟等待。
+     */
+    private class PageTiming(
+        val index: Int,
+        /** setCurrentItem → 标题命中 */
+        val switchMs: Long,
+        /** 标题命中 → 就绪门禁通过 */
+        val readyMs: Long,
+        /** 隐藏进度条 → PixelCopy 回调 */
+        val copyMs: Long,
+        /** 提交存盘 → PNG + 相册写入完成 */
+        var saveMs: Long = 0L,
+    ) {
+        var polls = 0
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private val cancelled = AtomicBoolean(false)
@@ -60,6 +87,27 @@ internal class SnapCaptureJob(
     private val startedAt = System.currentTimeMillis()
     private val runFolder = SnapStorage.newRunFolder()
 
+    /** 已提交、还没写完的存盘数量（只在主线程读写） */
+    private var inflight = 0
+
+    /** 在途到上限时记下「存完后要继续的下标」；-1 = 没暂停 */
+    private var resumeAt = -1
+
+    /** 所有页都处理过一遍（含跳过 / 失败），在途存盘清零后才收尾 */
+    private var captureDone = false
+
+    /** 复用位图：池里只放「已存完、当前无人使用」的；只有主线程碰它 */
+    private val bitmapPool = ArrayDeque<Bitmap>()
+
+    /** 逐页计时，收尾时对比前 5 / 后 5 页定位「越截越慢」 */
+    private val timings = ArrayList<PageTiming>(16)
+
+    private var pageStartedAt = 0L
+    private var titleAt = 0L
+    private var readyAt = 0L
+    private var polls = 0
+    private val jobStartedAt = SystemClock.elapsedRealtime()
+
     /** 我们自己发起的 finish/cancel；Activity.onPause 看到它时不要再取消一次 */
     val finishingNormally: Boolean get() = finishing
 
@@ -74,6 +122,7 @@ internal class SnapCaptureJob(
         finishing = true
         overlay?.remove()
         worker.shutdown()
+        dropBitmapPool()
         finished = true
         onFinished(Result(items.size, saved, failed, cancelled = true))
         runCatching { activity.finish() }
@@ -86,6 +135,7 @@ internal class SnapCaptureJob(
         finishing = true
         overlay?.remove()
         worker.shutdown()
+        dropBitmapPool()
         finished = true
         GLog.i("截图并添加：任务中止（$reason）")
         onFinished(Result(items.size, saved, failed, cancelled = true))
@@ -161,6 +211,10 @@ internal class SnapCaptureJob(
             return
         }
         titleSeenAt = 0L
+        titleAt = 0L
+        readyAt = 0L
+        polls = 0
+        pageStartedAt = SystemClock.elapsedRealtime()
         overlay?.update(index + 1, items.size, stock.name)
         val switched = runCatching {
             p.javaClass
@@ -192,6 +246,7 @@ internal class SnapCaptureJob(
 
     private fun waitReady(index: Int, stock: SelectedStock, deadline: Long) {
         if (cancelled.get() || finished) return
+        polls++
         if (activity.isFinishing) {
             cancelExternal("详情页已结束")
             return
@@ -211,7 +266,10 @@ internal class SnapCaptureJob(
         }.getOrNull()
         val onPage = current == index
         val titleOk = onPage && SnapReadiness.titleMatches(activity, stock.code)
-        if (titleOk && titleSeenAt == 0L) titleSeenAt = now
+        if (titleOk && titleSeenAt == 0L) {
+            titleSeenAt = now
+            titleAt = now
+        }
         val chartOk = if (klineMode) {
             titleOk && SnapReadiness.klineReady(activity, env)
         } else {
@@ -220,6 +278,7 @@ internal class SnapCaptureJob(
         }
 
         if (titleOk && chartOk) {
+            readyAt = now
             captureNow(index, stock)
             return
         }
@@ -270,21 +329,24 @@ internal class SnapCaptureJob(
             onCaptureFailed(index, stock, IllegalStateException("decor $w x $h"))
             return
         }
-        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val bitmap = acquireBitmap(w, h)
+        // 复用位图时先把上一张的内容清掉：PixelCopy 正常会铺满整张，但源窗口若被
+        // 系统裁过（分屏/刘海），没铺到的地方不应该残留上一页的画面
+        bitmap.eraseColor(0)
         runCatching {
             PixelCopy.request(window, bitmap, { result ->
                 overlay?.restoreAfterCapture()
                 if (cancelled.get() || finished) {
-                    bitmap.recycle()
+                    releaseBitmap(bitmap)
                 } else if (result == PixelCopy.SUCCESS) {
-                    saveBitmap(bitmap, index, stock)
+                    onCaptured(index, stock, bitmap)
                 } else {
                     GLog.w("截图并添加：PixelCopy 失败 result=$result，尝试 decorView.draw")
                     fallbackDraw(bitmap, index, stock) { onCaptureFailed(index, stock, it) }
                 }
             }, main)
         }.onFailure {
-            bitmap.recycle()
+            releaseBitmap(bitmap)
             onCaptureFailed(index, stock, it)
         }
     }
@@ -298,10 +360,38 @@ internal class SnapCaptureJob(
         runCatching {
             bitmap.eraseColor(0)
             activity.window.decorView.draw(Canvas(bitmap))
-            saveBitmap(bitmap, index, stock)
+            onCaptured(index, stock, bitmap)
         }.onFailure {
-            bitmap.recycle()
+            releaseBitmap(bitmap)
             onFail(it)
+        }
+    }
+
+    /**
+     * PixelCopy 拿到像素：记一次计时，把位图交给后台存盘，**主线程立刻翻下一页**。
+     *
+     * 这是「越截越慢」整改的核心：PNG 压缩与相册写入不再挡在翻页前面。翻页只受
+     * [StgSnapAddTargets.MAX_INFLIGHT_SAVES] 约束（位图不能无限排队）；存完一张由
+     * [afterSaveStep] 接上被暂停的翻页。
+     */
+    private fun onCaptured(index: Int, stock: SelectedStock, bitmap: Bitmap) {
+        if (cancelled.get() || finished) {
+            releaseBitmap(bitmap)
+            return
+        }
+        val timing = PageTiming(
+            index = index,
+            switchMs = (titleAt - pageStartedAt).coerceAtLeast(0),
+            readyMs = (readyAt - titleAt).coerceAtLeast(0),
+            copyMs = (SystemClock.elapsedRealtime() - readyAt).coerceAtLeast(0),
+        ).apply { polls = this@SnapCaptureJob.polls }
+        timings += timing
+        overlay?.restoreAfterCapture()
+        submitSave(bitmap, index, stock, timing)
+        if (inflight < StgSnapAddTargets.MAX_INFLIGHT_SAVES) {
+            next(index + 1)
+        } else {
+            resumeAt = index + 1
         }
     }
 
@@ -313,47 +403,110 @@ internal class SnapCaptureJob(
         next(index + 1)
     }
 
-    // ------------------------------------------------------------ 存盘
+    // ------------------------------------------------------------ 存盘（与翻页并行）
 
-    private fun saveBitmap(bitmap: Bitmap, index: Int, stock: SelectedStock) {
-        if (cancelled.get() || finished) {
-            bitmap.recycle()
-            return
-        }
+    private fun submitSave(
+        bitmap: Bitmap,
+        index: Int,
+        stock: SelectedStock,
+        timing: PageTiming,
+    ) {
         val fileName = StgSnapPlan.fileName(index + 1, stock.name, stock.code)
         val appContext = activity.applicationContext
+        val submittedAt = SystemClock.elapsedRealtime()
+        inflight++
         try {
             worker.execute {
-                val savedFile = SnapStorage.save(appContext, bitmap, fileName, runFolder)
-                bitmap.recycle()
+                // SnapStorage 自己吞异常返回 null；这里再包一层，保证「无论发生什么
+                // 都要回到主线程把在途计数减掉」，否则整批永远收不了尾
+                val savedFile = runCatching {
+                    SnapStorage.save(appContext, bitmap, fileName, runFolder)
+                }.getOrNull()
                 main.post {
-                    if (finished) return@post
-                    if (savedFile != null) {
-                        saved++
-                    } else {
-                        failed++
-                        GLog.w("截图并添加：第 ${index + 1} 张保存失败")
+                    inflight--
+                    if (!finished) {
+                        if (savedFile != null) {
+                            saved++
+                        } else {
+                            failed++
+                            GLog.w("截图并添加：第 ${index + 1} 张保存失败")
+                        }
                     }
-                    next(index + 1)
+                    releaseBitmap(bitmap)
+                    timing.saveMs = (SystemClock.elapsedRealtime() - submittedAt).coerceAtLeast(0)
+                    logPageTiming(timing)
+                    afterSaveStep()
                 }
             }
         } catch (t: Throwable) {
-            bitmap.recycle()
+            // 提交失败等价于「这一张存完但没落盘」：计数、计时都按一次保存收尾，
+            // 翻页继续由 onCaptured 统一推进（这里不再调 afterSaveStep，避免双重推进）
+            inflight--
+            releaseBitmap(bitmap)
+            timing.saveMs = (SystemClock.elapsedRealtime() - submittedAt).coerceAtLeast(0)
+            logPageTiming(timing)
             if (!finished) {
                 GLog.w("截图并添加：保存任务提交失败", t)
                 failed++
-                next(index + 1)
             }
+        }
+    }
+
+    /** 一张存完：先接上被「在途上限」暂停的翻页，再看整批是否已经可以收尾 */
+    private fun afterSaveStep() {
+        if (finished) return
+        val pending = resumeAt
+        if (pending >= 0) {
+            resumeAt = -1
+            next(pending)
+        } else {
+            maybeFinish()
         }
     }
 
     private fun next(index: Int) {
         if (cancelled.get() || finished) return
         if (index >= items.size) {
-            finishNormally()
+            captureDone = true
+            maybeFinish()
         } else {
             capturePage(index)
         }
+    }
+
+    /** 翻完 + 存盘清零才收尾；提前 finish 会把还没写完的图丢掉 */
+    private fun maybeFinish() {
+        if (finished || !captureDone || inflight > 0) return
+        finishNormally()
+    }
+
+    // ------------------------------------------------------------ 位图池
+
+    private fun acquireBitmap(w: Int, h: Int): Bitmap {
+        while (bitmapPool.isNotEmpty()) {
+            val reused = bitmapPool.removeLast()
+            if (!reused.isRecycled && reused.width == w && reused.height == h) return reused
+            runCatching { reused.recycle() }
+        }
+        return Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    }
+
+    /** 位图交还：只在「存盘已返回」或「PixelCopy 回调已到」之后调用 */
+    private fun releaseBitmap(bitmap: Bitmap) {
+        if (bitmap.isRecycled) return
+        if (finished) {
+            runCatching { bitmap.recycle() }
+            return
+        }
+        if (bitmapPool.size < POOL_SIZE) {
+            bitmapPool.addLast(bitmap)
+        } else {
+            runCatching { bitmap.recycle() }
+        }
+    }
+
+    private fun dropBitmapPool() {
+        while (bitmapPool.isNotEmpty()) runCatching { bitmapPool.removeLast().recycle() }
     }
 
     // ------------------------------------------------------------ 收尾
@@ -364,7 +517,15 @@ internal class SnapCaptureJob(
         finishing = true
         overlay?.remove()
         worker.shutdown()
-        GLog.i("截图并添加：完成 ${items.size} 只，成功 $saved，未就绪/失败 $failed")
+        dropBitmapPool()
+        val totalMs = SystemClock.elapsedRealtime() - jobStartedAt
+        GLog.i(
+            "截图并添加：完成 ${items.size} 只，成功 $saved，未就绪/失败 $failed；" +
+                "总耗时 ${totalMs}ms（页均 ${if (items.isEmpty()) 0 else totalMs / items.size}ms）" +
+                timingSummary() +
+                "；内存 native ${mb(Debug.getNativeHeapAllocatedSize())}MB" +
+                "/java ${mb(Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() })}MB"
+        )
         onFinished(Result(items.size, saved, failed, cancelled = false))
         runCatching { activity.finish() }
     }
@@ -375,8 +536,50 @@ internal class SnapCaptureJob(
         finishing = true
         overlay?.remove()
         worker.shutdown()
+        dropBitmapPool()
         if (t != null) GLog.w("截图并添加：$message", t) else GLog.w("截图并添加：$message")
         onFinished(Result(items.size, saved, failed, cancelled = false, error = message))
         runCatching { activity.finish() }
+    }
+
+    // ------------------------------------------------------------ 计时（排障）
+
+    private fun logPageTiming(timing: PageTiming) {
+        if (!GLog.isDebug) return
+        GLog.d(
+            "截图并添加：第 ${timing.index + 1}/${items.size} 只 用时" +
+                " 切页 ${timing.switchMs}ms / 就绪 ${timing.readyMs}ms（轮询 ${timing.polls} 次）" +
+                " / 拷贝 ${timing.copyMs}ms / 存盘 ${timing.saveMs}ms" +
+                " / native ${mb(Debug.getNativeHeapAllocatedSize())}MB" +
+                " java ${mb(Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() })}MB"
+        )
+    }
+
+    /**
+     * 前 5 页 / 后 5 页的分阶段均值 —— 判读「越截越慢」拐在哪一段：
+     *  - 就绪变慢 → 宿主行情请求 / 页面数据累积；
+     *  - 存盘变慢 → MediaProvider / GC；
+     *  - 四段一起变慢 → 主线程被宿主拖慢或热降频。
+     */
+    private fun timingSummary(): String {
+        if (timings.isEmpty()) return "；无可计时页"
+        fun avg(list: List<PageTiming>, pick: (PageTiming) -> Long): Long =
+            if (list.isEmpty()) 0L else list.sumOf(pick) / list.size
+        fun stages(list: List<PageTiming>): String = listOf(
+            avg(list) { it.switchMs },
+            avg(list) { it.readyMs },
+            avg(list) { it.copyMs },
+            avg(list) { it.saveMs },
+        ).joinToString("/")
+        return "；切页/就绪/拷贝/存盘 ms 页均=" + stages(timings) +
+            "，前5页=" + stages(timings.take(5)) +
+            "，后5页=" + stages(timings.takeLast(5))
+    }
+
+    private fun mb(bytes: Long): Long = bytes / (1024 * 1024)
+
+    private companion object {
+        /** 复用位图张数：与在途存盘上限对齐，多出来的只是白占 10MB/张 */
+        const val POOL_SIZE = 2
     }
 }

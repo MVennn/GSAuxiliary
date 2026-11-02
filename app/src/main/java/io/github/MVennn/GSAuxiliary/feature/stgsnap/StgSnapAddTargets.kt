@@ -95,8 +95,8 @@ internal object StgSnapAddTargets {
     /** 后续页等数据的超时 */
     const val READY_TIMEOUT_MS = 6000L
 
-    /** 就绪轮询间隔 */
-    const val READY_POLL_MS = 120L
+    /** 就绪轮询间隔（48ms ≈ 3 帧；只读视图状态，截图仍由就绪门禁决定） */
+    const val READY_POLL_MS = 48L
 
     /** 切页后先让 ViewPager 完成布局 */
     const val PAGE_SETTLE_MS = 180L
@@ -106,4 +106,12 @@ internal object StgSnapAddTargets {
 
     /** 隐藏进度条后等这一小段时间再 PixelCopy，确保这一帧没有进度条 */
     const val CAPTURE_DELAY_MS = 48L
+
+    /**
+     * 同时「已截到、还没写完相册」的图片上限。
+     *
+     * 存盘与翻页并行：PixelCopy 拿到像素就切下一页。上限 2 保证宿主页瞬间就绪时
+     * 位图也不会无限排队（每张 1080×2400 ARGB ≈ 10.4MB），满了就暂停翻页等存完一张。
+     */
+    const val MAX_INFLIGHT_SAVES = 2
 }
