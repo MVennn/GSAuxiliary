@@ -241,6 +241,8 @@ dependencies {
     // Miuix（小米 HyperOS 风格 Compose UI）
     // 0.9.4+ 会要求 AGP >= 9.1，详见 docs/BUILD.md
     implementation("top.yukonga.miuix.kmp:miuix-ui:$miuixVersion")
+    // TODO(2026-11-04): 全仓无 kmp.preference import（squircle 由 miuix-ui-android 传递），
+    // 疑似僵尸声明；因本机 Android SDK 已删、无法验证构建，下次构建确认后移除。
     implementation("top.yukonga.miuix.kmp:miuix-preference:$miuixVersion")
 
     implementation("androidx.activity:activity-compose:1.12.4")
@@ -296,7 +298,7 @@ dependencies {
     //   - 更根本的是：它验的是**渲染结果**，而这个项目的界面观感差异
     //     靠的是真机（Miuix / 液态玻璃 / 深色模式），Robolectric 验不出那个；
     //   - 结论：**界面类改动仍然只能靠真机**，自动化只覆盖纯逻辑那一半
-    //     （配置、筛选、算价、打码 —— 已在 `app/src/test/` 里，113 条）。
+    //     （配置、筛选、算价、打码 —— 已在 `app/src/test/` 里，201 条）。
     //
     //   等哪天有了**能跑的模拟器**（要管理员装 Android Emulator hypervisor driver
     //   或启用 WHPX —— 本机两者都不具备），再考虑把「宿主 App 装进模拟器 + LSPosed」
