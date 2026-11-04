@@ -300,4 +300,31 @@ class StgSelectAllPlanTest {
             ),
         )
     }
+
+    // ---------------------------------------------------------- 模型可信判据（2026-11-04）
+
+    @Test
+    fun `模型读不到时不可信`() {
+        // 8.7.0 起 checkCodes 恒空：选中态只能按框架 checked states 判 / 画
+        assertFalse(StgSelectAllPlan.modelTrusted(null, hostCount = 8))
+    }
+
+    @Test
+    fun `模型条数与底部计数一致时可信`() {
+        assertTrue(StgSelectAllPlan.modelTrusted(listOf("600000", "002368"), hostCount = 2))
+    }
+
+    @Test
+    fun `手动取消一只后模型没删完时不可信`() {
+        // 计数 7、模型 8 项 = 残值。拿它判会把「补选一只」算成「反选」；
+        // 拿它画勾会把刚取消的那只又画回勾上。
+        assertFalse(StgSelectAllPlan.modelTrusted(List(8) { "60000$it" }, hostCount = 7))
+    }
+
+    @Test
+    fun `计数读不到时维持旧行为`() {
+        // 没有旁证可比，模型能读就仍按模型（与改动前一致）
+        assertTrue(StgSelectAllPlan.modelTrusted(listOf("600000"), hostCount = -1))
+        assertFalse(StgSelectAllPlan.modelTrusted(null, hostCount = -1))
+    }
 }

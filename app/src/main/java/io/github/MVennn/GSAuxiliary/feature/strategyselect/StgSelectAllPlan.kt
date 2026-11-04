@@ -83,6 +83,20 @@ internal object StgSelectAllPlan {
     // ---------------------------------------------------------- 宿主选中模型
 
     /**
+     * 宿主选中模型能不能拿来当**当前**的真相（2026-11-04）。
+     *
+     * `checkCodes` 是宿主自己维护的 List，底部「已选 N」是它每次点击都会重写的计数。
+     * 两份对不上时，模型多半是上一批的残值 / 还没删完：拿它判方向会把
+     * 「手动取消一只后再点全选」算成「已经全选」→ 反向把剩下的全取消；
+     * 拿它画勾则会把已经取消的那只又画回勾上。
+     *
+     * 计数读不到（< 0）时没有旁证，维持旧行为（模型可读就信它）。
+     * 8.7.0 起 `checkCodes` 恒空，调用方读到的是 null —— 一律按框架 checked states 走。
+     */
+    fun modelTrusted(codes: List<String>?, hostCount: Int): Boolean =
+        codes != null && (hostCount < 0 || codes.size == hostCount)
+
+    /**
      * 用宿主自己的选中模型（`AIStkStgDetailAct.checkCodes`）算每一行的状态。
      *
      * 为什么需要它（2026-10-23 用户反馈）：合成点击走的是

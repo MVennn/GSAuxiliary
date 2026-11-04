@@ -58,9 +58,15 @@ import java.util.WeakHashMap
  * 补点轮以 checked states 为准（那是我们自己刚写过的表）；**没有筛选**时若表与宿主计数
  * 分叉，说明宿主模型漏了行，退回探针按模型补。
  *
+ * ## 首轮一次性全选（2026-11-04）
+ *
+ * [clickAll] 在**同一帧内**把待点行全部点完：主线程循环期间 ListView 不会布局 / 重绑，
+ * 可见行的真实子 View 一直有效，宿主 `OnItemClickListener` 仍逐行执行 —— 底部计数、
+ * 选中模型、确认添加全是原路径，只是不再有「一行行往下勾」的动画。补点轮仍逐行分帧。
+ *
  * ## 运行期间锁住「确认添加」（2026-10-28）
  *
- * 全选是逐行异步点击（`TOGGLE_STEP_MS = 40ms`），运行中宿主「确认添加」完全可点。
+ * 全选首轮虽然同帧完成，后面还有补点轮 / 宿主刷新；运行中宿主「确认添加」完全可点。
  * 点早了宿主只快照到**当时已点过的前缀** —— 真机 72 只实测只进了 18 只，而屏幕稍后
  * 会把 72 行全部画上勾，看起来像"全选了却没全加进去"。所以跑第一行前把该按钮置灰
  * 禁用（只动 `enabled / clickable / alpha`，**不替换宿主的点击监听**），「已选 N」
@@ -70,13 +76,14 @@ import java.util.WeakHashMap
  * `mCheckStates` 按取反写好了，下一轮读表只会看到目标态。这类漏选只能靠真机日志与
  * 宿主行为去查（见 `docs/FEATURE-SELECT-ALL.md` §4.3）。
  *
- * ## 显示刷新为什么要连行根一起刷（2026-10-22）
+ * ## 显示刷新为什么要连行根一起刷（2026-10-22；2026-11-04 补 `#ct_item`）
  *
  * `AbsListView.performItemClick` 每次都会调 `updateOnScreenCheckedViews()`，把**行根视图**的
- * `activated` 按 `mCheckStates[适配器位置]` 重写。筛选生效时我们的 checked states 用的是
- * **全量位置**（宿主模型读这份），两套坐标错位 → 每次合成点击都会把一部分可见行刷回「没勾」。
- * 宿主若用 `duplicateParentState` / `state_activated` 画勾，光设 `#ct_item.isChecked` 修不回来。
- * 所以可见行的 `activated` 与 `isChecked` 一起按「全量下标 → 表」刷（见 [refreshVisibleChecked]）。
+ * `activated` 按 `mCheckStates[适配器位置]` 重写；它**不碰嵌套的 `#ct_item`**。
+ * 8.7.0 起宿主 `checkCodes` 恒空，常驻 pre-draw 若因「模型读不到」直接退出，
+ * 手动取消一行后那颗勾就会停在全选时写下的 `true` —— 计数 -1 而视觉上的 √ 去不掉。
+ * 所以模型不可用 / 与计数对不上时，[paintVisibleRows] 改按 checked states 把行根、
+ * `#ct_item`、`activated` 三处一起刷回来（见 [paintVisibleRowsFromTable]）。
  *
  * ⚠️ **不要包裹 ListView 的 `OnItemClickListener`**（2026-10-20 真机定位）：
  * 宿主的多选状态写在 ListView 自己的 checked states 里，而 `AbsListView.performItemClick`
@@ -176,6 +183,16 @@ class StgSelectAllFeature : Feature {
      * 点同一批行 —— 同一行被取反两次 = 没变，又会出现「部分选不中」。
      */
     @Volatile private var running = false
+
+    /**
+     * 首轮正在**同一帧内批量点行**。
+     *
+     * 期间宿主「已选 N」会连变 N 次，计数 watcher 的 `updateLabel / syncHostModel /
+     * post` 若每次都跑就是 O(N²) 的反射与全表扫描，还会把「确认添加」闸门反复压回去。
+     * 主线程被我们占着，用户也点不到任何按钮 —— 批量收尾统一做一次即可。
+     * 补点轮（仍逐行 40ms）不置这个标志。
+     */
+    @Volatile private var batchClicking = false
 
     /**
      * 正在跑的那一轮挂在哪个列表上（弱引用）。
@@ -509,6 +526,10 @@ class StgSelectAllFeature : Feature {
      *
      * 只在显示与目标不一致时才写：`isChecked` / `activated` 会 `invalidate`，
      * 无条件写会让多选态期间每一帧都重绘。
+     *
+     * 2026-11-04：宿主模型不可用 / 不可信时**按框架 checked states 画**（见
+     * [paintVisibleRowsFromTable]）。8.7.0 起 `checkCodes` 恒空，手动取消一行时
+     * 框架只刷行根、不刷 `#ct_item`，若这里直接 return，全选时写下的那个勾就再也去不掉。
      */
     private fun paintVisibleRows(lv: ListView) {
         if (!lv.isAttachedToWindow) return
@@ -519,13 +540,13 @@ class StgSelectAllFeature : Feature {
         if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
         val ctId = checkboxId(lv)
         if (ctId == 0) return
-        val codes = readHostModel(lv)
-        // 宿主模型不可用（2026-10-27 起宿主 8.7.0 的 `checkCodes` 恒空）：
-        // 显示由框架按**适配器位置**自己维护（与手动点行同一套坐标），这里不插手 ——
-        // 插手只会把正确状态盖掉。
-        if (codes == null) return
-        // 模型非空、计数却是 0 —— 两份数据硬分叉，不画
         val hostCount = selectedCount(lv)
+        val codes = trustedModel(lv, hostCount)
+        if (codes == null) {
+            paintVisibleRowsFromTable(lv, total, hostCount, ctId, isFilterProxy(adapter))
+            return
+        }
+        // 模型非空、计数却是 0 —— 两份数据硬分叉，不画
         if (hostCount == 0 && codes.isNotEmpty()) return
         val selected = codes.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
@@ -568,19 +589,50 @@ class StgSelectAllFeature : Feature {
             }
             return
         }
-        for (k in rows.indices) {
-            val row = rows[k]
-            val checked = wanted[k]
-            val root = row as? Checkable
-            val ct = row.findViewById<View>(ctId) as? CheckedTextView
-            if (root?.isChecked == checked && ct?.isChecked == checked &&
-                (!multiple || row.isActivated == checked)
-            ) {
-                continue
-            }
-            writeRowChecked(lv, row, checked, ctId)
+        for (k in rows.indices) writeRowChecked(lv, rows[k], wanted[k], ctId)
+    }
+
+    /**
+     * 宿主模型不可用 / 不可信时，按**框架 checked states** 把可见行三处状态一起刷回来。
+     *
+     * 手动点行时 `AbsListView.performItemClick` 先按适配器位置取反写 `mCheckStates`，
+     * `updateOnScreenCheckedViews()` 只刷**行根**，嵌套的 `#ct_item` 不会被框架碰；
+     * 宿主若不重绑行，那颗勾就停在全选时我们写下的 `true`。表是 UI 与「确认添加」
+     * 同一份 truth，按它画既能清掉残留的勾，也不会把计数画错。
+     *
+     * 只在 `CHOICE_MODE_MULTIPLE` 下画；没有 checked states 可读时不插手，交给宿主自己绑。
+     * 没筛选时用「表里勾着的行数 == 宿主计数」对一次账（计数读不到时免对）；
+     * 筛选下宿主计数含被筛掉的行，对不上是常态，表本身仍是屏幕这一套适配器位置的 truth。
+     */
+    private fun paintVisibleRowsFromTable(
+        lv: ListView,
+        total: Int,
+        hostCount: Int,
+        ctId: Int,
+        filtered: Boolean,
+    ) {
+        if (lv.choiceMode != ListView.CHOICE_MODE_MULTIPLE) return
+        val header = lv.headerViewsCount
+        val table = tableRowStates(lv, total) ?: return
+        if (!filtered && hostCount >= 0 && table.count { it } != hostCount) return
+        val first = lv.firstVisiblePosition
+        for (i in 0 until lv.childCount) {
+            val index = first + i - header
+            if (index !in 0 until total) continue
+            val row = lv.getChildAt(i) ?: continue
+            writeRowChecked(lv, row, table[index], ctId)
         }
     }
+
+    /**
+     * 读一份**当前可信**的宿主选中模型。
+     *
+     * [StgSelectAllPlan.modelTrusted] 要求模型条数 == 底部计数：对不上就是上一批残值 /
+     * 宿主还没删完，拿它判方向或画勾都会把用户刚手动取消的那只算成「还勾着」。
+     * 8.7.0 起字段恒空，[readHostModel] 直接返回 null —— 一份都拿不到。
+     */
+    private fun trustedModel(lv: ListView, hostCount: Int): List<String>? =
+        readHostModel(lv)?.takeIf { StgSelectAllPlan.modelTrusted(it, hostCount) }
 
     /**
      * 把一行的勾选显示写成 [checked]。
@@ -590,10 +642,17 @@ class StgSelectAllFeature : Feature {
      * `activated` 只在多选模式下写（宿主用 `state_activated` 画整行选中态）。
      */
     private fun writeRowChecked(lv: ListView, row: View, checked: Boolean, ctId: Int) {
-        (row as? Checkable)?.let { it.isChecked = checked }
-        (row.findViewById<View>(ctId) as? CheckedTextView)?.isChecked = checked
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
             lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
+        val root = row as? Checkable
+        val ct = row.findViewById<View>(ctId) as? CheckedTextView
+        if (root?.isChecked == checked && ct?.isChecked == checked &&
+            (!multiple || row.isActivated == checked)
+        ) {
+            return
+        }
+        root?.let { it.isChecked = checked }
+        ct?.isChecked = checked
         if (multiple && row.isActivated != checked) row.isActivated = checked
     }
 
@@ -743,6 +802,9 @@ class StgSelectAllFeature : Feature {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
+                    // 首轮批量点击期间计数会连变 N 次，全部跳过；收尾统一做一次
+                    // （主线程被批量循环占着，用户也点不到「确认添加」）。
+                    if (batchClicking) return
                     // 宿主可能每次计数变化都重设 `enabled`（例如「已选 > 0 才可点」），
                     // 所以运行期间每变一次就重新压一遍闸门；不动文案以外的东西。
                     runCatching { reassertGate(lv) }
@@ -751,6 +813,10 @@ class StgSelectAllFeature : Feature {
                         .onFailure { GLog.w("全选：刷新按钮文案异常", it) }
                     // 手动点行同样会记错票（见 [syncHostModel]）：计数一变就按屏幕校正一次。
                     // 再排到下一帧补一次 —— 宿主的选中模型可能在点击回调返回后才写。
+                    // 2026-11-04：手动取消一行时框架只刷行根、不刷 #ct_item，
+                    // 这里按 checked states 把可见行三处状态一起刷回来（见 [paintVisibleRows]）。
+                    runCatching { paintVisibleRows(lv) }
+                        .onFailure { GLog.w("全选：计数变化后画勾异常", it) }
                     runCatching { syncHostModel(lv) }
                         .onFailure { GLog.w("全选：校正宿主模型异常", it) }
                     lv.post { runCatching { syncHostModel(lv) } }
@@ -1011,15 +1077,17 @@ class StgSelectAllFeature : Feature {
             // 开跑前先锁住宿主的「确认添加」：点早了宿主只快照到已点过的前缀
             // （2026-10-28 真机：72 只只进了 18 只）。收尾 / 中止时在 [endRun] 还原。
             gateConfirm(v)
-            // 首次 clickNext 是同步调用，不在下面 postDelayed 的护栏里；此刻 started
-            // 已经为 true，finally 兜不到它 —— 一旦抛出，running 卡在 true、闸门不解，
-            // 「确认添加」从此置灰直到换页 / 关开关。与异步两处调用（clickNext /
-            // nextRound 的 postDelayed 回调）同一待遇：失败就地 endRun()，按钮下一击可重来。
-            runCatching { clickNext(env, run) }
-                .onFailure {
-                    GLog.w("全选：首轮点击链异常，收尾", it)
-                    endRun()
-                }
+            // 首轮走同一帧批量点击（2026-11-04）：循环期间不会布局 / 重绑，
+            // 可见行的真实子 View 一直有效，宿主监听仍逐行执行；补点轮维持分帧。
+            // 两条链都在调用点包 runCatching：它们可能在「running 已置位、
+            // finally 只兜 !started」的窗口里抛出，异常必须就地 endRun()，
+            // 否则 running 卡在 true、闸门不解，「确认添加」从此置灰。
+            runCatching {
+                if (BATCH_CLICK) clickAll(env, run) else clickNext(env, run)
+            }.onFailure {
+                GLog.w("全选：首轮点击链异常，收尾", it)
+                endRun()
+            }
         } finally {
             // 任何早退 / 异常都不能把 running 留在 true（否则按钮从此失效）
             if (!started) {
@@ -1094,11 +1162,26 @@ class StgSelectAllFeature : Feature {
             clearHostModel(lv)
         }
         val modelCodes = if (staleModelSize > 0) null else hostCodes
+        // 2026-11-04 首轮：模型条数必须与宿主计数一致。手动取消一只后宿主可能还没
+        // 把那项从模型里删掉（计数 N-1、模型 N 项），拿残值判会把「补选一只」算成
+        // 「已全选」→ 反向把剩下 N-1 只全取消。补点轮里计数可能滞后，保持旧判据。
+        val untrustedModelSize = if (!retry && modelCodes != null &&
+            !StgSelectAllPlan.modelTrusted(modelCodes, hostCount)
+        ) {
+            GLog.i(
+                "策略全选：宿主模型 ${modelCodes.size} 项与计数 $hostCount 不一致" +
+                    "（多半是手动取消后模型没删完），首轮按 checked states 判方向",
+            )
+            modelCodes.size
+        } else {
+            0
+        }
+        val firstRoundCodes = if (untrustedModelSize > 0) null else modelCodes
 
-        val modelBefore = modelCodes?.let {
+        val modelBefore = firstRoundCodes?.let {
             modelRowStates(adapter, total, it, full != null, hostCount)
         }
-        if (modelCodes != null && modelBefore == null) {
+        if (firstRoundCodes != null && modelBefore == null) {
             noteModelUnusable("模型与列表/计数不一致")
         }
 
@@ -1120,7 +1203,7 @@ class StgSelectAllFeature : Feature {
 
         // 只有模型**确实被采用**时才把它记进 Shot：否则显示刷新会拿一份
         // 已经被判不可信的模型去画「全没勾」。
-        val usableCodes = if (modelBefore != null) hostCodes else null
+        val usableCodes = if (modelBefore != null) firstRoundCodes else null
 
         if (usableCodes != null && modelBefore != null) {
             GLog.i(
@@ -1241,9 +1324,8 @@ class StgSelectAllFeature : Feature {
 
     /** 点 [run].click 里的下一行（含屏外），然后 `postDelayed` 到下一帧 */
     private fun clickNext(env: FeatureEnv, run: ToggleRun) {
-        val lv = run.lv
-        // 被取消（关开关 / 退出多选态 / 又点了一次）→ 立刻停
         if (!running || run.token != runSeq.get()) return
+        val lv = run.lv
         if (run.cursor >= run.click.size) {
             // 本轮点完：先给宿主几帧把手上的 notifyDataSetChanged 落定，再重新读一遍
             // checked states —— 漏掉的行进下一轮，全部到位就收工。
@@ -1254,29 +1336,73 @@ class StgSelectAllFeature : Feature {
             scheduleNextRound(env, run, ROUND_SETTLE_MS)
             return
         }
-        // 页面被销毁后 `postDelayed` 的 runnable 可能永远不跑（running 会卡在 true），
-        // 这里再兜一道：列表已不在窗口上就收尾。
         if (!lv.isAttachedToWindow) {
             finishRun(env, run, "列表已脱离窗口")
             return
         }
+        when (clickOneRow(env, run)) {
+            is RowOutcome.Done -> {
+                if (run.full != null) refreshVisibleChecked(run)
+                run.cursor++
+            }
+            is RowOutcome.End -> return
+            is RowOutcome.Restart -> return
+        }
+        // ⚠️ `View.postDelayed` 在视图脱窗时**不会**返回 false（它把 runnable 排进
+        // RunQueue，等重新 attach 再执行），所以必须自己先判一次：脱窗就收尾，
+        // 否则 `running` 会一直挂着，重新挂载后还会接着点。
+        if (!lv.isAttachedToWindow) {
+            finishRun(env, run, "列表已脱离窗口")
+            return
+        }
+        val posted = lv.postDelayed(
+            {
+                runCatching { clickNext(env, run) }
+                    .onFailure {
+                        // 不能让异常把 running 永久留在 true（按钮从此失效）
+                        GLog.w("全选：运行中异常，收尾", it)
+                        endRun()
+                    }
+            },
+            TOGGLE_STEP_MS,
+        )
+        if (!posted) finishRun(env, run, "列表已脱离窗口")
+    }
+
+    /** 一次行点击的结果：`Done` 继续、`End` 已收尾、`Restart` 已排重开轮 */
+    private sealed class RowOutcome {
+        object Done : RowOutcome()
+        object End : RowOutcome()
+        object Restart : RowOutcome()
+    }
+
+    /**
+     * 点 [run].click 里游标所指的那一行（含屏外），并校验现场仍然有效。
+     *
+     * 批量首轮与逐行补点轮共用：前者在同一帧里连调 N 次，后者每次隔
+     * [TOGGLE_STEP_MS]。抽出来是为了两条规定只有一份实现 ——
+     * 「适配器位置坐标」与「运行中现场作废就停/重开」。
+     */
+    private fun clickOneRow(env: FeatureEnv, run: ToggleRun): RowOutcome {
+        if (!running || run.token != runSeq.get()) return RowOutcome.End
+        val lv = run.lv
         val adapter = run.adapter
         if (adapter == null) {
             finishRun(env, run, "适配器丢了")
-            return
+            return RowOutcome.End
         }
         // 运行期间宿主换了适配器 → **中止**（不重开）。换适配器可能意味着换了策略 / 换了一页，
         // 继续按原来的 wantChecked 点下去会把「全选」施加到另一批股票上。
         // 筛选结果变化不换适配器（代理就地 update），那一条走下面的下标校验重开一轮。
         if (unwrapHeaderAdapter(lv.adapter) !== adapter) {
             finishRun(env, run, "适配器在运行中换了（可能是别的页面），中止")
-            return
+            return RowOutcome.End
         }
         // header 数变了（宿主加/删表头）→ 所有位置整体偏移，本轮快照作废：重开一轮
         if (lv.headerViewsCount != run.headerCount) {
             GLog.i("策略全选：header 数在运行中变了（${run.headerCount} → ${lv.headerViewsCount}），重新快照")
             scheduleNextRound(env, run, 0)
-            return
+            return RowOutcome.Restart
         }
         val index = run.click[run.cursor]
         val full = run.full
@@ -1286,7 +1412,7 @@ class StgSelectAllFeature : Feature {
             if (now == null || now != full[index]) {
                 GLog.i("策略全选：筛选下标在运行中变了，重新快照（已完成 ${run.cursor}/${run.click.size}）")
                 scheduleNextRound(env, run, 0)
-                return
+                return RowOutcome.Restart
             }
         }
 
@@ -1310,34 +1436,55 @@ class StgSelectAllFeature : Feature {
         } else {
             clickRow(lv, run, adapter, index, pos, row)
         }
+        return RowOutcome.Done
+    }
 
-        if (full != null) {
-            // 每次合成点击都会把可见行的 `activated` 按**适配器位置**重写一遍，
-            // 而筛选期间 checked states 用的是全量位置 —— 两套坐标错位，不补这一下
-            // 屏幕会一部分勾、一部分没勾（见 [refreshVisibleChecked]）。
-            refreshVisibleChecked(run)
+    /**
+     * **首轮一次性全选**（2026-11-04）：同一帧内把待点行全部点完。
+     *
+     * 逐行 40ms 本来只为等宿主每次 `notifyDataSetChanged()` 完成布局、不复用旧子 View；
+     * 而 `requestLayout()` 只会把布局排到下一次 vsync —— 主线程循环期间 ListView
+     * 不会重绑，可见行的真实子 View 始终有效，屏外行照旧用 `getView` 造探针。
+     * 于是可以去掉整个「一行行往下勾」的动画：宿主 `OnItemClickListener` 仍逐行执行
+     * （底部计数 / 选中模型 / 确认添加全是原路径），屏幕只在最后一帧统一画勾。
+     *
+     * 批量期间 [batchClicking] 压住计数 watcher 的重复工作；收尾统一校正模型、刷显示、
+     * 刷文案、压一次闸门，再交给原有补点轮核对（正常情况 0 行要补）。
+     * 现场失效（脱窗 / 适配器换了 / header 或筛选下标变了）与逐行版同一套处理。
+     */
+    private fun clickAll(env: FeatureEnv, run: ToggleRun) {
+        val lv = run.lv
+        val began = android.os.SystemClock.elapsedRealtime()
+        val size = run.click.size
+        batchClicking = true
+        try {
+            while (run.cursor < size) {
+                // 被取消（关开关 / 退出多选态 / 又点了一次）→ 立刻停
+                if (!running || run.token != runSeq.get()) return
+                if (!lv.isAttachedToWindow) {
+                    finishRun(env, run, "列表已脱离窗口")
+                    return
+                }
+                when (clickOneRow(env, run)) {
+                    is RowOutcome.Done -> run.cursor++
+                    else -> return
+                }
+            }
+            val elapsed = android.os.SystemClock.elapsedRealtime() - began
+            GLog.i(
+                "策略全选：一次性点击 $size 行完成（耗时 ${elapsed}ms，失败 ${run.failedThisRound}" +
+                    "，宿主计数 ${run.hostCount} → ${selectedCount(lv)}）",
+            )
+            // 逐行版在每次点击后校正（筛选下提交包会记错票）；批量版收尾做一次即可。
+            runCatching { syncHostModel(lv) }
+                .onFailure { GLog.w("全选：批量收尾校正宿主模型异常", it) }
+            if (run.full != null) refreshVisibleChecked(run)
+            run.button?.let { updateLabel(env, lv, it) }
+            reassertGate(lv)
+            scheduleNextRound(env, run, ROUND_SETTLE_MS)
+        } finally {
+            batchClicking = false
         }
-
-        run.cursor++
-        // ⚠️ `View.postDelayed` 在视图脱窗时**不会**返回 false（它把 runnable 排进
-        // RunQueue，等重新 attach 再执行），所以必须自己先判一次：脱窗就收尾，
-        // 否则 `running` 会一直挂着，重新挂载后还会接着点。
-        if (!lv.isAttachedToWindow) {
-            finishRun(env, run, "列表已脱离窗口")
-            return
-        }
-        val posted = lv.postDelayed(
-            {
-                runCatching { clickNext(env, run) }
-                    .onFailure {
-                        // 不能让异常把 running 永久留在 true（按钮从此失效）
-                        GLog.w("全选：运行中异常，收尾", it)
-                        endRun()
-                    }
-            },
-            TOGGLE_STEP_MS,
-        )
-        if (!posted) finishRun(env, run, "列表已脱离窗口")
     }
 
     /**
@@ -1370,6 +1517,7 @@ class StgSelectAllFeature : Feature {
      * 预置（`setItemChecked`）失败时不动表（它没写成功）；点击抛异常时**不回滚**：
      * 表已经被框架按取反写过了，回滚会把「宿主可能已经更新的模型」与表拆开，
      * 下一轮再点一次反而变成反向操作。
+     *
      */
     private fun clickRow(
         lv: ListView,
@@ -1430,6 +1578,8 @@ class StgSelectAllFeature : Feature {
         }
         // 宿主记下的可能是「全量列表同下标」的另一只票（见 [syncHostModel]）：
         // 每次合成点击后立刻按屏幕上的真实代码校正一次，确认添加才会提交对的票。
+        // 批量首轮也保留这一下：筛选下宿主按位置记错票，若隔到最后才修，
+        // 中间点击可能因错票碰撞而少加一行（无筛选时该函数自己早退，开销可忽略）。
         runCatching { syncHostModel(lv) }
             .onFailure { GLog.w("全选：点击后校正宿主模型异常", it) }
     }
@@ -1627,14 +1777,20 @@ class StgSelectAllFeature : Feature {
         // 现场读不到（页面正在销毁等）时退回本轮开始时的快照，只影响显示。
         // 没有筛选时「计数 > 0 但模型空表」视为不可用（与 modelRowStates 同一判据），
         // 免得把已勾行全画成没勾。
+        //
+        // 2026-11-04：可信判据要用**当前**计数，不能用本轮开始时的 run.hostCount ——
+        // 「反选」从 N 开始时 run.hostCount=N，收尾时实时计数已归 0；拿旧计数判
+        // 会把开头那份快照当成仍然有效，把刚取消的行又全画回勾。
+        val liveCount = selectedCount(lv)
         val hostCodes = (readHostModel(lv) ?: run.hostCodes)
             ?.takeIf { run.full != null || run.hostCount <= 0 || it.isNotEmpty() }
+            ?.takeIf { StgSelectAllPlan.modelTrusted(it, liveCount) }
         val hostSet = hostCodes?.mapTo(HashSet()) { StgSelectAllPlan.normalizeCode(it) }
         val multiple = lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE ||
             lv.choiceMode == ListView.CHOICE_MODE_MULTIPLE_MODAL
-        // 与 [paintVisibleRows] 同一道硬护栏：没有筛选、计数 > 0、模型非空，但这一屏
-        // 一只都对不上 —— 模型不可信（上一页残值 / 宿主换了字段），整趟不画。
-        if (hostSet != null && hostSet.isNotEmpty() && full == null && run.hostCount > 0) {
+        // 与 [paintVisibleRows] 同一道硬护栏：没有筛选、当前计数 > 0、模型非空，
+        // 但这一屏一只都对不上 —— 模型不可信（上一页残值 / 宿主换了字段），整趟不画。
+        if (hostSet != null && hostSet.isNotEmpty() && full == null && liveCount > 0) {
             var matchedAny = false
             for (i in 0 until lv.childCount) {
                 val index = first + i - header
@@ -1650,7 +1806,7 @@ class StgSelectAllFeature : Feature {
                     modelMismatchLogged = true
                     GLog.w(
                         "全选：宿主模型与当前列表一只都对不上" +
-                            "（模型 ${hostSet.size} 项 / 计数 ${run.hostCount}），本次不刷显示",
+                            "（模型 ${hostSet.size} 项 / 计数 $liveCount），本次不刷显示",
                     )
                 }
                 return
@@ -1710,9 +1866,10 @@ class StgSelectAllFeature : Feature {
         val hostCount = selectedCount(button)
         val tableChecked = if (total > 0) tableRowStates(lv, total)?.count { it } else null
         val source = StgSelectAllPlan.stateSource(hostCount, tableChecked, filtered != null)
-        // 宿主模型优先：它才是底部计数 / 确认添加的来源。读不到才退回原来的判据。
+        // 宿主模型优先：它才是底部计数 / 确认添加的来源。读不到 / 条数与计数对不上
+        // （手动取消后模型没删完）就退回原来的判据，否则文案会停在与实际相反的状态。
         val modelStates = if (total > 0) {
-            readHostModel(lv)?.let {
+            trustedModel(lv, hostCount)?.let {
                 modelRowStates(realAdapter, total, it, filtered != null, hostCount)
             }
         } else {
@@ -2397,12 +2554,20 @@ class StgSelectAllFeature : Feature {
         /**
          * 逐行触发勾选时，每一行之间间隔的毫秒数。
          *
-         * 宿主每点一行都会 `notifyDataSetChanged()`；16ms（一帧）时布局经常还没跑完，
-         * 下一行拿到的仍是旧绑定的子 View。2026-10-23 用户反馈「勾得太快，个别行
-         * 的对钩会漏」之后放到 40ms（≈ 2~3 帧）：33 行约 1.3 秒，仍然是一眼看完的速度，
-         * 但给宿主的「模型更新 → 通知 → 重新绑定」留出确定性窗口。
+         * 2026-11-04 起首轮改走 [clickAll]（同一帧批量点击），这里只用于补点轮；
+         * [BATCH_CLICK] 关掉时可一键退回旧路径（宿主升级后若批量出问题）。
+         * 2026-10-23 用户反馈「勾得太快，个别行的对钩会漏」之后放到 40ms
+         * （≈ 2~3 帧）：33 行约 1.3 秒，但给宿主的「模型更新 → 通知 → 重新绑定」
+         * 留出确定性窗口。
          */
         const val TOGGLE_STEP_MS = 40L
+
+        /**
+         * 首轮是否走「同一帧批量点击」。
+         *
+         * 关掉即恢复逐行 40ms 的旧行为（回退开关，不改其它逻辑）。
+         */
+        const val BATCH_CLICK = true
 
         /**
          * 一轮点完后隔多久重新读状态。
