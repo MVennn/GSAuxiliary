@@ -25,7 +25,7 @@
 - `tools/ci/check_invariants.py` —— **源码级**的静态不变量（Miuix 禁用、假开关…）
 - **本脚本** —— **源码级**的宿主契约（认的东西还在不在）
 
-⚠️ **不要**把本脚本塞进 `verify_apk.py` —— 那个脚本的输入契约是「一个 APK」，
+[!] **不要**把本脚本塞进 `verify_apk.py` —— 那个脚本的输入契约是「一个 APK」，
 做的是产物红线；混在一起会破坏它的定位。
 
 ## 用法
@@ -46,6 +46,9 @@ import json
 import os
 import re
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "app", "src", "main", "java", "io", "github", "MVennn", "GSAuxiliary")
@@ -204,7 +207,7 @@ def regen():
 
 
 def static_check(contract):
-    """双向校验：代码 ↔ 清单。"""
+    """双向校验：代码 <-> 清单。"""
     problems = []
 
     code_entries = build_contract()["entries"]
@@ -234,7 +237,7 @@ def static_check(contract):
 def host_check(contract, dump_path):
     """对照探针 dump：清单里的宿主标识还在不在。
 
-    ⚠️ **dump 必须覆盖「宿主全部类」，否则结果没有意义** ——
+    [!] **dump 必须覆盖「宿主全部类」，否则结果没有意义** ——
     探针（`com.wb.probe`）是**按需 dump 某个类**的，一次 dump 往往只覆盖一个页面
     （实测：dump 个股详情页的 K 线区时，只有 20/29 个契约类名出现在里面，
     剩下 9 个只是**没被那次 dump 扫到**，并不是失效了）。
@@ -249,7 +252,7 @@ def host_check(contract, dump_path):
     if not dump_path:
         return None
     if not os.path.exists(dump_path):
-        # ⚠️ **报错而不是静默跳过** —— CI 里传的是硬编码路径，路径写错就静默退化，
+        # [!] **报错而不是静默跳过** —— CI 里传的是硬编码路径，路径写错就静默退化，
         # 变成「永远绿」的假检查（那还不如没有）。
         print(
             "[X] dump 文件不存在：%s —— 宿主存在性校验无法进行。"
@@ -263,13 +266,13 @@ def host_check(contract, dump_path):
     for e in contract["entries"]:
         if e["kind"] != "class":
             continue
-        # ⚠️ **包前缀常量不是类名**（以 "." 结尾，如 `ACTIVITY_PREFIX`）——
+        # [!] **包前缀常量不是类名**（以 "." 结尾，如 `ACTIVITY_PREFIX`）——
         #    它没有「简单名」，也不该参与「类名还在不在」的判断。
         if e["value"].endswith("."):
             continue
         # 简单名也认（dump 里可能是全名也可能是简名）
         simple = e["value"].rsplit(".", 1)[-1]
-        # ⚠️ **简单名为空必须跳过** —— 包前缀常量（如 `ACTIVITY_PREFIX =
+        # [!] **简单名为空必须跳过** —— 包前缀常量（如 `ACTIVITY_PREFIX =
         # "com.guosen.quotation.aistare.ui."`）的简单名是空串，而**空串是任何文本的子串**
         # → 不跳过的话它会「恒判为存在」，是这条检查里最隐蔽的一个假阳性。
         if e["value"] not in dump and (not simple or simple not in dump):
@@ -278,7 +281,7 @@ def host_check(contract, dump_path):
     hit = total - len(missing)
     print("[i] dump 命中 %d/%d 个契约类名（确认这些候选名现在还认得到）" % (hit, total))
     if missing:
-        # ⚠️ **只提示，不报错** —— dump 覆盖不全时无法区分「宿主改名了」与「这次没扫到」。
+        # [!] **只提示，不报错** —— dump 覆盖不全时无法区分「宿主改名了」与「这次没扫到」。
         # 真的失效了会表现为「用户在真机上发现这个功能不生效」，那时候再逐个核对。
         print("[!] 有 %d 个契约类名没在 dump 里出现 —— **这不代表失效**，"
               "只说明这份 dump 没覆盖到它们（探针是按需 dump 某个类的）：" % len(missing))
@@ -305,11 +308,11 @@ def main():
 
     problems = static_check(contract)
 
-    # ⚠️ **先打印静态校验的结果，再做宿主存在性校验**（2026-10-20 三次复核时发现）：
+    # [!] **先打印静态校验的结果，再做宿主存在性校验**（2026-10-20 三次复核时发现）：
     # 后者遇到 dump 缺失会直接 `sys.exit(1)`，那时静态校验的清单**一条都没打印** ——
     # 两件事一起坏时，维护者只看到「dump 不存在」，得修一件再跑一次。
     if not problems:
-        print("[OK] 静态双向校验通过（代码 ↔ 清单）")
+        print("[OK] 静态双向校验通过（代码 <-> 清单）")
 
     host_problems = host_check(contract, args.dump)
     if host_problems is not None:

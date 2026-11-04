@@ -36,11 +36,14 @@ import os
 import re
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # (改动名, 说明里必须能搜到的关键词之一, 说明文件)
 # 新增一条用户可感知的改动时，在这里加一行。
-# ⚠️ 关键词必须**足够特异** —— 说明里别处也会提到同一个词
+# [!] 关键词必须**足够特异** —— 说明里别处也会提到同一个词
 # （比如开头那句概述里就出现了「指数概览」）。
 # 所以判据是「说明里存在**以这个关键词开头的一条目行**」，而不是「出现过这个词」。
 ENTRIES = [

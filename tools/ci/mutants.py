@@ -21,13 +21,16 @@ python tools/ci/mutants.py --list     # 只列出变异体
 每个变异体 = 「把某个判据改坏」+「期望至少一条测试变红」。
 脚本会**逐个**改坏 → 跑测试 → 还原 → 检查结果。
 
-⚠️ 这个脚本**会改源码**（临时），跑完必须还原 —— 它自己负责还原，
+[!] 这个脚本**会改源码**（临时），跑完必须还原 —— 它自己负责还原，
 但**别在有未提交改动的工作区里跑**（还原失败会丢东西）。
 """
 
 import os
 import subprocess
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "app", "src", "main", "java", "io", "github", "MVennn", "GSAuxiliary")
@@ -36,7 +39,7 @@ TEST = os.path.join(ROOT, "app", "src", "test", "java", "io", "github", "MVennn"
 # (相对路径, 要改的原文, 改成什么, 说明)
 MUTANTS = [
     (
-        # ⚠️ 变异体必须能**真的造出碰撞**，否则测试抓不到它（那是变异体设计错了，
+        # [!] 变异体必须能**真的造出碰撞**，否则测试抓不到它（那是变异体设计错了，
         # 不是测试有洞）。原实现的碰撞是：两个不同的开关**占同一个位**
         # → 它们的指纹贡献相同 → 「只开 A」与「只开 B」无法区分 → 变更被静默丢弃。
         # （前一个版本用 `h + bit * 2137`，每个位乘数不同、**造不出**碰撞 —— 白跑。）
@@ -110,9 +113,9 @@ MUTANTS = [
 
 def run_tests():
     """跑单测，返回是否全过。"""
-    # ⚠️ Windows 控制台是 GBK，Gradle 的输出可能含非 UTF-8 字节 ——
+    # [!] Windows 控制台是 GBK，Gradle 的输出可能含非 UTF-8 字节 ——
     #    不加 errors="replace" 的话，subprocess 的解码线程会直接抛 UnicodeDecodeError。
-    # ⚠️ Windows 上 `.bat` 不能直接 exec —— 必须经 `cmd /c`。
+    # [!] Windows 上 `.bat` 不能直接 exec —— 必须经 `cmd /c`。
     r = subprocess.run(
         ["cmd", "/c", "gradlew.bat", ":app:testReleaseUnitTest", "--console=plain", "-q"],
         cwd=ROOT,

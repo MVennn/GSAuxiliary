@@ -20,15 +20,15 @@
 
 | 教训 | 本脚本能抓吗 |
 |---|---|
-| Miuix `OverlayDialog` 一点就闪退 | ✅ 禁用清单（精确匹配） |
-| 缺 `rememberSaveable` → 翻屏丢状态 | ✅ 关键状态逐个查 |
-| 拿自己的类名当判据，被 R8 打穿 | ✅ 只查**模块自己的**类名 |
-| `isEnabled` or 链漏开关位 → 假开关 | ✅ 逐个 Feature 查覆盖 |
-| 宿主 id / 类名写死单值 | ✅ 查 `XxxTargets.kt` 之外的写法 |
-| 日志脱敏只做 UI 层、取数层漏 | ⚠️ 只查最明显的形状 |
-| 限速/冷却把回调 `return` 掉 | ❌ 要跑起来才知道 → 靠单测 + 人工 |
-| 改判定语义 | ❌ → 靠单测真值表 |
-| 缓存 key 漏参数 | ❌ → 靠人读 |
+| Miuix `OverlayDialog` 一点就闪退 | [OK] 禁用清单（精确匹配） |
+| 缺 `rememberSaveable` → 翻屏丢状态 | [OK] 关键状态逐个查 |
+| 拿自己的类名当判据，被 R8 打穿 | [OK] 只查**模块自己的**类名 |
+| `isEnabled` or 链漏开关位 → 假开关 | [OK] 逐个 Feature 查覆盖 |
+| 宿主 id / 类名写死单值 | [OK] 查 `XxxTargets.kt` 之外的写法 |
+| 日志脱敏只做 UI 层、取数层漏 | [!] 只查最明显的形状 |
+| 限速/冷却把回调 `return` 掉 | [FAIL] 要跑起来才知道 → 靠单测 + 人工 |
+| 改判定语义 | [FAIL] → 靠单测真值表 |
+| 缓存 key 漏参数 | [FAIL] → 靠人读 |
 
 ## 用法
 
@@ -47,6 +47,9 @@ import argparse
 import os
 import re
 import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, "app", "src", "main", "java")
@@ -208,7 +211,7 @@ def check_classname_keep(findings):
     keep_text = read(PROGUARD)
 
     # 模块自己的类名：出现在本仓库源码里的顶层类 / 嵌套类。
-    # ⚠️ 排除「常量容器」类（`XxxTargets` / `XxxIds` 之类）——
+    # [!] 排除「常量容器」类（`XxxTargets` / `XxxIds` 之类）——
     #    它们只装宿主标识的常量，不是被注入到宿主里的东西，混淆了也无妨。
     own_classes = set()
     for path in kotlin_files():

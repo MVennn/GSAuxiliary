@@ -36,6 +36,18 @@
   确认添加的分组内容与屏幕逐只一致。详见 `docs/FEATURE-SELECT-ALL.md` §4.7。
 - 文档 —— `docs/FEATURE-SELECT-ALL.md` §4.7 补真机验证表。
 
+### 工具链 门禁脚本 GBK 控制台自毁修复（2026-11-04）
+
+- `tools/check-secrets.py` 与 `tools/ci/` 下六个检查脚本（check_contract / check_dead_symbols /
+  check_invariants / check_release_notes / check_switches / mutants）的结论行
+  `✓` / `✗` / `⚠` / `✅` / `❌` / `↔` 改 ASCII（`[OK]` / `[FAIL]` / `[!]` / `<->`）：Windows 中文
+  控制台（cp936）下这些字符不在 GBK 码表，`print` 抛 `UnicodeEncodeError`，脚本即便检查全过也以
+  **退出码 1** 结束；`python -I` 会忽略 `PYTHONIOENCODING` / `PYTHONUTF8`，只能改脚本本身。
+- 入口补兜底 `if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")`。
+- 验证：`python -I` 逐个跑上述脚本 → 退出码 0、无 traceback；`mutants.py` 仍按设计在
+  「工作树有未提交改动」时退出 1，与本修复无关。
+- 缺陷机理记入 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) §11。
+
 ---
 
 ## [3.5.4] — 2026-11-02

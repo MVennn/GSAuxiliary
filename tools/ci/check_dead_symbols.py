@@ -38,6 +38,9 @@ import os
 import re
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PKG = os.path.join(ROOT, "app", "src", "main", "java", "io", "github", "MVennn", "GSAuxiliary")
 TEST = os.path.join(ROOT, "app", "src", "test", "java")
@@ -48,7 +51,7 @@ ALLOW_TEST_ONLY = {
     "RobolectricSmokeTest",
 }
 
-# ⚠️ **框架实例化的入口** —— 静态扫不到它们的调用点：
+# [!] **框架实例化的入口** —— 静态扫不到它们的调用点：
 # `DebugConfigProvider` 是 ContentProvider，由 `AndroidManifest.xml` 声明、框架实例化
 # （`tools/hygiene.py` 里那条已知误报也是它）。
 ALLOW_DEAD = {
