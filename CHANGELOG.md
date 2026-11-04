@@ -5,6 +5,39 @@
 
 ---
 
+## [3.5.5] — 2026-11-04
+
+> 本版为补丁版本（3.5.4 → 3.5.5）：**无功能更新**，只修策略详情页「全选」的两个
+> 观感 / 状态 bug（进位依据见 `docs/VERSIONING.md` §1）。
+
+### 修复 策略详情页全选：一次性勾选 + 取消后对钩不消失（2026-11-04）
+
+- 修复 手动取消后对钩不消失 —— 全选后点掉一行，底部「已选 N」确实 -1，但屏上那颗 √
+  留着。根因是 8.7.0 起宿主 `checkCodes` 恒空、`paintVisibleRows()` 读到空模型直接
+  `return`，而 AOSP `AbsListView.performItemClick` 只刷**行根** `Checkable`、
+  不碰嵌套的 `#ct_item`，全选时写下的 `isChecked=true` 就没人再改写。
+  现在模型不可用 / 不可信时按框架 checked states 把行根、`#ct_item`、`activated`
+  三处一起刷，计数每变一次也补刷一次。
+- 优化 全选改一次性 —— 首轮在同一帧内把待点行全部点完（主线程循环期间不布局 / 不重绑，
+  行视图始终有效），屏幕只在最后一帧统一画勾，不再有「一行行往下勾」的动画；
+  补点轮仍保留 40ms 逐行兜底。`StgSelectAllFeature.BATCH_CLICK = false` 可一键回退。
+- 修复 取消后再点全选方向判错 —— 手动取消一只后宿主模型可能还没删（模型 N 项、
+  计数 N-1），旧逻辑会判成「已全选」而变成全部取消。新增
+  `StgSelectAllPlan.modelTrusted`：模型条数必须等于底部「已选 N」才信模型，
+  对不上就按 checked states 判方向 / 画勾 / 刷文案。
+- 验证 —— `:app:testReleaseUnitTest`（含新增 4 条模型可信判据单测）/
+  `:app:assembleRelease` / `verify_apk --reject-debug-cert` /
+  `check_invariants` / `check_dead_symbols` / `check_links` / `check_contract` /
+  `check_switches` / `check_disclaimer_sync` 全过。真机（魅族 20 / Android 16 /
+  宿主 8.7.0 / 模块 3.5.5，策略「量100」34 只）：录屏逐帧核对，点「全选」后
+  **同一帧**（相邻两帧间隔 8ms）6 个可见行同时上勾、计数 0 → 34；手动点掉一行，
+  **下一帧**对钩即消失、计数 → 33、按钮仍「全选」；再点「全选」只补回那一只、
+  计数 → 34、按钮变「反选」；筛选态（`策略个股 6/34`）重复上述三条结果一致，
+  确认添加的分组内容与屏幕逐只一致。详见 `docs/FEATURE-SELECT-ALL.md` §4.7。
+- 文档 —— `docs/FEATURE-SELECT-ALL.md` §4.7 补真机验证表。
+
+---
+
 ## [3.5.4] — 2026-11-02
 
 > 本版为补丁版本（3.5.3 → 3.5.4）：**无功能更新**，只做批量截图速度与排障
