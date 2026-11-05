@@ -133,12 +133,23 @@ class StgSnapAddFeature : Feature {
         }
     }
 
+    /**
+     * 详情页 onPause：**只有页面真的在关**才中止任务。
+     *
+     * 2026-11-05 起允许「截图期间去做别的事」：切到别的 app、开小窗、分屏都只让
+     * 任务挂起（窗口回来后自动接着截），不取消。真正的取消入口是进度条上的
+     * 「取消」按钮；页面被销毁时 [onActivityDestroyed] 另有兜底。
+     */
     private fun onActivityPaused(activity: Activity) {
         if (activity.javaClass.name != StgSnapAddTargets.CLS_STOCK_QUOTE) return
         val running = job ?: return
         if (running.finishingNormally) return
+        if (!activity.isFinishing) {
+            GLog.i("截图并添加：详情页退到后台，任务挂起（屏幕常亮，回来自动继续）")
+            return
+        }
         job = null
-        running.cancelExternal("详情页暂停")
+        running.cancelExternal("详情页关闭")
     }
 
     // ------------------------------------------------------------------ 注入

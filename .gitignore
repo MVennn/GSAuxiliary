@@ -76,6 +76,9 @@ Thumbs.db
 /AGENTS.md
 # 会话断点台账（按全局 AGENTS.md 协议维护的本地工作日志）
 /PROGRESS.md
+# DSH 文件认领插件（多会话写域锁）的本机产物
+.dsh-file-claim.audit.jsonl
+*.dshclaim
 # ZCode 本地插件配置（只对本机生效）
 /.zcode/
 

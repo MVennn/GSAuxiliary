@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.PixelCopy
 import android.view.View
+import android.view.WindowManager
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import java.util.ArrayDeque
@@ -35,6 +36,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 在途存盘最多 [StgSnapAddTargets.MAX_INFLIGHT_SAVES] 张（挡住「宿主页瞬间就绪」时
  * 位图无限排队），满了就暂停翻页，存完一张再续。正常路径下每页只多等一次宿主加载，
  * 不再串上编码与落盘。位图按页复用（池 [POOL_SIZE] 张），减少 10MB 大对象的分配抖动。
+ *
+ * **截图期间用户可以做别的事（2026-11-05）**：任务一开始就给宿主窗口挂上
+ * `FLAG_KEEP_SCREEN_ON`（屏幕不因超时熄灭），并且**不再把「失去焦点 / 切到后台」当成中止**
+ * —— 用户可以开小窗、分屏、切去别的 App。窗口仍然可见时（小窗 / 分屏）照常逐页截图；
+ * 窗口真的退到后台、surface 不再更新时，任务**挂起**：不跳页、不记失败、不计超时，
+ * 等窗口回来立刻接着截。唯一能打断任务的是进度条上的「取消」（以及页面销毁 / 关开关）。
  *
  * 所有 View / Pager / Bitmap 操作都在主线程；只有 PNG 压缩与写盘在单线程 worker。
  */
@@ -81,10 +88,20 @@ internal class SnapCaptureJob(
     private var pagerAttempts = 0
     private var klineMode = false
     private var overlay: SnapProgressOverlay? = null
+
+    /** 当前页的等待计时器：挂起时长不计入就绪超时 */
+    private var gate: SnapPauseWindow? = null
+
+    /** 我们自己加上的 FLAG_KEEP_SCREEN_ON（宿主本来就有的话不碰它的 flags） */
+    private var keepScreenOnApplied = false
+
+    /** 同一页「被用户滑走又拉回来」的次数，防死循环 */
+    private var resyncCount = 0
+    private var lastResyncAt = 0L
+
     private var saved = 0
     private var failed = 0
     private var titleSeenAt = 0L
-    private val startedAt = System.currentTimeMillis()
     private val runFolder = SnapStorage.newRunFolder()
 
     /** 已提交、还没写完的存盘数量（只在主线程读写） */
@@ -121,6 +138,7 @@ internal class SnapCaptureJob(
         cancelled.set(true)
         finishing = true
         overlay?.remove()
+        releaseKeepScreenOn()
         worker.shutdown()
         dropBitmapPool()
         finished = true
@@ -134,6 +152,7 @@ internal class SnapCaptureJob(
         cancelled.set(true)
         finishing = true
         overlay?.remove()
+        releaseKeepScreenOn()
         worker.shutdown()
         dropBitmapPool()
         finished = true
@@ -165,6 +184,8 @@ internal class SnapCaptureJob(
             return
         }
 
+        // 连续截图可能几十秒到几分钟：屏幕一灭窗口就不可见，任务只能挂起
+        acquireKeepScreenOn()
         overlay = SnapProgressOverlay(activity).also { it.onCancel = { cancelByUser() } }
         overlay?.show()
         overlay?.update(1, items.size, items.firstOrNull()?.name.orEmpty())
@@ -214,56 +235,82 @@ internal class SnapCaptureJob(
         titleAt = 0L
         readyAt = 0L
         polls = 0
+        resyncCount = 0
+        lastResyncAt = 0L
         pageStartedAt = SystemClock.elapsedRealtime()
         overlay?.update(index + 1, items.size, stock.name)
-        val switched = runCatching {
-            p.javaClass
-                .getMethod(
-                    "setCurrentItem",
-                    Int::class.javaPrimitiveType!!,
-                    Boolean::class.javaPrimitiveType!!,
-                )
-                .invoke(p, index, false)
-            true
-        }.getOrElse {
-            GLog.w("截图并添加：setCurrentItem($index) 失败", it)
-            false
-        }
-        if (!switched) {
-            skipPage(index, stock, "切页失败")
-            return
-        }
         val timeout = if (index == 0) {
             StgSnapAddTargets.FIRST_READY_TIMEOUT_MS
         } else {
             StgSnapAddTargets.READY_TIMEOUT_MS
         }
-        main.postDelayed(
-            { waitReady(index, stock, System.currentTimeMillis() + timeout) },
-            StgSnapAddTargets.PAGE_SETTLE_MS,
-        )
+        gate = SnapPauseWindow(timeout).also { it.start(pageStartedAt) }
+        if (!switchTo(index, p)) {
+            skipPage(index, stock, "切页失败")
+            return
+        }
+        main.postDelayed({ waitReady(index, stock) }, StgSnapAddTargets.PAGE_SETTLE_MS)
     }
 
-    private fun waitReady(index: Int, stock: SelectedStock, deadline: Long) {
+    /** 程序化切页；宿主换实现时返回 false */
+    private fun switchTo(index: Int, p: View): Boolean = runCatching {
+        p.javaClass
+            .getMethod(
+                "setCurrentItem",
+                Int::class.javaPrimitiveType!!,
+                Boolean::class.javaPrimitiveType!!,
+            )
+            .invoke(p, index, false)
+        true
+    }.getOrElse {
+        GLog.w("截图并添加：setCurrentItem($index) 失败", it)
+        false
+    }
+
+    private fun waitReady(index: Int, stock: SelectedStock) {
         if (cancelled.get() || finished) return
         polls++
-        if (activity.isFinishing) {
+        if (activity.isFinishing || activity.isDestroyed) {
             cancelExternal("详情页已结束")
             return
         }
-        // 切后台 / 用户回到桌面：页面还在但窗口没焦点，继续截只会拿到旧帧
-        if (System.currentTimeMillis() - startedAt > 2000 && !activity.hasWindowFocus()) {
-            cancelExternal("详情页失去焦点")
+        val timer = gate ?: run {
+            fail("等待计时器丢了")
             return
+        }
+        val now = SystemClock.elapsedRealtime()
+        // 窗口不可截（退到后台 / 熄屏 / 小窗被收起）：**挂起等待**。不跳页、不记失败、
+        // 不计超时 —— 用户随时可以回来接着截；能打断任务的只有进度条上的「取消」。
+        if (!canCapture()) {
+            if (timer.pause(now)) {
+                overlay?.updatePaused(index + 1, items.size, stock.name)
+                GLog.i(
+                    "截图并添加：窗口不可截，任务挂起（第 ${index + 1}/${items.size} 页，" +
+                        "等窗口回来继续）"
+                )
+            }
+            main.postDelayed({ waitReady(index, stock) }, StgSnapAddTargets.PAUSE_POLL_MS)
+            return
+        }
+        val pausedMs = timer.resume(now)
+        if (pausedMs > 0) {
+            GLog.i(
+                "截图并添加：窗口回来，挂起 ${pausedMs}ms 后继续第 ${index + 1}/${items.size} 页"
+            )
+            overlay?.update(index + 1, items.size, stock.name)
         }
         val p = pager ?: run {
             fail("分页器丢了")
             return
         }
-        val now = System.currentTimeMillis()
         val current = runCatching {
             p.javaClass.getMethod("getCurrentItem").invoke(p) as? Int
         }.getOrNull()
+        // 用户在小窗里手动滑到别的页：拉回本页再等，别把这一页判成失败
+        if (current != index && resyncPage(index, p, now)) {
+            main.postDelayed({ waitReady(index, stock) }, StgSnapAddTargets.PAGE_SETTLE_MS)
+            return
+        }
         val onPage = current == index
         val titleOk = onPage && SnapReadiness.titleMatches(activity, stock.code)
         if (titleOk && titleSeenAt == 0L) {
@@ -282,7 +329,7 @@ internal class SnapCaptureJob(
             captureNow(index, stock)
             return
         }
-        if (now >= deadline) {
+        if (timer.expired(now)) {
             // 数据没有全部拉出来：只记失败，不截图
             val why = buildString {
                 if (!onPage) append("pager 当前页=$current，")
@@ -292,10 +339,17 @@ internal class SnapCaptureJob(
             skipPage(index, stock, why.ifEmpty { "数据未就绪" })
             return
         }
-        main.postDelayed(
-            { waitReady(index, stock, deadline) },
-            StgSnapAddTargets.READY_POLL_MS,
-        )
+        main.postDelayed({ waitReady(index, stock) }, StgSnapAddTargets.READY_POLL_MS)
+    }
+
+    /** 用户手动滑到别的页：拉回本页（限次）；返回 true 表示已重新排队等待 */
+    private fun resyncPage(index: Int, p: View, now: Long): Boolean {
+        if (resyncCount >= StgSnapAddTargets.MAX_PAGE_RESYNC) return false
+        if (now - lastResyncAt < StgSnapAddTargets.PAGE_RESYNC_IDLE_MS) return false
+        resyncCount++
+        lastResyncAt = now
+        GLog.i("截图并添加：页面被滑到别处，拉回第 ${index + 1}/${items.size} 页（第 $resyncCount 次）")
+        return switchTo(index, p)
     }
 
     private fun skipPage(index: Int, stock: SelectedStock, why: String) {
@@ -310,11 +364,78 @@ internal class SnapCaptureJob(
 
     private fun captureNow(index: Int, stock: SelectedStock) {
         if (cancelled.get() || finished) return
+        if (!canCapture()) {
+            // 就绪到拍照之间窗口走了：绝不保存旧帧，退回等待
+            resumeWait(index, stock, "拍照前窗口已不可截")
+            return
+        }
         overlay?.hideForCapture()
         main.postDelayed(
-            { runCatching { pixelCopy(index, stock) }.onFailure { onCaptureFailed(index, stock, it) } },
+            {
+                if (cancelled.get() || finished) return@postDelayed
+                if (!canCapture()) {
+                    overlay?.restoreAfterCapture()
+                    resumeWait(index, stock, "拍照前窗口已不可截")
+                    return@postDelayed
+                }
+                runCatching { pixelCopy(index, stock) }
+                    .onFailure { onCaptureFailed(index, stock, it) }
+            },
             StgSnapAddTargets.CAPTURE_DELAY_MS,
         )
+    }
+
+    /**
+     * 窗口现在可不可截。
+     *
+     * 只要求**窗口仍然可见**：小窗 / 分屏下宿主可能没有焦点，但 surface 仍在更新，
+     * PixelCopy 拿到的就是当页内容 —— 这正是「截图期间可以去做别的事」的前提。
+     * 退到后台时 `windowVisibility` 变成 INVISIBLE，surface 不再更新，此时截下去
+     * 只会拿到上一张的旧帧，必须挂起等待。
+     */
+    private fun canCapture(): Boolean {
+        if (activity.isFinishing || activity.isDestroyed) return false
+        val decor = activity.window?.decorView ?: return false
+        if (!decor.isAttachedToWindow) return false
+        return decor.windowVisibility == View.VISIBLE
+    }
+
+    /** 挂起当前页并重新排队等待（不记失败、不计超时） */
+    private fun resumeWait(index: Int, stock: SelectedStock, why: String) {
+        val timer = gate ?: return
+        overlay?.restoreAfterCapture()
+        if (timer.pause(SystemClock.elapsedRealtime())) {
+            overlay?.updatePaused(index + 1, items.size, stock.name)
+            GLog.i("截图并添加：$why，挂起等待（第 ${index + 1}/${items.size} 页）")
+        }
+        main.postDelayed({ waitReady(index, stock) }, StgSnapAddTargets.PAUSE_POLL_MS)
+    }
+
+    /**
+     * 连续截图期间屏幕常亮。
+     *
+     * 宿主自己已经开着常亮（flags 里带 FLAG_KEEP_SCREEN_ON）时不动它，收尾也不清 ——
+     * 那是宿主的状态，不是我们加的。
+     */
+    private fun acquireKeepScreenOn() {
+        val window = activity.window ?: return
+        if (window.attributes.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0) {
+            GLog.i("截图并添加：宿主已开屏幕常亮，任务结束后不动它的 flags")
+            return
+        }
+        runCatching {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            keepScreenOnApplied = true
+            GLog.i("截图并添加：已开启屏幕常亮（截图期间不熄屏）")
+        }.onFailure { GLog.w("截图并添加：开启屏幕常亮失败", it) }
+    }
+
+    private fun releaseKeepScreenOn() {
+        if (!keepScreenOnApplied) return
+        keepScreenOnApplied = false
+        runCatching {
+            activity.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }.onFailure { GLog.w("截图并添加：关闭屏幕常亮失败", it) }
     }
 
     private fun pixelCopy(index: Int, stock: SelectedStock) {
@@ -340,14 +461,25 @@ internal class SnapCaptureJob(
                     releaseBitmap(bitmap)
                 } else if (result == PixelCopy.SUCCESS) {
                     onCaptured(index, stock, bitmap)
+                } else if (!canCapture()) {
+                    // 窗口就在这几帧里退到后台：PixelCopy 拿不到新帧，等窗口回来再截这一页
+                    releaseBitmap(bitmap)
+                    resumeWait(index, stock, "PixelCopy 失败 result=$result 且窗口已不可截")
                 } else {
                     GLog.w("截图并添加：PixelCopy 失败 result=$result，尝试 decorView.draw")
-                    fallbackDraw(bitmap, index, stock) { onCaptureFailed(index, stock, it) }
+                    fallbackDraw(bitmap, index, stock) { t ->
+                        if (canCapture()) onCaptureFailed(index, stock, t)
+                        else resumeWait(index, stock, "截图失败且窗口已不可截（${t.javaClass.simpleName}）")
+                    }
                 }
             }, main)
         }.onFailure {
             releaseBitmap(bitmap)
-            onCaptureFailed(index, stock, it)
+            if (canCapture()) {
+                onCaptureFailed(index, stock, it)
+            } else {
+                resumeWait(index, stock, "PixelCopy 请求异常且窗口已不可截（${it.javaClass.simpleName}）")
+            }
         }
     }
 
@@ -516,6 +648,7 @@ internal class SnapCaptureJob(
         finished = true
         finishing = true
         overlay?.remove()
+        releaseKeepScreenOn()
         worker.shutdown()
         dropBitmapPool()
         val totalMs = SystemClock.elapsedRealtime() - jobStartedAt
@@ -535,6 +668,7 @@ internal class SnapCaptureJob(
         finished = true
         finishing = true
         overlay?.remove()
+        releaseKeepScreenOn()
         worker.shutdown()
         dropBitmapPool()
         if (t != null) GLog.w("截图并添加：$message", t) else GLog.w("截图并添加：$message")

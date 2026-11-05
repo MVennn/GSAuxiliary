@@ -19,6 +19,8 @@
 | 分组 | 不自己做分组面板、不调分组写接口：截完 `finish()` 回策略页，`performClick()` 宿主「确认添加」，由 `ChooseGroupAct` 让用户选组 |
 | 截图存哪 | Android 10+ `MediaStore` → `Pictures/GSAuxiliary/<yyyyMMdd_HHmmss>/01_名称_代码.png`；旧系统回退 App 外部目录 |
 | 截图速度 | 存盘与翻页**并行**：PixelCopy 拿到像素就切下一页，PNG 编码 + 相册写入在 worker 继续；在途上限 2 张，位图复用 |
+| 屏幕常亮 | 任务开始给宿主窗口加 `FLAG_KEEP_SCREEN_ON`，完成 / 取消 / 失败时撤掉；宿主本来就开着常亮的不动它的 flags |
+| 能边截边做别的吗 | 能。切小窗、分屏、去别的 App 都**不中止**任务：窗口仍可见就照常逐页截，退到后台就挂起（不跳页 / 不记失败 / 不计超时），回来自动接着截。唯一能终止任务的是进度条上的「取消」 |
 
 ---
 
@@ -104,7 +106,9 @@ Intent(action = "quotes.stockDetail")
 - 截图顺序与勾选顺序一致，文件名 `01_名称_代码.png`。
 - 完成但部分页未就绪：已截到的照常保存并继续弹分组页，Toast 报失败只数。
 - **成功 0 张**：不弹分组页（避免用户以为截图成功），Toast「未截图：N 只数据未就绪」。
-- 用户取消 / 按返回 / 切后台：停止任务，保留已截到的图，不自动弹分组页。
+- 用户点「取消」/ 详情页被返回销毁 / 关开关：停止任务，保留已截到的图，不自动弹分组页。
+- **切后台 / 小窗 / 分屏不中止任务**：窗口仍可见（小窗、分屏）就继续逐页截图；
+  窗口真的退到后台（`windowVisibility != VISIBLE`）就挂起，回到前台自动接着截（见 §2.3）。
 
 ### 2.1 就绪门禁（2026-10-22 要求）
 
@@ -133,6 +137,32 @@ Intent(action = "quotes.stockDetail")
 判读「越截越慢」：**就绪**变慢 = 宿主行情请求/页面累积；**存盘**变慢 = MediaProvider/GC；
 四段一起变慢 = 主线程被宿主拖慢或热降频。
 
+### 2.3 截图期间可以去做别的事（2026-11-05）
+
+原实现把「详情页失去焦点」和「详情页 onPause」当成中止信号，用户切个小窗或去回消息，
+整批截图就断了。现在改成：
+
+| 场景 | 行为 |
+|---|---|
+| 小窗 / 分屏，窗口仍然可见 | **照常继续逐页截图**（只看窗口可见性，不要求焦点 —— 小窗下 PixelCopy 拿到的仍是当页内容） |
+| 切到别的 App / 熄屏 / 小窗被收起（窗口不可见） | **挂起**：当前页不跳、不记失败、**不计就绪超时**，每 200ms 探一次窗口可见性 |
+| 回到本页 | 立刻接着截当前页，进度条从「已挂起」回到「正在截图 i/N」 |
+| 用户手动把页面滑到别的股票 | 最多拉回本页 3 次（间隔 400ms），不把这一页判成失败；超过就按原逻辑等超时 |
+| 用户点「取消」 | 立即停止、保留已截到的图、不弹分组页 —— **这是唯一能打断任务的按钮** |
+
+配套改动：
+
+- **屏幕常亮**：任务开始 `window.addFlags(FLAG_KEEP_SCREEN_ON)`，四条收尾路径
+  （完成 / 取消 / 外部中止 / 失败）都 `clearFlags`；宿主 flags 里本来就有常亮时不动它。
+  截图动辄一两百秒，屏幕一灭窗口就不可见、任务只能挂起 —— 常亮是第一道防线。
+- **超时按活跃时间算**：新增纯逻辑 `SnapPauseWindow`，挂起时长不计入就绪超时。
+  否则用户在别处待 10 秒回来，这一页会被判成「数据未就绪」跳过（数据其实早好了）。
+  单测 `SnapPauseWindowTest`。
+- **不截旧帧**：`canCapture()` 只认窗口可见 + 已挂载。就绪到拍照之间窗口走了（含
+  PixelCopy 返回失败且窗口已不可截），一律**挂起重试**，绝不保存上一页的旧帧。
+- **取消语义收窄**：`onActivityPaused` 只在 `isFinishing`（页面真的在关）时中止；
+  单纯退到后台只记一条 INFO，任务保持。页面销毁另有兜底（`onActivityDestroyed`）。
+
 ---
 
 ## 3. 代码位置
@@ -146,11 +176,12 @@ Intent(action = "quotes.stockDetail")
 | `feature/stgsnap/SnapCaptureJob.kt` | 逐页状态机、就绪门禁、PixelCopy、存盘、收尾 |
 | `feature/stgsnap/SnapReadiness.kt` | 可见标题 / K 线数据 / 日K 页签判定（反射按类缓存） |
 | `feature/stgsnap/SnapStorage.kt` | MediaStore / App 目录回退 |
-| `feature/stgsnap/SnapProgressOverlay.kt` | 详情页顶部进度条（截图前隐藏） |
+| `feature/stgsnap/SnapProgressOverlay.kt` | 详情页顶部进度条（截图前隐藏；挂起态改文案与配色） |
 | `feature/stgsnap/StgSnapPlan.kt` | 纯逻辑：校验、去重、文件名、标题匹配、计数解析 |
+| `feature/stgsnap/SnapPauseWindow.kt` | 纯逻辑：就绪超时计时器，挂起时长不计入超时 |
 
 开关：`ConfigKeys.STG_SNAP_ADD = "stg_snap_add"`，默认关闭。
-单测：`StgSnapPlanTest`。
+单测：`StgSnapPlanTest`、`SnapPauseWindowTest`。
 
 ---
 
@@ -187,11 +218,15 @@ Intent(action = "quotes.stockDetail")
 4. 断网/数据未加载：该页不截图；全部未就绪时 0 张且不弹分组页。
 5. 截图里没有进度条；K 线、行情头、底栏完整。
 6. 截完自动弹 `ChooseGroupAct`；返回则截图保留、不加入。
-7. 取消 / 返回 / 切后台：任务停止，无僵尸进度条，不误点确认。
+7. 取消 / 返回：任务停止，无僵尸进度条，不误点确认；**切后台 / 小窗 / 分屏不中止**（见 §2.3）。
 8. 关开关即时移除按钮；重开并重进多选态后回来。
 9. release 包无 `io/github/libxposed/api` 类定义；日志 INFO 不出现完整代码。
 10. 40 只批次：`成功 + 未就绪/失败 = 总数`；收尾 INFO 有 `总耗时` 与前 5 / 后 5 页分段均值；
     下 20 只的 `存盘` 均值不应随页数增长（存盘已与翻页解耦）。
+11. 连续截图期间屏幕不自动熄灭（`dumpsys window` 里该窗口 flags 含 `KEEP_SCREEN_ON`），
+    任务结束后 flags 撤掉；宿主原本就开着常亮的，任务结束后仍保留。
+12. 截图进行中切到小窗 / 分屏 / 别的 App 再回来：张数不变、顺序不变、无旧帧；
+    日志出现 `任务挂起` 与 `挂起 Nms 后继续`。
 
 ---
 
@@ -205,6 +240,8 @@ Intent(action = "quotes.stockDetail")
 | 不切页 | `PAGER_ID_CANDIDATES`；确认 `LockViewPager` 是否还继承 `setCurrentItem` |
 | 永远不截图 | `PAGE_TITLE_ID_CANDIDATES` / `KX_GROUP_CLASS` / `KX_INFO_FIELD` / `KX_ITEMS_FIELD` |
 | 分组页不弹 | `CONFIRM_BUTTON_ID_CANDIDATES` / `BOTTOM_COUNT_ID_CANDIDATES` |
+| 切后台回来不继续 | `SnapCaptureJob.canCapture`（`windowVisibility != VISIBLE` 就挂起）；确认详情页没被销毁 |
+| 屏幕仍会熄灭 | 宿主的 `FLAG_KEEP_SCREEN_ON` 是否被系统策略覆盖；看日志 `已开启屏幕常亮` |
 
 日志关键字：`截图并添加：读取选中` / `开始 N 只（日K=` / `第 i/N 只数据未就绪` /
 `完成 N 只，成功 X` / `自动触发宿主确认添加` / `总耗时`（含前5/后5页分段均值）/ `第 i/N 只 用时`（DEBUG）。

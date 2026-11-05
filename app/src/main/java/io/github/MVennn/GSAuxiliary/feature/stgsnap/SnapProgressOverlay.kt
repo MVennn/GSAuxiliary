@@ -83,7 +83,19 @@ internal class SnapProgressOverlay(private val activity: Activity) {
 
     fun update(done: Int, total: Int, name: String) {
         val safeName = name.ifEmpty { "…" }
+        progress?.setTextColor(Color.WHITE)
         progress?.text = "正在截图 $done/$total · $safeName"
+    }
+
+    /**
+     * 挂起态：窗口不在可截状态（用户切去别的 app / 小窗收起 / 熄屏）。
+     *
+     * 任务不会因此中止，回来自动继续；进度条留在这里，用户随时点「取消」终止。
+     */
+    fun updatePaused(done: Int, total: Int, name: String) {
+        val safeName = name.ifEmpty { "…" }
+        progress?.setTextColor(PAUSE_COLOR)
+        progress?.text = "已挂起 $done/$total · $safeName（回来继续）"
     }
 
     fun hideForCapture() {
@@ -97,6 +109,11 @@ internal class SnapProgressOverlay(private val activity: Activity) {
     fun remove() {
         runCatching { (root?.parent as? ViewGroup)?.removeView(root) }
         runCatching { cancel?.setOnClickListener(null) }
+    }
+
+    private companion object {
+        /** 挂起态文字色：和「正在截图」的纯白区分开，一眼看出任务停在那等窗口 */
+        val PAUSE_COLOR = Color.rgb(0xFF, 0xC4, 0x6B)
     }
 
     private fun statusBarHeight(): Int {

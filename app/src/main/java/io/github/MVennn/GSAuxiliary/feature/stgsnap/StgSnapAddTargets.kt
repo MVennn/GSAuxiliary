@@ -98,6 +98,20 @@ internal object StgSnapAddTargets {
     /** 就绪轮询间隔（48ms ≈ 3 帧；只读视图状态，截图仍由就绪门禁决定） */
     const val READY_POLL_MS = 48L
 
+    /**
+     * 窗口不可截时（切到别的 app / 小窗收起 / 熄屏）的挂起轮询间隔。
+     *
+     * 挂起期间**不计就绪超时**，所以可以放宽到 200ms：每秒 5 次只读一个窗口可见性，
+     * 比 48ms 省电，回来后的响应仍然在一帧左右。
+     */
+    const val PAUSE_POLL_MS = 200L
+
+    /** 用户手动把页面滑走时，两次「拉回本页」之间的最小间隔 */
+    const val PAGE_RESYNC_IDLE_MS = 400L
+
+    /** 同一页最多拉回几次（用户在小窗里反复滑动时不跟人抢） */
+    const val MAX_PAGE_RESYNC = 3
+
     /** 切页后先让 ViewPager 完成布局 */
     const val PAGE_SETTLE_MS = 180L
 
