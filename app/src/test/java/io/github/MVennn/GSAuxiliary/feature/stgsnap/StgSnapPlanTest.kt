@@ -47,12 +47,19 @@ class StgSnapPlanTest {
     }
 
     @Test
-    fun `文件名清洗与编号补零`() {
-        assertEquals("01_兆威机电_003021.png", StgSnapPlan.fileName(1, "兆威机电", "003021"))
-        assertEquals("12_ABC_600519.png", StgSnapPlan.fileName(12, "A/B:C", "600519"))
-        assertEquals("03_003021_003021.png", StgSnapPlan.fileName(3, "  ", "003021"))
+    fun `文件名是名称加代码`() {
+        // 口径：`名称 代码.png`，不带序号、不用下划线（2026-11-05 改）
+        assertEquals("青云科技 688316.png", StgSnapPlan.fileName("青云科技", "688316"))
+        assertEquals("兆威机电 003021.png", StgSnapPlan.fileName("兆威机电", "003021"))
+        // 路径非法字符清掉，名称内部的空格也清掉，只留名称与代码之间的那一个
+        assertEquals("ABC 600519.png", StgSnapPlan.fileName("A/B:C", "600519"))
+        assertEquals("ST股 600519.png", StgSnapPlan.fileName("ST 股", "600519"))
+        // 空名 / 纯空格回退成代码，仍保持「名称 代码」形状
+        assertEquals("003021 003021.png", StgSnapPlan.fileName("  ", "003021"))
+        assertEquals("600519 600519.png", StgSnapPlan.fileName(null, "600519"))
+        // 名称过长截到 20 字
         val long = "一".repeat(30)
-        assertEquals("01_${"一".repeat(20)}_600519.png", StgSnapPlan.fileName(1, long, "600519"))
+        assertEquals("${"一".repeat(20)} 600519.png", StgSnapPlan.fileName(long, "600519"))
     }
 
     @Test

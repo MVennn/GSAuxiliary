@@ -62,11 +62,15 @@ internal object StgSnapPlan {
         return cut.ifEmpty { code }
     }
 
-    /** `01_贵州茅台_600519.png` */
-    fun fileName(index: Int, name: String?, code: String): String {
+    /**
+     * `贵州茅台 600519.png` —— 名称在前、代码在后，中间一个空格。
+     *
+     * 不带序号：相册里的缩略图直接读出「哪只股票」，排序交给相册自身（按时间）；
+     * 名称里的空格与路径非法字符已在 [sanitizeName] 清掉，分隔符不会被污染。
+     */
+    fun fileName(name: String?, code: String): String {
         val safe = sanitizeName(name, code)
-        val no = index.coerceAtLeast(1).toString().padStart(2, '0')
-        return "${no}_${safe}_${code}.png"
+        return "$safe $code.png"
     }
 
     /** 当前页标题（「名称 代码」）是否就是目标股票 */

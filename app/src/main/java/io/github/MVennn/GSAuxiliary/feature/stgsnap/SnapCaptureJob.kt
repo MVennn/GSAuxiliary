@@ -543,7 +543,8 @@ internal class SnapCaptureJob(
         stock: SelectedStock,
         timing: PageTiming,
     ) {
-        val fileName = StgSnapPlan.fileName(index + 1, stock.name, stock.code)
+        // 文件名 = 「名称 代码」，相册里直接认出是哪只股票（不带序号）
+        val fileName = StgSnapPlan.fileName(stock.name, stock.code)
         val appContext = activity.applicationContext
         val submittedAt = SystemClock.elapsedRealtime()
         inflight++
