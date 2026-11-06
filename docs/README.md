@@ -44,6 +44,7 @@
 | [RELEASE.md](RELEASE.md) | 发布清单：**交付规则正本（§0.1）**、双仓库发版、Release 说明格式、发版前检查 |
 | [VERSIONING.md](VERSIONING.md) | 版本命名规范：三段式进位规则，**版本晋升正本（§1）** |
 | [REVIEW-2026-10.md](REVIEW-2026-10.md) | 2026-10 审查历史快照：修掉的缺陷、**五轮独立复核的经验**、装上的自动化防护（单测数已按「当时」标注；§6.3 跨仓串文已勘误） |
+| [TEST-BRIDGE.md](TEST-BRIDGE.md) | 通用测试桥 TBridge 的设计：三层切分、协议字段、点击三路回退、像素取不到的边界（实现已独立成仓，本仓 `tools/drive.sh` 只做调用方） |
 | [MAINTENANCE.md](MAINTENANCE.md) | 收尾大扫除：磁盘垃圾 / 死代码 / 文档一致性清理，红线清单 |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | 排错手册：按「现象 → 步骤 → 原因 / 解法」组织的排查流程 |
 | [CODE-RULES.md](CODE-RULES.md) | 编码纪律：两轮代码审查（2026-10-17）与注入性能排查（2026-10-19）提炼的必守规则与新功能自检清单，写代码前后各过一遍 |
