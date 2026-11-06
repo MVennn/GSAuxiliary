@@ -205,7 +205,7 @@ internal fun DialogHost(
     val navBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
 
     val anchor = spec.anchor
-    // 贴底弹出：确认弹窗 / 同意弹窗 / 图片预览，且没有锚点
+    // 贴底弹出（下中）：确认弹窗 / 同意弹窗 / 图片预览，且没有锚点
     val sheet = (
         spec is ConfirmDialogSpec || spec is AgreementDialogSpec ||
             spec is ImageDialogSpec
@@ -339,7 +339,8 @@ internal fun DialogHost(
             when {
                 // 贴底：左右各留 ScreenMargin（宽度过限时居中），底部再抬起导航条高度
                 sheet -> {
-                    x = if (cardW < cap) (width - cardW) / 2 else side
+                    // 下中：水平一律居中（原来 cardW==cap 时走 else 分支会贴左边）
+                    x = (width - cardW) / 2
                     y = (height - cardH - side - navBottomPx.toInt()).coerceAtLeast(side)
                 }
 
