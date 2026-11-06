@@ -27,6 +27,9 @@ winpath() {
 # --- Android SDK ---
 detect_sdk() {
     local cands=(
+        # 先看仓内 SDK：tools/ci/setup-android-sdk.sh 会把 emulator / platform-tools
+        # 装到这里，系统里的 Android/Sdk 可能根本不存在（本机就是这种情况）。
+        "${REPO_DIR:-}/.work/android-sdk"
         "${ANDROID_SDK:-}" "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"
         "${LOCALAPPDATA:-}/Android/Sdk"
         "${HOME:-}/AppData/Local/Android/Sdk"
@@ -159,8 +162,10 @@ wait_device() {
 
     for ((i = 0; i < timeout; i++)); do
         # 优先 ip:port 形式的 serial，mDNS 那条虚拟名字只当兜底
-        dev="$("$ADB" devices 2>/dev/null | awk '$2 == "device" && $1 ~ /:[0-9]+$/ { print $1; exit }')"
-        [ -n "$dev" ] || dev="$("$ADB" devices 2>/dev/null | awk '$2 == "device" { print $1; exit }')"
+        # 注意：Windows 的 adb.exe 输出是 CRLF，awk 的 $2 会变成 "device\r"，
+        # 必须先 tr -d '\r'，否则永远匹配不到（本机实测：不 tr 就 0 设备）。
+        dev="$("$ADB" devices 2>/dev/null | tr -d '\r' | awk '$2 == "device" && $1 ~ /:[0-9]+$/ { print $1; exit }')"
+        [ -n "$dev" ] || dev="$("$ADB" devices 2>/dev/null | tr -d '\r' | awk '$2 == "device" { print $1; exit }')"
         if [ -n "$dev" ]; then
             mkdir -p "$(dirname "$cache")" 2>/dev/null
             echo "$dev" > "$cache" 2>/dev/null
@@ -177,3 +182,41 @@ wait_device() {
     echo "[env] ${timeout}s 内没等到设备" >&2
     return 1
 }
+
+# ---------------------------------------------------------------------------
+# 设备解析：MuMu 优先（drive.sh / ui.sh / verify.py 都该用它，不要用 wait_device）
+#
+# 为什么不能再用 wait_device 的「第一条 device」：
+#   本机长期有两条 adb 通路同时在线 ——
+#     · 127.0.0.1:16416  MuMu 实例 1：Android 12，abilist 含 arm64-v8a 且有
+#       libhoudini ARM 转译，Magisk(/system/xbin/magisk) + Zygisk LSPosed
+#       (/data/adb/modules/zygisk_lsposed) + 宿主金太阳 8.7.1 均已装 ——
+#       这是唯一能真正跑模块的环境
+#     · emulator-5554    SDK AVD：Android 13，纯 x86_64 无 ARM 转译，
+#       ARM-only 的宿主与模块一律 INSTALL_FAILED_NO_MATCHING_ABIS res=-113
+#       （见 docs/REVERSE-ENGINEERING.md:31、app/build.gradle.kts:93-101）
+#   顺序取设备会随机落到 AVD 上，脚本看着跑完其实什么都没测到。
+#
+# 优先级：DEVICE（精确 serial）> MuMu(MUMU_ADB_PORT，默认 16416) > 无线 > 任意
+# ---------------------------------------------------------------------------
+resolve_device() {
+    local p="${MUMU_ADB_PORT:-16416}" dev
+    [ -n "${ADB:-}" ] || { echo "[env] 没找到 adb" >&2; return 1; }
+
+    if [ -n "${DEVICE:-}" ]; then
+        case "$DEVICE" in
+            *:*) "$ADB" connect "$DEVICE" >/dev/null 2>&1 || true ;;
+        esac
+        echo "$DEVICE"; return 0
+    fi
+
+    "$ADB" start-server >/dev/null 2>&1
+    "$ADB" connect "127.0.0.1:$p" >/dev/null 2>&1
+    dev="$("$ADB" devices 2>/dev/null | tr -d '\r' | awk -v s="127.0.0.1:$p" '$1==s && $2=="device" {print $1; exit}')"
+    if [ -n "$dev" ]; then
+        apply_rotation_lock "$dev"
+        echo "$dev"; return 0
+    fi
+    wait_device "${1:-60}"
+}
+

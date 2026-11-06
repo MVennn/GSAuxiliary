@@ -63,7 +63,8 @@ bash tools/adbw.sh dev            # 只打印当前可用 serial
 > `/sdcard/ui.xml` 改写成 `<GIT_BASH_ROOT>/.../sdcard/ui.xml`，`pull` 直接报
 > `failed to stat remote object`。**本地路径要自己用 `winpath` 转成 `<WINPATH>`。**
 > 需要 root 时整条命令包一层 `su -c`，注意别在命令里再用双引号。
-> 只认无线 serial（`ip:port` 形式），USB 设备请走 `sh.sh` / `drive.sh`。
+> 只认无线 serial（`ip:port` 形式）。USB 设备与 MuMu（`127.0.0.1:16416`）走 `drive.sh`，
+> 它自己解析设备，不需要 `ADB_WIFI_HOST`。
 
 ## dev.sh
 
@@ -180,34 +181,88 @@ python tools/uidump.py ui.xml --find-class EditText
 
 ## drive.sh
 
-批量驱动设备 UI。把一串指令一次性执行，适合复现固定操作路径。
-支持 USB 设备（走 `wait_device`，与 ui.sh 的 adbw 路线不同）。
+批量驱动设备 UI：一串指令一次执行，适合复现固定操作路径。**每一步都打耗时**。
+
+**默认连 MuMu**（`127.0.0.1:16416`，由 `env.sh` 的 `resolve_device` 解析）——
+它带 libhoudini ARM 转译，且 Magisk / Zygisk LSPosed / 宿主金太阳都已装好，
+是唯一能真正跑模块的机器。SDK 的 AVD 是纯 x86_64，ARM-only 的宿主与模块一律
+`INSTALL_FAILED_NO_MATCHING_ABIS`。换设备用 `DEVICE=<serial>` 覆盖。
 
 ```bash
-bash tools/drive.sh "stop" "wait 2" "launch" "wait 14" \
-                    "tap 324 471" "wait 6" "tap 890 340" "wait 7" \
-                    "tap 78 326" "wait 8" "act"
+# 冷启动 → 过维护预告弹窗 → 过环境检测弹窗 → 到登录页，一条命令跑完
+bash tools/drive.sh "stop" "launch" "waitact guosen" \
+                    "waitfor 知道了 10" "uifind 知道了" \
+                    "waitfor 确定 8"   "uifind 确定" \
+                    "uiscan" "uifind 我已阅读并同意" "shot login_ready"
 ```
 
 | 指令 | 说明 |
 |---|---|
 | `tap X Y` | 点击 |
 | `swipe X1 Y1 X2 Y2 [MS]` | 滑动 |
-| `wait SEC` | 等待 |
-| `shot NAME` | 截图到 `.work/shots/NAME.png` |
+| `wait SEC` | 死等（能用 `waitact` / `waitfor` 就别用） |
+| `waitact PATTERN [SEC]` | 轮询栈顶 Activity 匹配 PATTERN，约 100ms/次 |
+| `waitfor TEXT [SEC]` | 轮询界面出现文字，走 `uiautomator dump`，约 2.3s/次 |
+| `shot NAME` | 截图到 `.work/shots/NAME.png`（raw 取帧 + 本地编码） |
+| `snap NAME` | 只存原始帧 `.work/raw/NAME.raw`（免 PNG 编码，供像素比对） |
 | `back` / `home` | 返回键 / 主页键 |
 | `key CODE` | 发送按键（`224` = 唤醒屏幕） |
 | `text STR` | 输入文本 |
 | `act` | 打印当前 Activity |
+| `sig` | 打印界面签名（focus + focusedApp） |
 | `stop` / `launch` | 强制停止 / 启动目标 App |
 | `install [PATH]` | 安装 APK（默认取构建产物） |
 | `logclear` | 清空 logcat |
-| `uifind TEXT` | 按文字找控件并点击 |
-| `uiscan` | 列出当前界面所有文字 + 坐标 |
+| `uifind TEXT` | 按文字找控件并点击（界面签名不变时复用上次 UI 树） |
+| `uiscan` | 列出当前界面所有文字 + 坐标（强制重新 dump） |
+| `batch CMD...` | 余下参数拼成**一条** shell 发到设备，省掉每步 75ms 往返 |
+| `tbping` | 桥心跳（包名 / pid / api） |
+| `tbact` | 当前 Activity，0.5–1ms |
+| `tbtree` | 打印 View 树，1–2ms |
+| `tbready [SEC]` | 等桥就绪（App 冷启动到 onPackageReady 之间 socket 还不存在） |
+| `tbwait TEXT [SEC]` | 轮询界面出现文字，20ms 一轮 |
+| `tbtapif TEXT [SEC]` | 出现就点、不出现跳过（弹窗时有时无时用这个，别用 tbwait 硬等） |
+| `tbtap TEXT|#idx` | 找并点击，1–2ms（`dispatchTouchEvent`） |
+| `tbset #IDX TEXT` | 给输入框写文本 |
+| `tbshot NAME` | View 层截图到 `.work/shots/NAME.png`，16–64ms |
+| `tbmulti "op;;op;;…"` | 一次 python 进程跑完整条链路（省掉每条 180ms 启动） |
 
-> 坐标基于 1080×2400 屏幕。换机型请先用 `uiscan` 重新取坐标。
-> 设备息屏时脚本会点不动，开头加 `"key 224" "wait 2" "swipe 540 2000 540 900 250" "wait 3"`。
+**三条提速事实**（MuMu 900×1600 实测）：
+
+- `uiautomator dump` 2.3s 是最大开销，`screencap` 0.28s、`dumpsys window` 0.11s。
+  所以 `uifind` 按界面签名缓存 UI 树：签名不变时 2.3s → **0.15s**。
+- 每条 adb 指令约 75ms 往返，多步点击用 `batch` 合并：3 次点击 121ms（原来 300ms+）。
+- `screencap -p`（PNG）780ms；`screencap`（raw）+ 本地 zlib 约 380ms。
+
+> 坐标基于 MuMu 的 900×1600。换设备请先用 `uiscan` 重新取坐标。
 > `text` / `uifind` 的参数**不能带空格**（`set -- $cmd` 故意分词，带空格文本会被拆碎）。
+
+### 走桥（TBridge）—— 数量级的差别
+
+上面 `uifind` / `waitfor` 都绕不开 `uiautomator dump`，一轮 2.2s，等待只能按秒猜。
+`tb*` 走的是 `F:\Project\TBridge`（LSPosed 模块，在被测 App 进程内开 socket），
+读的是内存里的 View 树：
+
+| | uiautomator | 桥 |
+|---|---|---|
+| 取控件树 | 2200 ms | **1.4 ms** |
+| 等待出现文字 | 2.3 s/轮 | 1 ms/轮（实测 1235 次/秒） |
+| 截图 | 650–780 ms | **50 ms** |
+| 金太阳冷启动到登录页 | 15791 ms | **221 ms** |
+
+前提：目标 App 必须被勾进 TBridge 的 LSPosed 作用域，且 zygote 重启过一次。
+
+```bash
+# 勾作用域（设备上有 sqlite3，直接改库，不用点界面）
+python F:/Project/TBridge/tools/scope.py io.github.MVennn.tbridge com.guosen.android
+
+# 一条指令跑完整条链路
+bash tools/drive.sh "tbmulti act;;wait 密码登录 3;;tap 用短信验证码登录;;wait 登录 3;;tree;;shot a"
+```
+
+> `tbmulti` 的行内用 `;;` 分隔，整串是**一个参数**（要引号包住）。
+> 里面带空格的文本在 `set --` 分词时会丢引号，需要精确匹配长文本时改用
+> `tbtap "#idx"`（idx 由 `tbtree` 给出）。
 
 ## glog.sh + glog_tail.py
 
@@ -596,6 +651,8 @@ python tools/hygiene.py junk      # 构建产物 / 临时目录 / 旧包（只�
 ```
 .work/
 ├── shots/              drive.sh 的 shot 指令 → .work/shots/NAME.png
+├── raw/                drive.sh 的 snap 指令 → .work/raw/NAME.raw（裸帧，免编码）
+├── .ui_sig             drive.sh 的界面签名缓存（focus + focusedApp，决定 uifind 是否复用 UI 树）
 ├── lspd.log            glog.sh tail 拉下来的日志
 ├── log.mark            glog.sh mark 记录的行号游标
 ├── wifi_serial         env.sh wait_device 缓存的无线调试地址
