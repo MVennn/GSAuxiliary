@@ -21,11 +21,14 @@ echo "sdk.dir=/path/to/Android/Sdk" > local.properties
 cp keystore.properties.example keystore.properties
 # 编辑填入 storeFile / storePassword / keyAlias / keyPassword
 
-# 3. 构建
-./gradlew assembleRelease
+# 3. 构建（--no-daemon 必带，理由见 §8 坑 3）
+./gradlew assembleRelease --no-daemon
 ```
 
 产物：`app/build/outputs/apk/release/app-release.apk`
+
+> ⚠️ 命令行构建**一定带 `--no-daemon`**：不带的话 Gradle 会留下一个常驻 JVM
+> （默认空闲 3 小时才自己退），编译结束、终端都关了，`java.exe` 还挂在后台吃内存。
 
 > 干净环境（CI / 新机器）还要先补 compileSdk 37 平台：
 > `bash tools/ci/setup-sdk37.sh`。为什么需要它见 §4.1 / §8.1。
@@ -634,6 +637,20 @@ Windows 上 `git config core.fileMode=false`，很容易把 `gradlew` 提交成 
 
 ```bash
 git ls-files -s gradlew      # 必须是 100755
+```
+
+**坑 3：编译完了 `java.exe` 不走**
+
+`./gradlew assembleRelease` 不带 `--no-daemon` 时，Gradle 会起一个**常驻 daemon**
+（默认空闲 3 小时才退），Kotlin 编译还可能再起一个 `KotlinCompileDaemon` ——
+构建结束、终端都退出了，这两个 JVM 还挂在后台占内存。
+
+判据：构建结束后 `tasklist | findstr /i java` 仍有输出；
+`<GRADLE_USER_HOME>/daemon/8.11.1/registry.bin` 非空（几字节的空表 = 没有活着的 daemon）。
+
+```bash
+./gradlew assembleRelease --no-daemon   # 单次构建，结束即退
+./gradlew --stop                        # 已经留下了，用它收掉
 ```
 
 ### 8.2 发布需要的 5 个 Repository secrets
