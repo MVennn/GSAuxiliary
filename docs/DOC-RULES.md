@@ -12,7 +12,7 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 | 类别 | 收什么 | 现有成员 |
 |---|---|---|
 | 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、UI-MATERIAL、UI-HISTORY |
-| 功能专项 | 一个功能一篇（FEATURE-*） | 11 篇 FEATURE-*.md |
+| 功能专项 | 一个功能一篇（FEATURE-*） | 13 篇（清单见 [README.md](README.md) 索引） |
 | 流程与规范 | 构建、发版、版本、维护、排错、命名、编码纪律、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、CODE-RULES、DOC-RULES、TOOLS-DOC-RULES |
 | 参考资料 | Release 说明、免责全文 | release-notes/、DISCLAIMER（reference/ 已转本地留存，不随仓库分发） |
 
@@ -96,7 +96,7 @@ REVERSE-ENGINEERING（含原 HOOK-NOTES 并入部分）、FEATURE-*.md 里的
 
 | 变更 | 必须同步 |
 |---|---|
-| **修一个缺陷**（行为变化 / 判据修正 / 安全加固） | 当轮 `docs/REVIEW-<YYYY-MM>.md` 补一条 **现象 → 根因 → 怎么避**（没有就新建并进 [README.md](README.md) 索引）；形成新判据时同步 [CODE-RULES.md](CODE-RULES.md)；CHANGELOG 只是变更记录，**不算补文档** |
+| **修一个缺陷**（行为变化 / 判据修正 / 安全加固） | 按版本在根 `CHANGELOG.md` 记一条 **现象 → 根因 → 怎么避**；需要单列复盘时才新建 `docs/REVIEW-<YYYY-MM>.md` 并进 [README.md](README.md) 索引；形成新判据时同步 [CODE-RULES.md](CODE-RULES.md) |
 | 新增 / 删除功能 | [ARCHITECTURE.md](ARCHITECTURE.md) §3.2 功能挂载表、[UI.md](UI.md) 功能页清单、[NAMING.md](NAMING.md) §5、候选常量表（reference/ 已转本地留存） |
 | 发版 | 根目录 CHANGELOG.md、`docs/release-notes/<版本>.md`（写法正本：[release-notes/README.md](release-notes/README.md)） |
 | 内部重构 / 底层修复 / 死代码 | 说明里**必须按对象单列一行**（算「修复」，不许打包成「代码整理」） |

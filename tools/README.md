@@ -53,15 +53,15 @@ bash -c '. tools/env.sh; echo "adb=$ADB"; echo "python=$PYTHON"; echo "ffmpeg=$F
 ```bash
 bash tools/adbw.sh shell "input tap 540 1020"
 bash tools/adbw.sh exec-out screencap -p > shot.png
-bash tools/adbw.sh pull /sdcard/ui.xml F:/x/ui.xml
+bash tools/adbw.sh pull /sdcard/ui.xml <WINPATH>/ui.xml
 bash tools/adbw.sh dev            # 只打印当前可用 serial
 ```
 
 环境变量：`ADB_WIFI_HOST`（必须设置）、`ADBW_TRIES`（重试次数，默认 6）。
 
 > 脚本内部已 `export MSYS_NO_PATHCONV=1` —— 否则 Git Bash 会把远端路径
-> `/sdcard/ui.xml` 改写成 `F:/Program Files/.../sdcard/ui.xml`，`pull` 直接报
-> `failed to stat remote object`。**本地路径要自己用 `winpath` 转成 `F:/...`。**
+> `/sdcard/ui.xml` 改写成 `<GIT_BASH_ROOT>/.../sdcard/ui.xml`，`pull` 直接报
+> `failed to stat remote object`。**本地路径要自己用 `winpath` 转成 `<WINPATH>`。**
 > 需要 root 时整条命令包一层 `su -c`，注意别在命令里再用双引号。
 > 只认无线 serial（`ip:port` 形式），USB 设备请走 `sh.sh` / `drive.sh`。
 
@@ -507,10 +507,10 @@ python tools/ci/verify_apk.py --reject-debug-cert \
     --expect-cert-sha256 a7fc6034… app/build/outputs/apk/release/app-release.apk
 
 # 版本号 / tag 一致性
-python tools/ci/version.py                  # 输出 vc=47 / vn=3.2.0（供 $GITHUB_OUTPUT）
-python tools/ci/version.py --tag            # 47-3.2.0
+python tools/ci/version.py                  # 输出 vc=<VC> / vn=<VN>（供 $GITHUB_OUTPUT，值以 app/build.gradle.kts 为准）
+python tools/ci/version.py --tag            # <VC>-<VN>
 python tools/ci/version.py --shell          # 输出 VC=/VN=/TAG= 三行，供 shell eval
-python tools/ci/version.py --check-tag 47-3.2.0  # 不一致就 exit 1
+python tools/ci/version.py --check-tag <VC>-<VN>  # 不一致就 exit 1
 
 # 静态检查（提交前跑一遍，全是秒级）
 python tools/ci/check_invariants.py
