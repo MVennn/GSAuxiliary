@@ -531,16 +531,21 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 
 ### 5.1 桌面图标
 
-桌面图标挂在 `activity-alias` 上，而不是 Activity 本体：
+桌面图标挂在 `activity-alias` 上，而不是 Activity 本体；alias 的可见状态由一份
+**独立本地镜像**（`launcher_icon_state`，缺省隐藏）决定，不再由 `ModulePreferences`
+或 manifest 默认值决定：
 
 - 关掉图标 = 禁用 alias（`COMPONENT_ENABLED_STATE_DISABLED`）
-- 打开图标 = 恢复 manifest 默认状态（`COMPONENT_ENABLED_STATE_DEFAULT`）
+- 打开图标 = 显式启用（`COMPONENT_ENABLED_STATE_ENABLED`；manifest 里 alias 默认已是 `false`，再走 `DEFAULT` 等于打不开）
+- 覆盖安装 / 更新后由静态 receiver 与 `Application.onCreate` 按镜像重放，隐藏状态跨更新保留；两路都不读框架配置，也不挂 `ModulePreferences.observe`
 
 `SettingsActivity` 本体**始终 enabled**，并且**自己带一条
 `MAIN + de.robv.android.xposed.category.MODULE_SETTINGS` 的 intent-filter**。
 LSPosed 找模块设置入口时优先按这个 category 查（见 LSPosed `ModuleUtil`），
 所以关掉桌面图标**不会**连带关掉 LSPosed 里的设置入口 —— 这是 2.3.0 修的 bug。
-`GszxApp.onCreate` 每次启动都会把配置同步到组件状态，重装 / 升级后自愈。
+全新安装默认隐藏桌面图标，想要图标就在设置里主动打开一次。
+设置页开关状态也读同一份镜像，避免出现「开关显示开、图标却隐藏」。
+完整历史与踩坑见 [UI-HISTORY](UI-HISTORY.md) §12.5。
 
 ### 5.2 液态玻璃（总开关）
 

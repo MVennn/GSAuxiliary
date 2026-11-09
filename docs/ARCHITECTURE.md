@@ -572,11 +572,11 @@ com.guosen.android
         </intent-filter>
     </activity>
 
-    <!-- 桌面入口别名：开关只切它的 enabled 状态 -->
+    <!-- 桌面入口别名：开关只切它的 enabled 状态；manifest 默认隐藏，覆盖安装天然回落 -->
     <activity-alias
         android:name=".ui.LauncherAlias"
         android:targetActivity=".ui.SettingsActivity"
-        android:enabled="true"
+        android:enabled="false"
         android:exported="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
@@ -596,8 +596,14 @@ com.guosen.android
 
 > **桌面图标开关**为什么用 `activity-alias`：Activity 自身无法"隐藏自己"，
 > 但别名可以。`LauncherIcon.apply()` 对 `.ui.LauncherAlias` 调
-> `setComponentEnabledSetting(COMPONENT_ENABLED_STATE_DISABLED / DEFAULT)`，
+> `setComponentEnabledSetting(COMPONENT_ENABLED_STATE_DISABLED / ENABLED)`（打开必须显式
+> ENABLED —— manifest 默认已是 `false`，用 `DEFAULT` 会回落成隐藏），
 > 关闭后桌面图标消失、模块仍然正常工作（LSPosed 通过 `java_init.list` 加载，不依赖桌面入口）。
+>
+> 组件启用记录会被覆盖安装清掉，所以可见性另存一份独立本地镜像
+> （`launcher_icon_state`，键 `desktop_icon_local`，缺省 false），由
+> `PackageReplacedReceiver`（`ACTION_MY_PACKAGE_REPLACED`）与 `Application.onCreate`
+> 各重放一次；镜像文件独立于配置仓库，不受 `resetToDefaults` 清空与远端迁移影响。
 
 > ⚠️ **不要**加 `xposedminversion` 之类的 legacy meta-data —— 会让模块被判定为
 > legacy 模块从而静默不加载。原因见 [EXTENDING.md · 架构红线](EXTENDING.md#21-manifest-里绝对不能出现-xposedminversion)。

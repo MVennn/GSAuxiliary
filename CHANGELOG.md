@@ -44,6 +44,10 @@
   看起来「不居中」。改为水平一律 `(width - cardW) / 2`。
 - 调整 截图并添加：文件名改为「名称 代码」，去掉序号前缀。
 
+### 修复 关掉桌面图标后每次更新又自动出现（2026-11-09）
+
+- 修复 设置里关掉「桌面图标」，覆盖安装 / 更新 APK 后图标又回到桌面：alias 在 manifest 改为 `android:enabled="false"`（全新安装默认隐藏），打开图标改走 `COMPONENT_ENABLED_STATE_ENABLED`；隐藏状态写进**独立**本地镜像 `launcher_icon_state`（缺省 false，不写 `ConfigKeys.GROUP`），由静态 `PackageReplacedReceiver`（`ACTION_MY_PACKAGE_REPLACED`，`exported=false`）+ `GszxApp.onCreate` 两路按镜像重放；设置页开关状态源改读同一份镜像。完整历史与踩坑见 `docs/UI-HISTORY.md` §12.5、界面摘要见 `docs/UI.md` §5.1。
+
 ---
 
 ## [3.5.5] — 2026-11-04

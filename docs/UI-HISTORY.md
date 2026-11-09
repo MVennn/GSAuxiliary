@@ -301,6 +301,35 @@ aapt2 dump resources "$APK" | grep -E "ic_launcher_(background|foreground|monoch
 真机自检：手势导航条那一条应当**透出页面内容**（列表可以滚到它下面），
 而不是一条纯色带；深色 / 亮色来回切，手势条与状态栏的图标应当跟着翻色。
 
+### 12.5 关掉图标后每次更新又冒出来（3.6.0 后修）
+
+2.3.0 把桌面图标从 Activity 本体拆到 `activity-alias`，修好的是「关掉图标连带把
+LSPosed 设置入口也关掉」；本体此后恒 enabled、自己带 `MAIN + MODULE_SETTINGS`。
+但隐藏状态一直靠 `PackageManager.setComponentEnabledSetting(alias, DISABLED,
+DONT_KILL_APP)` 写的一条**覆盖记录**，manifest 里 alias 仍是 `enabled="true"`，
+而同步只放在 `GszxApp.onCreate`；
+
+| 触发 | 结果 |
+|---|---|
+| 覆盖安装 / 更新 | 系统清掉组件启用覆盖记录，alias 回落到 manifest 的 `enabled="true"` → 桌面图标复活 |
+| 更新后没打开模块 App | `onCreate` 根本不执行，没人把 alias 按配置改回去 |
+| 冷启动框架 binder 未连 | `ModulePreferences.active()` 落到本地文件，读不到远端的「关」→ 用 `DEFAULT_DESKTOP_ICON = true` 反而把图标点亮 |
+
+所以 3.6.0 后改成**让缺省天然就是隐藏**：alias 在 manifest 写
+`android:enabled="false"`，打开图标必须显式 `COMPONENT_ENABLED_STATE_ENABLED`
+（`DEFAULT` 现在指向 false，继续用它等于打不开）。开关值写进一份**独立**
+SharedPreferences `launcher_icon_state`（键 `desktop_icon_local`，缺省 false）——
+绝不能写进 `ConfigKeys.GROUP`：那个文件会被 `resetToDefaults()` 的 `clear()` 抹掉、
+被 `migrateLocalToRemote()` 遍历搬到远端，写它还会触发 `notifyChanged()` 与
+`ModulePreferences.observe` 形成通知回路。
+
+重放走两路、都不读框架配置：静态 `PackageReplacedReceiver`
+（`exported=false`）接 `ACTION_MY_PACKAGE_REPLACED` 补上「更新后用户没开 App」的窗口，
+`GszxApp.onCreate` 的 `applyFromLocal()` 给部分不投递广播的 ROM 兜底；
+刻意不挂进 `observe`，避免用 remote 旧值覆盖用户选择。设置页开关状态也读同一份镜像，
+否则会出现「开关显示开、图标却隐藏」。全新安装因此默认隐藏桌面图标，想要图标就在设置里
+主动打开一次；LSPosed 设置入口始终由本体保证，不受 alias 影响。界面摘要见 `docs/UI.md` §5.1。
+
 ---
 
 ## 13. 改界面时的注意事项（原文，2026-10-18 从 UI.md §9 移入）
