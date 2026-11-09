@@ -13,7 +13,7 @@ import java.io.File
  *  1. 初始化配置仓库（本地兜底 + 等待框架服务）
  *  2. 应用「日志等级」，并挂上日志落盘仓库（「导出日志」读的就是它）
  *  3. 注册框架服务监听，拿到 binder 后把配置后端切到 remote preferences
- *  4. 把「桌面图标」开关同步到组件状态
+ *  4. 按本地镜像重放「桌面图标」组件状态（覆盖安装后保持隐藏）
  *
  * 这一档配置（3.2.0 起重新由用户可调）与目标进程共用同一个键
  * `ConfigKeys.LOG_LEVEL`：这里管模块 App 进程，`GszxModule` 管目标进程。
@@ -39,11 +39,11 @@ class GszxApp : Application() {
         // 设置界面改等级后立即生效（配置变化统一切主线程分发）
         ModulePreferences.observe { applyLogLevel() }
 
-        // 把「桌面图标」开关同步到组件状态，保证与配置一致（重装/升级后自愈）
-        LauncherIcon.apply(
-            this,
-            ModulePreferences.getBoolean(ConfigKeys.DESKTOP_ICON, ConfigKeys.DEFAULT_DESKTOP_ICON),
-        )
+        // 按本地镜像重放「桌面图标」组件状态（覆盖安装 / 老版本升级后保持隐藏）。
+        // 不读 ModulePreferences / remote：独立镜像不依赖框架 binder，避开
+        // LOCAL→REMOTE 切换的启动竞态；静态 receiver 未投递时由这里兜底；
+        // 也刻意不挂进 observe，避免用 remote 旧值覆盖用户选择或形成通知回路。
+        LauncherIcon.applyFromLocal(this)
 
         GLog.i("模块 App 启动：配置仓库与服务监听就绪")
     }

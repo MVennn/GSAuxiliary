@@ -43,7 +43,7 @@
         -->
         <activity-alias
             android:name=".ui.LauncherAlias"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
@@ -54,6 +54,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!--
+            覆盖安装（应用更新）后重新应用「桌面图标」偏好。
+            ACTION_MY_PACKAGE_REPLACED 只发给被替换的本包，属于 Android 8.0
+            隐式广播限制的豁免场景，可静态注册；exported=false 只收系统/本包。
+            覆盖安装会清掉 setComponentEnabledSetting 的组件启用记录，alias 回落到
+            manifest 默认（false）；收到广播后按本地镜像重放：关过图标就继续隐藏。
+        -->
+        <receiver
+            android:name=".app.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!--
             adb 调试通道（开发期用，不参与运行期配置读取）。

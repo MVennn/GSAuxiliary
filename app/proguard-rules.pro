@@ -14,6 +14,8 @@
 -keep class io.github.MVennn.GSAuxiliary.app.GszxApp { *; }
 -keep class io.github.MVennn.GSAuxiliary.ui.SettingsActivity { *; }
 -keep class io.github.MVennn.GSAuxiliary.app.DebugConfigProvider { *; }
+# 覆盖安装广播：由系统按 manifest 实例化（R8 看不出代码引用），按仓内约定显式保留
+-keep class io.github.MVennn.GSAuxiliary.app.PackageReplacedReceiver { *; }
 
 # libxposed 服务通道（remote preferences / scope / 热重载）。
 # XposedProvider 由系统实例化；IXposedService 的 binder 描述符是跨进程查找的。

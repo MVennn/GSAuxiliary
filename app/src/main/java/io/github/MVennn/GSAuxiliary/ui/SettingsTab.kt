@@ -153,7 +153,9 @@ internal fun SettingsTab(
     var languageAnchor by remember { mutableStateOf<Rect?>(null) }
     var logLevelAnchor by remember { mutableStateOf<Rect?>(null) }
 
-    val desktopIcon by rememberBoolPref(ConfigKeys.DESKTOP_ICON, ConfigKeys.DEFAULT_DESKTOP_ICON)
+    // UI 以本地镜像为准：alias 的唯一权威是独立镜像文件，直接读同一份可避免
+    // 框架后端 LOCAL→REMOTE 切换、迁移不覆盖时出现「开关显示开、图标却隐藏」的撕裂。
+    var desktopIcon by remember(ctx) { mutableStateOf(LauncherIcon.isVisible(ctx)) }
     val liquidGlass by rememberBoolPref(ConfigKeys.LIQUID_GLASS, ConfigKeys.DEFAULT_LIQUID_GLASS)
     val glassEffect by rememberBoolPref(ConfigKeys.GLASS_EFFECT, ConfigKeys.DEFAULT_GLASS_EFFECT)
     val theme by rememberStringPref(ConfigKeys.THEME, ConfigKeys.DEFAULT_THEME)
@@ -259,8 +261,11 @@ internal fun SettingsTab(
             GsSwitchPreference(
                 checked = desktopIcon,
                 onCheckedChange = { v ->
+                    // 远端配置（保留宿主 / 快照语义）+ apply 内部写镜像并切 alias；
+                    // 同步更新 MutableState 让开关立即刷新（UI 唯一权威 = 本地镜像）。
                     ModulePreferences.edit { putBoolean(ConfigKeys.DESKTOP_ICON, v) }
                     LauncherIcon.apply(ctx, v)
+                    desktopIcon = v
                 },
                 title = stringResource(R.string.item_desktop_icon),
                 // 打开时不需要子标题（标题已经说清了），只有隐藏时才需要一句「去哪找回来」
