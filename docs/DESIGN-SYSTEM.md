@@ -299,7 +299,7 @@ BasicComponent(
 
 **交互规定**：
 - 弹层一出来**自动聚焦并拉起键盘**（`withFrameNanos` 后 `requestFocus`）。
-- 键盘弹出时贴底卡片**跟着抬到键盘之上**（`sheetBottomPx = maxOf(navBottomPx, imeBottomPx)`）。
+- 键盘弹出时贴底卡片**跟着抬到键盘之上**，且只抬「系统没抬过的那一截」—— 让位值取「根视图高度 − 键盘顶在窗口坐标里的位置」，**不得**直接减 `WindowInsets.ime`（会双倍让位，见 5.3）。
 - 输入框是真 `TextField`（长按粘贴等系统行为都在），不是自绘只读框。
 - 校验红字：13sp + `colorScheme.error` + `padding(top = 8.dp)`。
 
@@ -333,10 +333,53 @@ BasicComponent(
 |---|---|
 | 锚定小菜单宽 | 200dp，右缘与触发控件对齐 |
 | 贴底 sheet 宽 | ≤ 420dp，水平居中 |
-| 贴底位置 | 抬到导航条之上；键盘出现时抬到键盘之上 |
+| 贴底位置 | 抬到导航条之上；键盘出现时抬到键盘之上 —— 让位量按 5.3 量，不用 `WindowInsets.ime` 直接减 |
 | 进出动画 | 菜单缩放进出；sheet 上滑下滑 |
 
-### 5.3 时机（最容易写错的一条）
+### 5.3 键盘让位（贴底弹层，2026-11 实测补）
+
+**症状**：点「页脚文字」这类贴底输入弹层，输入法一弹开，卡片先被顶到屏幕上半截，与键盘上沿之间还空着一大段（2026-11-10 用户真机截图，宿主为 `adjustResize` 窗口）。
+
+**根因**：`WindowInsets.ime` 在三种窗口策略下**都报全量键盘高度**，分不出「系统已经让过没有」：
+
+| 窗口策略 | 系统做了什么 | insets.ime 报什么 | 直接减 ime 的后果 |
+|---|---|---|---|
+| `adjustResize` | 窗口自己缩短一截 | 全量键盘高 | **让两次**，卡片飞上半屏 |
+| `adjustPan` | 窗口整体上移 | 全量键盘高 | 让两次 |
+| edge-to-edge / 悬浮键盘 | 窗口不动 | 全量键盘高 | 正确（唯一该用它的场景） |
+
+**口径**：让位量 = **键盘实际挡住窗口多少像素**，即 `root.height − (可见区 bottom − 根视图在屏幕上的 y)`。resize 时根视图与可见区同步变矮，差 ≈ 0；只有真被盖住时才是键盘高度。
+
+```kotlin
+// ui/AppDialogHost.kt · rememberKeyboardOverlapPx()
+val view = LocalView.current
+var overlap by remember { mutableIntStateOf(0) }
+DisposableEffect(view) {
+    val root = view.rootView
+    val loc = IntArray(2)
+    val visible = Rect()
+    fun measure(): Int {
+        root.getLocationOnScreen(loc)
+        view.getWindowVisibleDisplayFrame(visible)
+        return (root.height - (visible.bottom - loc[1])).coerceIn(0, root.height)
+    }
+    val listener = ViewTreeObserver.OnGlobalLayoutListener {
+        val v = measure(); if (v != overlap) overlap = v
+    }
+    view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+    listener.onGlobalLayout()          // 首帧先量一次
+    onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+}
+val sheetBottomTarget = maxOf(navBottomPx, overlap.toFloat()).toInt()
+```
+
+**附带三条**：
+- 让位走 **160ms** `FastOutSlowInEasing` 动画（键盘弹起是瞬时的，卡片瞬移看着就是「弹飞」）；
+- 高度上限（`SubcomposeLayout` 的 `maxHeight`）用**目标值**，不用动画值 —— 否则动画期间卡片先被压扁再弹回；
+- 键盘高度不是 Compose 状态，靠 `OnGlobalLayoutListener` 驱动；**值没变不写 state**，否则每次布局回调都重组。
+
+**反例**：`sheetBottomPx = maxOf(navBottomPx, WindowInsets.ime.getBottom(density).toFloat())` —— 模块自己的 `SettingsActivity` 是 `enableEdgeToEdge()` 看着没问题，一嵌进宿主（金太阳）就暴露。
+### 5.4 时机（最容易写错的一条）
 
 ```kotlin
 controller.dismiss { spec.onSelect(index) }   // 对：动作排在收起动画之后
@@ -346,13 +389,13 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 - `spec` 必须保留到退出动画播完（`closing → 播完 → finishDismiss` 才置空），否则渲染成空壳。
 - 每个控件的锚点**各自** `remember` 一份，**不得**用共享变量接所有控件的 `boundsInWindow`。
 
-### 5.4 文案
+### 5.5 文案
 
 - 标题：一句祈使或名词；不要写「提示」。
 - message：写清**范围与后果**（「清空后白名单会放行全部，黑名单会全部照常发」），不写「确定要继续吗」。
 - 按钮：`取消` / `确定`（或动词化：`清空` / `删除`）。
 
-### 5.5 校验
+### 5.6 校验
 
 - 校验**一律**在弹层里，不关弹层、不 Toast。
 - 四类常见非法输入都要挡：空串、格式不对、重名、超长。
@@ -643,6 +686,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 日期 | 变更 |
 |---|---|
 | 2026-11-10 | 首版：从 GSAuxiliary（15 页）与 WxPicLabe（12 页）现有实现反向提炼，收敛 129 条既有规则、18 条两仓冲突、14 条缺口 |
+| 2026-11-10 | 新增 5.3「键盘让位」：贴底弹层不得用 `WindowInsets.ime` 直接做让位（resize/pan 下双倍让位会「弹飞」），改用可见区重叠量 + 160ms 动画；高度上限用目标值 |
 | 2026-11-10 | 修正 4.2 与第 2 章：搜索框**不进卡**（卡底色 + 框底色 = 框套框），左右 `CardHMargin`、上下 4dp，且不与条件行同框；记录页改为「筛选节 = SmallTitle + 裸搜索框 + 时间范围卡」 |
 
 ---
