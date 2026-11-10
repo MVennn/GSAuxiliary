@@ -338,7 +338,12 @@ BasicComponent(
 
 ### 5.3 键盘让位（贴底弹层，2026-11 实测补）
 
-**症状**：点「页脚文字」这类贴底输入弹层，输入法一弹开，卡片先被顶到屏幕上半截，与键盘上沿之间还空着一大段（2026-11-10 用户真机截图，宿主为 `adjustResize` 窗口）。
+**症状**（同一个坑，两种坏法，2026-11-10 两次用户真机截图）：
+
+- **被顶飞**：点「页脚文字」这类贴底输入弹层，输入法一弹开，卡片先被顶到屏幕上半截，与键盘上沿之间还空着一大段 —— 这是嵌在 `adjustResize` 宿主（金太阳）里的样子；
+- **被遮住**：卡片一动不动，下半截连同「取消 / 确定」整排按钮压在键盘底下 —— 这是模块自己 `enableEdgeToEdge()` 页面（WxPicLabe「新建规则」弹层）的样子。
+
+下面这条口径一次治两种：**让位量要问「实际被挡住多少」，不是问 insets**。
 
 **根因**：`WindowInsets.ime` 在三种窗口策略下**都报全量键盘高度**，分不出「系统已经让过没有」：
 
@@ -378,7 +383,10 @@ val sheetBottomTarget = maxOf(navBottomPx, overlap.toFloat()).toInt()
 - 高度上限（`SubcomposeLayout` 的 `maxHeight`）用**目标值**，不用动画值 —— 否则动画期间卡片先被压扁再弹回；
 - 键盘高度不是 Compose 状态，靠 `OnGlobalLayoutListener` 驱动；**值没变不写 state**，否则每次布局回调都重组。
 
-**反例**：`sheetBottomPx = maxOf(navBottomPx, WindowInsets.ime.getBottom(density).toFloat())` —— 模块自己的 `SettingsActivity` 是 `enableEdgeToEdge()` 看着没问题，一嵌进宿主（金太阳）就暴露。
+**反例**：`sheetBottomPx = maxOf(navBottomPx, WindowInsets.ime.getBottom(density).toFloat())` —— 它只在 edge-to-edge 下偶然对得上（系统没让过，减一次正好）；一旦嵌进 `adjustResize` / `adjustPan` 宿主就双倍让位、卡片飞上半屏。
+
+**另一个反例**：只抬导航条、完全不管键盘（`y = height - cardH - side - navBottomPx`）—— 看着「没写错」，在 edge-to-edge 页面上就是卡片被键盘整块遮住、按钮点不到。
+
 ### 5.4 时机（最容易写错的一条）
 
 ```kotlin
@@ -687,6 +695,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 |---|---|
 | 2026-11-10 | 首版：从 GSAuxiliary（15 页）与 WxPicLabe（12 页）现有实现反向提炼，收敛 129 条既有规则、18 条两仓冲突、14 条缺口 |
 | 2026-11-10 | 新增 5.3「键盘让位」：贴底弹层不得用 `WindowInsets.ime` 直接做让位（resize/pan 下双倍让位会「弹飞」），改用可见区重叠量 + 160ms 动画；高度上限用目标值 |
+| 2026-11-10 | 补 5.3 的第二种坏法：完全不做键盘让位（edge-to-edge 页面）会被键盘整块遮住、按钮点不到，与双倍让位「弹飞」同源 —— 同一把尺（实际被挡住多少）治两种 |
 | 2026-11-10 | 修正 4.2 与第 2 章：搜索框**不进卡**（卡底色 + 框底色 = 框套框），左右 `CardHMargin`、上下 4dp，且不与条件行同框；记录页改为「筛选节 = SmallTitle + 裸搜索框 + 时间范围卡」 |
 
 ---
