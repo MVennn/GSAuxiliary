@@ -368,20 +368,32 @@ DisposableEffect(view) {
         view.getWindowVisibleDisplayFrame(visible)
         return (root.height - (visible.bottom - loc[1])).coerceIn(0, root.height)
     }
+    // 键盘滑入 / 滑出动画期间每帧都回调 —— 逐帧采纳中间值，卡片就会上下来回弹
+    val handler = Handler(Looper.getMainLooper())
+    val settle = Runnable {
+        if (root.height <= 0) return@Runnable    // 视图还没挂上窗口时量出的 0 是假值
+        val v = measure()
+        if (abs(v - overlap) >= 8) overlap = v   // 8px 死区，滤掉候选栏 / 坐标取整的抖动
+    }
     val listener = ViewTreeObserver.OnGlobalLayoutListener {
-        val v = measure(); if (v != overlap) overlap = v
+        handler.removeCallbacks(settle)
+        handler.postDelayed(settle, 90)          // 布局停下来再采纳终值
     }
     view.viewTreeObserver.addOnGlobalLayoutListener(listener)
-    listener.onGlobalLayout()          // 首帧先量一次
-    onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+    settle.run()                        // 首帧同步量一次：卡片第一帧就站对位置
+    onDispose {
+        handler.removeCallbacksAndMessages(null)
+        view.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+    }
 }
 val sheetBottomTarget = maxOf(navBottomPx, overlap.toFloat()).toInt()
 ```
 
-**附带三条**：
+**附带四条**：
 - 让位走 **160ms** `FastOutSlowInEasing` 动画（键盘弹起是瞬时的，卡片瞬移看着就是「弹飞」）；
 - 高度上限（`SubcomposeLayout` 的 `maxHeight`）用**目标值**，不用动画值 —— 否则动画期间卡片先被压扁再弹回；
-- 键盘高度不是 Compose 状态，靠 `OnGlobalLayoutListener` 驱动；**值没变不写 state**，否则每次布局回调都重组。
+- **回调里防抖 90ms 再采纳**：全局布局回调在键盘滑入 / 滑出的**每一帧**都会触发，逐帧采纳量到的中间值 → 让位目标连续变化 → 卡片屏幕上下来回弹（2026-11-10 真机反馈：「以频繁弹在屏幕上下为标准，偶尔才落到位」，这就是「修了一丢丢」）；
+- **采纳时带 8px 死区、根视图高为 0 时跳过**：候选栏展开 / 收起、坐标取整这类一两像素的变化不该推着卡片动；视图还没挂上窗口时量出的 0 是假值，写进去会让卡片先落底再抬起。首帧用 `settle.run()` **同步**量一次，从「键盘已经弹起」的状态再开弹层时卡片第一帧就站对位置；DisposableEffect 销毁时 `removeCallbacksAndMessages(null)`。
 
 **反例**：`sheetBottomPx = maxOf(navBottomPx, WindowInsets.ime.getBottom(density).toFloat())` —— 它只在 edge-to-edge 下偶然对得上（系统没让过，减一次正好）；一旦嵌进 `adjustResize` / `adjustPan` 宿主就双倍让位、卡片飞上半屏。
 

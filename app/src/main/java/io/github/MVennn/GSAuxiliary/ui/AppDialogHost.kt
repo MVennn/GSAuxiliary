@@ -1,6 +1,8 @@
 package io.github.MVennn.GSAuxiliary.ui
 
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewTreeObserver
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
@@ -418,8 +420,9 @@ internal fun DialogHost(
  * 相比之下 WindowInsets.ime 在这三种情况下都报全量键盘高度，分不出「让过没有」，
  * 拿它直接减就会双倍让位（卡片被顶飞）。
  *
- * 键盘高度不是 Compose 状态，靠 ViewTreeObserver.OnGlobalLayoutListener 驱动；
- * 值没变就不写 state，否则每次布局回调都会触发一次重组。
+ * 键盘高度不是 Compose 状态，靠 ViewTreeObserver.OnGlobalLayoutListener 驱动。两条硬约束：
+ * 回调里**防抖 90ms** 再采纳（键盘动画期间每帧都回调，逐帧采纳会让卡片上下来回弹）；
+ * 采纳时带 **8px 死区**（候选栏展开 / 收起这类小变化不该推着卡片动）。
  */
 @Composable
 private fun rememberKeyboardOverlapPx(): Int {
@@ -429,20 +432,36 @@ private fun rememberKeyboardOverlapPx(): Int {
         val root = view.rootView
         val loc = IntArray(2)
         val visible = Rect()
+        // 键盘滑入 / 滑出的动画期间每一帧都会触发一次全局布局回调 —— 逐帧采纳量到的中间值，
+        // 目标值就会连续变化，卡片跟着屏幕上下来回弹（2026-11-10 真机：让位一直在动，
+        // 「以频繁弹在屏幕上下为标准」，偶尔才落到位）。所以回调里只重置计时器，
+        // 等布局真正停下来再采纳终值一次。
+        val handler = Handler(Looper.getMainLooper())
         fun measure(): Int {
             root.getLocationOnScreen(loc)
             view.getWindowVisibleDisplayFrame(visible)
             val visibleBottomInWindow = visible.bottom - loc[1]
             return (root.height - visibleBottomInWindow).coerceIn(0, root.height)
         }
-        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+        val settle = Runnable {
+            // 视图还没挂上窗口（root.height == 0）时量出来的 0 是假值，写进去会让卡片先落底再抬起
+            if (root.height <= 0) return@Runnable
             val value = measure()
-            if (value != overlap) overlap = value
+            // 8px 死区：候选栏展开 / 收起、坐标取整这类一两像素的抖动不该推着卡片动
+            if (abs(value - overlap) >= 8) overlap = value
+        }
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            handler.removeCallbacks(settle)
+            handler.postDelayed(settle, 90)
         }
         view.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        // 首帧先量一次：从「键盘已弹起」的状态再开一个弹层时不用等下一次布局
-        listener.onGlobalLayout()
-        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+        // 首帧**同步**量一次：从「键盘已经弹起」的状态再开一个弹层时，卡片第一帧就得站对位置，
+        // 不能等下一次布局回调（否则会先画在键盘底下再跳上来）。
+        settle.run()
+        onDispose {
+            handler.removeCallbacksAndMessages(null)
+            view.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+        }
     }
     return overlap
 }
