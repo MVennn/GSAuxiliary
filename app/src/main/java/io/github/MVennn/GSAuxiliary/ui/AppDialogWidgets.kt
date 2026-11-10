@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,11 +32,14 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -57,9 +62,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextFieldDefaults
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -211,6 +219,113 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                     onClick = { controller.dismiss { spec.onConfirm() } },
                     modifier = Modifier.weight(1f),
                 )
+            }
+        }
+
+        is TextInputDialogSpec -> {
+            // 输入状态跟着 spec 走：同一条内容里敲字不会重建（重建会把光标顶回开头），
+            // 换一条内容才拿到新的初始值。
+            val state = remember(spec) { TextFieldState(spec.initial) }
+            var error by remember(spec) { mutableStateOf<String?>(null) }
+            val focusRequester = remember(spec) { FocusRequester() }
+            // 报错只在「刚点过确定」时挂着：用户一改输入就撤掉，
+            // 否则改对了红字还赖着不走，看着像没生效。
+            LaunchedEffect(state) {
+                snapshotFlow { state.text.toString() }
+                    .drop(1)
+                    .collect { if (error != null) error = null }
+            }
+            // 弹层一出来就聚焦 + 拉起键盘：这一层存在的意义就是「点一下进来直接打字」，
+            // 不自动聚焦等于让用户再点一次。先让出一帧，节点上树之后 requestFocus 才有效。
+            LaunchedEffect(spec) {
+                withFrameNanos { }
+                // 节点还没上树时 requestFocus 会抛（Compose 的既有限制），吞掉就行：
+                // 这一帧没聚焦上不影响使用，用户点一下输入框照样能打字
+                runCatching { focusRequester.requestFocus() }
+            }
+            Column(
+                // 与 [ConfirmDialogSpec] 同一套内容间距（24×24 + 标题 / 说明各尾随 12dp）
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = spec.title,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MiuixTheme.colorScheme.onSurfaceContainer,
+                    fontSize = MiuixTheme.textStyles.title4.fontSize,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                )
+                if (spec.message.isNotBlank()) {
+                    Text(
+                        text = spec.message,
+                        color = MiuixTheme.colorScheme.onSurfaceContainer,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                    )
+                }
+                TextField(
+                    state = state,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    label = spec.hint,
+                    useLabelAsPlaceholder = true,
+                    lineLimits = TextFieldLineLimits.SingleLine,
+                    colors = TextFieldDefaults.textFieldColors(
+                        backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
+                    ),
+                )
+                error?.let { message ->
+                    Text(
+                        text = message,
+                        color = MiuixTheme.colorScheme.error,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp, top = 8.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    DialogButton(
+                        text = spec.cancelText,
+                        emphasized = false,
+                        onClick = { controller.dismiss() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    DialogButton(
+                        text = spec.confirmText,
+                        emphasized = true,
+                        onClick = {
+                            val text = state.text.toString()
+                            val message = spec.validate(text)
+                            if (message != null) {
+                                // 校验不过就地报错、弹层不关：改完能直接再点一次确定
+                                error = message
+                            } else {
+                                error = null
+                                // 落盘排到收起动画之后（见 DialogController.afterDismiss）
+                                controller.dismiss { spec.onConfirm(text.trim()) }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
 

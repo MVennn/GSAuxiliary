@@ -94,6 +94,34 @@ internal class AgreementDialogSpec(
 }
 
 /**
+ * 贴底文本输入弹窗。
+ *
+ * 卡片骨架跟 [ConfirmDialogSpec] 一样（标题 + 说明 + 两颗按钮），只是中间多了一个
+ * **真的能敲字的输入框**：输入框一律用真 `TextField`，长按粘贴、光标拖动、选中
+ * 这些系统行为才能原生可用（自绘一个假输入框等于把这些全丢掉）。
+ *
+ * [validate] 在点「确定」时执行：返回非 null 的文案 = 校验不通过，那段文字就地显示在
+ * 输入框下方，弹窗**不关闭**，用户改完可以直接再点确定；返回 null 才走 [onConfirm]。
+ * [onConfirm] 由弹层宿主排进 [DialogController.dismiss] 的 afterDismiss，等收起动画
+ * 播完再落配置（同步写的后果见 [DialogController.afterDismiss] 的注释）。
+ */
+internal class TextInputDialogSpec(
+    val title: String,
+    /** 说明文字（纯文本，可为空串；为空时不留空档） */
+    val message: String,
+    /** 输入框占位文字 */
+    val hint: String,
+    /** 初始内容（编辑已有内容时带原值，新建时为空串） */
+    val initial: String,
+    val confirmText: String,
+    val cancelText: String,
+    /** 校验：入参是去掉首尾空白之前的原始输入；返回错误文案 = 不通过 */
+    val validate: (String) -> String?,
+    val onConfirm: (String) -> Unit,
+    override val anchor: Rect? = null,
+) : DialogSpec
+
+/**
  * 弹窗宿主状态。
  *
  * 放在 `HomeScaffold` 里 remember 一份，通过 [LocalDialogController] 下发给各 Tab
@@ -154,6 +182,13 @@ internal class DialogController {
         // 已经在显示同一个同意弹窗时不要再赋值：`remember(spec)` 的勾选状态会被重置，
         // 用户勾了之后如果外层恰好重组一次，勾就会莫名其妙掉回未勾选。
         if (spec is AgreementDialogSpec && !closing) return
+        afterDismiss = null
+        closing = false
+        spec = s
+    }
+
+    /** 弹出贴底文本输入（页脚文字这类单行文本） */
+    fun showTextInput(s: TextInputDialogSpec) {
         afterDismiss = null
         closing = false
         spec = s

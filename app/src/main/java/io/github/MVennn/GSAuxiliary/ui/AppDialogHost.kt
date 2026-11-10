@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -203,12 +204,18 @@ internal fun DialogHost(
     val menuWidthPx = with(density) { MenuWidth.roundToPx() }
     // 底部弹窗要抬到导航条之上
     val navBottomPx = WindowInsets.navigationBars.getBottom(density).toFloat()
+    // 输入弹层还要再抬到软键盘之上：键盘弹出时导航条那段正好被键盘盖住，
+    // 只按 navBottomPx 抬，卡片会有一半压在键盘底下。键盘高度只在组合期读得到
+    // （系统不把它当 Compose 状态），所以这里读 WindowInsets.ime —— 键盘弹出 / 收起
+    // 会触发重组，卡片自己跟着让位。其它贴底弹窗键盘没开时为 0，取值不变。
+    val imeBottomPx = WindowInsets.ime.getBottom(density).toFloat()
+    val sheetBottomPx = maxOf(navBottomPx, imeBottomPx).toInt()
 
     val anchor = spec.anchor
-    // 贴底弹出（下中）：确认弹窗 / 同意弹窗 / 图片预览，且没有锚点
+    // 贴底弹出（下中）：确认弹窗 / 同意弹窗 / 图片预览 / 文本输入，且没有锚点
     val sheet = (
         spec is ConfirmDialogSpec || spec is AgreementDialogSpec ||
-            spec is ImageDialogSpec
+            spec is ImageDialogSpec || spec is TextInputDialogSpec
         ) && anchor == null
 
     // 进度：0 = 收起（初始态）、1 = 完全展开。
@@ -327,7 +334,9 @@ internal fun DialogHost(
                     maxHeight = if (anchor != null) {
                         (height * MenuMaxHeightFraction).toInt().coerceAtLeast(side)
                     } else {
-                        (height - side * 2).coerceAtLeast(side)
+                        // 贴底弹窗再多让出底部那条（导航条 / 键盘），卡片别顶穿它
+                        (height - side * 2 - if (sheet) sheetBottomPx else 0)
+                            .coerceAtLeast(side)
                     },
                 ),
             )
@@ -341,7 +350,7 @@ internal fun DialogHost(
                 sheet -> {
                     // 下中：水平一律居中（原来 cardW==cap 时走 else 分支会贴左边）
                     x = (width - cardW) / 2
-                    y = (height - cardH - side - navBottomPx.toInt()).coerceAtLeast(side)
+                    y = (height - cardH - side - sheetBottomPx).coerceAtLeast(side)
                 }
 
                 anchor != null -> {

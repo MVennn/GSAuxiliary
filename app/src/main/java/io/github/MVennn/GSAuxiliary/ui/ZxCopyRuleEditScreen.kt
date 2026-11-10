@@ -396,15 +396,50 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
         // ---- 页脚（只在任一页脚开关打开时出现）----
         if (rule.footer || rule.image.showFooter || rule.pdf.showFooter) {
             SmallTitle(stringResource(R.string.zx_copy_section_footer))
+            val dialogs = LocalDialogController.current
+            val footerTitle = stringResource(R.string.zx_copy_footer_text)
+            val footerHint = stringResource(R.string.zx_copy_footer_text_hint)
+            val footerPlaceholder = stringResource(R.string.zx_copy_footer_placeholder)
+            val footerEmpty = stringResource(R.string.zx_copy_footer_empty)
+            val footerRequired = stringResource(R.string.zx_copy_footer_required)
+            val clearTitle = stringResource(R.string.zx_copy_footer_clear)
+            val clearMessage = stringResource(R.string.zx_copy_footer_clear_message)
+            val confirmText = stringResource(R.string.action_confirm)
+            val cancelText = stringResource(R.string.action_cancel)
             Card(modifier = Modifier.cardPadding()) {
-                CopyValueField(
-                    fieldKey = "${rule.id}-footer-text",
-                    label = stringResource(R.string.zx_copy_footer_text),
-                    hint = stringResource(R.string.zx_copy_footer_text) + " · " +
-                        stringResource(R.string.zx_copy_footer_text_hint),
-                    initial = rule.footerText,
-                    showLabel = false,
-                    onChange = { text -> update { r -> withFooterText(r, text) } },
+                FooterTextRow(
+                    title = footerTitle,
+                    text = rule.footerText,
+                    emptyText = footerEmpty,
+                    clearTitle = clearTitle,
+                    enabled = alive,
+                    onEdit = {
+                        dialogs?.showTextInput(
+                            TextInputDialogSpec(
+                                title = footerTitle,
+                                message = footerHint,
+                                hint = footerPlaceholder,
+                                initial = rule.footerText,
+                                confirmText = confirmText,
+                                cancelText = cancelText,
+                                // 页脚文字是要画到图片 / PDF 上的一行字，空串等于没写：
+                                // 校验不过就在弹层里报错、弹层不关
+                                validate = { input -> if (input.isBlank()) footerRequired else null },
+                                onConfirm = { text -> update { r -> withFooterText(r, text) } },
+                            ),
+                        )
+                    },
+                    onClear = {
+                        dialogs?.showConfirm(
+                            ConfirmDialogSpec(
+                                title = clearTitle,
+                                message = clearMessage,
+                                confirmText = confirmText,
+                                cancelText = cancelText,
+                                onConfirm = { update { r -> withFooterText(r, "") } },
+                            ),
+                        )
+                    },
                 )
             }
         }
@@ -659,6 +694,56 @@ private fun CopyNameField(
         colors = TextFieldDefaults.textFieldColors(
             backgroundColor = MiuixTheme.colorScheme.surfaceContainer,
         ),
+    )
+}
+
+/**
+ * 「页脚文字」行 —— 只是入口，不再常驻输入框。
+ *
+ * 点整行 → 贴底文本输入弹层（[TextInputDialogSpec]），确定之后等收起动画播完再落配置；
+ * 已经有内容时行尾多一颗 ✕，点了走贴底确认弹层清空（不直接删，免得误触点没了）。
+ * 副标题显示当前文字，为空时显示一句灰字说明，用户不用点进去就知道现在有没有内容。
+ */
+@Composable
+private fun FooterTextRow(
+    title: String,
+    text: String,
+    emptyText: String,
+    clearTitle: String,
+    enabled: Boolean,
+    onEdit: () -> Unit,
+    onClear: () -> Unit,
+) {
+    BasicComponent(
+        title = title,
+        // 只放一行摘要：全文在弹层里看 / 改，行上不铺大段文字
+        summary = text.ifBlank { emptyText },
+        enabled = enabled,
+        endActions = {
+            Row(
+                modifier = Modifier.align(Alignment.CenterVertically),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // ✕ 只在有内容时出现：空的时候点它没有任何意义
+                if (text.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(enabled = enabled) { onClear() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        TintedIcon(
+                            imageVector = AppIcons.Close,
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            contentDescription = clearTitle,
+                        )
+                    }
+                }
+                EndIconSlot { ArrowRightIcon(enabled) }
+            }
+        },
+        onClick = onEdit,
     )
 }
 

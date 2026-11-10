@@ -123,6 +123,11 @@
     <string name="zx_copy_footer_text">页脚文字</string>
     <string name="zx_copy_footer_text_hint">显示在图片 / PDF 底部</string>
     <string name="zx_copy_section_footer">页脚</string>
+    <string name="zx_copy_footer_empty">还没有页脚文字</string>
+    <string name="zx_copy_footer_placeholder">输入页脚文字</string>
+    <string name="zx_copy_footer_required">页脚文字不能为空</string>
+    <string name="zx_copy_footer_clear">清空页脚文字</string>
+    <string name="zx_copy_footer_clear_message">图片 / PDF 底部不再显示这行文字</string>
     <string name="zx_copy_include_group">包含分组名</string>
     <string name="zx_copy_include_time">包含时间</string>
     <string name="zx_copy_include_count">包含数量</string>

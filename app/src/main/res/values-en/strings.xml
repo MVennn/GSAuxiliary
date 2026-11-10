@@ -122,6 +122,11 @@
     <string name="zx_copy_footer_text">Footer text</string>
     <string name="zx_copy_footer_text_hint">Shown at the bottom of images / PDFs</string>
     <string name="zx_copy_section_footer">Footer</string>
+    <string name="zx_copy_footer_empty">No footer text yet</string>
+    <string name="zx_copy_footer_placeholder">Enter footer text</string>
+    <string name="zx_copy_footer_required">Footer text is required</string>
+    <string name="zx_copy_footer_clear">Clear footer text</string>
+    <string name="zx_copy_footer_clear_message">Stop showing this line at the bottom of images / PDFs</string>
     <string name="zx_copy_include_group">Include group name</string>
     <string name="zx_copy_include_time">Include time</string>
     <string name="zx_copy_include_count">Include count</string>

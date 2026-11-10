@@ -5,6 +5,8 @@
 
 代码在 `app/src/main/java/io/github/MVennn/GSAuxiliary/ui/`。
 
+> 跨仓通用的界面设计规范（骨架与间距、九种行型的选型表、可编辑字段三形态、弹层选型与尺寸、图标几何、文案 / 空态 / 反馈口径、提交前自检）正本是 [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md)。本篇只写本仓的文件职责与页面内容；两处冲突以 DESIGN-SYSTEM 为准。
+
 ---
 
 ## 1. 文件结构
@@ -800,6 +802,7 @@ for (k in ConfigKeys.FEATURE_PARAM_KEYS) { /* 恢复 DEFAULTS */ }
 - 箭头一律自绘（`Widgets.ArrowRightIcon` / `DownArrowIcon`），Miuix 自带的染色不生效；
 - 弹层一律 `dismiss { 动作 }`，不要在动画期间写配置；
 - 系统栏 inset 只归 `Scaffold`，内容里再加 `navigationBarsPadding()` 会算两遍。
+- **可编辑字段只有两种形态**：短值走行内选择器（`ChoiceDialogSpec`），需要打字的一律「**一行入口 + 贴底 `TextInputDialogSpec`**」。页面上不常驻 `TextField`：常驻输入框把整页撑高，而且「框里的字」和「已保存的字」是两回事，用户以为改了就生效（2026-11 页脚文字改造，正本见 [FEATURE-ZX-COPY-RULES](FEATURE-ZX-COPY-RULES.md) 字段表）。清空这类字段走 `ConfirmDialogSpec` 二次确认，不在行上直接删。
 
 ## 10. 体积 / 系统栏 / 图标（详见踩坑史）
 
