@@ -420,9 +420,11 @@ internal fun DialogHost(
  * 相比之下 WindowInsets.ime 在这三种情况下都报全量键盘高度，分不出「让过没有」，
  * 拿它直接减就会双倍让位（卡片被顶飞）。
  *
- * 键盘高度不是 Compose 状态，靠 ViewTreeObserver.OnGlobalLayoutListener 驱动。两条硬约束：
- * 回调里**防抖 90ms** 再采纳（键盘动画期间每帧都回调，逐帧采纳会让卡片上下来回弹）；
- * 采纳时带 **8px 死区**（候选栏展开 / 收起这类小变化不该推着卡片动）。
+ * 键盘高度不是 Compose 状态，靠 ViewTreeObserver.OnGlobalLayoutListener 驱动。三条硬约束：
+ * 1. 回调里**防抖 90ms** 再采纳 —— 键盘动画期间每帧都回调，逐帧采纳会让卡片上下来回弹；
+ * 2. 采纳时带 **8px 死区** —— 候选栏展开 / 收起这类一两像素的变化不该推着卡片动；
+ * 3. 根视图高为 0 时**跳过** —— 视图还没挂上窗口时量出的 0 是假值，写进去会让卡片先落底再抬起。
+ * 首帧另用 settle.run() **同步**量一次：从「键盘已弹起」的状态再开弹层时，第一帧就站对位置。
  */
 @Composable
 private fun rememberKeyboardOverlapPx(): Int {
