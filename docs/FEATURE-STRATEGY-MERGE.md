@@ -1694,3 +1694,22 @@ adapter 里摘掉。于是「从金太阳导入」的清单在组启用期间会
 
 - 截图 `.work/z1.png`（聚合完 40 秒）与 `.work/z2.png`（再等 20 秒）**sha256 相同**：表头「名称 / 最新价 / 涨跌幅」在位，日涨跌幅 `+0.20%` 红字，涨跌家数 285/329，首屏仍按涨跌幅降序（+13.52% → +10.03%）。稳态没有来回刷。
 - 两条日志各只出现**一次**（19:02:40），没有每 700ms 重复写 —— 快路判据生效。
+
+### 30.4 审查修复：补写可撤销、全跳过不写空数组、缺节点负缓存
+
+自审发现四处「能跑但会咬人」的地方，一并修掉（commit `cf5cb22`）：
+
+| 问题 | 症状 | 改法 |
+| --- | --- | --- |
+| `finish` 排下的三轮头部补写（`HEADER_RETRY_DELAYS` 400/1200/2500 ms）无法取消 | 用户聚合完立刻退出或换页，回调仍会按上一轮的数字写涨跌家数、日涨跌幅、列标题行，把已经还原干净的页面又写成半聚合状态 | 每个 `Runnable` 记进 `PageState.headerRetries`；`clearState` 里 `mainHandler.removeCallbacks`；回调首行判 `act.isFinishing/isDestroyed` 与 `!state.applied||state.run != null` |
+| `mergeTagsJson` 在「want 非空、但条目全被跳过」时返回空 JSONArray | `writeCardTags` 会把借来的原生卡 `tags` 写成 `[]`，且按「已写名单」判等后不再恢复 —— 卡上标签永久消失 | 尾部改 `if (out.length() == 0) return null`；调用方 `?: return false` 即保持原样。只有 `clearWhenEmpty = true` 的两处自造入口卡（空列表页 / 克隆卡）才写 `[]` |
+| `writeMergedZdf` 慢路找不到「日涨跌幅」节点时，每跳都扫整棵树 | 看门狗 700 ms 一跳，页面不在这个布局时白扫 | `PageState.zdfNodeAbsent` 负缓存，定案后打「这页没有头部日涨跌幅节点，之后不再找」，后续直接返回 false |
+| `restoreColTitle` 在列表 0 只时仍把 `ll_top` 摆出来 | 空列表上方悬着「名称 / 最新价 / 涨跌幅」，看着像加载失败 | 首行 `if ((state.mergedStrong?.size ?: 0) <= 0) return false` —— 空列表时不碰它，与 30.2 的「0 只不动 ll_top」对齐 |
+
+`colTitleId` 的三种取值也随之定死：`-1` 还没查过、`-2`（`COL_TITLE_ABSENT`）这页根本没有这个节点、正数就是真实 id。`colTitleOk` 遇到 `-2` 直接放行，不把「本来就存在的东西」当缺失。
+
+刻意不动的两项（附理由，免得下次又当 bug 改掉）：
+
+- 看门狗 `force = true` 每 700 ms 走完整慢路：宿主会悄悄重画头部，这是唯一兜底；真机无卡顿，本轮只补负缓存。
+- `spanEntry` 取「第一个相交档」：合成文本（如 `量比1以上`）点进去落到的是区间内最窄的那档（`量比1.0-1.5`），不是精确语义；改成「取最宽 / 取首档」都会改变用户在设置页看到的选中项，本次不动。
+
