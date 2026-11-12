@@ -194,7 +194,13 @@ class StgSelectAllFeature : Feature {
      */
     @Volatile private var batchClicking = false
 
-    /** 诊断用：批量点击期间三段耗时（临时插桩，定位完即删） */
+    /**
+     * 批量点击的三段耗时（造 View / 宿主点击 / 校正模型）。
+     *
+     * 轻量常驻诊断，不是临时插桩：每行只多两次 SystemClock.elapsedRealtimeNanos，
+     * 微秒级开销；但它是「全选为什么慢」的唯一证据源 —— 2026-11-12 靠它把 1763ms 压到 429ms，
+     * 以后再退化也靠它定位。日志末尾打成「分段：造View Xms/N 行、宿主点击 Xms、校正模型 Xms」。
+     */
     private var tProbe = 0L
     private var tClick = 0L
     private var tSync = 0L

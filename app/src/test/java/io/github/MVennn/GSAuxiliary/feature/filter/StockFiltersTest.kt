@@ -151,6 +151,18 @@ class StockFiltersTest {
     }
 
     @Test
+    fun `自选叠方向 - 读不到涨幅的自选股在勾了方向后要剔除`() {
+        // 涨幅字段读不到（percent == null）时无法判断它落在哪一侧：勾自选 + 勾涨家，
+        // 这只股票既不能证明自己涨了，也不能算平盘保留 —— 只能当作「未勾选的类别」排除。
+        // 早先这条分支直接 return true，结果是筛了跟没筛一样。
+        val f = StockFilters(up = true, zx = true)
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = null))
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = 3.0))
+        // 只勾自选（不看方向）时才保留全部自选，包括读不到涨幅的
+        assertTrue(StockFilters(zx = true).keepsDirection(inWatchlist = true, percent = null))
+    }
+
+    @Test
     fun `八项每一项都能独立改变结果 - 没有哑项`() {
         // 逐项翻转后「这只股票是否显示」必须变化 —— 防止「界面上有这一项、底下不起作用」
         // （历史上出过一次「跳过保存确认」是假开关：isEnabled 的 or 链漏了一位）

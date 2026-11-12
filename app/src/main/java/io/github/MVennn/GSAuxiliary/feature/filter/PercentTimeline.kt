@@ -19,8 +19,8 @@ package io.github.MVennn.GSAuxiliary.feature.filter
  * 每个「代码.市场」两侧各记一个样本（值 + 观察时间）：
  *
  *  - **字段**：每轮重算时读一次，**值变了**才刷新时间戳（没变就是没变，不能算「刚更新」）；
- *  - **文案**：可见行绑定时（`getView`）与每 [io.github.MVennn.GSAuxiliary.feature.stgfilter] 的
- *    节拍器扫描时各采一次，值变了才刷新时间戳。
+ *  - **文案**：可见行绑定时（`getView`）与每一轮节拍器扫描时（宿主详情页那套
+ *    `StgStockFilterFeature.sweepVisiblePercents`）各采一次，值变了才刷新时间戳。
  *
  * 取**时间戳更晚**的那一侧；平手时文案优先（屏幕上显示的那份才是用户眼睛看到的）。
  *

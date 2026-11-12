@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.feature.hostnet
 
+import io.github.MVennn.GSAuxiliary.BuildConfig
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HostSession
@@ -27,7 +28,7 @@ import io.github.MVennn.GSAuxiliary.util.Reflect
 class HostNetProbeFeature : Feature {
 
     override val id = "hostnet.probe"
-    override val title = "宿主网络探针（临时诊断）"
+    override val title = "宿主网络探针"
 
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = true
 
@@ -80,7 +81,9 @@ class HostNetProbeFeature : Feature {
             GLog.i("网络探针：已挂 URL.openConnection ×" + k)
         }
         hookOutputStreamWrite(env, bag)
-        enableWebViewDebug(env)
+        // WebView 远程调试只在 debug 包里开：它会把页面全部请求与 Cookie 暴露给任何能做
+        // adb forward 的进程，release 包不该带这个口子（详见 enableWebViewDebug 的 KDoc）。
+        if (BuildConfig.DEBUG) enableWebViewDebug(env)
         hookWebViewLoadUrl(env, bag)
     }
 
@@ -90,7 +93,8 @@ class HostNetProbeFeature : Feature {
      * PC 侧 `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` + CDP 的 Network 域
      * 就能看到页面到底调了哪个接口 —— 这是「按标签直接查股票」的唯一取证途径。
      *
-     * 只在诊断期打开；上线版本应删掉这一句（debug 通道会暴露页面的全部请求与 Cookie）。
+     * 只在 **debug 包**里打开（install 里按 [BuildConfig.DEBUG] 判）：release 包带着这个口子，
+     * 任何能做 adb forward 的进程都能看到页面的全部请求与 Cookie。
      */
     private fun enableWebViewDebug(env: FeatureEnv) {
         val r = runCatching {

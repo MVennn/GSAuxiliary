@@ -26,6 +26,14 @@ object MainThreadStallWatchdog {
     @Volatile private var beatAt = 0L
     @Volatile private var running = false
     @Volatile private var reason = ""
+    /**
+     * 代次：每次 start 递增，盯表线程带着自己的代次跑。
+     *
+     * stop() 只是置 running=false、不 join；如果停表后 500ms 内又 start()，
+     * 老线程醒来会看到 running 又成了 true，于是两条 GSZX-main-watch 一起 dump。
+     * 带上代次，老线程一看自己那一代已经作废就直接退出。
+     */
+    @Volatile private var gen = 0
     private var worker: Thread? = null
 
     private val beater = object : Runnable {
@@ -43,8 +51,9 @@ object MainThreadStallWatchdog {
         running = true
         if (first) {
             beatAt = SystemClock.uptimeMillis()
+            gen++
             main.post(beater)
-            val t = Thread({ loop() }, "GSZX-main-watch")
+            val t = Thread({ loop(gen) }, "GSZX-main-watch")
             t.isDaemon = true
             worker = t
             t.start()
@@ -60,15 +69,15 @@ object MainThreadStallWatchdog {
         GLog.d("主线程看门狗：停表（" + tag + "）")
     }
 
-    private fun loop() {
+    private fun loop(myGen: Int) {
         var dumps = 0
-        while (running) {
+        while (running && myGen == gen) {
             try {
                 Thread.sleep(BEAT_MS)
             } catch (_: InterruptedException) {
                 return
             }
-            if (!running) return
+            if (!running || myGen != gen) return
             val idle = SystemClock.uptimeMillis() - beatAt
             if (idle < STALL_MS) continue
             if (dumps >= MAX_DUMPS) continue

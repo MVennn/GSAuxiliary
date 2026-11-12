@@ -282,13 +282,26 @@ internal fun StrategyMergeEditScreen(
             val others = current.members.filterIndexed { i, _ -> i != at }
             when {
                 others.any { it.name == key && it.stId.isBlank() } ->
-                    if (at < 0) current else current.copy(members = others)
+                    if (at < 0) {
+                        // 用户刚点「完成」的这套档位，组里已经有一模一样的一条 —— 不加第二条，
+                        // 但必须留一条日志，否则界面上「点了完成却什么也没多出来」无法追。
+                        GLog.i("组合成员：这套档位组里已经有了，不重复添加（$key）")
+                        current
+                    } else {
+                        current.copy(members = others)
+                    }
                 at >= 0 -> {
                     val list = others.toMutableList()
                     list.add(minOf(at, list.size), MergeMember(stId = "", name = key))
                     current.copy(members = list)
                 }
-                others.size >= StrategyMergeStore.MAX_MEMBERS -> current
+                others.size >= StrategyMergeStore.MAX_MEMBERS -> {
+                    GLog.w(
+                        "组合成员：已到成员上限 " + StrategyMergeStore.MAX_MEMBERS +
+                            "，这一条没有加进去（$key）",
+                    )
+                    current
+                }
                 else -> current.copy(members = others + MergeMember(stId = "", name = key))
             }
         }

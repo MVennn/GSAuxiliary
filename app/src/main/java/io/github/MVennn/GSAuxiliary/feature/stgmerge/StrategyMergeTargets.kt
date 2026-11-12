@@ -6,6 +6,8 @@ import android.content.ContextWrapper
 import android.content.res.Resources
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.util.Reflect
+import java.lang.reflect.Field
+import java.util.WeakHashMap
 
 /**
  * 「策略详情页聚合多组策略」的定位常量与反射工具。
@@ -336,14 +338,39 @@ object StrategyMergeTargets {
         "changePercent", "m_changePercent", "zdfRate", "m_zdfRate", "zfRate",
     )
 
+    /**
+     * 每个股票类**第一条读得出涨跌幅的字段**（WeakHashMap：类卸载后缓存自然消失）。
+     *
+     * 为什么要缓存：`countUpDown` 在收尾时对整份并集（几百上千只）主线程跑一遍，
+     * 未命中一个候选名就要 new 一个 NoSuchFieldException；11 个候选 × 上千行 =
+     * 上千次异常构造，正好卡在「最后一个成员取完 → 界面写回」这段，真机上就是 ANR。
+     */
+    private val pctFieldCache = WeakHashMap<Class<*>, Field>()
+
     /** 读一只股票的涨跌幅（百分数，如 `10.05`）；读不到返回 null */
     fun pctOf(item: Any?): Double? {
         if (item == null) return null
-        return when (val v = Reflect.readField(item, *STOCK_PCT_FIELDS)) {
-            is Number -> v.toDouble()
-            is String -> v.trim().toDoubleOrNull()
-            else -> null
+        val cls = item.javaClass
+        val cached = synchronized(pctFieldCache) { pctFieldCache[cls] }
+        if (cached != null) {
+            val d = toPct(runCatching { cached.get(item) }.getOrNull())
+            // 这一只在这个字段上恰好是 null 时，仍走一遍候选扫描（别的名字可能才有值）。
+            // 命中率是常态，扫描只发生在个别行。
+            if (d != null) return d
         }
+        for (name in STOCK_PCT_FIELDS) {
+            val f = Reflect.findField(cls, name) ?: continue
+            val d = toPct(runCatching { f.get(item) }.getOrNull()) ?: continue
+            synchronized(pctFieldCache) { pctFieldCache[cls] = f }
+            return d
+        }
+        return null
+    }
+
+    private fun toPct(v: Any?): Double? = when (v) {
+        is Number -> v.toDouble()
+        is String -> v.trim().toDoubleOrNull()
+        else -> null
     }
 
     /**

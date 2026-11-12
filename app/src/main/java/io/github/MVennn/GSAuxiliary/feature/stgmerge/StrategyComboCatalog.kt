@@ -149,8 +149,13 @@ object StrategyComboCatalog {
             },
         )
 
-        /** 展开后要取几次数（宿主同一标签多档是 AND，跨档只能拆成多个组合） */
-        val comboCount: Int get() = dims.fold(1) { acc, d -> acc * d.count }
+        /**
+         * 展开后要取几次数（宿主同一标签多档是 AND，跨档只能拆成多个组合）。
+         *
+         * 没有维度就是 0 次：空条件的笛卡尔积在数学上是「一个空组合」，但那个组合
+         * 没有任何 labelId，拿去建策略只会被宿主拒掉，还会白占一个临时策略名额。
+         */
+        val comboCount: Int get() = if (dims.isEmpty()) 0 else dims.fold(1) { acc, d -> acc * d.count }
 
         /** 市值那一维的档位（老代码与测试按两维写法读） */
         val markets: List<Tier> get() = dims.firstOrNull { it.id == MARKET_PARENT_ID }?.tiers ?: emptyList()
@@ -271,19 +276,22 @@ object StrategyComboCatalog {
      * 与口径成员的三段式 key 靠「全数字」这条判据区分，见 [idsOf]。
      */
     fun combosOf(c: Condition): List<StrategyComboClient.Combo> {
-        var partial = listOf(Pair(emptyList<String>(), emptyList<String>()))
+        if (c.dims.isEmpty()) return emptyList()
+        // 只要 labelId：档位名在生成 key / 取数时都不需要（key 就是 labelId 拼接），
+        // 早先这一步还顺手拼了个名字列表，纯白分配。
+        var partial = listOf<List<String>>(emptyList())
         for (d in c.dims) {
-            val next = ArrayList<Pair<List<String>, List<String>>>(partial.size * d.count)
+            val next = ArrayList<List<String>>(partial.size * d.count)
             for (p in partial) {
                 for (t in d.tiers) {
-                    next.add(Pair(p.first + t.name, p.second + t.labelId))
+                    next.add(p + t.labelId)
                 }
             }
             partial = next
         }
         val out = ArrayList<StrategyComboClient.Combo>(partial.size)
-        for (p in partial) {
-            out.add(StrategyComboClient.Combo(key = p.second.joinToString(","), labelIds = p.second))
+        for (ids in partial) {
+            out.add(StrategyComboClient.Combo(key = ids.joinToString(","), labelIds = ids))
         }
         return out
     }
