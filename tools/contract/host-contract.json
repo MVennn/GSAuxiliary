@@ -1515,6 +1515,12 @@
     {
       "kind": "class",
       "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_STRATEGY",
+      "value": "com.guosen.android.aistock.data.Strategy"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
       "symbol": "CLS_TAG",
       "value": "com.guosen.android.aistock.data.Tag"
     },
@@ -1531,10 +1537,22 @@
       "value": "biz_type_for_cmd_biz_get_stg_data"
     },
     {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "COL_TITLE_ID",
+      "value": "ll_top"
+    },
+    {
       "kind": "class",
       "owner": "StrategyMergeTargets.kt",
       "symbol": "DETAIL_ACTIVITY",
       "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "HEADER_ZDF_ID",
+      "value": "tv_stg_zdf"
     },
     {
       "kind": "class",
