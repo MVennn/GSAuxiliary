@@ -200,20 +200,22 @@ class StrategyMergeTagTest {
     }
 
     @Test
-    fun `档位表里查不到的词条不写进卡片`() {
+    fun `档位表里查不到的词条连空数组都不写`() {
         // 「涨停」这种离散词在宿主档位表（1119 条）里确实没有，合成出来的词条拿不到 labelId，
         // 写上去宿主会画成「无效标签」（真机卡面挂感叹号），所以宁可不写。
+        // 一条都合不出来时必须返回 null（调用方按「保持原样」处理）：返回空数组会把借来的
+        // 原生卡上真实的标签整行清空，而且下一轮 written == cur 也不会再补回来。
         // 注意：单测里 StrategyLabelTable 不是空表，区间/档位类词条是能反查到 labelId 的。
         val raw = JSONArray().put(tag("创新高20交易日", "t1")).toString()
-        val out = JSONArray(mergeTagsJson(listOf(raw), listOf("涨停"))!!)
-        assertEquals(0, out.length())
+        assertNull(mergeTagsJson(listOf(raw), listOf("涨停")))
     }
 
     @Test
     fun `自建入口卡的空数组标签仍可合成`() {
         // 页面上一张可借的策略卡都没有时，入口卡是 new 出来的宿主 bean，tags 就是 `[]`。
         // 旧实现在「原 JSON 一个元素都解析不出来」时返回 null，这种卡就永远写不出标签。
-        assertNotNull(mergeTagsJson(listOf("[]"), listOf("涨停")))
+        // 这里用一个能反查到档位的词：全部查不到的情况见上一条（返回 null，保持原样）。
+        assertNotNull(mergeTagsJson(listOf("[]"), listOf("量比1以上")))
     }
 
     @Test

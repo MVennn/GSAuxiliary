@@ -528,6 +528,10 @@ internal fun mergeTagsJson(rawList: List<String>, want: List<String>): String? {
             GLog.i("$LOG 标签合成：" + skipped + " 条在档位表里查不到，没写进卡片（写了会显示成无效标签）")
         }
     }
+    // 一条都没合成出来：返回 null 让调用方「保持原样」。
+    // 返回空数组会把卡片上真实的标签整行清掉（自建入口卡本来就是 [] 时无所谓，
+    // 但借来的原生卡会被永久清空 —— 下一轮 written == cur 也不会再补回来）。
+    if (out.length() == 0) return null
     return out.toString()
 }
 
@@ -2068,6 +2072,7 @@ class StrategyMergeFeature : Feature {
      */
     private fun writeMergedZdf(act: Activity, state: PageState): Boolean {
         val want = state.zdfText ?: return false
+        if (state.zdfNodeAbsent) return false
         val cached = state.zdfTvRef?.get()
         if (cached != null && cached.isAttachedToWindow) {
             if (cached.text?.toString() == want) return false
@@ -2098,6 +2103,12 @@ class StrategyMergeFeature : Feature {
                 GLog.i("$LOG 头部日涨跌幅 → $want（并集等权平均）")
                 return true
             }
+        }
+        // 扫完整棵树都没有「日涨跌幅」这句文案（宿主换过布局 / 不是策略详情页）：
+        // 记下来，之后不再每跳扫树。applied 之后才定案，免得页面还没 inflate 时误判。
+        if (state.applied) {
+            state.zdfNodeAbsent = true
+            GLog.i("$LOG 这页没有头部日涨跌幅节点，之后不再找")
         }
         return false
     }
@@ -2134,6 +2145,8 @@ class StrategyMergeFeature : Feature {
      * 列表是空的（0 只）时不动它：那时候收起正是宿主该有的样子。
      */
     private fun restoreColTitle(act: Activity, state: PageState): Boolean {
+        // 列表空着的时候不动它：那时收起正是宿主该有的样子（doc 第 30.2 节）
+        if ((state.mergedStrong?.size ?: 0) <= 0) return false
         var v = state.colTitleRef?.get()
         if (v == null || !v.isAttachedToWindow) {
             // colTitleId：-1 还没查 / -2 这页确实没有（查过一次就定案）/ 其他是真实 id
@@ -2555,6 +2568,13 @@ class StrategyMergeFeature : Feature {
 
     /** 清记账；进程级快照只在自己这页的东西才清，别把别页的结果抹了 */
     private fun clearState(act: Activity, state: PageState) {
+        // 先把排着的头部补写撤掉，再清记账 —— 顺序反了那些任务会读到已清空的 state
+        val retries = synchronized(state) {
+            val r = state.headerRetries
+            state.headerRetries = null
+            r
+        }
+        retries?.forEach { mainHandler.removeCallbacks(it) }
         state.mergedRef = null
         state.mergedStrong = null
         state.mergedSize = 0
@@ -2786,9 +2806,20 @@ class StrategyMergeFeature : Feature {
          * 另交的一份副本），GC 随时能把它收走。真机表现：进页面头几帧「顶住并集」生效，随后
          * `mergedRef.get()` 变 null，界面当场退回宿主那一格（6 只 / 99 只）并一路越长越少地抽。
          */
-         var mergedStrong: List<Any?>? = null
+        var mergedStrong: List<Any?>? = null
 
         var mergedSize = 0
+
+        /**
+         * finish 里排下的三轮头部补写（[HEADER_RETRY_DELAYS]）。
+         *
+         * 必须在回滚 / 销毁时全部撤销：否则用户点返回、或这一轮被中止之后，这几枪仍会按上一轮的
+         * 数字写回涨跌家数、日涨跌幅、列标题行，把刚还原干净的页面又写成半聚合状态。
+         */
+        var headerRetries: MutableList<Runnable>? = null
+
+        /** 这页没有「日涨跌幅」节点（慢路扫过整棵树确认过）：别再每跳扫一遍 */
+        var zdfNodeAbsent = false
 
         /** 本轮「顶住并集」只打一条日志，别刷屏 */
         var holdNoted = false
@@ -3628,18 +3659,26 @@ class StrategyMergeFeature : Feature {
                 // 宿主在这之后再刷一轮自己的响应，会把涨跌家数顶回单策略的值（真机实测 16/1），
                 // 所以补两次延迟写回：让它自己的刷新先落地，我们最后覆盖。
                 for (delayMs in HEADER_RETRY_DELAYS) {
-                    mainHandler.postDelayed({
-                        if (act.isFinishing) return@postDelayed
+                    // 这三个 Runnable 记在 state 上：回滚 / 销毁时要能 removeCallbacks，
+                    // 否则页面还原之后它们还按这一轮的数字写一遍（半聚合状态）。
+                    val task = Runnable {
+                        if (act.isFinishing || act.isDestroyed) return@Runnable
+                        if (!state.applied || state.run != null) return@Runnable
+                        // 宿主这一轮自己的刷新刚落地，字段与文本都会是单策略的值：一起覆盖回去
                         StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM, upSum)
                         StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, downSum)
                         StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_UP_NUM, upSum)
                         StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, downSum)
                         // 别调宿主 showStg：它会把列表按宿主自己的 m_stkList 重画一遍（回落来源），
-                        // 头部这三处文本自己写就够了。
+                        // 头部这几处文本自己写就够了。
                         writeHeaderCounts(act, upSum, downSum, state)
                         writeMergedZdf(act, state)
                         restoreColTitle(act, state)
-                    }, delayMs)
+                    }
+                    (state.headerRetries ?: ArrayList<Runnable>(HEADER_RETRY_DELAYS.size).also {
+                        state.headerRetries = it
+                    }).add(task)
+                    mainHandler.postDelayed(task, delayMs)
                 }
                 // ⑤ 「策略个股 N 只」宿主不会按 data 重算，自己写成交互只数
                 writeMergedResNum(act, state, merged.size)
