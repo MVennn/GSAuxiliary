@@ -238,6 +238,33 @@ MainAct → AIStkIndexAct → AIStkStgListAct → AIStkStgDetailAct
 
 聚合后 `ListView` 眼里只有合并行数，宿主 `onItemClick` 仍按全量列表取值。照 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md):324-338 做 `mapped = header + fullIndices[position - header]` 回映射；`StgSelectAllFeature` 的全选要走 `StgFilterBridge.fullIndices(total, owner)` 同款的 `MergeBridge.fullIndices`；`StgDirectQuoteFeature` 读 `adapter_key.stockList` 时要 `keepOnly` 过滤，避免滑到非聚合成员（[StgFilterBridge.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgfilter/StgFilterBridge.kt):8-18 真机案例：筛「自选」后能滑到「华北制药」）。
 
+**回映射只解决「位置对不上」，解决不了「宿主根本没有股票」。** 宿主 `AIStkStgDetailAct.onItemClick`（`AIStkStgDetailAct.java:196`）做范围校验用的是 `adapter.getCount()`，取值却用**它自己那份** `AIStkStgDetailModel.m_stkList`；聚合走的是「直接改 `adapter.data`」这条路（§2.5），`m_stkList` 没人写过，进页时被清成 0 只 —— 于是每次点击都在 `ArrayList.get` 越界。异常被筛选功能的行点击包装器 `runCatching` 吞掉，用户看到的就是「点了没反应」，logcat 只有一行 `转发行点击失败 java.lang.IndexOutOfBoundsException: Index: 0, Size: 0`。
+
+**2026-11-12 落地（真机验收，宿主 8.7.1）**：[MergeClickFill.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgmerge/MergeClickFill.kt) 在 `onItemClick` 进去那一刻，把 Activity 与其 Model 上**元素类型与并集同类**的 List 字段临时换成并集副本，宿主读完立刻 `set` 回原引用；不 `notify`、不 `requestLayout`，所以既不触发重排、也不污染别处。类型判据 `holdsSameType`：列表非空看首元素与并集元素的继承关系，空表读 `Field.genericType` 的实参名 —— 这一条把 `checkCodes` / `checkMarkets` / `checkPrices` / `m_bcList`（`BroadcastReceiver` 列表）挡在外面，真机日志因此只剩一个字段：「`行点击前临时补上宿主取值列表：AIStkStgDetailModel.m_stkList(0→630)`」。挂点见 [StrategyMergeFeature.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgmerge/StrategyMergeFeature.kt) 的 `hookDetailItemClick`：`chain.proceed()` 抛异常只记日志、不丢给宿主。
+
+验收：630 只并集下点第 1 行 → 菲沃泰 688371，点第 5 行 → 蓝色光标 300058，下滑后再点 → 同星科技 301252，三次都落在被点的那一行上；筛选开启（本页 285/630）与关闭两种状态下都成立 —— 筛选只改 `mapped`，补列表这一步与筛选开关无关。
+
+**写并集一律原地改，不换 `data` 实例（2026-11-12 补，同日真机验收）。** `AbsListView` 在 `ACTION_UP` 分支里按「这一帧数据有没有换过」决定丢不丢这一下点击（[FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md):791 的真机教训：把 `data` 换成新对象之后「有些行点不动，越靠下越明显」）。聚合此前五处写并集都交副本 —— `holdUnionWhileRunning` / `reapplyIfNeeded` / `applySnapshot` / `showGrowingUnion` 与主流程收尾 —— 而看门狗每 `WATCH_INTERVAL_MS`（700ms）走一次慢路，等于每 700ms 换一次实例，点得慢或列表深时就有机会被吞掉。现在统一走 `StrategyMergeTargets.writeListInPlace`：拿 `Reflect.findField` 取现值，是 `List` 就 `clear + addAll` 到**同一个实例**上，实例从不更换；只有两种退化情况才换对象 —— 字段还是 `null` 的空态（`ensureListData` 造新表）与现值不是可写 `List`（`Arrays.asList` / `unmodifiableList`）。
+
+连带必须同时改的一处：`captureOrigin` 存的 `state.originalData` 要存**副本**（`ArrayList<Any?>(it)`）。原地写之后字段指向的就是被改写的那份 list，存引用会让 `releaseRollback` 把并集当成原生数据还回去。改完语义不变：`mergedStrong` 里的 `merged` 是独立 `ArrayList`，宿主刷新时 `clear + addAll` 命中的是字段那个实例，不会污染缓存。
+
+验收（宿主 8.7.1 / 630 只并集）：点第 1 行 → 菲沃泰 688371；滑到 4%~5% 段后点 `mapped=64` → 国科军工 688543、点 `mapped=67` → 大普微-UW 301666，都落在被点的那一行；同一行连点 6 次（每次返回再点，跨 700ms 看门狗窗口）6/6 全部进 `StockFragAct`，无一次被吞。
+
+**两条会「静默全废 / 直接崩溃」的坑（2026-11-12 真机踩到，改动这两处前先读）。**
+
+1. 反射缓存**不能**用 `java.lang.ClassValue`。Android 的 libcore 里没有这个类，宿主进程启动就
+   `ClassNotFoundException: Didn't find class "java.lang.ClassValue"`，LSPosed 日志只留一句
+   「功能安装完成：0/20，共 0 个钩子」——20 个功能全废、界面看不出异常，最容易被误判成「模块没生效」。
+   [Reflect.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/util/Reflect.kt) 现在用
+   「Class → 名字键（`f:` / `m:` / `n:` 前缀）→ 成员」的 `ConcurrentHashMap` 负缓存，
+   热路径零锁、零异常；代价是宿主换 classloader 后旧 Class 被表吊住，量级是「类个数 × 用到的名字数」。
+2. 往 `HeaderViewListAdapter` 内层塞适配器时**必须重登记数据集观察者**。只反射改 `mAdapter` 字段的话，
+   `ListView` 的 `AdapterDataSetObserver` 还挂在旧内层上；页面销毁时
+   `AbsListView.onDetachedFromWindow` → `HeaderViewListAdapter.unregisterDataSetObserver` 顺着新内层转发，
+   抛 `IllegalStateException: ... was not registered` 把宿主进程带走（真机 22:56:11，栈顶
+   `android.database.Observable.unregisterObserver`）。正确做法见 `StrategyMergeFeature.swapHeaderInner`：
+   换之前向旧内层注销、换完向新内层登记，观察者实例取自 `AbsListView.mDataSetObserver`。
+
 ### 5.5 成员 `stId` 的两种读法
 
 | 读法 | 做法 | 现状 |

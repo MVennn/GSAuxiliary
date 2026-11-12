@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.feature.stgmerge
 
+import java.lang.ref.WeakReference
 import java.util.IdentityHashMap
 
 /**
@@ -28,24 +29,47 @@ import java.util.IdentityHashMap
  * 同一批 `StockInfo` 对象，只按元素身份匹配会把上一页的聚合结果套到这一页上。
  * 所以 [publish] 必须带上 owner（页面 Activity 与写回适配器的那个列表实例），
  * [mergedFor] / [keepOnly] 只认这一页，对不上就当作「没有聚合」。
+ *
+ * ## 一律弱引用
+ *
+ * 单例里强引用页面 Activity 和宿主的 `StockInfo`，等于「离开策略页后整棵 View 树还被吊着」——
+ * 用户看到的就是切来切去内存只涨不降。所以 `owner` / `merged` / `source` 全存 [WeakReference]：
+ * 页面还在、适配器 data 还握着并集时照常读得到；真被 GC 收走就退化成「本页没有聚合」，
+ * 消费侧按单策略处理，不会拿错数据。
  */
 object StrategyMergeBridge {
 
     /** 一次聚合的结果快照 */
-    class Snapshot(
+    class Snapshot internal constructor(
         /** 聚合后的并集，保序；元素是宿主自己的 `StockInfo` 实例 */
-        val merged: List<Any>,
+        merged: List<Any>,
         /** 这份结果写回适配器用的**列表实例**（身份绑定，防止快照串页） */
-        val source: List<*>,
+        source: List<*>,
         /** 算出这份结果的页面（Activity），消费者做归属校验用 */
-        val owner: Any?,
+        owner: Any?,
         /** 页面原本那条策略的 stId（聚合是在它的详情页上做的） */
         val pageStId: String,
         /** 参与聚合的全部成员 stId，含 [pageStId]，顺序即组内顺序 */
         val memberStIds: List<String>,
         /** 有成员超时 / 取数失败时为 true（界面照常渲染，只代表并集不完整） */
         val degraded: Boolean,
-    )
+    ) {
+        private val mergedRef = WeakReference<List<Any>>(merged)
+        private val sourceRef = WeakReference<List<*>>(source)
+        private val ownerRef = owner?.let { WeakReference<Any>(it) }
+
+        /** 并集；被 GC 收走返回 null（调用方按「没聚合」处理） */
+        val merged: List<Any>? get() = mergedRef.get()
+
+        /** 写回适配器的列表实例；被回收返回 null */
+        val source: List<*>? get() = sourceRef.get()
+
+        /** 算出这份结果的页面；页面销毁后被回收则返回 null */
+        val owner: Any? get() = ownerRef?.get()
+
+        /** 并集实例还在不在 */
+        fun isAlive(): Boolean = mergedRef.get() != null
+    }
 
     @Volatile
     private var current: Snapshot? = null
@@ -71,13 +95,13 @@ object StrategyMergeBridge {
         }
     }
 
-    /** 清空快照（关功能 / 回滚宿主时调用） */
+    /** 清空快照（关功能 / 回滚宿主 / 页面销毁时调用） */
     fun clear() {
         current = null
     }
 
-    /** 当前是否有生效的聚合快照（用于区分「没聚合」与「快照不属于本页」） */
-    fun hasSnapshot(): Boolean = current != null
+    /** 当前是否有生效的聚合快照（并集实例已被回收也算没有） */
+    fun hasSnapshot(): Boolean = current?.isAlive() == true
 
     /** 当前快照（调试通道 / 消费侧自查用） */
     fun snapshot(): Snapshot? = current
@@ -100,13 +124,15 @@ object StrategyMergeBridge {
      */
     fun keepOnly(source: List<*>?): List<Any>? {
         val snap = current ?: return null
+        val merged = snap.merged ?: return null
+        val published = snap.source ?: return null
         if (source.isNullOrEmpty()) return null
-        if (!sameContents(snap.source, source)) return null
+        if (!sameContents(published, source)) return null
 
-        val ids = IdentityHashMap<Any, Boolean>(snap.merged.size * 2)
-        for (e in snap.merged) ids[e] = true
+        val ids = IdentityHashMap<Any, Boolean>(merged.size * 2)
+        for (e in merged) ids[e] = true
 
-        val out = ArrayList<Any>(snap.merged.size)
+        val out = ArrayList<Any>(merged.size)
         for (e in source) if (e != null && ids.containsKey(e)) out.add(e)
         return out.ifEmpty { null }
     }

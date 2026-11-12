@@ -75,6 +75,41 @@ object StrategyComboClient {
 
     private val seq = AtomicLong(0L)
 
+    /**
+     * 本进程**正在用**的临时策略 id。
+     *
+     * 名额满时的补救是「把自己漏删的临时策略全清掉再重试」，但两个详情页同时聚合时，
+     * A 清遗留会把 B 手上那条正在取数的临时策略删掉 —— B 后面「换标签 → 取数」就查不到数据，
+     * 表现为「聚合突然少了一大块」。所以清遗留在 [purgeLeftovers] 里显式跳过这些 id。
+     */
+    private val liveIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * 本进程是否已经扫过一遍遗留临时策略。
+     *
+     * 以前只在「建临时策略撞上名额满（code 4100）」时才清（见 [createOrFreeSlot]），
+     * 于是进程被杀 / 用户直接退出时留下的 `GSZtmpXXXXXX` 会一直挂在「我的策略」里，
+     * 名字还是一串英文，用户只能自己去删。现在第一次聚合前顺手扫一遍。
+     */
+    @Volatile
+    private var scannedLeftovers = false
+
+    /**
+     * 每进程最多扫一次的遗留临时策略清理（[purgeLeftovers] 的薄包装）。
+     *
+     * **必须在后台线程调用**（内部要发一次列表请求）。清失败只记日志：
+     * 清不掉最多是列表里多一条，不影响这一轮取数。
+     */
+    fun purgeLeftoversOnce() {
+        if (scannedLeftovers) return
+        scannedLeftovers = true
+        val n = runCatching { purgeLeftovers() }.getOrElse {
+            GLog.w("组合取数：扫遗留临时策略失败（不影响取数）", it)
+            0
+        }
+        if (n > 0) GLog.i("组合取数：本轮扫掉 " + n + " 条遗留临时策略")
+    }
+
     /** 结果容器：成功 / 失败原因 / 拿到的股票 */
     data class Result(val stocks: List<Stock>, val error: String) {
         val ok: Boolean get() = error.isEmpty()
@@ -88,7 +123,7 @@ object StrategyComboClient {
     fun fetchOne(combo: Combo): Result {
         if (!HostSession.isReady()) return Result(emptyList(), "还没有截到宿主会话（先在宿主里点一次「我的策略」，让它发一次请求）")
         val stId = try {
-            createTemp(combo)
+            createTemp(combo).also { liveIds.add(it) }
         } catch (e: Exception) {
             return Result(emptyList(), "建临时策略失败：" + msgOf(e))
         }
@@ -123,7 +158,10 @@ object StrategyComboClient {
 
     /** 删掉临时策略（吞掉异常：删不掉只是少一个名额，不该打断聚合） */
     fun dropTemp(stId: String) {
-        runCatching { delete(stId) }.onFailure { GLog.w("组合取数：删临时策略失败 " + stId, it) }
+        liveIds.remove(stId)
+        if (!runCatching { delete(stId) }.getOrDefault(false)) {
+            GLog.w("组合取数：删临时策略没删掉 " + stId + "（下次聚合或名额满时会再清）")
+        }
     }
 
     /** 串行跑完一批组合，顺序与入参一致 */
@@ -179,9 +217,29 @@ object StrategyComboClient {
         return out
     }
 
-    private fun delete(stId: String) {
+    /**
+     * 删一条策略。
+     *
+     * 返回值必须当回事：服务端偶尔回 `code != "0"`（旧版本这里用 `runCatching` 把拒绝吞掉，
+     * 于是 `purgeLeftovers` 把「没删掉」也记成「清掉了」，列表里那条临时策略一直挂着）。
+     *
+     * @return true = 服务端确认删除
+     */
+    private fun delete(stId: String): Boolean {
         val text = post(PATH_DELETE, "stId=" + enc(stId))
-        runCatching { ensureOk(JSONObject(text), "删临时策略") }
+        val root = runCatching { JSONObject(text) }.getOrNull()
+        if (root == null) {
+            GLog.w("组合取数：删临时策略响应不是 JSON：" + text.take(200))
+            return false
+        }
+        return try {
+            // 业务码在 result[0].code 里，不是顶层；判定统一交给 [ensureOk]，别自己读字段
+            ensureOk(root, "删临时策略")
+            true
+        } catch (e: Exception) {
+            GLog.w("组合取数：删临时策略没删掉：" + msgOf(e) + "；响应 " + text.take(200))
+            false
+        }
     }
 
     /**
@@ -248,11 +306,15 @@ object StrategyComboClient {
         }
         var n = 0
         for (s in list) {
+            // 正在用的那条不能删：另一个页面可能正拿它取数（见 [liveIds]）
+            if (s.stId in liveIds) continue
             val legacy = s.name.length == 9 && s.name[0] == 'Z' && s.name.drop(1).all { it.isDigit() }
             if (!s.name.startsWith(TEMP_PREFIX) && !legacy) continue
-            if (runCatching { delete(s.stId) }.isSuccess) {
+            if (runCatching { delete(s.stId) }.getOrDefault(false)) {
                 n++
                 GLog.i("组合取数：清掉漏删的临时策略 " + s.name + "（" + s.stId + "）")
+            } else {
+                GLog.w("组合取数：遗留临时策略没删掉 " + s.name + "（" + s.stId + "）")
             }
         }
         return n
@@ -293,8 +355,11 @@ object StrategyComboClient {
         /** 第一次调用时建出来，之后原样返回；[combo] 只用来给新策略填初始标签 */
         fun ensure(combo: Combo): String {
             if (id.isNotEmpty()) return id
+            // 进程被杀时上一轮的临时策略会留在「我的策略」列表里，第一次聚合前顺手清掉
+            purgeLeftoversOnce()
             val name = TEMP_PREFIX + System.currentTimeMillis().toString().takeLast(6)
             id = createOrFreeSlot(name, combo.bizLabelId)
+            liveIds.add(id)
             lastLabels = combo.bizLabelId
             GLog.i("组合取数：建了一条整轮复用的临时策略 " + name + "（" + id + "）")
             return id
@@ -314,7 +379,10 @@ object StrategyComboClient {
             id = ""
             lastLabels = ""
             if (dead.isEmpty()) return
-            runCatching { delete(dead) }.onFailure { GLog.w("组合取数：删临时策略失败 " + dead, it) }
+            liveIds.remove(dead)
+            if (!runCatching { delete(dead) }.getOrDefault(false)) {
+                GLog.w("组合取数：这一轮的临时策略没删掉 " + dead + "（下次聚合或名额满时会再清）")
+            }
         }
     }
 

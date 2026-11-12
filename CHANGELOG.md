@@ -11,6 +11,60 @@
 > 四个聚合 bug（吃本页策略 / 入口卡外显 / 标签叹号 / 表头与日涨跌幅）与三处稳态问题
 > （进位依据见 `docs/VERSIONING.md` §1）。
 
+### 修复 审查期间引入的两处崩溃级回归（2026-11-12）
+
+- **20 个功能全部装不上**：反射缓存一度改用 `java.lang.ClassValue`，Android 的 libcore 里没有这个类，
+  宿主进程启动即 `ClassNotFoundException: Didn't find class "java.lang.ClassValue"`，
+  LSPosed 日志「功能安装完成：0/20，共 0 个钩子」，界面上所有增强静默失效（列表页连「聚合组」入口卡都不出来，
+  只剩一条取数残留的临时策略）。改回「Class → 名字键 → 成员」的 `ConcurrentHashMap` 负缓存
+  （`util/Reflect.kt`），复验「功能安装完成：20/20，共 64 个钩子」。
+- **退出策略详情页闪崩**：把并集适配器塞回 `HeaderViewListAdapter` 内层时只改了 `mAdapter` 字段，
+  `ListView` 的 `AdapterDataSetObserver` 还挂在旧内层上 —— 页面销毁时
+  `AbsListView.onDetachedFromWindow` → `HeaderViewListAdapter.unregisterDataSetObserver` 顺着新内层转发，
+  抛 `IllegalStateException: ... was not registered` 直接把宿主进程带走（真机 22:56:11 复现，
+  栈顶 `android.database.Observable.unregisterObserver`）。新增 `swapHeaderInner`：换之前先向旧内层注销、
+  换完再向新内层登记（观察者实例取自 `AbsListView.mDataSetObserver`）。
+  复验：同一路径（日志「宿主把列表换成了空占位适配器，已把并集适配器装回去」）连续三轮进出详情页点股票，
+  无崩溃、无 `IndexOutOfBounds`。
+
+### 修复 聚合组里点股票没反应（2026-11-12）
+
+- 根因 —— 宿主 `AIStkStgDetailAct.onItemClick`（`AIStkStgDetailAct.java:196`）范围校验用
+  `adapter.getCount()`、取值却用**它自己那份** `m_stkList`；聚合期间那份被清成 0 只，于是
+  `Index: 0, Size: 0` 越界。异常被筛选功能的行点击包装器 `runCatching` 吞掉，表现就是
+  「点了页面一动不动」。铁证（旧进程 logcat）：`行点击 position=1 header=1 subset=0 mapped=1` →
+  `转发行点击失败 java.lang.IndexOutOfBoundsException: Index: 0, Size: 0 at
+  AIStkStgDetailAct.onItemClick(AIStkStgDetailAct.java:196)`。
+- 新增 `feature/stgmerge/MergeClickFill.kt` —— 点下去那一刻把 Activity 与其 Model 上「元素类型与
+  并集同类」的 List 字段临时换成并集副本，宿主读完立刻 `set` 回原引用；全程不 `notify`、不
+  `requestLayout`，因此不会触发宿主重排、也不影响别处数据。空表按泛型实参认类型
+  （`holdsSameType`），`checkCodes` / `checkPrices` / `m_bcList` 这类不再误灌。
+- 新增 hook —— `StrategyMergeFeature.hookDetailItemClick` 给 `AIStkStgDetailAct.onItemClick` 装
+  intercept，`chain.proceed()` 抛异常时只记「宿主行点击仍然失败（取值列表没补对？）」并吞掉，
+  不把异常丢给宿主。启动日志相应改为「已挂 onResume×1、setAdapter×2、showStg×1、notify×1、onItemClick×1」。
+- 真机验收（MuMu，宿主 8.7.1 / 630 只并集）—— 日志「行点击前临时补上宿主取值列表：
+  AIStkStgDetailModel.m_stkList(0→630)」；点第 1 行进「菲沃泰 688371」、点第 5 行进
+  「蓝色光标 300058」、滚动后再点进「同星科技 301252」，三次都落在点击的那一行上。
+- 顺带堵掉同源隐患：写并集不再换 `adapter.data` 对象。`AbsListView` 在 `ACTION_UP` 分支里
+  按「数据这一帧换没换过」决定丢不丢点击（`docs/FEATURE-STG-FILTER.md`:791），而看门狗每
+  700ms 重套一次、原来每次都交新 `ArrayList`。新增 `StrategyMergeTargets.writeListInPlace`
+  （`clear + addAll` 到同一个实例），五处写并集全部改调它；`captureOrigin` 的 `originalData`
+  同步改成存副本，否则原地写会让回滚把并集还回去。
+- 补验：滑到 4%~5% 段点 `mapped=64` → 国科军工 688543、`mapped=67` → 大普微-UW 301666 均正确；
+  同一行连点 6 次（跨多个 700ms 看门狗窗口）6/6 全部进 `StockFragAct`，无一次被吞。
+
+### 修复 遗留临时策略不再赖在「我的策略」里（2026-11-12）
+
+- `StrategyComboClient.purgeLeftovers()` 原来只在「建临时策略撞上 code 4100（策略数不能超过 10 个）」
+  时才跑，进程被杀 / 用户直接退出留下的 `GSZtmpXXXXXX` 会一直挂在「我的策略」列表里，
+  名字还是一串英文，用户只能自己去删。新增 `purgeLeftoversOnce()`（`@Volatile` 标记，每进程最多扫一次），
+  在 `TempSlot.ensure` 第一次建临时策略前调用：清失败只记日志，不影响这一轮取数。
+- 连带修掉「删了当没删」：`delete()` 原来用 `runCatching` 吞掉服务端的业务拒绝，返回值也不看，
+  `purgeLeftovers` 于是把「没删掉」也记成「清掉了」。业务码在 `result[0].code` 而不是顶层，
+  现在统一交给 `ensureOk` 判定、失败打「组合取数：删临时策略没删掉…」并保留 id 下次再清。
+- 真机验收：进聚合组前「我的策略」里有 `GSZtmp530601`，删完再进列表已无该卡；一轮聚合结束后
+  列表也没有新的 `GSZtmp*` 残留，日志无「没删掉」。
+
 ### 修复 聚合组吃掉本页策略、入口卡外显、标签、表头（2026-11-12）
 
 - 修复 并集混入本页策略 —— `MergeRun.start()` 调 `absorbSeed(seed)` 时没有校验本页

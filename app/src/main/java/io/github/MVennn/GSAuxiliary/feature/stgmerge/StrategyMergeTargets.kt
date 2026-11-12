@@ -335,6 +335,35 @@ object StrategyMergeTargets {
         }.getOrDefault(false)
     }
 
+    /**
+     * 把 [value] 写进 [target] 的列表字段，**能原地就原地**（`clear + addAll`），实例保持不变。
+     *
+     * 为什么必须原地：宿主 `AbsListView` 在 `ACTION_UP` 分支里按「这一帧数据有没有换过」决定
+     * 丢不丢这一下点击（`docs/FEATURE-STG-FILTER.md` 的真机教训：把 `data` 换成新对象之后
+     * 「有些行点不动，越靠下越明显」）。原地改只换内容、不换实例，宿主持有的引用跟它自己的
+     * 数据版本判断都不受影响。
+     *
+     * 字段现在不是可写的 List（空态 null、`Arrays.asList`、`Collections.unmodifiableList`）时，
+     * 退回 [write] 换新对象 —— 退化路径和改造前行为一致，不会因为新逻辑反而写不进去。
+     */
+    fun writeListInPlace(target: Any?, name: String, value: List<Any?>): Boolean {
+        val holder = target ?: return false
+        val f = Reflect.findField(holder.javaClass, name)
+        if (f != null) {
+            val cur = runCatching { f.get(holder) }.getOrNull()
+            if (cur is List<*> && cur !== value) {
+                @Suppress("UNCHECKED_CAST")
+                val m = cur as MutableList<Any?>
+                // 先留一份原内容：clear 成功而 addAll 抛异常（不可变 List、元素类型被宿主校验挡住）
+                // 的话，宿主那份列表已经被我们清空，不回滚就等于把这一页的股票全弄没了。
+                val backup = ArrayList<Any?>(cur)
+                if (runCatching { m.clear(); m.addAll(value) }.isSuccess) return true
+                runCatching { m.clear(); m.addAll(backup) }
+            }
+        }
+        return write(holder, name, ArrayList<Any?>(value))
+    }
+
     /** 读 int 字段；读不到按 0 算（涨跌家数只是展示用，缺了不该挡整条链路） */
     fun intField(target: Any?, name: String): Int {
         val v = field(target, name) ?: return 0

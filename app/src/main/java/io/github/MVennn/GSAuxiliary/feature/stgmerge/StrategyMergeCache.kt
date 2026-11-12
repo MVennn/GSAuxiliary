@@ -85,6 +85,16 @@ internal object StrategyMergeCache {
         }
     }
 
+    /**
+     * 作废某一组缓存（不删别的组）。
+     *
+     * 用于「这一轮残缺」：残缺并集不能覆盖完整缓存，但旧缓存也不能一直压着 ——
+     * TTL 之内真实数据变了就再也刷不出来。作废后下次进页面按冷启动重算，宁可慢一次。
+     */
+    fun forget(key: String) {
+        synchronized(map) { map.remove(key) }
+    }
+
     /** 只查有没有（不看新鲜度），给日志用 */
     fun size(): Int = synchronized(map) { map.size }
 
