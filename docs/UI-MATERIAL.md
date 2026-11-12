@@ -774,6 +774,8 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 
 ## 8. 组件清单
 
+> 取用判据（哪些必须自绘、为什么、照谁对齐）正本 = [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) 第 0.3 节；本表只登记本仓实际用到的件与去向。
+
 | 组件 | 来源 | 用途 |
 |---|---|---|
 | `Scaffold` / `SmallTopAppBar` / `NavigationBar` / `NavigationBarItem` | Miuix | 页面骨架与默认底栏 |
@@ -784,8 +786,6 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `TextField` + `rememberTextFieldState` | Miuix / Compose | 方案名称与取值项的文本输入（`QuickConfigEditScreen`） |
 | `Surface` | Miuix | 长按气泡的底板 |
 | `IconButton` / `Icon` | Miuix | 返回按钮、行内图标（⋮ 动作菜单、删除取值项） |
-
-> `TabRow` / `TextButton` 曾只服务于「查看日志」页，随该页在 3.1.0 删除后已不再使用。
 | `MiuixTheme` + `lightColorScheme()` / `darkColorScheme()` | Miuix | 主题设置（跟随系统 / 亮色 / 暗色） |
 | `drawBackdrop` / `rememberLayerBackdrop` / `layerBackdrop` / `Highlight` / `InnerShadow` / `Shadow` | backdrop | 液态玻璃（顶栏 + 底栏 + 弹窗）、光效与外投影 |
 | `GlassTopBar` | 自绘（`Glass.kt`） | 液态玻璃顶栏（`drawBackdrop` + 透明 `SmallTopAppBar` + `extra()` 插槽，**无边框**） |
@@ -799,5 +799,7 @@ internal fun rememberBoolPref(key: String, def: Boolean): MutableState<Boolean> 
 | `PredictiveBackHandler` / `BackHandler` | activity-compose | 返回手势接管；`BackHandler(enabled = visible)` 让返回键先关弹窗 |
 | `rememberLauncherForActivityResult` + `ActivityResultContracts.CreateDocument` | activity-compose | 日志保存到任意位置（SAF，无需存储权限） |
 | `AppIcons.*` | 自绘（`AppIcons.kt`） | 底栏、状态卡、弹窗对勾等图标（**不引第三方图标库**） |
+
+> `TabRow` / `TextButton` 曾只服务于「查看日志」页，随该页在 3.1.0 删除后已不再使用。
 
 ---

@@ -39,6 +39,9 @@
 | `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 负空间 mark / 滚动淡出），切到该页时顶栏上滑收起 |
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.1） |
+| `StgFilterSettingsScreen.kt` | 二级页：**筛选条件保存设置**（按策略 / 聚合组各记一份筛选条件，见 §4.5） |
+| `StrategyMergeScreen.kt` | 二级页：**聚合组设置**的组列表（组行 ⋮ 排序 / 设默认 / 删除、新建组，见 §4.5） |
+| `StrategyMergeEditScreen.kt` | **三级页**：单个聚合组的编辑（组名 / 成员三类 / 设为默认 / 删除，见 §4.5） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
 | `QuickConfigEditScreen.kt` | **三级页**：单个方案的编辑（名称 / 涨到槽 / 跌到槽 / 提醒时效 / 设为默认 / 删除，见 §4.4） |
 | `MarkdownText.kt` | 轻量 Markdown 渲染（`AboutTab` 的免责声明正文用；不引 Markdown 库） |
@@ -422,16 +425,16 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 关闭开关时入口**收起**（`expandVertically` / `shrinkVertically` 动画）——
 展开与否本身就说明了一切，页面上不再额外写提示语。
 
-当前**二十一个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
+当前**二十二个**功能（顺序即界面顺序，分组见 `ui/FeatureCatalog.kt` 顶部的「分区归属标准」；
 文案与命名规则见 [文案与命名规范](NAMING.md)）：
 
-> **口径说明**：这里的「二十一个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
+> **口径说明**：这里的「二十二个」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的
 > `FeatureSpec` 条数）。它与「Feature 实现数」不是一回事 ——
 > 有两组开关各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现，
 > `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现，
-> 所以目录 21 行 ↔ 实现 18 个。
+> 所以目录 22 行 ↔ 实现 19 个。
 
 | 分区 | 功能 | 开关配置键 | 二级入口 |
 |---|---|---|---|
@@ -439,7 +442,8 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 策略页 | 直达标准行情 | `stg_direct_quote` | 滑动设置（`StrategyQuoteDetail`） |
 | 策略页 | 增加 全选 按钮 | `stg_select_all` | 无 |
 | 策略页 | 增加 截图并添加 按钮 | `stg_snap_add` | 无 |
-| 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
+| 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 筛选条件保存设置（`StgFilterSettingsScreen`；筛选开关本身仍在目标 App 自己的面板里） |
+| 智能选股 | 我的策略整合 | `stg_merge` | 聚合组设置（`StrategyMergeScreen`；入口副标题的组数按配置现算，见 `FeatureTab`） |
 | 股票详情页 | 增加 智能盯盘 入口 | `stock_bar_entry` | 无 |
 | 智能盯盘 | 增加 配置 按钮 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
 | 智能盯盘 | 优化确定逻辑 | `aistare_empty_save` | 无 |
@@ -503,6 +507,20 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 - **取值项清单不摆在列表页**：21 个取值项按分组平铺比方案列表还长，而那些名字在
   编辑页「添加取值项」的弹层里本来就有。列表页不摆脚注（3.2.x 起撤掉）。
 
+---
+
+#### 4.5 「聚合组设置」与「筛选条件保存设置」
+
+| 页面 | 层级 | 结构 |
+|---|---|---|
+| `StrategyMergeScreen.kt` | 二级 | 「聚合组」一张卡：组行（组名 + 成员摘要 + 默认徽标 + ⋮ 菜单）+ 新建组 —— 与方案列表页**同一套交互**（见 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) 第 0.3 节） |
+| `StrategyMergeEditScreen.kt` | 三级 | 组名 → 成员三类（真实策略 / 口径成员 / 条件成员）→ 操作卡（设为默认 / 删除组） |
+| `StgFilterSettingsScreen.kt` | 二级 | 一项开关：按策略保存筛选条件（`stg_filter_per_strategy`），副标题按开着 / 关着给两套状态句（见 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) 第 3.1 节） |
+
+- **聚合组只决定「策略详情页显示哪几条股票」**：成员可以是真实策略（有 `stId`）、口径成员（「中盘 1.5-4」这类没有 `stId` 的分段）、条件成员（市值档 / 量比档）。点进某条组员的详情页时，`StrategyMergeFeature` 判定当前页命中的组，再让宿主按成员 `stId` 自己重取，把并集写回原生 `AIStkAdapter.data`。
+- **条件成员不走分步向导**：多选菜单锚在控件右侧、点一行立刻写配置、没有确定按钮 —— 就是方案设置里「取值项」弹层那套（见 §9 弹层锚点）。先做成四步单选、再改成贴底大弹层的两版都被用户否掉（2026-11-12）。
+- **筛选状态跟着作用域走**：开关关闭时所有策略共用一份筛选记忆；打开后每个策略、每个聚合组各记一份（`StockFilterStore` + `StockFilterScopes`），计数栏显示 `策略个股 保留/总数`。
+- 细节与真机校准见 [FEATURE-STRATEGY-MERGE.md](FEATURE-STRATEGY-MERGE.md) 与 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md) 第六节。
 ---
 
 ## 5. Tab 3 · 设置（仅模块级设置项）

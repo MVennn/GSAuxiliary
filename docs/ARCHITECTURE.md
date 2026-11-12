@@ -229,6 +229,7 @@ onHotReloaded(param)
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态） | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型；点完隔 48ms（约 3 帧）重读 checked states，有缺口再补点（最多 4 轮点击） | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效；**显示要按 checked states 刷**（`activated` + `isChecked`）—— 筛选时框架按适配器位置重写 `activated`，与全量位置的表错位（见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md) §2.3.2） |
 | **截图并添加** | `StgSnapAddFeature` | `Activity.onResume` + `#tv_stg_add_zxg` 的 `TextWatcher`（进出多选态）+ 宿主 `#tv_bottom_add_zxg` 点击接力 | 在「确认添加」左侧注入克隆按钮；点击读取选中子集 → 一次打开 `StockFragAct`（`stockList` + `stockIndex=0`）→ `vp_stocks.setCurrentItem` 逐页 → **可见标题含目标代码 + K 线 `m_kxChartItems` 非空才 PixelCopy** → 存相册（**与翻页并行，在途上限 2**）；finish 回策略页后 `performClick` 宿主「确认添加」→ `ChooseGroupAct` | **数据没就绪不截图**（超时只记失败，不存半张图）；**不自己写分组**（完全交给宿主页面）；**截图前隐藏进度条**；`PixelCopy` 失败回退 `decorView.draw`（见 [FEATURE-SNAP-ADD](FEATURE-SNAP-ADD.md)） |
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后给 ListView **套一层过滤代理**（`getCount` 报子集、`getView` 映射回全量；不碰宿主 `data`），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**不能直接换 `data`**（宿主 `onItemClick` 用全量列表取值、`getCount()` 做范围校验，两套语义打架）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
+| **我的策略整合（聚合组）** | `StrategyMergeFeature` | `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `AIStkAdapter.getView` + `Activity.onResume`（策略详情页 / 我的策略列表页）+ 包内广播接收（`HostStgCatalogReceiver` → `StgCatalogBroadcast`） | 用 `StrategyMergeTargets` 从当前页取 `stId` / 策略名，命中某个聚合组就按成员 `stId` 让宿主**自己重取**，把并集写回原生 `AIStkAdapter.data` 再 `notifyDataSetChanged`；组内计数栏与「筛选股票」抢同一个 `TextView`，按「列表实际行数 vs 并集总数」判是否处于筛选态 | **成员必须由宿主自己取**（手拼行对象会让点击下标与详情页对不上）；**先合并再过滤** —— `StgStockFilterFeature` 的过滤代理包在合并后的数据外面；成员清单收不到广播时退回手工登记的 `stId`（见 [FEATURE-STRATEGY-MERGE](FEATURE-STRATEGY-MERGE.md)） |
 | **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
 | **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
 | **新股申购提醒弹窗净化** | `IpoDialogCleanFeature` | `MainAct#showSgbDialog`（申购专用入口）+ `android.app.Dialog#show`（按类名兜底） | 两道都拦下弹窗**显示**：拦展示不拦构造，对象建了只是不 `show`，宿主后续流程照旧 | **判据收紧** —— `Dialog#show` 对**所有**弹窗生效，类全名或简名任一命中才拦，宁可漏也不能误伤宿主其它对话框（见 [FEATURE-IPO-DIALOG](FEATURE-IPO-DIALOG.md)） |
@@ -255,15 +256,21 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> **当前状态（18 个 Feature 实现 / 21 个开关）**：上面两张表就是全部功能的现行挂载方式 ——
-> 挂钩子改行为 12 个 + 界面精简 6 个。
+> 另有 `HostNetProbeFeature`（宿主网络探针，临时诊断用）挂在 `okhttp3.OkHttpClient#newCall` 上，
+> 只把宿主自己发出的 POST / PUT 与命中关键字的 GET 记进日志 —— 恒开、不占功能目录、界面上看不到，
+> 用来摸「标签选股 → 添加至我的策略」那条服务端下发的 H5 接口（`feature/hostnet/`）。
+
+> **当前状态（22 个功能开关 / 19 个用户功能实现）**：上面两张表就是全部功能的现行挂载方式 ——
+> 挂钩子改行为 13 个 + 界面精简 6 个。
 >
-> **口径说明**：「21 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
-> 「18 个实现」是 `FeatureManager` 里登记的 Feature 个数 —— 两者差 3 是因为有两组开关
+> **口径说明**：「22 个开关」是**功能目录里的行数**（`ui/FeatureCatalog.kt` 的 `FeatureSpec` 条数），
+> 「19 个实现」是这 22 行对应的 Feature 个数 —— 两者差 3 是因为有两组开关
 > 各自共用同一个 Feature 实现：
 > `aistare_quick_config` / `aistare_empty_save` / `aistare_skip_save_confirm`
 > 三个由 `AiStareQuickConfigFeature` 实现（不单列功能行），
-> `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
+> `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现。
+> `FeatureManager` 另外还登记了 `HostNetProbeFeature`（id `hostnet.probe`）：恒开、不占功能目录、
+> 挂在 `okhttp3.OkHttpClient#newCall` 上只记日志，属临时诊断，界面上看不到（见 §3.2 上方「宿主网络探针」一句）。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
 > `stock_bar_entry`（底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`
@@ -591,6 +598,15 @@ com.guosen.android
         android:name=".app.DebugConfigProvider"
         android:authorities="io.github.MVennn.GSAuxiliary.config"
         android:exported="true" />
+
+    <!-- 宿主策略清单入口：宿主 sendBroadcast 到本包，落本地缓存（见 core/StgCatalogBroadcast） -->
+    <receiver
+        android:name=".app.HostStgCatalogReceiver"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="io.github.MVennn.GSAuxiliary.action.HOST_STG_CATALOG" />
+        </intent-filter>
+    </receiver>
 </application>
 ```
 

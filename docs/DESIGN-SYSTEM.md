@@ -41,6 +41,33 @@
 | P9 | **默认关** | 所有功能开关出厂一律 `false`，默认值只从 `ConfigKeys.DEFAULT_*` 取 |
 | P10 | **真机才算验完** | Compose 的错位、重叠、裁切编译期全不报错，只有真机能看见 |
 
+### 0.3 组件取用与参考来源
+
+**能用官方的就用官方。** 自绘件必须在这一节登记、写明为什么，不在各页各写一遍。
+
+| 层 | 取谁 | 为什么 / 注意 |
+|---|---|---|
+| 页面骨架 | Miuix `Scaffold` / `SmallTopAppBar` / `NavigationBar` / `NavigationBarItem` / `Card` / `SmallTitle` / `BasicComponent` / `TextField` / `Surface` / `IconButton`，主题用 `MiuixTheme` | 锁 **0.9.3**，不升 0.9.4+（会带进 Compose 1.12 与 AGP ≥ 9.1，见 `BUILD.md`）。`Card` 满宽，左右边距**自己**补 `Modifier.cardPadding()`（12dp）；页面底色一律 `colorScheme.surface`，**不是** `background`（两者在 Miuix 里同色，卡片会整片消失，第 1.3 节） |
+| 开关 | **自绘** `GsSwitchPreference` / `GsSwitch` | 替换 Miuix `Switch` / `SwitchPreference`：几何对齐 Miuix，拖拽量纲按密度换算，玻璃态由自己控（第 3.1 节） |
+| 行与箭头 | Miuix `BasicComponent` + **自绘** `ArrowRightIcon` / `DownArrowIcon` | 不用 `ArrowPreference`：Miuix 自带箭头的染色不生效（第 6.2 节）。九种行型都是 `BasicComponent` + 自绘件拼出来的 |
+| 弹层 | **自绘** `DialogHost` + 五种 spec | Miuix `OverlayDropdownPreference` / `OverlayDialog` / `MiuixPopupHost` **禁用**：库在自己的 `onClick` 里同步收起动画，与同步回写配置打架会闪退（第 5.1 节） |
+| 图标 | 自绘箭头 + `AppIcons` | Miuix 扩展图标（`MiuixIcons.Extended.*`）**不在 0.9.3 的产物里** |
+| 底栏 | 官方 `NavigationBar` 或自绘 `LiquidGlassDock` | 玻璃三档见 `UI-MATERIAL.md`；关玻璃退回官方件，两种形态的条目与顺序必须一致（第 8.3 节） |
+| 文字色 | 根容器补 `LocalContentColor provides MiuixTheme.colorScheme.onBackground` | `MiuixTheme(colors = …)` 这个重载**不**提供 `LocalContentColor`，漏了这一句输入框正文是黑的（`UI-HISTORY.md` 3.7.0 条） |
+
+**照谁对齐** —— 新页面不要凭空想数值，按顺序找最近的一处：
+
+| 顺序 | 参照 | 管什么 |
+|---|---|---|
+| ① | 本仓**最像的那一页** | 先翻第 14 章页面清单，同型页面的行型、间距、弹层直接复用；配置类页面另有母版，见表下 |
+| ② | **Miuix 官方渲染**（0.9.3 真机观感） | 圆角、阴影、字号档、按压高亮以它为准；自绘件要做到一眼看不出是自绘 |
+| ③ | **宿主 App 自己的界面** | 模块与宿主同屏共存（策略详情页三点菜单、筛选面板、计数栏），字号行高圆角向宿主看齐，不硬套设置页的数值 |
+| ✗ | 未登记的第三种观感 | M3 默认按钮、装饰性渐变这类不引入；确需新增，先在 `docs/UI-MATERIAL.md` 组件清单登记再动手（数值照抄不自己发明，第 2.3 节） |
+
+**配置类页面照「方案设置」。** 让用户自由搭配配置的页面 —— 多套方案、逐条取值、行尾 ⋮ 管排序与删除、新建行带展开动画 —— 一律以**方案设置**（功能页 → 智能盯盘 → 增加 配置 按钮）为母版：先照 `QuickConfigScreen.kt`（二级列表）+ `QuickConfigEditScreen.kt`（三级编辑）铺骨架，再换本页字段。现役按它做出来的两页是**复制设置**（`ZxCopyRuleScreen.kt` / `ZxCopyRuleEditScreen.kt`）与**聚合组设置**（`StrategyMergeScreen.kt` / `StrategyMergeEditScreen.kt`）；三页交互必须一致，用户不为同一件事学三种操作。
+
+从参照图量出来的具体数值记进对应正文档（例：状态卡图标 168dp 见 `UI.md` 3.2.1 的参照图结论），不堆在这一节。
+
 ---
 
 ## 1. 页面骨架
@@ -239,25 +266,28 @@ BasicComponent(
 | 立即执行 | `BasicComponent` | 无 | 可选 | 执行 + Toast |
 | 选一个值 | `BasicComponent` | `↓` | 当前值 | `ChoiceDialogSpec` |
 | 填短值 | `BasicComponent` + 弹层 | `›` | 当前值 | `TextInputDialogSpec` |
+| 选时段 | `BasicComponent` + 弹层 | `＋` | 已有段数 | `TimeRangeDialogSpec` |
 | 列表条目 | `BasicComponent` | `✕` | 说明（可空） | 无 / 进详情 |
 | 新建 | `BasicComponent`（primary） | `＋` | 可选 | `TextInputDialogSpec` |
 | 说明 / 结果 | `CardNote` | 无 | — | 无 |
 
 ---
 
-## 4. 可编辑字段：只有三种形态
+## 4. 可编辑字段：只有四种形态
 
-### 4.1 三形态
+### 4.1 四形态
 
 | 形态 | 用于 | 组件 | 落配置时机 |
 |---|---|---|---|
 | **行内选择器** | 离散取值（模式 / 主题 / 分隔符 / 等级） | `BasicComponent` + `ChoiceDialogSpec` | 收起动画之后 |
 | **一行入口 + 弹层输入** | 需要打字的任何值（单个文字、多行规则表的一次新增、数字） | `BasicComponent` + `TextInputDialogSpec` | 收起动画之后 |
+| **一行入口 + 滚轮** | 时间 / 时段这类**有刻度**的值（追加次数时段） | `BasicComponent` + `TimeRangeDialogSpec` | 收起动画之后 |
 | **页内搜索** | 在已有列表里筛（不落配置） | `AppSearchField` | 只 `remember`，不持久化 |
 
 **硬约束**：
 - 页面上**不常驻** `TextField`（唯一例外是搜索框）。常驻输入框会把页面撑高，且「框里的字」与「已保存的字」是两回事。
 - 需要打字的值**一律**「一行入口 + 弹层」，清空走二次确认。
+- 时间 / 时段这类有刻度的值**不让打字**：用上下滑动的滚轮（`TimeRangeDialogSpec`）。手打 `15:30-17:30` 要切输入法、还要教用户分隔符与格式，滚轮给不出非法输入。
 - 页内搜索**只** `remember`，下次进来是干净的全量视图。
 
 ### 4.2 页内搜索框 AppSearchField（唯一实现）
@@ -322,6 +352,7 @@ BasicComponent(
 | 从几个固定值里选一个 | `ChoiceDialogSpec` | **必须**传 `anchor`（贴着触发行展开） | 取消 + 确定；当前项打勾；纯动作菜单写 `selectedIndex = -1` |
 | 确认一件有后果的事 | `ConfirmDialogSpec` | **恒为 `null`**（贴底） | 取消 + 确定；`cancelText` 传空串则只画一颗 |
 | 输入文字 / 数字 | `TextInputDialogSpec` | 贴底 | 取消 + 确定 |
+| 选一个时段（时:分 → 时:分） | `TimeRangeDialogSpec` | 贴底 | 取消 + 确定；四根 `NumberPicker`（开始 时/分、结束 时/分），起止相同 / 与已有段重叠时不关窗 |
 | 看一张图 | `ImageDialogSpec` | 恒 `null` | 关闭 |
 | 必须读的协议 | `AgreementDialogSpec` | 恒 `null` | 不可关闭，返回键**只吞不放行** |
 
@@ -644,7 +675,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 
 ## 14. 附录：两仓页面清单与专有形态
 
-### 14.1 GSAuxiliary（15 页）
+### 14.1 GSAuxiliary（18 页）
 
 | 层 | 页面 | 文件 |
 |---|---|---|
@@ -658,6 +689,9 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 二级 | 复制规则列表 | `ZxCopyRuleScreen.kt` |
 | 三级 | 复制规则编辑 | `ZxCopyRuleEditScreen.kt` |
 | 二级 | 复制按钮设置 | `ZxCopyButtonScreen.kt` |
+| 二级 | 聚合组设置（组列表） | `StrategyMergeScreen.kt` |
+| 三级 | 聚合组编辑 | `StrategyMergeEditScreen.kt` |
+| 二级 | 筛选条件保存设置 | `StgFilterSettingsScreen.kt` |
 | 二级 | 免责声明 / 公告 | `AboutTab.kt` |
 
 **GS 专有事实**：
@@ -684,7 +718,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 二级 | 免责声明 / 第三方组件 | `DisclaimerScreen.kt` / `NoticeScreen.kt` |
 
 **WX 专有形态**：
-- 发送设置页六区：发送范围（开关 + 名单入口）／发送提示（两开关）／重复图片（开关）／重命名（入口 + 「N 条规则」）／文字过滤（入口 + 「黑名单 · N 条关键字」）／记录（入口）。
+- 发送设置页六区：发送范围（开关 + 名单入口）／发送提示（两开关）／重复图片（开关 + 「追加次数设置」入口）／重命名（入口 + 「N 条规则」）／文字过滤（入口 + 「黑名单 · N 条关键字」）／记录（入口）。
 - 黑白名单页三节：名单（开关行，二选一不做下拉）／匹配方式（两开关）／关键字（两张卡：列表卡 + 动作卡，间隔 12dp）；即改即生效、无保存按钮。
 - 重命名规则页三节：规则（逐条 原名 → 新名，行尾 ✕）／新建与清空（两张卡）／导入与导出；新建的四类非法输入全部挡在弹层里。
 - 发送记录页五段：概览卡／筛选节（`SmallTitle` + 裸搜索框 + 时间范围卡，搜索与条件不同框）／只读提示卡／按时间段分组／操作卡；筛选态下**全部命中组自动展开**。
@@ -708,6 +742,10 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 2026-11-10 | 首版：从 GSAuxiliary（15 页）与 WxPicLabe（12 页）现有实现反向提炼，收敛 129 条既有规则、18 条两仓冲突、14 条缺口 |
 | 2026-11-10 | 新增 5.3「键盘让位」：贴底弹层不得用 `WindowInsets.ime` 直接做让位（resize/pan 下双倍让位会「弹飞」），改用可见区重叠量 + 160ms 动画；高度上限用目标值 |
 | 2026-11-10 | 补 5.3 的第二种坏法：完全不做键盘让位（edge-to-edge 页面）会被键盘整块遮住、按钮点不到，与双倍让位「弹飞」同源 —— 同一把尺（实际被挡住多少）治两种 |
+| 2026-11-12 | 新增 0.3「组件取用与参考来源」：官方件 / 自绘件对照表 + Miuix 0.9.3 五条硬约束（锁版本、`cardPadding`、`surface` 而非 `background`、`Overlay\*` 禁用、`LocalContentColor`）+ 三级参照顺序（同型页面 → Miuix 官方渲染 → 宿主界面） |
+| 2026-11-12 | 同步 WxPicLabe 已落地的第 4 种字段形态「一行入口 + 滚轮」（`TimeRangeDialogSpec`，时段类有刻度值不让打字），补进 3.10 速查表、第 4 章标题与 5.1 选型表；两仓重新逐字对齐 |
+| 2026-11-12 | 0.3 补「配置类页面照方案设置」：多套方案、逐条取值、行尾 ⋮ 管排序删除、新建行带展开动画，母版 = `QuickConfigScreen.kt` / `QuickConfigEditScreen.kt`；现役复制设置与聚合组设置按它做 |
+| 2026-11-12 | 14.1 页面清单补齐聚合组设置、聚合组编辑、筛选条件保存设置（15 → 18 页） |
 | 2026-11-10 | 修正 4.2 与第 2 章：搜索框**不进卡**（卡底色 + 框底色 = 框套框），左右 `CardHMargin`、上下 4dp，且不与条件行同框；记录页改为「筛选节 = SmallTitle + 裸搜索框 + 时间范围卡」 |
 
 ---

@@ -542,6 +542,15 @@ SharedPreferences `launcher_icon_state`（键 `desktop_icon_local`，缺省 fals
   `colors = TextFieldDefaults.textFieldColors(backgroundColor = surfaceContainer, labelColor = onSurfaceSecondary)`；
   `borderColor` 默认 `primary`（同时是光标色），不要顺手改掉
 
+- **`MiuixTheme(colors = …)` 这个重载不 provide `LocalContentColor`**（3.7.0 之后修）：
+  miuix 有两个 `MiuixTheme` 重载，只有传 `ThemeController` 的那个会
+  `LocalContentColor provides colorScheme.onBackground`；传 `colors:` 的那个只 provide 颜色、
+  文字样式、indication 与 overscroll，于是树里读到的还是 Compose 默认的 `Color.Black`。
+  miuix `TextField` 的正文色正是 `textStyle.color.takeOrElse { LocalContentColor.current }`
+  （`TextFieldColors` 只有背景 / 描边 / 标签三色，**没有** textColor），所以深色模式下输入框里
+  的字永远是黑的。修法：在 AppTheme 的 `CompositionLocalProvider` 里补一行
+  `LocalContentColor provides MiuixTheme.colorScheme.onBackground` —— 一处生效，所有输入框跟着主题走。
+
 ---
 
 
