@@ -399,6 +399,12 @@ bot 在收录 issue 里的原话：
 - **`publish.py` 是「先源码、后模块」两步**：token 对模块仓库没有写权限时，
   源码仓库那份 Release 已经建好了、用户却收不到。所以有了 `publish.py --check`，
   以及 `release.yml` 里那一步前置检查 —— 发之前先问一句「到底能不能写」。
+- **已发布的 CHANGELOG 段不可回填**：3.8.1 已经建了 tag 与 Release，之后补做的修复被追加进
+  `[3.8.1]` 段里，等于事后改写已发出的说明。新修复一律新开 `[x.y.z]` 段并进位
+  `versionCode` / `versionName`（3.8.2 就是这么补的）。
+- **验收 Release 要用 tag 查，不是 `vX.Y.Z`**：Release 的 tag 是 `{versionCode}-{versionName}`
+  （`61-3.8.2`），`v3.8.2` 只是 Release 的 name。`gh release view v3.8.2` 会直接回
+  `release not found`，用 `gh release view 61-3.8.2 --repo MVennn/GSAuxiliary` 才查得到附件与正文。
 - **平台目录名不等于元数据里的版本号**：官方 SDK 包里遇到过目录叫 `android-37.2`、
   `package.xml` 里却写 `37.0` 的。`setup-sdk37.sh` 因此**不按目录名猜版本**，
   而是把所有 `37.x` 一律压成 `37`（见 `docs/BUILD.md` §8.1）。
