@@ -70,6 +70,9 @@
 | `core/LogStore.kt` | 日志落盘（两份滚动，`filesDir/logs`），供「导出日志」读取 | 模块 App |
 | `core/LogExporter.kt` | 导出日志：本机落盘 + 直读 / `su` 读 LSPosed 日志，拼一份文本 | 模块 App |
 | `core/HookBag.kt` | 钩子句柄集合，支持一次性卸载 | 目标进程 |
+| `core/MainThreadStallWatchdog.kt` | 主线程卡死看门狗：主线程定时报活，超阈值（默认 2.5s 没动）dump 栈并告警；带代次令牌，重复 `start` 不会起第二条线程 | 目标进程 |
+| `core/HostSession.kt` | 宿主会话回填：从宿主自己的请求体里抠 `session` / `userCode` / `openapi_sign` 与公共段，供模块侧直连网关取数 | 目标进程 |
+| `core/StgCatalogBroadcast.kt` | 策略清单广播（`com.guosen.aistare.STG_CATALOG`）：把「页面上真实存在的策略」整份发给模块 App | 目标进程 |
 | `core/TargetApp.kt` | 目标包名 | 两处共用 |
 | `util/Reflect.kt` | 反射：候选名、继承链查找、过滤 abstract | 目标进程 |
 | `feature/Feature.kt` | 功能扩展接口 | 目标进程 |
@@ -93,8 +96,11 @@
 | `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机：方向 + 股票类型两组条件） | 目标进程 |
 | `feature/stgfilter/StgStockFilterTargets.kt` | 该功能的菜单 / 面板 id 候选常量 | 目标进程 |
 | `feature/stgfilter/StgFilterPanelBuild.kt` | 面板装配（从 Feature 本体拆出：三点菜单注入、菜单项高度归一化、面板样式复刻） | 目标进程 |
+| `feature/filter/PercentTimeline.kt` | 涨跌幅按「谁最近变化」裁决：字段值与显示文案各记一份带时间戳的样本，取更晚的一侧（被筛掉的行会粘住，不会下一轮又飘回来） | 目标进程 |
 | `feature/filter/StockFilters.kt` · `StockFilterStore.kt` · `StockTypes.kt` · `StockFilterPanelUi.kt` | **两块筛选面板共用的一套**：八项条件模型（涨跌与自选 / 股票类型两组语义）+ 落盘（目标 App 自己的 prefs，含进程级共享缓存）+ 股票类型判定 + 面板装配工具（行容器换法 / 建行 / 分组头 / 样式克隆 / 监听包装） | 目标进程 |
 | `feature/stgfilter/StgFilterPanel.kt` · `StgFilterBridge.kt` | 策略详情页那颗面板（八行两组、重置 / 确定）+ 筛选结果只读通道（目标进程内：`StgStockFilterFeature` 换好数据后经 `StgFilterBridge` 流向直达标准行情，解决「筛选后滑动漏股票」） | 目标进程 |
+| `feature/stgmerge/StrategyMergeFeature.kt` · `StrategyMergeTargets.kt` · `StrategyMergeBridge.kt` · `StrategyMergeCache.kt` | **我的策略聚合**功能本体（并集写回、入口卡改造、条数口径、取数窗口）+ 全部宿主候选常量 + 只读结果通道 + 结果缓存 | 目标进程 |
+| `feature/stgmerge/StrategyComboCatalog.kt` · `StrategyComboClient.kt` · `StrategyLabelTable.kt` · `StrategyStgIndex.kt` · `StrategyStgCatalog.kt` | 组合维度模型（档位 / 笛卡尔积 / 口径展开）、直连网关建取删三连的客户端、宿主 1119 条标签档位表、名称 → stId 索引、清单广播的装配 | 目标进程 |
 | `feature/market/MarketFilterFeature.kt` · `MarketFilterTargets.kt` | **行情页「涨跌与自选」筛选**功能本体（往宿主 `FilterDiaglog` 里追加三行 + 按它们收起排行榜行）+ 定位常量 | 目标进程 |
 | `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（注入按钮 + 触发面板） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
@@ -132,6 +138,7 @@
 | `app/ModulePreferences.kt` | 配置仓库（REMOTE / LOCAL 双后端） | 模块进程 |
 | `app/ConfigBackup.kt` | 配置备份 / 恢复（自描述 JSON） | 模块进程 |
 | `app/LauncherIcon.kt` | 桌面图标开关（切 `activity-alias` 的 enabled 状态） | 模块进程 |
+| `app/HostStgCatalog.kt` · `app/HostStgCatalogReceiver.kt` | 收下目标进程广播的策略清单（名称 / stId / 标签）+ 本机持久化，供「从金太阳导入」用 | 模块进程 |
 | `app/LocaleHelper.kt` | 界面语言（`attachBaseContext` 包装 Context） | 模块进程 |
 | `app/DebugConfigProvider.kt` | adb 调试通道（仅 root/shell） | 模块进程 |
 
@@ -256,9 +263,11 @@ onHotReloaded(param)
 精简类功能的调度细节（改视图时机、首帧屏障、限速、失配时打视图树快照）见
 [界面精简实现方案](FEATURE-UI-CLEAN.md) 与 `feature/PageSyncFeature.kt` 类注释。
 
-> 另有 `HostNetProbeFeature`（宿主网络探针，临时诊断用）挂在 `okhttp3.OkHttpClient#newCall` 上，
+> 另有 `HostNetProbeFeature`（宿主网络探针）挂在 `okhttp3.OkHttpClient#newCall` 上，
 > 只把宿主自己发出的 POST / PUT 与命中关键字的 GET 记进日志 —— 恒开、不占功能目录、界面上看不到，
 > 用来摸「标签选股 → 添加至我的策略」那条服务端下发的 H5 接口（`feature/hostnet/`）。
+> 它同时负责**回填宿主会话**：请求体里出现 `openapi_sign=` 就抠出 `session` / `userCode` / 公共段交给 `core/HostSession`，
+> 模块侧直连网关取数（组合维度、临时策略建取删）靠的就是这份会话。WebView 调试只在 debug 包里打开。
 
 > **当前状态（22 个功能开关 / 19 个用户功能实现）**：上面两张表就是全部功能的现行挂载方式 ——
 > 挂钩子改行为 13 个 + 界面精简 6 个。
@@ -270,7 +279,7 @@ onHotReloaded(param)
 > 三个由 `AiStareQuickConfigFeature` 实现（不单列功能行），
 > `watchlist_highlight` / `watchlist_bold` 两个由 `WatchlistFeature` 实现。
 > `FeatureManager` 另外还登记了 `HostNetProbeFeature`（id `hostnet.probe`）：恒开、不占功能目录、
-> 挂在 `okhttp3.OkHttpClient#newCall` 上只记日志，属临时诊断，界面上看不到（见 §3.2 上方「宿主网络探针」一句）。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
+> 挂在 `okhttp3.OkHttpClient#newCall` 上只记日志并回填宿主会话，界面上看不到（见 §3.2 上方「宿主网络探针」一句）。2.13.0 起陆续补齐了 `stg_stock_filter`（策略详情筛选股票）、
 > `stock_bar_entry`（底栏智能盯盘入口）与 2.15.0 的界面精简五个功能，2.16.0 又新增了
 > `nav_bar_blend`（手势导航条同色），2.17.0 补上了 `ipo_dialog_clean`
 > （新股申购提醒弹窗净化），3.1.0 补上了 `aistare_quick_config`

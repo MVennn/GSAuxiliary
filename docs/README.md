@@ -36,7 +36,7 @@
 | [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md) | 隐藏 新股申购 弹窗，含真机校准手册 |
 | [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) | 手势导航条同色 |
 | [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) | 界面精简（底栏 / 首页 / 行情市场，含「隐藏 指数概览」），含真机校准手册 |
-| [FEATURE-STRATEGY-MERGE.md](FEATURE-STRATEGY-MERGE.md) | 我的策略聚合（聚合组）：同组多条原生策略的股票并到一张原生结果页，含踩点报告、真机探针记录与筛选联动 |
+| [FEATURE-STRATEGY-MERGE.md](FEATURE-STRATEGY-MERGE.md) | 我的策略聚合（聚合组）：同组多条原生策略的股票并到一张原生结果页；含踩点报告、真机探针记录、筛选联动、从金太阳导入、标签成员、组合维度、入口卡命名与全选提速 |
 
 ## 三、流程与规范
 

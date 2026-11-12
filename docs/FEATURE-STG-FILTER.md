@@ -600,7 +600,7 @@ RelativeLayout #container_ai_stk_detail
 | 页面 | 作用域 | 落盘键 |
 |---|---|---|
 | 普通策略详情页 | `stg:<m_stg.id>` | `filter_up@stg:1234567` |
-| 聚合组页（与「策略整合」联动） | `grp:<聚合组 id>` | `filter_up@grp:9f2c…` |
+| 聚合组页（与「我的策略聚合」联动） | `grp:<聚合组 id>` | `filter_up@grp:9f2c…` |
 | 行情页漏斗面板 | 永远全局 | `filter_up`（**不受这个设置影响**） |
 
 四条硬规则：
@@ -609,7 +609,7 @@ RelativeLayout #container_ai_stk_detail
    结束时再还原），名字也被改写成「聚合 · 组名（N 条）」—— 这两个当场身份都不可信。
    所以组身份由聚合侧登记：`StrategyMergeFeature.start()` 在**改宿主之前**调
    `StockFilterScopes.rememberMergePage(act, group.id, group.name)`，
-   撤销点在 `releaseRollback()` 与 `onActivityDestroyed()`（关掉「策略整合」后本页立刻退回按策略记）。
+   撤销点在 `releaseRollback()` 与 `onActivityDestroyed()`（关掉「我的策略聚合」后本页立刻退回按策略记）。
 2. **首次进入不继承**。某个策略盘上没有自己那组键时按**出厂值**（不筛）返回，
    **不回灌**全局那份 —— 否则「第一次点开就被上一次在别的策略上设的条件筛掉」。
 3. **缓存按槽分**。`StockFilterStore.cached` 是 `ConcurrentHashMap<String, StockFilters>`，
