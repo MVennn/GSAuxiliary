@@ -28,11 +28,23 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 极简路由：一级首页 + 五个二级页 + 一个三级页 */
+/**
+ * 带 `route` extra 拉起设置页时，直达「聚合组设置」二级页的值。
+ *
+ * 键沿用 [io.github.MVennn.GSAuxiliary.core.QuickConfigStore.EXTRA_ROUTE]（"route"），
+ * 值加冒号再接组 id 可直达该组的编辑页（"aistare_strategy_merge:group3"）。
+ * 用途：验收 / 调试时不用在功能页里滚动找入口，一条 am start 就到。
+ */
+const val ROUTE_STRATEGY_MERGE = "aistare_strategy_merge"
+
+/** 极简路由：一级首页 + 若干二级页 + 若干三级页（三级页的父页由 editParent 定） */
 internal sealed interface Route {
     data object Home : Route
     data object WatchlistDetail : Route
     data object StgDirectQuoteDetail : Route
+
+    /** 策略筛选的设置页：筛选状态是否按策略 / 聚合组分开记忆 */
+    data object StgFilterSettings : Route
     data object QuickConfig : Route
     /** 方案编辑页（三级）：带方案 id（方案被删时页面自己回落空态） */
     data class QuickConfigEdit(val schemeId: String) : Route
@@ -44,6 +56,10 @@ internal sealed interface Route {
     data object ZxCopyButton : Route
     /** 复制规则编辑页（三级）：带规则 id（规则被删时页面自己回落空态） */
     data class ZxCopyRuleEdit(val ruleId: String) : Route
+    /** 策略整合的聚合组列表（二级）：组名 + 成员策略 */
+    data object StrategyMerge : Route
+    /** 单个聚合组的编辑页（三级）：带组 id（组被删时页面自己回落空态） */
+    data class StrategyMergeEdit(val groupId: String) : Route
     /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
@@ -69,9 +85,12 @@ private object RouteSaver : Saver<Route, String> {
         Route.ZxCopyRules -> "zx_copy_rules"
         Route.ZxCopyButton -> "zx_copy_button"
         is Route.ZxCopyRuleEdit -> "zx_copy_rule_edit:" + value.ruleId
+        Route.StrategyMerge -> "stg_merge"
+        is Route.StrategyMergeEdit -> "stg_merge_edit:" + value.groupId
         Route.AiStareSaveBehavior -> "aistare_save_behavior"
         Route.WatchlistDetail -> "watchlist_detail"
         Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
+        Route.StgFilterSettings -> "stg_filter_settings"
         Route.Disclaimer -> "disclaimer"
         Route.Notice -> "notice"
     }
@@ -85,9 +104,13 @@ private object RouteSaver : Saver<Route, String> {
         value == "zx_copy_button" -> Route.ZxCopyButton
         value.startsWith("zx_copy_rule_edit:") ->
             Route.ZxCopyRuleEdit(value.removePrefix("zx_copy_rule_edit:"))
+        value == "stg_merge" -> Route.StrategyMerge
+        value.startsWith("stg_merge_edit:") ->
+            Route.StrategyMergeEdit(value.removePrefix("stg_merge_edit:"))
         value == "aistare_save_behavior" -> Route.AiStareSaveBehavior
         value == "watchlist_detail" -> Route.WatchlistDetail
         value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
+        value == "stg_filter_settings" -> Route.StgFilterSettings
         value == "disclaimer" -> Route.Disclaimer
         value == "notice" -> Route.Notice
         else -> Route.Home
@@ -97,12 +120,13 @@ private object RouteSaver : Saver<Route, String> {
 /**
  * 三级页 → 它压在下面的那个二级页；不是三级页返回 null。
  *
- * 现在有两个三级页（方案编辑 / 复制规则编辑），返回目标、二级层画哪一页、
+ * 现在有三个三级页（方案编辑 / 复制规则编辑 / 聚合组编辑），返回目标、二级层画哪一页、
  * 可预测返回推哪一层，都从这里取，别再写死 `Route.QuickConfig`。
  */
 private fun editParent(route: Route): Route? = when (route) {
     is Route.QuickConfigEdit -> Route.QuickConfig
     is Route.ZxCopyRuleEdit -> Route.ZxCopyRules
+    is Route.StrategyMergeEdit -> Route.StrategyMerge
     else -> null
 }
 
@@ -188,7 +212,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                 subProgress.animateTo(0f, tween(RouteAnimMillis))
             }
 
-            is Route.QuickConfigEdit, is Route.ZxCopyRuleEdit -> {
+            is Route.QuickConfigEdit, is Route.ZxCopyRuleEdit, is Route.StrategyMergeEdit -> {
                 subProgress.animateTo(1f, tween(RouteAnimMillis))
                 editProgress.animateTo(1f, tween(RouteAnimMillis))
             }
@@ -272,13 +296,16 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                     // 功能 id → 二级菜单。新增带二级菜单的功能时在这里加一行。
                     route = when (id) {
                         "stg_direct_quote" -> Route.StgDirectQuoteDetail
-                        "aistare_quick_config" -> Route.QuickConfig
+                        // 策略筛选：筛选状态按策略 / 聚合组分开记（默认共用一份）
+                        "stg_stock_filter" -> Route.StgFilterSettings                        "aistare_quick_config" -> Route.QuickConfig
                         // 第二个入口：配置按钮自己的设置（多方案时是否弹选择层）
                         "aistare_quick_config#2" -> Route.QuickConfigButton
                         // 保存成功后：是否直接退回个股详情页
                         "aistare_skip_save_confirm" -> Route.AiStareSaveBehavior
                         "zx_group_copy" -> Route.ZxCopyRules
                         "zx_group_copy#2" -> Route.ZxCopyButton
+                        // 智能选股：聚合组列表（组里装哪些原生策略）
+                        "stg_merge" -> Route.StrategyMerge
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -335,6 +362,13 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             StrategyQuoteDetailScreen()
                         }
 
+                        Route.StgFilterSettings -> SubScreen(
+                            title = stringResource(R.string.detail_stg_filter_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            StgFilterSettingsScreen()
+                        }
+
                         Route.QuickConfig -> SubScreen(
                             title = stringResource(R.string.detail_quick_config_title),
                             onBack = { route = Route.Home },
@@ -367,6 +401,15 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             ZxCopyButtonScreen()
                         }
 
+                        Route.StrategyMerge -> SubScreen(
+                            title = stringResource(R.string.detail_stg_merge_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            StrategyMergeScreen(
+                                onEdit = { groupId -> route = Route.StrategyMergeEdit(groupId) },
+                            )
+                        }
+
                         Route.AiStareSaveBehavior -> SubScreen(
                             title = stringResource(R.string.feature_skip_save_detail_title),
                             onBack = { route = Route.Home },
@@ -390,6 +433,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
 
                         is Route.QuickConfigEdit -> Unit
                         is Route.ZxCopyRuleEdit -> Unit
+                        is Route.StrategyMergeEdit -> Unit
                         Route.Home -> Unit
                     }
                 }
@@ -422,6 +466,17 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                                 ZxCopyRuleEditScreen(
                                     ruleId = editRoute.ruleId,
                                     onDeleted = { route = Route.ZxCopyRules },
+                                )
+                            }
+
+                            is Route.StrategyMergeEdit -> SubScreen(
+                                title = stringResource(R.string.detail_stg_merge_edit_title),
+                                // 组被删掉就回列表，不停在空白的三级页
+                                onBack = { route = Route.StrategyMerge },
+                            ) {
+                                StrategyMergeEditScreen(
+                                    groupId = editRoute.groupId,
+                                    onDeleted = { route = Route.StrategyMerge },
                                 )
                             }
 

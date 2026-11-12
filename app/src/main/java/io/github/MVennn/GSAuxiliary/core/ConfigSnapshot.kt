@@ -26,6 +26,12 @@ data class ConfigSnapshot(
     val stgSnapAdd: Boolean,
     /** 策略详情页三点菜单里注入「筛选股票」（涨幅 / 跌幅 / 自选 三个开关） */
     val stgStockFilter: Boolean,
+    /** 筛选状态按策略 / 聚合组分开记忆（关着则所有策略共用一份） */
+    val stgFilterPerStrategy: Boolean,
+    /** 策略详情页「策略合并」总开关（组数据见 [stgMergeGroups] / `StrategyMergeStore`） */
+    val stgMerge: Boolean,
+    /** 策略合并的聚合组数据（JSON 字符串，结构见 `StrategyMergeStore`） */
+    val stgMergeGroups: String,
     /** 个股详情页底栏在「自选」与「更多」之间注入「智能盯盘」快捷入口 */
     val stockBarEntry: Boolean,
     /** 主界面底栏不再显示「理财」那一格 */
@@ -85,18 +91,19 @@ data class ConfigSnapshot(
      * —— 用户改了开关但功能不变，而且**日志里一行都没有**。
      *
      * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
-     * （「重置模块」一次写 23 个键、恢复备份一次写 29 个键）。
+     * （「重置模块」一次写 32 个键 = `FEATURE_KEYS` 22 + `FEATURE_PARAM_KEYS` 10、
+     * 恢复备份一次写 39 个键 = `ALL_KEYS`）。
      *
-     * 改成「布尔项占低位、逐个异或」之后：**26 个布尔项之间不再有任何碰撞**
+     * 改成「布尔项占低位、逐个异或」之后：**28 个布尔项之间不再有任何碰撞**
      * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON /
-     * 复制规则 JSON）再各自混一层异或。
+     * 复制规则 JSON / 聚合组 JSON）再各自混一层异或。
      *
-     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..25，**还剩 6 位**。
+     * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..27（28 项），**还剩 4 位**。
      * 再加布尔项时 `bit shl 1` 会在第 32 位溢出成 0 → **两个开关静默冲突**
      * （症状：改了其中一个，另一个也跟着变）。所以新增开关时，
      * 这里的个数说明与 `ConfigSnapshotFingerprintTest` 的清单**都要同步更新**。
      *
-     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²⁶
+     * 碰撞概率：布尔集合之间是 0；布尔集合与数值项之间约 1/2²⁸
      * （数值项的异或值会落进低位，但已远低于原加权求和的「几千分之一」）。
      */
     val fingerprint: Int = run {
@@ -114,6 +121,7 @@ data class ConfigSnapshot(
         mix(stgSelectAll)
         mix(stgSnapAdd)
         mix(stgStockFilter)
+        mix(stgFilterPerStrategy)
         mix(stockBarEntry)
         mix(dockClean)
         mix(homeBannerHide)
@@ -132,11 +140,13 @@ data class ConfigSnapshot(
         mix(aiStarePickScheme)
         mix(zxGroupCopy)
         mix(zxCopyMenu)
+        mix(stgMerge)
         // 数值项各自混一层：黄金比例常数（Fibonacci hashing 的标准做法）
         h = h xor (color * 0x9E3779B1.toInt())
         h = h xor (logLevel * 0x85EBCA6B.toInt())
         h = h xor aiStareQuickConfig.hashCode()
         h = h xor zxCopyRules.hashCode()
+        h = h xor stgMergeGroups.hashCode()
         h
     }
 
@@ -152,6 +162,9 @@ data class ConfigSnapshot(
             stgSelectAll = ConfigKeys.DEFAULT_STG_SELECT_ALL,
             stgSnapAdd = ConfigKeys.DEFAULT_STG_SNAP_ADD,
             stgStockFilter = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
+            stgFilterPerStrategy = ConfigKeys.DEFAULT_STG_FILTER_PER_STRATEGY,
+            stgMerge = ConfigKeys.DEFAULT_STG_MERGE,
+            stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
             stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
             dockClean = ConfigKeys.DEFAULT_DOCK_CLEAN,
             homeBannerHide = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,

@@ -17,6 +17,7 @@ import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.feature.filter.FilterPanelIds
 import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterPanelUi
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterScopes
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
@@ -55,13 +56,29 @@ internal object StgFilterPanel {
 
     private const val TAG = "筛选股票"
 
-    /** 打开筛选面板。所有异常都吞掉并记日志，绝不抛给宿主。 */
-    fun show(activity: Activity, current: StockFilters, onApply: (StockFilters) -> Unit) {
-        runCatching { showInner(activity, current, onApply) }
+    /**
+     * 打开筛选面板。所有异常都吞掉并记日志，绝不抛给宿主。
+     *
+     * [scope] 是这份筛选状态的作用域（见 [StockFilterScopes]）：
+     * `null` = 全局那一份（「按策略保存筛选条件」关着时的行为，与本功能历史版本完全一致）；
+     * 非空 = 本策略 / 本聚合组自己那一份。面板改条件时**只写这个作用域**。
+     */
+    fun show(
+        activity: Activity,
+        current: StockFilters,
+        scope: String? = null,
+        onApply: (StockFilters) -> Unit,
+    ) {
+        runCatching { showInner(activity, current, scope, onApply) }
             .onFailure { GLog.w("$TAG：打不开筛选面板", it) }
     }
 
-    private fun showInner(activity: Activity, current: StockFilters, onApply: (StockFilters) -> Unit) {
+    private fun showInner(
+        activity: Activity,
+        current: StockFilters,
+        scope: String?,
+        onApply: (StockFilters) -> Unit,
+    ) {
         val res = activity.resources
         val panelLayoutId = StockFilterPanelUi.layoutId(res, FilterPanelIds.LAYOUT_FILTER_PANEL)
         if (panelLayoutId == 0) {
@@ -158,19 +175,19 @@ internal object StgFilterPanel {
                 state[row] = StockFilters.OFF[row]
                 boxes[row]?.isChecked = StockFilters.OFF[row]
             }
-            StockFilterStore.save(activity, StockFilters.OFF)
+            StockFilterStore.save(activity, StockFilters.OFF, scope)
             onApply(StockFilters.OFF)
         }
 
         // 「确定」：保持原样 —— 落盘 + 生效 + 关闭
         okBtn.setOnClickListener {
             val f = collect()
-            StockFilterStore.save(activity, f)
+            StockFilterStore.save(activity, f, scope)
             onApply(f)
             runCatching { dialog.dismiss() }
         }
 
         dialog.show()
-        GLog.i("$TAG：筛选面板已打开（${current.describe()}）")
+        GLog.i("$TAG：筛选面板已打开（${current.describe()}｜记忆 ${StockFilterScopes.describe(scope)}）")
     }
 }

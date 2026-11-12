@@ -21,10 +21,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
+import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
+
+/** 「我的策略整合」的 Feature.id（必须与 FEATURE_CATALOG 里的 id 一致）—— 它的入口副标题是动态计数 */
+private const val StgMergeFeatureId = "stg_merge"
 
 /**
  * Tab 2 · 功能 —— 功能菜单，按分类用子标题隔开。
@@ -95,7 +101,7 @@ private fun FeatureEntry(
         Column {
             BasicComponent(
                 title = stringResource(spec.detailEntryRes!!),
-                summary = spec.detailEntrySummaryRes?.let { stringResource(it) },
+                summary = featureEntrySummary(spec),
                 endActions = { CenteredArrow() },
                 onClick = { onOpenDetail(spec, false) },
             )
@@ -109,6 +115,23 @@ private fun FeatureEntry(
             }
         }
     }
+}
+
+/**
+ * 二级入口行下方的副标题（状态句）。
+ *
+ * 多数功能是静态文案，直接取 FeatureSpec 上的资源；「我的策略整合」的副标题是
+ * 「N 个聚合组」这种随配置变化的计数，静态资源串装不下，这里按配置现算 ——
+ * 一个组都没有时干脆不显示副标题：不写「0 个聚合组」，也不补「还没有聚合组」。
+ */
+@Composable
+private fun featureEntrySummary(spec: FeatureSpec): String? {
+    if (spec.id == StgMergeFeatureId) {
+        val json by rememberStringPref(ConfigKeys.STG_MERGE_GROUPS, DefaultMergeGroupsJson)
+        val count = remember(json) { StrategyMergeStore.decode(json).groups.size }
+        return if (count == 0) null else stringResource(R.string.stg_merge_entry_summary, count)
+    }
+    return spec.detailEntrySummaryRes?.let { stringResource(it) }
 }
 
 /** `endActions` 默认 Top 对齐；包一层居中 Row，`›` 才和相邻行的 `⋮` 在一条中线 */

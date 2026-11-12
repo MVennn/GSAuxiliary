@@ -127,7 +127,18 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                         .nestedScroll(edgeScroll)
                         .padding(vertical = 8.dp),
                 ) {
+                    if (!spec.header.isNullOrEmpty()) {
+                        Text(
+                            text = spec.header,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            fontSize = 13.sp,
+                            // 与 ChoiceRow 同一条水平内边距，提示与选项左对齐
+                            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 2.dp, bottom = 6.dp),
+                        )
+                    }
                     spec.items.forEachIndexed { index, label ->
+                        // 分组标题：134 个标签平铺时靠它分段，否则整栏是一堵字墙
+                        spec.groupHeaders[index]?.let { SectionHeader(it) }
                         ChoiceRow(
                             label = label,
                             selected = index == spec.selectedIndex,
@@ -149,6 +160,40 @@ internal fun DialogBody(controller: DialogController, spec: DialogSpec) {
                 MenuScrollThumb(
                     scrollState = scrollState,
                     edgePull = { edgePull },
+                    modifier = Modifier.matchParentSize(),
+                )
+            }
+        }
+
+        // 多选菜单：若干段平铺 + 点一行即生效（条件档位用）。
+        //
+        // 形态与上面的 ChoiceDialogSpec 一模一样：锚在控件右侧、定宽、常驻指示条。
+        // 差别只在语义 —— 行右侧的对勾表示「这条已经在配置里了」，点一行**不关闭**
+        // 菜单（两个维度要连着点几档），勾完点空白处退出。
+        is MultiChoiceDialogSpec -> {
+            val scrollState = rememberScrollState()
+            Box {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(scrollState)
+                        .padding(vertical = 6.dp),
+                ) {
+                    spec.sections.forEachIndexed { si, section ->
+                        if (si > 0) Spacer(Modifier.height(2.dp))
+                        SectionHeader(section.title)
+                        section.items.forEachIndexed { itemIndex, label ->
+                            ChoiceRow(
+                                label = label,
+                                selected = itemIndex in section.selected,
+                                // 不 dismiss：点一下就已经写进配置了，菜单留着继续勾
+                                onClick = { spec.onToggle(si, itemIndex) },
+                            )
+                        }
+                    }
+                }
+                MenuScrollThumb(
+                    scrollState = scrollState,
+                    edgePull = { 0f },
                     modifier = Modifier.matchParentSize(),
                 )
             }
@@ -512,6 +557,23 @@ private fun MenuScrollThumb(
                 cornerRadius = CornerRadius(w / 2f),
             )
         },
+    )
+}
+
+/**
+ * 多选弹层里的一段标题（维度名）。
+ *
+ * 只做一件事：给「流通市值」「量比」这两段各一行小字，让平铺下来的一长串档位
+ * 仍然分得清是哪一维。内边距与 [ChoiceRow] 左右对齐（18dp），缩进不会打架。
+ */
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 4.dp),
     )
 }
 

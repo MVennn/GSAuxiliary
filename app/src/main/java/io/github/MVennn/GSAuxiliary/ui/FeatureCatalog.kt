@@ -8,12 +8,13 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * ## 功能分区归属标准
  *
  * 功能列表按 [FeatureSpec.categoryRes] 分组，**组内顺序 = [FEATURE_CATALOG] 里的出现顺序**
- * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前九个分区：
+ * （`FeatureTab` 用 `groupBy` 分组，首次出现的分组排在最前）。目前十个分区：
  *
  * | 分区 | 一句话判据 | 归属范围（举例） |
  * |---|---|---|
  * | **登录** `category_login` | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么，与具体页面无关 | 隐藏新股申购提醒弹窗 … |
  * | **策略页** `category_strategy` | **改变「策略页」的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、策略列表长按菜单 … |
+ * | **智能选股** `category_stg_merge` | **只改「智能选股 → 策略详情」上显示哪些股票** —— 显示内容与聚合关系，不动菜单与跳转 | 我的策略整合：同组多个原生策略的股票并集显示 … |
  * | **股票详情页** `category_stock_detail` | **改变「个股 / 指数详情页」的交互行为** —— 判据同「策略页」，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
  * | **智能盯盘** `category_aistare` | **改的是「盯盘页面本身」** —— 智能盯盘页（H5）里的交互与内容 | 价格页「一键配置」按钮、盯盘页结构 … |
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
@@ -52,7 +53,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  *   （不为了一个功能同时挂两个分区）。
  *
  * 分区顺序按「上游 → 具体页面 → 通用外观」排：
- * 登录 → 策略页 → 股票详情页 → 底栏 → 首页 → 行情市场 → 自选 → 显示。
+ * 登录 → 策略页 → 智能选股 → 股票详情页 → 底栏 → 首页 → 行情市场 → 自选 → 显示。
  *
  * ### 边界与例外
  *
@@ -66,6 +67,10 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * - `category_aistare`（智能盯盘）与 `category_stock_detail`（股票详情页）的边界：
  *   `stock_bar_entry` 改的是**详情页底栏**（入口加在哪），归股票详情页；
  *   智能盯盘分区装的是**改盯盘页面本身**的功能（页面在盯盘流程内部，H5）。
+ * - `category_stg_merge`（智能选股）与 `category_strategy`（策略页）的边界：
+ *   前者只决定**策略详情页上显示哪几条股票**（数据来源与聚合关系）；
+ *   后者改的是**策略页本身的交互**（点一下跳哪、能选什么、菜单里有什么）。
+ *   一个功能若只是「换了详情页的数据集」，进智能选股，不进策略页。
  * - 分区名只是**展示文案**，落在 `R.string.category_*`；改名字不影响任何逻辑。
  *   分区名与功能名的起名规则见 `docs/NAMING.md`（**名称里不写「增强」「启用」**）。
  */
@@ -174,8 +179,26 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         switchSummaryRes = R.string.feature_stg_filter_switch_summary,
         enableKey = ConfigKeys.STG_STOCK_FILTER,
         defaultEnabled = ConfigKeys.DEFAULT_STG_STOCK_FILTER,
-        // 三个筛选开关的编辑入口在**目标 App 自己的筛选面板**里（策略详情页三点菜单），
-        // 不在模块设置里 —— 所以这里没有二级菜单。
+        detailTitleRes = R.string.detail_stg_filter_title,
+        detailEntryRes = R.string.feature_stg_filter_entry,
+        // 二级菜单只放「筛选条件按什么身份保存」（一项开关）；入口名已说清进去做什么，
+        // 按 docs/NAMING.md §3 不写 detailEntrySummaryRes。
+        // 三个筛选开关本身仍然在**目标 App 自己的筛选面板**里（策略详情页三点菜单）。
+    ),
+
+    // ---- 智能选股：只改「策略详情页」显示哪些股票（数据来源与聚合关系）----
+    FeatureSpec(
+        id = "stg_merge",
+        categoryRes = R.string.category_stg_merge,
+        switchTitleRes = R.string.feature_stg_merge_switch,
+        // 副标题说清合并发生在哪一页、合并的是谁：标题只说「整合」，位置得补
+        switchSummaryRes = R.string.feature_stg_merge_switch_summary,
+        enableKey = ConfigKeys.STG_MERGE,
+        defaultEnabled = ConfigKeys.DEFAULT_STG_MERGE,
+        detailTitleRes = R.string.detail_stg_merge_title,
+        detailEntryRes = R.string.feature_stg_merge_entry,
+        // 无静态入口副标题：「N 个聚合组」是随配置变化的计数，静态资源串装不下，
+        // 由 FeatureTab 按配置现算（见那边的 featureEntrySummary）。
     ),
 
     // ---- 股票详情页：改变「个股 / 指数详情页」的交互行为 ----

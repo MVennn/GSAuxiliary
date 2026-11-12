@@ -11,6 +11,7 @@ import io.github.MVennn.GSAuxiliary.util.Reflect
 import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareCardDetailFeature
 import io.github.MVennn.GSAuxiliary.feature.aistare.AiStareQuickConfigFeature
 import io.github.MVennn.GSAuxiliary.feature.dock.DockCleanFeature
+import io.github.MVennn.GSAuxiliary.feature.hostnet.HostNetProbeFeature
 import io.github.MVennn.GSAuxiliary.feature.home.HomeBannerFeature
 import io.github.MVennn.GSAuxiliary.feature.ipoclean.IpoDialogCleanFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketBannerFeature
@@ -20,6 +21,7 @@ import io.github.MVennn.GSAuxiliary.feature.market.MarketOverviewCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.market.MarketSectorCompactFeature
 import io.github.MVennn.GSAuxiliary.feature.navbar.NavBarBlendFeature
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature
+import io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeFeature
 import io.github.MVennn.GSAuxiliary.feature.stgsnap.StgSnapAddFeature
 import io.github.MVennn.GSAuxiliary.feature.strategyquote.StgDirectQuoteFeature
 import io.github.MVennn.GSAuxiliary.feature.strategyselect.StgSelectAllFeature
@@ -58,6 +60,7 @@ class FeatureManager(private val env: FeatureEnv) {
         StgSelectAllFeature(),
         StgSnapAddFeature(),
         StgStockFilterFeature(),
+        StrategyMergeFeature(),
         StockDetailBarFeature(),
         DockCleanFeature(),
         HomeBannerFeature(),
@@ -71,6 +74,7 @@ class FeatureManager(private val env: FeatureEnv) {
         AiStareQuickConfigFeature(),
         AiStareCardDetailFeature(),
         ZxGroupCopyFeature(),
+        HostNetProbeFeature(),
     )
 
     /** 安装所有「当前配置下启用」的功能 */
@@ -236,6 +240,9 @@ class FeatureManager(private val env: FeatureEnv) {
         stgSelectAll = false,
         stgSnapAdd = false,
         stgStockFilter = false,
+        stgFilterPerStrategy = false,
+        stgMerge = false,
+        stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
         stockBarEntry = false,
         dockClean = false,
         homeBannerHide = false,

@@ -31,6 +31,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.QuickConfigStore
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.theme.LocalContentColor
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
@@ -103,8 +104,11 @@ class SettingsActivity : ComponentActivity() {
         syncTaskDescription()
         // 「管理方案…」从宿主 H5 拉起时带 route extra 直达「一键配置」二级页（§6.1）
         val initialRoute = intent?.getStringExtra(QuickConfigStore.EXTRA_ROUTE)?.let { key ->
-            when (key) {
-                QuickConfigStore.ROUTE_QUICK_CONFIG -> Route.QuickConfig
+            when {
+                key == QuickConfigStore.ROUTE_QUICK_CONFIG -> Route.QuickConfig
+                key == ROUTE_STRATEGY_MERGE -> Route.StrategyMerge
+                key.startsWith(ROUTE_STRATEGY_MERGE + ":") ->
+                    Route.StrategyMergeEdit(key.substringAfter(':'))
                 else -> null
             }
         }
@@ -236,6 +240,12 @@ private fun AppTheme(content: @Composable () -> Unit) {
 
         CompositionLocalProvider(
             LocalContext provides localized,
+            // miuix 的 `MiuixTheme(colors = …)` 这个重载**不** provide `LocalContentColor`
+            // （只有传 ThemeController 的那个重载才 provide，见库内 MiuixTheme.kt），于是
+            // 下面读到的还是 Compose 默认的 `Color.Black`。miuix `TextField` 的正文色正是
+            // `LocalContentColor.current`（textStyle.color 未指定时回落到它），结果就是
+            // 深色模式下输入框里的字仍是黑的。在这里补一次，全局所有输入框一起跟随深浅色。
+            LocalContentColor provides MiuixTheme.colorScheme.onBackground,
             // 液态玻璃的「面色」要看深浅色（黑色模式黑玻璃 / 白色模式白玻璃）。
             // 这里已经算过一次 `shownDark` 了，往下传，省得各处再订阅一遍主题配置。
             LocalDarkTheme provides shownDark,

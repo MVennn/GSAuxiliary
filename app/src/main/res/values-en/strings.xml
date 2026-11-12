@@ -49,6 +49,7 @@
     <string name="category_market">Market</string>
     <string name="category_watchlist">Watchlist</string>
     <string name="category_display">Display</string>
+    <string name="category_stg_merge">Smart stock pick</string>
 
     <!-- Sign-in -->
     <string name="feature_ipo_clean_switch">Hide IPO dialog</string>
@@ -70,6 +71,10 @@
 
     <string name="feature_stg_filter_switch">Add "Filter stocks" menu item</string>
     <string name="feature_stg_filter_switch_summary">In the strategy detail top-right "more" menu</string>
+    <string name="feature_stg_filter_entry">Filter saving settings</string>
+    <string name="feature_stg_merge_switch">Merge my strategies</string>
+    <string name="feature_stg_merge_switch_summary">Merge strategies in the same group on the strategy detail page</string>
+    <string name="feature_stg_merge_entry">Merge group settings</string>
 
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
     <string name="feature_stock_bar_switch_summary">Stock detail bottom bar, between Watchlist and More</string>
@@ -304,6 +309,57 @@
     <!-- The master switch lives on the feature tab; this menu holds parameters only.
          No summary on the switch: the title already says it all (since 2.17.2, see docs/NAMING.md §3) -->
     <string name="detail_stg_direct_title">Swipe settings</string>
+    <!-- Settings of "Filter stocks" on the strategy detail page: the three filter switches live in
+         the host app panel; this page only decides how the filter state is remembered. -->
+    <string name="detail_stg_filter_title">Filter saving settings</string>
+    <string name="switch_stg_filter_per_strategy">Save filters per strategy</string>
+    <string name="switch_stg_filter_per_strategy_on">Each strategy and merge group keeps its own</string>
+    <string name="switch_stg_filter_per_strategy_off">All strategies share one</string>
+    <string name="detail_stg_merge_title">Merge group settings</string>
+    <string name="stg_merge_entry_summary">%1$d merge groups</string>
+    <string name="stg_merge_section_groups">Merge groups</string>
+    <string name="stg_merge_group_new">New merge group</string>
+    <string name="stg_merge_group_new_name_prefix">Merge group </string>
+    <string name="stg_merge_group_copy_suffix"> copy</string>
+    <string name="stg_merge_group_name_hint">Group name</string>
+    <string name="stg_merge_group_name_required">Group name cannot be empty</string>
+    <string name="stg_merge_group_name_duplicate">A group with this name already exists</string>
+    <string name="stg_merge_group_limit">At most %1$d merge groups</string>
+    <string name="stg_merge_group_summary">%1$d members · %2$s</string>
+    <string name="stg_merge_group_state_on">Active</string>
+    <string name="stg_merge_group_state_off">Disabled</string>
+    <string name="stg_merge_group_state_pending">Inactive, needs at least %1$d strategies</string>
+    <string name="detail_stg_merge_edit_title">Edit merge group</string>
+    <string name="stg_merge_group_rename_title">Rename group</string>
+    <string name="stg_merge_group_rename_message">Shown on this device only, the host strategies are untouched</string>
+    <string name="stg_merge_group_enable_title">Enable this group</string>
+    <string name="stg_merge_group_enable_summary">When off, the detail page shows the host strategy as is, nothing in the host changes</string>
+    <string name="stg_merge_menu_rename">Rename</string>
+    <string name="stg_merge_menu_move_up">Move up</string>
+    <string name="stg_merge_menu_move_down">Move down</string>
+    <string name="stg_merge_menu_enable">Enable</string>
+    <string name="stg_merge_menu_disable">Disable</string>
+    <string name="stg_merge_menu_duplicate">Duplicate</string>
+    <string name="stg_merge_section_members">Member strategies</string>
+    <string name="stg_merge_member_add">Add member</string>
+    <string name="stg_merge_member_label_detail">Strategy label · %1$s</string>
+    <string name="stg_merge_member_label_pending">Strategy label · %1$s · tap this row to pick a band</string>
+    <!-- Import from Guosen: strategies that already exist in the host app (list is broadcast by the host) -->
+    <string name="stg_merge_section_host">Import from Guosen</string>
+    <string name="stg_merge_host_sync_title">Strategy list</string>
+    <string name="stg_merge_host_sync">Synced %1$s · %2$d total</string>
+    <string name="stg_merge_host_empty_title">No Guosen strategies yet</string>
+    <string name="stg_merge_host_empty_summary">Open the Guosen “My strategies” list once, then come back</string>
+    <string name="stg_merge_host_item_added">Already in this group</string>
+    <string name="stg_merge_host_item_no_tag">No tags</string>
+
+    <string name="stg_merge_section_import">Import from a group</string>
+    <string name="stg_merge_import_summary">%1$d members · %2$d already added</string>
+    <string name="stg_merge_import_none">All of them are already in this group</string>
+
+    <string name="stg_merge_member_combo_detail">%1$s · %2$d combos</string>
+    <string name="stg_merge_member_limit">At most %1$d strategies per group</string>
+    <string name="stg_merge_member_auto">Id is matched after you open the host once</string>
     <string name="section_stg_swipe">Swipe switching</string>
     <string name="item_stg_quote_swipe">Switch stocks</string>
 

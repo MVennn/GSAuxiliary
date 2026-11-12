@@ -36,7 +36,7 @@ class ConfigSource(private val xposed: XposedInterface) {
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             // 非快照键（主题 / 语言 / 玻璃 / 桌面图标 / 可预测返回）**目标进程不需要知道**
             // —— 它们走同一个 remote preferences 分组，改一下也会推一条通知过来。
-            // 直接挡掉，省掉一次「全量读 24 个远端键 + 构造快照 + 算指纹」
+            // 直接挡掉，省掉一次「全量读 33 个远端键 + 构造快照 + 算指纹」
             // （指纹里还含 O(n) 的方案 JSON 哈希）。
             // key 为 null = 框架整批推送，那一包里什么键都可能有，不能挡。
             if (key != null && key !in ConfigKeys.SNAPSHOT_KEYS) return@OnSharedPreferenceChangeListener
@@ -100,6 +100,13 @@ class ConfigSource(private val xposed: XposedInterface) {
                 stgSelectAll = p.getBoolean(ConfigKeys.STG_SELECT_ALL, ConfigKeys.DEFAULT_STG_SELECT_ALL),
                 stgSnapAdd = p.getBoolean(ConfigKeys.STG_SNAP_ADD, ConfigKeys.DEFAULT_STG_SNAP_ADD),
                 stgStockFilter = p.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER),
+                stgFilterPerStrategy = p.getBoolean(
+                    ConfigKeys.STG_FILTER_PER_STRATEGY, ConfigKeys.DEFAULT_STG_FILTER_PER_STRATEGY,
+                ),
+                stgMerge = p.getBoolean(ConfigKeys.STG_MERGE, ConfigKeys.DEFAULT_STG_MERGE),
+                stgMergeGroups = p.getString(
+                    ConfigKeys.STG_MERGE_GROUPS, ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
+                ) ?: ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
                 stockBarEntry = p.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY),
                 dockClean = p.getBoolean(ConfigKeys.DOCK_CLEAN, ConfigKeys.DEFAULT_DOCK_CLEAN),
                 homeBannerHide = p.getBoolean(ConfigKeys.HOME_BANNER_HIDE, ConfigKeys.DEFAULT_HOME_BANNER_HIDE),

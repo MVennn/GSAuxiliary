@@ -78,6 +78,41 @@ class StockFilterStoreKeyTest {
     }
 
     @Test
+    fun `带作用域时键名是 filter_行 at 作用域 - 分开记忆靠它落地`() {
+        // 「按策略保存筛选条件」打开后，每个策略 / 聚合组各占一组键，
+        // 全局那 8 个键保持原样不动（关掉开关就能回到共用一份）。
+        for (row in FilterRow.entries) {
+            assertEquals(
+                "filter_${row.key}@stg:123",
+                StockFilterStore.keyOf(row, "stg:123"),
+                "${row.key} 带作用域时的落盘键不对",
+            )
+        }
+        assertEquals("filter_up@grp:g1", StockFilterStore.keyOf(FilterRow.UP, "grp:g1"))
+    }
+
+    @Test
+    fun `空作用域等价于全局 - 认不出页面身份时不能写出一份野键`() {
+        // 作用域解析失败（拿不到 stId / 不在目标页）时必须回落到全局那份：
+        // 写出一份谁都读不到的键 = 用户设了等于没设，日志里还看不出问题。
+        for (row in FilterRow.entries) {
+            val global = StockFilterStore.keyOf(row)
+            assertEquals(global, StockFilterStore.keyOf(row, null), "${row.key} 的 null 作用域应等于全局键")
+            assertEquals(global, StockFilterStore.keyOf(row, ""), "${row.key} 的空作用域应等于全局键")
+            assertEquals(global, StockFilterStore.keyOf(row, "   "), "${row.key} 的空白作用域应等于全局键")
+        }
+    }
+
+    @Test
+    fun `不同策略的键互不相同 - 否则两个策略会串味`() {
+        val a = FilterRow.entries.map { StockFilterStore.keyOf(it, "stg:111") }
+        val b = FilterRow.entries.map { StockFilterStore.keyOf(it, "stg:222") }
+        val g = FilterRow.entries.map { StockFilterStore.keyOf(it, "grp:g1") }
+        assertEquals((a + b + g).size, (a + b + g).toSet().size, "不同作用域之间出现了重复键")
+        assertTrue(a.toSet().intersect(b.toSet()).isEmpty(), "两个策略共用了一组键")
+    }
+
+    @Test
     fun `类型五项的键名固定`() {
         assertEquals("filter_cyb", StockFilterStore.keyOf(FilterRow.CYB))
         assertEquals("filter_kcb", StockFilterStore.keyOf(FilterRow.KCB))

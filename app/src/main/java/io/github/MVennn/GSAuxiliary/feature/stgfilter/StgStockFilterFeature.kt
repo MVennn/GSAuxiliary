@@ -17,6 +17,7 @@ import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.filter.Category
 import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
+import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterScopes
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
 import io.github.MVennn.GSAuxiliary.feature.filter.CodeMarketParts
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
@@ -549,7 +550,7 @@ class StgStockFilterFeature : Feature {
                 trackedList.set(java.lang.ref.WeakReference(lv))
             }
         }
-        if (!filtersBy(act).active) return
+        if (!filtersBy(env, act).active) return
         // notify=false：setAdapter 自己会请求一次布局，我们不必再插一次「数据变了」
         runCatching { applyFilter(env, adapter, notify = false) }
             .onFailure { GLog.w("筛选股票：setAdapter 后立即筛选失败", it) }
@@ -723,7 +724,7 @@ class StgStockFilterFeature : Feature {
     private fun isFilterActive(env: FeatureEnv, adapter: Any): Boolean {
         if (!env.config.stgStockFilter) return false
         val ctx = trackedActivity() ?: return false
-        return filtersBy(ctx).active
+        return filtersBy(env, ctx).active
     }
 
     /**
@@ -784,7 +785,7 @@ class StgStockFilterFeature : Feature {
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
         val full = readData(adapter) ?: return noteApplySkip("读不到适配器的 data 字段（${adapter.javaClass.name}）")
-        val active = env.config.stgStockFilter && filtersBy(ctx).active
+        val active = env.config.stgStockFilter && filtersBy(env, ctx).active
 
         // 功能关掉 / 三个都不勾 / 数据还没到 → 把 ListView 换回原适配器
         if (!active || full.isEmpty()) {
@@ -825,7 +826,7 @@ class StgStockFilterFeature : Feature {
             return
         }
 
-        val f = filtersBy(ctx)
+        val f = filtersBy(env, ctx)
         val keep = ArrayList<Any>(full.size)
         val keptIdx = ArrayList<Int>(full.size)
         var up = 0
@@ -1593,6 +1594,7 @@ class StgStockFilterFeature : Feature {
         if (!StgStockFilterTargets.isWatchActivity(activity.javaClass.name)) return
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         StockFilterStore.invalidate()              // 回到本页重新读一次筛选状态
+        StockFilterScopes.forgetStrategyId(activity)  // 这一页可能换成了另一个策略，旧 id 不能复用
         ensureClickRemap()
         // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
         val a = liveAdapter(activity) ?: return
@@ -1617,7 +1619,9 @@ class StgStockFilterFeature : Feature {
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         lastSummary = null
         ensureClickRemap()
-        GLog.i("筛选股票：筛选条件已生效（${applied.describe()}）")
+        GLog.i(
+            "筛选股票：筛选条件已生效（${applied.describe()}｜记忆 ${StockFilterScopes.describe(scopeOf(env, activity))}）",
+        )
         val a = liveAdapter(activity) ?: return noteApplySkip("拿不到当前列表在用的适配器")
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
@@ -1713,7 +1717,23 @@ class StgStockFilterFeature : Feature {
 
     // ------------------------------------------------------------------ 取值与工具
 
-    internal fun filtersBy(ctx: Context): StockFilters = StockFilterStore.load(ctx)
+    // ------------------------------------------------------------ 作用域（分开记忆）
+
+    /**
+     * 这一页该读写哪一份筛选状态（见 [StockFilterScopes]）。
+     *
+     * 「按策略保存筛选条件」关着（出厂）→ `null`：全局那一份，与升级前完全一致。
+     * 开着 → 聚合页 `grp:<组 id>`、普通策略页 `stg:<策略 id>`；认不出页面身份时仍是 `null`
+     * （宁可写全局那份，也不写一份谁都读不到的键）。
+     *
+     * ⚠️ 这个判定在 `onGetView` 的每行路径上被调一次（经 [isFilterActive]），
+     * 所以组 / 策略 id 的解析结果在 [StockFilterScopes] 里按 Activity 缓存 —— 别在这里加开销。
+     */
+    internal fun scopeOf(env: FeatureEnv, ctx: Context?): String? =
+        if (env.config.stgFilterPerStrategy) StockFilterScopes.scopeOf(findActivity(ctx)) else null
+
+    internal fun filtersBy(env: FeatureEnv, ctx: Context): StockFilters =
+        StockFilterStore.load(ctx, scopeOf(env, ctx))
 
     private fun percentView(row: View): TextView? {
         var id = percentIdCache

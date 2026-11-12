@@ -233,7 +233,9 @@ internal fun DialogHost(
     )
 
     val anchor = spec.anchor
-    // 贴底弹出（下中）：确认弹窗 / 同意弹窗 / 图片预览 / 文本输入，且没有锚点
+    // 贴底弹出（下中）：确认弹窗 / 同意弹窗 / 图片预览 / 文本输入，且没有锚点。
+    // 多选菜单**不在**这里：它要和动作菜单同一个形态（锚在控件右侧的窄面板），
+    // 见下面的 isMenu。
     val sheet = (
         spec is ConfirmDialogSpec || spec is AgreementDialogSpec ||
             spec is ImageDialogSpec || spec is TextInputDialogSpec
@@ -251,7 +253,7 @@ internal fun DialogHost(
     // 与缩放那条线**互不读写**（时长也各自独立）—— 两条动画叠加显示，
     // 但谁也不会把对方拽慢、打断或改写。
     // 贴底确认弹窗（重置）不走渐隐，起始值直接取 1，行为与 2.9.3 一致。
-    val isMenu = spec is ChoiceDialogSpec
+    val isMenu = spec is ChoiceDialogSpec || spec is MultiChoiceDialogSpec
     val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
 
     // 锚定菜单的缩放原点：布局期按「卡片落在箭头上方还是下方」裁决

@@ -100,7 +100,10 @@ internal class StgFilterPanelBuild(private val feature: StgStockFilterFeature) {
                     pop.dismiss()
                     if (!env.config.stgStockFilter) return@runCatching
                     val act = findActivity(v.context) ?: activity
-                    StgFilterPanel.show(act, feature.filtersBy(act)) { applied ->
+                    // 作用域在**点击这一刻**解析一次：面板改的是「这一页」那一份
+                    // （聚合页 = 组、策略页 = 策略），此后本页身份不会再变
+                    val scope = feature.scopeOf(env, act)
+                    StgFilterPanel.show(act, feature.filtersBy(env, act), scope) { applied ->
                         feature.onFilterApplied(env, act, applied)
                     }
                 }.onFailure { GLog.w("筛选股票：打开筛选页失败", it) }

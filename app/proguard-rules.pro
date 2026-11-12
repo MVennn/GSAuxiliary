@@ -29,6 +29,14 @@
 # 功能实现由 FeatureManager 直接构造，保留以防被误裁
 -keep class * implements io.github.MVennn.GSAuxiliary.feature.Feature { *; }
 
+# 策略详情聚合（STG_MERGE）。功能类本身已被上一条泛化规则覆盖，这里显式列出是为了
+# 意图清晰、便于按功能核对；Targets 里全是宿主类名/字段名的字符串常量（R8 看不出用途），
+# Bridge 是进程级快照、其它功能按类名与 getter 读取 —— 一起保留，混淆后日志与堆栈才对得上。
+-keep class io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeFeature { *; }
+-keep class io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeTargets { *; }
+-keep class io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeBridge { *; }
+-keep class io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeBridge$Snapshot { *; }
+
 # 过滤代理（策略详情「筛选股票」装到 ListView 上的适配器代理）：
 # 类名与 getTarget() 是**跨实例识别**的判据 —— 热重载后新实例要靠它们认出
 # 旧实例留在列表上的代理（见 CODE-RULES 1.2 与 StgStockFilterFeature.unwrapProxy）。

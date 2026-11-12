@@ -43,6 +43,7 @@
     <!-- 功能分区：见 ui/FeatureCatalog.kt 顶部的「分区归属标准」；文案与命名规范见 docs/NAMING.md -->
     <string name="category_login">登录</string>
     <string name="category_strategy">策略页</string>
+    <string name="category_stg_merge">智能选股</string>
     <string name="category_stock_detail">股票详情页</string>
     <string name="category_aistare">智能盯盘</string>
     <string name="category_dock">底栏</string>
@@ -71,9 +72,15 @@
 
     <string name="feature_stg_filter_switch">增加 筛选股票 菜单项</string>
     <string name="feature_stg_filter_switch_summary">策略详情右上角三点菜单里</string>
+    <string name="feature_stg_filter_entry">筛选条件保存设置</string>
 
     <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
     <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
+
+    <!-- 智能选股 -->
+    <string name="feature_stg_merge_switch">我的策略整合</string>
+    <string name="feature_stg_merge_switch_summary">策略详情页合并同组策略的股票</string>
+    <string name="feature_stg_merge_entry">聚合组设置</string>
 
     <!-- 自选 -->
     <string name="feature_zx_copy_switch">自选分组复制</string>
@@ -324,6 +331,64 @@
     <string name="preview_not_in_watchlist">未加自选</string>
     <string name="preview_sample_in">示例股票甲</string>
     <string name="preview_sample_out">示例股票乙</string>
+
+    <!-- ============================ 我的策略整合（二级 + 三级菜单） ============================ -->
+    <!-- 开关与入口行在一级「功能」页的「智能选股」分区；二级页列聚合组，三级页编一个组。
+         一个聚合组把多个原生策略的股票并到一起，详情页显示并集；组内不足 2 个策略不生效，
+         这句状态由 stg_merge_group_state_* 三条构成，页面上不再另写说明文字。 -->
+    <!-- 策略详情页「筛选股票」的设置（二级页）：三个筛选开关在目标 App 自己的面板里，
+         这里只决定筛选状态按什么身份记 —— 全局一份，还是按策略 / 聚合组各记一份。 -->
+    <string name="detail_stg_filter_title">筛选条件保存设置</string>
+    <string name="switch_stg_filter_per_strategy">按策略保存筛选条件</string>
+    <string name="switch_stg_filter_per_strategy_on">每个策略与聚合组各记一份</string>
+    <string name="switch_stg_filter_per_strategy_off">所有策略共用一份</string>
+    <string name="detail_stg_merge_title">聚合组设置</string>
+    <string name="stg_merge_entry_summary">%1$d 个聚合组</string>
+    <string name="stg_merge_section_groups">聚合组</string>
+    <string name="stg_merge_group_new">新建聚合组</string>
+    <string name="stg_merge_group_new_name_prefix">聚合组</string>
+    <string name="stg_merge_group_copy_suffix"> 副本</string>
+    <string name="stg_merge_group_name_hint">聚合组名</string>
+    <string name="stg_merge_group_name_required">组名不能为空</string>
+    <string name="stg_merge_group_name_duplicate">已有同名聚合组</string>
+    <string name="stg_merge_group_limit">最多 %1$d 个聚合组</string>
+    <string name="stg_merge_group_summary">%1$d 个成员 · %2$s</string>
+    <string name="stg_merge_group_state_on">生效</string>
+    <string name="stg_merge_group_state_off">已停用</string>
+    <string name="stg_merge_group_state_pending">未生效，至少要 %1$d 个策略</string>
+    <string name="detail_stg_merge_edit_title">编辑聚合组</string>
+    <string name="stg_merge_group_rename_title">修改组名</string>
+    <string name="stg_merge_group_rename_message">只在本机显示，不影响宿主里的策略</string>
+    <string name="stg_merge_group_enable_title">启用这一组</string>
+    <string name="stg_merge_group_enable_summary">关掉后详情页按宿主原策略显示，不动宿主里的数据</string>
+    <!-- 组行 ⋮ 菜单（与「一键配置」方案页同一套操作与文案） -->
+    <string name="stg_merge_menu_rename">重命名</string>
+    <string name="stg_merge_menu_move_up">上移</string>
+    <string name="stg_merge_menu_move_down">下移</string>
+    <string name="stg_merge_menu_enable">启用</string>
+    <string name="stg_merge_menu_disable">停用</string>
+    <string name="stg_merge_menu_duplicate">复制</string>
+    <string name="stg_merge_section_members">成员策略</string>
+    <string name="stg_merge_member_add">添加成员</string>
+    <string name="stg_merge_member_label_detail">策略标签 · %1$s</string>
+    <string name="stg_merge_member_label_pending">策略标签 · %1$s · 点这一行选档位</string>
+    <!-- 从金太阳导入：宿主「我的策略」里已有的策略，点一行加成成员（清单由宿主广播过来） -->
+    <string name="stg_merge_section_host">从金太阳导入</string>
+    <string name="stg_merge_host_sync_title">策略清单</string>
+    <string name="stg_merge_host_sync">上次同步 %1$s · 共 %2$d 条</string>
+    <string name="stg_merge_host_empty_title">还没读到金太阳的策略</string>
+    <string name="stg_merge_host_empty_summary">打开一次金太阳的「我的策略」列表，再回到这里</string>
+    <string name="stg_merge_host_item_added">已在当前组里</string>
+    <string name="stg_merge_host_item_no_tag">无标签</string>
+
+    <string name="stg_merge_section_import">从聚合组导入</string>
+    <string name="stg_merge_import_summary">%1$d 个成员 · 已加入 %2$d 个</string>
+    <string name="stg_merge_import_none">这些成员都已在当前组里</string>
+
+    <!-- 多选条件弹层：标题 + 两段维度名。原四步向导的「第 N 步 / 4」提示已随向导一起撤掉 -->
+    <string name="stg_merge_member_combo_detail">%1$s · %2$d 条组合</string>
+    <string name="stg_merge_member_limit">一个组最多 %1$d 个策略</string>
+    <string name="stg_merge_member_auto">打开一次宿主后自动识别编号</string>
 
     <!-- ============================ 设置页 ============================ -->
     <string name="section_interface">界面</string>

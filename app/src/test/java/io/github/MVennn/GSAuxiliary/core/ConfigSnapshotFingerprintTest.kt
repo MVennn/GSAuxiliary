@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  * 改成「布尔项占低位逐个异或」之后，这两组不再碰撞。
  *
  * **单键切换永远是安全的**（delta = ±该项的位），风险只在**多键同时写入**
- * （「重置模块」一次写 23 键、恢复备份一次写 29 键）。
+ * （「重置模块」一次写 32 键、恢复备份一次写 39 键）。
  */
 class ConfigSnapshotFingerprintTest {
 
@@ -36,7 +36,8 @@ class ConfigSnapshotFingerprintTest {
      */
     private val booleanNames = listOf(
         "enabled", "scopeStrategy", "stgDirectQuote", "stgQuoteSwipe", "stgSelectAll", "stgSnapAdd",
-        "stgStockFilter", "stockBarEntry", "dockClean", "homeBannerHide", "marketBannerHide",
+        "stgStockFilter", "stgFilterPerStrategy", "stgMerge", "stockBarEntry", "dockClean", "homeBannerHide",
+        "marketBannerHide",
         "marketSectorCompact", "marketOverviewCompact", "marketStockFilter", "navBarBlend",
         "ipoDialogClean", "aistareQuickEnabled", "aiStareSkipSaveConfirm", "aiStareEmptySave",
         "aiStareCardDetail", "aiStareSaveBackToStock", "aiStarePickScheme",
@@ -93,6 +94,8 @@ class ConfigSnapshotFingerprintTest {
         assertNotEquals(b.fingerprint, b.copy(color = b.color + 1).fingerprint)
         assertNotEquals(b.fingerprint, b.copy(logLevel = b.logLevel + 1).fingerprint)
         assertNotEquals(b.fingerprint, b.copy(aiStareQuickConfig = b.aiStareQuickConfig + " ").fingerprint)
+        // 聚合组 JSON 也是数值项那一类（走 hashCode 异或混入），漏混就是「改组数据不生效」
+        assertNotEquals(b.fingerprint, b.copy(stgMergeGroups = b.stgMergeGroups + " ").fingerprint)
     }
 
     @Test
@@ -121,7 +124,7 @@ class ConfigSnapshotFingerprintTest {
     fun `多键同时变化 指纹也不能撞`() {
         val b = base()
         // 穷举全部布尔项的两两组合做比较 ——
-        // 全部组合太多（2²³ = 838 万组），逐一比对太慢，
+        // 全部组合太多（2²⁷ = 1.34 亿组），逐一比对太慢，
         // 这里用「所有子集指纹互不相同」的等价形式：
         // 任取 2 个布尔项翻转，其指纹与「另一组 2 个」不能相同。
         //
@@ -168,6 +171,8 @@ class ConfigSnapshotFingerprintTest {
         "stgSelectAll" -> b.copy(stgSelectAll = !b.stgSelectAll)
         "stgSnapAdd" -> b.copy(stgSnapAdd = !b.stgSnapAdd)
         "stgStockFilter" -> b.copy(stgStockFilter = !b.stgStockFilter)
+        "stgFilterPerStrategy" -> b.copy(stgFilterPerStrategy = !b.stgFilterPerStrategy)
+        "stgMerge" -> b.copy(stgMerge = !b.stgMerge)
         "stockBarEntry" -> b.copy(stockBarEntry = !b.stockBarEntry)
         "dockClean" -> b.copy(dockClean = !b.dockClean)
         "homeBannerHide" -> b.copy(homeBannerHide = !b.homeBannerHide)

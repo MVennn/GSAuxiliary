@@ -22,7 +22,13 @@ internal sealed interface DialogSpec {
     val dismissible: Boolean get() = true
 }
 
-/** 一个「单选」弹窗：若干选项 + 当前选中项。**没有标题**（2.9.2 去掉） */
+/**
+ * 一个「单选」弹窗：若干选项 + 当前选中项。
+ *
+ * 常规用法的动作菜单**不画标题**（2.9.2 去掉：选项本身已经说明是哪个设置项）。
+ * [header] 只给「分步向导」这类**需要告诉用户现在选第几步**的场合用 —— 四步选档位时
+ * 没有一行提示，用户不知道这一步问的是流通市值还是量比。
+ */
 internal class ChoiceDialogSpec(
     val items: List<String>,
     val selectedIndex: Int,
@@ -36,6 +42,49 @@ internal class ChoiceDialogSpec(
      * 菜单坏了。**只是不可点，不会隐藏**：位置固定，菜单高度不会因为状态变化而跳动。
      */
     val disabledIndices: Set<Int> = emptySet(),
+    /** 顶部一行提示（分步向导用）；null = 不画，与动作菜单完全一致 */
+    val header: String? = null,
+    /**
+     * 列表内的分组标题：键 = 项下标，值 = 插在**这一行之前**的段标题。
+     *
+     * 与 [header] 的区别：[header] 是顶部固定的一行提示；这个是随内容滚动的分隔行。
+     * 宿主标签表有 134 个标签名，平铺成一栏既不分组也没法找 —— 按宿主的六个分组
+     * （技术指标 / 行情面 / 基本面 / 技术形态 / 股票范围）切开才点得动。
+     */
+    val groupHeaders: Map<Int, String> = emptyMap(),
+) : DialogSpec
+
+/**
+ * 多选菜单里的一段：段标题 + 一组可勾选的项。
+ *
+ * 段是**维度**（「流通市值」「量比」），项是宿主自己的档位名 —— 界面上一段一段平铺，
+ * 用户不用记「中盘 1.5-4」这种口径名，也不用被一步步追问。
+ *
+ * [selected] 由**调用方**持有，不是菜单内部状态：勾一下就已经落盘了，
+ * 菜单自己再存一份只会和配置打架。
+ */
+internal class MultiChoiceSection(
+    val title: String,
+    val items: List<String>,
+    /** 当前已生效的项（调用方从配置回读后传进来） */
+    val selected: Set<Int> = emptySet(),
+)
+
+/**
+ * 一个「多选菜单」：若干段同时平铺，点一行即勾上 / 取消，**没有确定按钮**。
+ *
+ * 为什么要它（2026-11-12 用户两次纠正）：选条件先做成四步单选向导，再改成贴底大弹层
+ * 「勾完点确定」。用户对着方案设置说「直接照搬那套」——方案设置是**锚在控件右侧的窄菜单、
+ * 点一项立刻生效、没有确定取消**。所以这里只留一个 [onToggle]：点哪行，调用方立刻写配置，
+ * 菜单不关（一维要连着点几档），勾完点空白处退出。
+ *
+ * [onToggle] 收的是（第几段，第几项）。勾选态**不进菜单内部状态**，由调用方落盘后
+ * 从 [sections] 再传回来 —— 中间态即最终态，不存在「取消了但配置已经写了」这种缝。
+ */
+internal class MultiChoiceDialogSpec(
+    val sections: List<MultiChoiceSection>,
+    val onToggle: (sectionIndex: Int, itemIndex: Int) -> Unit,
+    override val anchor: Rect? = null,
 ) : DialogSpec
 
 /** 一个「确认 / 取消」弹窗：标题 + 说明 + 两个按钮，贴屏幕底部弹出 */
@@ -159,6 +208,13 @@ internal class DialogController {
     fun showChoice(s: ChoiceDialogSpec) {
         // 新弹窗开启意味着旧弹窗的上下文已作废：如果旧弹窗正在播退出动画
         // （afterDismiss 已排队），那个动作不能再落到新弹窗关闭时执行。
+        afterDismiss = null
+        closing = false
+        spec = s
+    }
+
+    /** 弹出多选弹层（条件档位这类「一次勾完」的场合） */
+    fun showMultiChoice(s: MultiChoiceDialogSpec) {
         afterDismiss = null
         closing = false
         spec = s

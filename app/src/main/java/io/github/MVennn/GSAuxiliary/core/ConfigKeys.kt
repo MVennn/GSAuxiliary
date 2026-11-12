@@ -144,6 +144,47 @@ object ConfigKeys {
     const val STG_STOCK_FILTER = "stg_stock_filter"
 
     /**
+     * 策略详情页「筛选股票」的子选项：**每个策略（以及每个聚合组）各记各的筛选条件**。
+     *
+     * 关着（出厂默认）：所有策略页共用同一份筛选状态 —— 就是历史行为，
+     * 筛选值仍存在目标 App 的 `gsaux_stg_filter` 里那 8 个全局键上。
+     *
+     * 打开后：按页面身份分槽落盘（键名 `filter_<行>@<作用域>`，见
+     * [io.github.MVennn.GSAuxiliary.feature.filter.StockFilterScopes]）——
+     * 普通策略页按 `stg:<策略 id>` 记，聚合页按 `grp:<聚合组 id>` 记
+     * （聚合期间宿主会把 `m_stg.id` 临时换成成员 id，只有组 id 是稳定身份）。
+     * 某个策略第一次进来没有记忆时用**出厂值**（= 不筛），不回灌全局那份。
+     *
+     * 归 [FEATURE_PARAM_KEYS]（子选项，同 [STG_QUOTE_SWIPE]）：重置 = 回到「共用一份」
+     * 而不是把功能关掉。
+     */
+    const val STG_FILTER_PER_STRATEGY = "stg_filter_per_strategy"
+
+    /**
+     * 策略详情页「策略合并」的**总开关**。
+     *
+     * 打开后按 [STG_MERGE_GROUPS] 里配置的聚合组，把同一组内的股票视作同一只处理；
+     * 组数据模型与 JSON 编解码见 [StrategyMergeStore]。
+     *
+     * 出厂默认关（功能总开关，同 [DEFAULT_ENABLED]）—— 合并会改变用户看到的行，
+     * 必须由用户自己按需打开。
+     */
+    const val STG_MERGE = "stg_merge"
+
+    /**
+     * 策略合并的**聚合组数据**（JSON 字符串，v1 结构见 [StrategyMergeStore]）。
+     *
+     * 归 [FEATURE_PARAM_KEYS]（重置 = 恢复出厂空配置，**组会被清空**），**不归** [FEATURE_KEYS]
+     * —— 它是数据不是开关：重置按「恢复出厂」处理它，不是把它「关掉」。
+     * 目标进程要读它，所以进 [ConfigSnapshot]。
+     *
+     * 出厂值是**合法空配置** `{"v":1,"groups":[]}` 而不是空串：
+     * [StrategyMergeStore.decode] 对空串也会回落空配置，但那是「坏数据」路径；
+     * 用合法空配置能让每次读配置都走零日志的成功路径。
+     */
+    const val STG_MERGE_GROUPS = "stg_merge_groups"
+
+    /**
      * 个股详情页底栏「智能盯盘」快捷入口：在「自选」与「更多」之间注入一个
      * 「智能盯盘」按钮，把原本埋在「更多」弹层里的那一项提到一级位置。
      *
@@ -425,6 +466,27 @@ object ConfigKeys {
     const val DEFAULT_STG_STOCK_FILTER = false
 
     /**
+     * 默认关闭：所有策略页共用同一份筛选状态（历史行为）。
+     *
+     * 它是 [STG_STOCK_FILTER] 的子选项而不是功能开关，所以归
+     * [FEATURE_PARAM_KEYS] —— 重置时回到 false（＝共用一份），功能本身不受影响。
+     */
+    const val DEFAULT_STG_FILTER_PER_STRATEGY = false
+
+    /**
+     * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）——「策略合并」的总开关。
+     */
+    const val DEFAULT_STG_MERGE = false
+
+    /**
+     * 出厂聚合组：**合法但为空**的 v1 结构（一个组都没有，合并自然不生效）。
+     *
+     * 用 `const val` 而不是 `StrategyMergeStore.encode(...)`：结构就是一行 JSON，
+     * 常量让「出厂值」在源码里一眼可见；两者必须保持一致（测试会比对）。
+     */
+    const val DEFAULT_STG_MERGE_GROUPS = """{"v":1,"groups":[]}"""
+
+    /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
      * 它是「底栏智能盯盘入口」的总开关，出厂默认关，由用户自己按需打开。
@@ -528,7 +590,7 @@ object ConfigKeys {
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
-        STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        STG_SNAP_ADD, STG_STOCK_FILTER, STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -550,7 +612,8 @@ object ConfigKeys {
      */
     val FEATURE_KEYS =
         arrayOf(
-            ENABLED, WATCHLIST_BOLD, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+            ENABLED, WATCHLIST_BOLD, STG_DIRECT_QUOTE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER, STG_MERGE,
+            STOCK_BAR_ENTRY,
             DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
             MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
             NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -567,9 +630,15 @@ object ConfigKeys {
      *
      * [AISTARE_QUICK_CONFIG] 也归这里：它是方案**数据**，重置 = 恢复出厂方案
      * （「30 日高低」），不能被一键清空。
+     *
+     * [STG_MERGE_GROUPS] 同理：聚合组是**数据**，重置 = 恢复出厂空配置
+     * （`{"v":1,"groups":[]}`），不是被关掉。
+     *
+     * [STG_FILTER_PER_STRATEGY] 也归这里：它是「筛选股票」下面的子选项，
+     * 重置应回到「共用一份筛选」而不是被关掉。
      */
     val FEATURE_PARAM_KEYS = arrayOf(
-        COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, AISTARE_QUICK_CONFIG,
+        COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, STG_FILTER_PER_STRATEGY, STG_MERGE_GROUPS, AISTARE_QUICK_CONFIG,
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         ZX_COPY_MENU, ZX_COPY_RULES,
     )
@@ -583,7 +652,8 @@ object ConfigKeys {
      * 而目标进程**根本不需要知道**（`ConfigSnapshot` 里没有它们）。
      *
      * 用途：`ConfigSource` 收到变更通知时先用它挡一道 —— 不是快照键就直接返回，
-     * 省掉一次「全量读 24 个远端键 + 构造快照 + 算指纹」（指纹里还有 O(n) 的方案 JSON 哈希）。
+     * 省掉一次「全量读 33 个远端键 + 构造快照 + 算指纹」（指纹里还有 O(n) 的方案 / 规则 /
+     * 聚合组 JSON 哈希）。
      *
      * ⚠️ **只增不减**：新增配置键时，若它要进 [ConfigSnapshot]，必须同时加进这里，
      * 否则目标进程**收不到**它的变更（会被这道挡掉）。判定口径见 `docs/EXTENDING.md`：
@@ -591,7 +661,8 @@ object ConfigKeys {
      */
     val SNAPSHOT_KEYS: Set<String> = setOf(
         ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
-        STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER, STOCK_BAR_ENTRY,
+        STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER,
+        STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
         DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -612,6 +683,9 @@ object ConfigKeys {
         STG_SELECT_ALL to DEFAULT_STG_SELECT_ALL,
         STG_SNAP_ADD to DEFAULT_STG_SNAP_ADD,
         STG_STOCK_FILTER to DEFAULT_STG_STOCK_FILTER,
+        STG_FILTER_PER_STRATEGY to DEFAULT_STG_FILTER_PER_STRATEGY,
+        STG_MERGE to DEFAULT_STG_MERGE,
+        STG_MERGE_GROUPS to DEFAULT_STG_MERGE_GROUPS,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
         DOCK_CLEAN to DEFAULT_DOCK_CLEAN,
         HOME_BANNER_HIDE to DEFAULT_HOME_BANNER_HIDE,
