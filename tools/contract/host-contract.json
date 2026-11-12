@@ -1478,6 +1478,186 @@
     },
     {
       "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "ACT_FIELD_MODEL",
+      "value": "m_model"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "ADAPTER_FIELD_DATA",
+      "value": "data"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_ENGINE_MODEL",
+      "value": "com.guosen.engine.process.EngineModel"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_PAGE_ADAPTER",
+      "value": "com.guosen.quotation.adapter.aistk.AIStkAdapter"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_PAGE_MODEL",
+      "value": "com.guosen.quotation.model.aistk.AIStkStgDetailModel"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_TAG",
+      "value": "com.guosen.android.aistock.data.Tag"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_TAG_ADAPTER",
+      "value": "com.guosen.quotation.adapter.aistk.AITagAd"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "CMD_BIZ_GET_STG_DATA",
+      "value": "biz_type_for_cmd_biz_get_stg_data"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "DETAIL_ACTIVITY",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgDetailAct"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_ACTIVITY",
+      "value": "com.guosen.quotation.ui.aistk.AIStkStgListAct"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "data"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "list"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "mData"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "mDataList"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "mList"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_DATA_FIELDS",
+      "value": "mStgList"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_PAGE_ID_CANDIDATES",
+      "value": "lv_stg_list"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "LIST_PAGE_ID_CANDIDATES",
+      "value": "rv_stg_list"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "MODEL_FIELD_BIZ",
+      "value": "m_biz"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "MODEL_FIELD_STG",
+      "value": "m_stg"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "RES_NUM_ID_CANDIDATES",
+      "value": "tv_stg_res_num"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STG_FIELD_ID",
+      "value": "id"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STG_FIELD_NAME",
+      "value": "name"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STG_FIELD_TAGS",
+      "value": "tags"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_CAM_FIELDS",
+      "value": "codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_CAM_FIELDS",
+      "value": "m_codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "TAG_ADAPTER_DATA_FIELDS",
+      "value": "data"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "TAG_ADAPTER_DATA_FIELDS",
+      "value": "mData"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "TAG_ADAPTER_DATA_FIELDS",
+      "value": "mItems"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "TAG_ADAPTER_DATA_FIELDS",
+      "value": "mList"
+    },
+    {
+      "kind": "id",
       "owner": "WatchlistTargets.kt",
       "symbol": "CAM_FIELDS",
       "value": "codeAndMarket"

@@ -81,7 +81,7 @@ MainAct → AIStkIndexAct → AIStkStgListAct → AIStkStgDetailAct
 
 [REVERSE-ENGINEERING.md](REVERSE-ENGINEERING.md):36-48、:59-73、:82-86：宿主 8.6.0 / vc271，梆梆企业版 `SecNeo/Bangcle`，`com.secneo.apkwrapper.AW` / `AP` / `CP`，`libDexHelper.so`；单 dex 未压缩 97,392,176 字节里 `class_defs=53`，其余为加密载荷，「静态反编译这条路是堵死的」。
 
-用户 m00016 直接注入 `/reverse-engineer-anything` 技能（可选），m00093 又补了宿主 8.7.5 真机包 `C:\Users\SansK\Downloads\国信金太阳_8.7.5.apk`（150,953,313 字节 / SHA256 `39B1B20D…CE6A89` / `LastWriteTime=2026-11-11T18:32:43+08:00`）。下表是本轮 REA 全链路实测：
+用户 m00016 直接注入 `/reverse-engineer-anything` 技能（可选），m00093 又补了宿主 8.7.5 真机包（`<下载目录>/国信金太阳_8.7.5.apk`，150,953,313 字节 / SHA256 `39B1B20D…CE6A89` / `LastWriteTime=2026-11-11T18:32:43+08:00`）。下表是本轮 REA 全链路实测：
 
 | 项 | 实测 |
 |---|---|
