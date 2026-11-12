@@ -334,13 +334,10 @@ object StrategyComboCatalog {
         if (tiers.size == 1) return prefix + tiers[0].name
         val first = tiers.first().name
         val last = tiers.last().name
-        val lo = trimDotZero(first.substringBefore('-').trim())
-        val hi = trimDotZero(last.substringAfter('-', last).trim())
-        return prefix + lo + "-" + hi
+        // 端点保留档位表原文（1.5-4.0，不裁 .0）：卡面 chip 与这一行都走同一套合成口径，
+        // 裁了就会出现「设置页写 1.5-4、标签条写 1.5-4.0」的两种写法
+        return prefix + first.substringBefore('-').trim() + "-" + last.substringAfter('-', last).trim()
     }
-
-    /** 「4.0」→「4」：与目标进程合并标签时的写法对齐，别一半写 1.5-4、一半写 1.5-4.0 */
-    private fun trimDotZero(s: String): String = if (s.endsWith(".0")) s.dropLast(2) else s
 
     /** 组合占位 key（`combo:mid-15-4|50-70亿|2.0-2.5@）→ 这个组合自己那两条条件 */
     fun tagNamesOfKey(key: String): List<String> {

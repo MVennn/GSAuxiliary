@@ -62,6 +62,83 @@ internal object StrategyLabelTable {
     fun entryOf(labelId: String): Entry? = byId[labelId.trim()]
 
     /**
+     * 显示名 → 条目。
+     *
+     * 卡片 tags 里存的 `labelName` 就是 [Entry.display] 这个口径（有父标签时写「量比1.5-2.0」），
+     * 合成标签时要靠它把名字反查回 labelId —— 缺 labelId 的元素宿主会画成无效标签（带感叹号）。
+     * 同一显示名可能出现在多个分组（「近3交易日」在好几条均线粘合下都有），取第一条即够：
+     * 建策略只认 labelId 本身，重复的只是文字。
+     */
+    private val byDisplay: Map<String, Entry> by lazy {
+        val m = HashMap<String, Entry>(entries.size * 2)
+        for (e in entries) {
+            if (!m.containsKey(e.display)) m[e.display] = e
+            if (!m.containsKey(e.labelName)) m[e.labelName] = e
+        }
+        m
+    }
+
+    fun entryOfDisplay(name: String): Entry? = byDisplay[name.trim()]
+
+    /**
+     * 显示名 → 能用的条目：表里直接有就用它，没有就按**跨档区间**反查。
+     *
+     * 「量比1-4」「流通市值50-500亿」这类是 [StrategyComboCatalog] 把多档并成一条的合成文本
+     * （表体里只有「量比1.0-1.5」「流通市值50-70亿」这些单档，一条也不叫「1-4」）。
+     * 宿主画卡片 chip 必须拿到 labelId，缺了会渲染成无效标签（卡面上挂感叹号），
+     * 所以这里退一步：取该父标签下**第一档与这个区间相交的档位**顶上。
+     * 文字仍是合成文本（chip 上写「量比1-4」），点它落到那一档 —— 比不显示或显示成无效标签都好。
+     */
+    fun entryForDisplay(name: String): Entry? {
+        val n = name.trim()
+        if (n.isEmpty()) return null
+        byDisplay[n]?.let { return it }
+        return spanEntry(n)
+    }
+
+    /** 父标签名（「量比」「流通市值」「股价」…），跨档反查要按最长的那个前缀切 */
+    private val parentNames: List<String> by lazy {
+        entries.mapNotNullTo(LinkedHashSet()) { it.parentName.takeIf { p -> p.isNotEmpty() } }.toList()
+    }
+
+    private val NUM = Regex("""\d+(?:\.\d+)?""")
+
+    /**
+     * 文本里的数值区间：「0.5及以下」→ (-∞, 0.5]、「0.5-1.0」→ [0.5, 1.0]、「4.0以上」→ [4.0, +∞)。
+     *
+     * 单侧写法（「1以上」「50亿及以上」）只有一个数字，也必须解析出来 ——
+     * [StrategyMergeFeature.mergeTagNames] 把相邻区间接上之后，合成出来的就是这种形态。
+     */
+    private fun spanOfText(text: String): Pair<Double, Double>? {
+        // 与合成标签用同一套解析：合成出来的「-7%—-3%」「大于3千万元」「50亿及以上」
+        // 必须能和表里的单档按同一口径比较，否则反查不到 labelId，卡面就挂感叹号
+        val p = parseTag(text) ?: return null
+        return p.span.lo to p.span.hi
+    }
+
+    private fun spanOfName(name: String): Pair<Double, Double>? = spanOfText(name)
+
+    /**
+     * 「量比1-4」→ 量比下第一档相交的「1.0-1.5」；
+     * 「量比1以上」「流通市值50亿及以上」这类单侧合成文本同理，取相交的第一档。
+     * 解析不出区间、或区间倒挂时返回 null。
+     */
+    private fun spanEntry(display: String): Entry? {
+        val parent = parentNames.filter { display.length > it.length && display.startsWith(it) }
+            .maxByOrNull { it.length } ?: return null
+        val span = spanOfText(display.substring(parent.length)) ?: return null
+        val lo = span.first
+        val hi = span.second
+        if (lo >= hi) return null
+        for (e in entries) {
+            if (e.parentName != parent) continue
+            val sp = spanOfName(e.labelName) ?: continue
+            if (sp.first < hi && lo < sp.second) return e
+        }
+        return null
+    }
+
+    /**
      * 标签的显示名：表体里的档位写「量比1.5-2.0」；父标签（本身不在表体、只有 [tree] 里那个节点）
      * 写它的名字「量比」；都不认识的退回 id 本身。
      */

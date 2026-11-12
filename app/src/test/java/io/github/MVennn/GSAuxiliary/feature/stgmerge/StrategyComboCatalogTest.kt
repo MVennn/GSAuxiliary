@@ -67,7 +67,7 @@ class StrategyComboCatalogTest {
     fun 口径标签反推后能合并成整段区间() {
         val b = StrategyComboCatalog.BUCKETS.first { it.key == "mid-15-4" }
         assertEquals(
-            listOf("流通市值50-500亿", "量比1.5-4"),
+            listOf("流通市值50-500亿", "量比1.5-4.0"),
             mergeTagNames(StrategyComboCatalog.tagNamesOf(b)),
             "口径成员的标签只能按档位表反推；反推不出来，列表卡与详情页的标签条就整个缺掉市值维度",
         )
@@ -99,11 +99,11 @@ class StrategyComboCatalogTest {
     fun 口径说明写成首尾区间且与合并结果一致() {
         val mid = StrategyComboCatalog.BUCKETS.first { it.key == "mid-15-4" }
         assertEquals(
-            "流通市值50-500亿 · 量比1.5-4",
+            "流通市值50-500亿 · 量比1.5-4.0",
             StrategyComboCatalog.summaryText(mid),
             "设置页副标题与添加成员面板都读这一条：跨档要写成首尾区间，否则用户看不出这一行到底选了哪些条件",
         )
-        // 与目标进程合并标签的写法必须逐字一致，否则同一个口径在标签条上写 1.5-4、在设置页写 1.5-4.0
+        // 与目标进程合并标签的写法必须逐字一致（同走 mergeTagNames，端点保留档位表原文 4.0）
         assertEquals(mergeTagNames(StrategyComboCatalog.tagNamesOf(mid)), StrategyComboCatalog.summaryText(mid).split(" · "))
     }
 
@@ -172,12 +172,12 @@ class StrategyComboCatalogTest {
     @Test
     fun 条件标签反推后能合并成整段区间() {
         val c = cond(listOf("50-70亿", "70-100亿"), listOf("1.5-2.0", "2.0-2.5", "2.5-3.0"))
-        // 合并后统一裁掉「.0」（与宿主原生写法一致：1.5-3，不写 1.5-3.0）
+        // 端点保留档位表原文写法（1.5-3.0），不裁尾随 .0 —— 与卡面 chip 上的档位文字一致
         assertEquals(
-            listOf("流通市值50-100亿", "量比1.5-3"),
+            listOf("流通市值50-100亿", "量比1.5-3.0"),
             mergeTagNames(StrategyComboCatalog.tagNamesOf(c)),
         )
-        assertEquals("流通市值50-100亿 · 量比1.5-3", StrategyComboCatalog.summaryText(c))
+        assertEquals("流通市值50-100亿 · 量比1.5-3.0", StrategyComboCatalog.summaryText(c))
     }
 
     @Test

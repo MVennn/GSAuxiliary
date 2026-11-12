@@ -88,6 +88,24 @@ object StrategyMergeTargets {
     /** 页面自己的「按 m_stg 重画头部」方法（改完 name / upNum / downNum 后必须调它） */
     const val ACT_METHOD_SHOW_STG = "showStg"
 
+    /**
+     * 头部「日涨跌幅」那颗数字。
+     *
+     * 宿主只会算**单条策略**的涨跌幅：换成本模块拼的并集之后它算不出来，头部就一直挂着 `--`
+     * （真机 2026-11-12 18:59 探针：开机 `+9.78%`，聚合写回前后都是 `--`）。
+     * 这条纯 UI 写入，不动宿主数据。
+     */
+    const val HEADER_ZDF_ID = "tv_stg_zdf"
+
+    /**
+     * 列表里的**列标题行**（名称 / 最新价 / 涨跌幅）。
+     *
+     * 实测它不是 adapter item，而是 ListView header 末尾的一个普通 View：宿主在换成空占位
+     * 适配器（[CLS_EMPTY_ADAPTER]）时连它一起收起，聚合完把并集装回列表后它不会自己再出来 ——
+     * 用户看到的就是「最后定格时表头消失」。id 实测与 stgfilter 那份一致（`ll_top`）。
+     */
+    const val COL_TITLE_ID = "ll_top"
+
     /** 页面模型类（只用于日志与兜底判据，不参与反射取字段） */
     const val CLS_PAGE_MODEL = "com.guosen.quotation.model.aistk.AIStkStgDetailModel"
 
@@ -191,6 +209,15 @@ object StrategyMergeTargets {
     const val CLS_TAG_ADAPTER = "com.guosen.quotation.adapter.aistk.AITagAd"
 
     const val CLS_TAG = "com.guosen.android.aistock.data.Tag"
+
+    /**
+     * 「我的策略」列表里每张策略卡的 bean。
+     *
+     * 真机 dump 确认（2026-11-12）：`卡#0 类=com.guosen.android.aistock.data.Strategy 无参构造=true`，
+     * 字段 id / name / tags / leadStkCode / leadStkName / leadStkPrice / leadStkZdf / zdf。
+     * 没有可克隆的策略卡时靠它自建一张入口卡（见 StrategyMergeFeature.newEntryCard）。
+     */
+    const val CLS_STRATEGY = "com.guosen.android.aistock.data.Strategy"
     const val TAG_FIELD_NAME = "tagName"
     const val TAG_FIELD_ID = "tagId"
     const val TAG_FIELD_VALID = "isValid"

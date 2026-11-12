@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ListView
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
@@ -52,6 +53,14 @@ private const val FAST_SLOW_MS = 400L
 
 /** 看门狗巡检间隔：宿主既会直接改适配器 data（不 notify），也会在我们写回后重写头部文本 */
 private const val WATCH_INTERVAL_MS = 700L
+
+/**
+ * [PageState.colTitleId] 的「这页没有列标题行」哨兵值。
+ *
+ * 详情页的「名称 / 最新价 / 涨跌幅」是宿主 header 里的 `ll_top`，换过布局的页面可能整个没有。
+ * 查一次记成这个值之后，快路判据直接放行，不再每跳都退化成慢路（慢路要扫整棵树）。
+ */
+private const val COL_TITLE_ABSENT = -2
 
 /**
  * 列表页延迟多久去改聚合入口卡片。
@@ -105,65 +114,280 @@ private val comboExecutor: java.util.concurrent.ExecutorService =
  */
 private val HEADER_RETRY_DELAYS = longArrayOf(400L, 1200L, 2500L)
 
-/**
- * 区间型标签：前缀 + 「数字-数字」+ 后缀。
- *
- * 真机标签原文：「流通市值70-100亿」（前缀=流通市值 / 区间=70-100 / 后缀=亿）、
- * 「量比1.5-2.0」（无后缀）、「创新高20交易日」（没有连字符，落进离散标签那一类）。
- */
-private val TAG_RANGE_REGEX = Regex("^(.*?)(\\d+(?:\\.\\d+)?)-(\\d+(?:\\.\\d+)?)(.*)$")
+/** 标签里的数字：允许负号与小数（涨跌幅档位是「-7%及以下」，把负号漏掉会解析成 +7%） */
+private const val TAG_NUM_PAT = "-?\\d+(?:\\.\\d+)?"
 
-/** 标签里的数字怎么写回文本：整数不带小数点，小数留最短有效位（1.50 → 1.5，2.00 → 2.0） */
-private fun fmtTagNum(v: Double): String {
-    if (!v.isFinite()) return v.toString()
-    if (v == Math.floor(v)) return v.toLong().toString()
-    val s = String.format(Locale.US, "%.2f", v).trimEnd('0')
-    return if (s.endsWith('.')) s + "0" else s
+/**
+ * 标签里可能跟在数字后面的单位词。
+ *
+ * 长的必须排在短的前面 —— 正则的交替按书写顺序尝试，把「亿」写在「亿元」前面会把
+ * 「1亿元」切成 1 亿 + 尾字「元」。
+ */
+private const val TAG_UNIT_PAT =
+    "万亿元|千亿元|百亿元|十亿元|亿元|千万元|百万元|十万元|万元|千亿|百亿|十亿|亿|千万|百万|十万|万|千|百|十" +
+        "|交易日|季度|倍|天|周|月|年|日|次|个|%|％|元"
+
+/**
+ * 区间型标签：前缀 + 「数字[单位] 分隔 数字[单位]」。
+ *
+ * 真机标签原文：「流通市值70-100亿」（前缀=流通市值 / 区间=70-100 / 单位只在右边）、
+ * 「量比1.5-2.0」（两边都没单位）、「-7%—-5%」（两边都带单位）。
+ * 分隔符吃六种写法：涨跌幅那一族用的就是全角破折号，早先只认半角连字符，一整族都漏掉了。
+ */
+private val TAG_RANGE_REGEX = Regex(
+    "^(.*?)($TAG_NUM_PAT)\\s*($TAG_UNIT_PAT)?\\s*[-—－~～至]\\s*($TAG_NUM_PAT)\\s*($TAG_UNIT_PAT)?\$"
+)
+
+/**
+ * 单侧比较写法：「大于1亿元」「近10交易日>=10%」。
+ *
+ * 比较词必须写在数字前面，所以前缀整段（含「近10交易日」里的数字）都归到 group 1 ——
+ * 早先按「前缀+数字」切会把「近10交易日」拆成前缀「近」+ 数字 10，不同时间窗口就被并成一条。
+ */
+private val TAG_CMP_REGEX = Regex(
+    "^(.*?)(大于等于|小于等于|不低于|不高于|大于|小于|超过|不足|>=|<=|≥|≤|>|<)\\s*($TAG_NUM_PAT)\\s*($TAG_UNIT_PAT)?\$"
+)
+
+/** 单侧开区间：「量比4.0以上」「流通市值500亿及以上」「-7%及以下」 */
+private val TAG_OPEN_REGEX = Regex("^(.*?)($TAG_NUM_PAT)\\s*($TAG_UNIT_PAT)?\\s*(及以上|以上|及以下|以下)\$")
+
+/** 这些比较词表示「上界无限」，其余（小于/不足/<）表示「下界无限」 */
+private val TAG_CMP_UP = setOf("大于", "超过", "不低于", "大于等于", ">", ">=", "≥")
+
+/**
+ * 单位 → 换算成「元 / 次 / 天」这类基准值的倍率。
+ *
+ * 表里没有的单位一律视为不可解析：宁可原样保留一条，也不要把「1千5百万」当成 1 去参与合并。
+ */
+private val TAG_UNIT_SCALE = mapOf(
+    "" to 1.0, "%" to 1.0, "％" to 1.0, "倍" to 1.0, "天" to 1.0, "周" to 1.0, "月" to 1.0,
+    "年" to 1.0, "日" to 1.0, "次" to 1.0, "个" to 1.0, "季度" to 1.0, "交易日" to 1.0,
+    "十" to 1e1, "百" to 1e2, "千" to 1e3, "万" to 1e4, "十万" to 1e5, "百万" to 1e6,
+    "千万" to 1e7, "亿" to 1e8, "十亿" to 1e9, "百亿" to 1e10, "千亿" to 1e11, "万亿" to 1e12,
+    "元" to 1.0, "十元" to 1e1, "百元" to 1e2, "千元" to 1e3, "万元" to 1e4, "十万元" to 1e5,
+    "百万元" to 1e6, "千万元" to 1e7, "亿元" to 1e8, "十亿元" to 1e9, "百亿元" to 1e10,
+    "千亿元" to 1e11, "万亿元" to 1e12,
+)
+
+/** 金额类单位：同属一族的跨单位可以按基准值并到一起（1千万元 与 1亿元 是一条轴上的两点） */
+private val TAG_MONEY_UNITS = setOf(
+    "元", "十", "百", "千", "万", "十万", "百万", "千万", "亿", "十亿", "百亿", "千亿", "万亿",
+    "万元", "十万元", "百万元", "千万元", "亿元", "十亿元", "百亿元", "千亿元", "万亿元",
+)
+
+/** 可以挪到区间末尾只写一次的量级单位（「50-500亿」而不是「50亿-500亿」）；% 与倍不行 */
+private val TAG_SCALE_UNITS = setOf(
+    "十", "百", "千", "万", "十万", "百万", "千万", "亿", "十亿", "百亿", "千亿", "万亿",
+)
+
+/**
+ * 一段数值区间。
+ *
+ * 数值用来判定相接与排序，[loText]/[hiText] 是原文数字（「4.0」「50」「5百万」）——
+ * 合并后要能把用户原来看到的那两个数原样写回去，不能靠 Double 反推字符串。
+ */
+internal class TagSpan(
+    val lo: Double,
+    val hi: Double,
+    val loText: String,
+    val loUnit: String,
+    val hiText: String,
+    val hiUnit: String,
+)
+
+/** 一个标签解析出来的全部要素：维度前缀、归并族、区间、比较词、单侧写法 */
+internal class ParsedTag(
+    val prefix: String,
+    val family: String,
+    val span: TagSpan,
+    val cmp: String,
+    val suffix: String,
+)
+
+/** 单位 → 归并族：金额类统一记成 M，其余按单位原文分族（% 和 倍 不是一回事） */
+private fun tagFamilyOf(unit: String): String = if (unit in TAG_MONEY_UNITS) "M" else unit
+
+/** 把一个标签解析成区间；解析不了返回 null（金叉、放量、破净值这类离散词就走这条路） */
+internal fun parseTag(raw: String): ParsedTag? {
+    val s = raw.trim()
+    if (s.isEmpty()) return null
+    TAG_CMP_REGEX.find(s)?.let { m ->
+        val num = m.groupValues[3].toDoubleOrNull()
+        val unit = m.groupValues[4]
+        val scale = TAG_UNIT_SCALE[unit]
+        if (num != null && scale != null) {
+            val cmp = m.groupValues[2]
+            val v = num * scale
+            val span = if (cmp in TAG_CMP_UP) {
+                TagSpan(v, Double.POSITIVE_INFINITY, m.groupValues[3], unit, "", "")
+            } else {
+                TagSpan(Double.NEGATIVE_INFINITY, v, "", "", m.groupValues[3], unit)
+            }
+            return ParsedTag(m.groupValues[1].trim(), tagFamilyOf(unit), span, cmp, "")
+        }
+    }
+    TAG_RANGE_REGEX.find(s)?.let { m ->
+        val numA = m.groupValues[2].toDoubleOrNull()
+        val numB = m.groupValues[4].toDoubleOrNull()
+        val unitA = m.groupValues[3]
+        val unitB = m.groupValues[5]
+        // 「50-500亿」这种写法单位只写在右端，左边的 50 同样是「亿」——
+        // 不补这一下，同一档位里的 50 会被当成 50 元，和「10亿以下」判成交叠
+        val scaleA = TAG_UNIT_SCALE[unitA.ifEmpty { unitB }]
+        val scaleB = TAG_UNIT_SCALE[unitB]
+        if (numA != null && numB != null && scaleA != null && scaleB != null) {
+            val a = numA * scaleA
+            val b = numB * scaleB
+            val textA = m.groupValues[2]
+            val textB = m.groupValues[4]
+            val span = if (a <= b) {
+                TagSpan(a, b, textA, unitA, textB, unitB)
+            } else {
+                TagSpan(b, a, textB, unitB, textA, unitA)
+            }
+            val family = tagFamilyOf(unitA).ifEmpty { tagFamilyOf(unitB) }
+            return ParsedTag(m.groupValues[1].trim(), family, span, "", "")
+        }
+    }
+    TAG_OPEN_REGEX.find(s)?.let { m ->
+        val num = m.groupValues[2].toDoubleOrNull()
+        val unit = m.groupValues[3]
+        val scale = TAG_UNIT_SCALE[unit]
+        val style = m.groupValues[4]
+        if (num != null && scale != null) {
+            val v = num * scale
+            val span = if (style.endsWith("以上")) {
+                TagSpan(v, Double.POSITIVE_INFINITY, m.groupValues[2], unit, "", "")
+            } else {
+                TagSpan(Double.NEGATIVE_INFINITY, v, "", "", m.groupValues[2], unit)
+            }
+            return ParsedTag(m.groupValues[1].trim(), tagFamilyOf(unit), span, "", style)
+        }
+    }
+    return null
 }
 
 /**
  * 把多个成员的标签合成一组（纯函数，便于单测）。
  *
- * 区间型按「同前缀 + 同后缀」取并集：流通市值70-100亿 + 流通市值100-500亿 → 流通市值70-500亿，
+ * 区间型按「同维度前缀 + 同单位族」取并集：流通市值70-100亿 + 流通市值100-500亿 → 流通市值70-500亿，
  * 量比1.5-2.0 + 量比2.0-2.5 → 量比1.5-2.5。离散型（没有区间的条件）去重后保留。
  * 输出顺序按各标签首次出现的顺序，区间标签占它第一次出现的位置。
  */
 internal fun mergeTagNames(all: List<String>): List<String> {
     val order = ArrayList<String>()
-    val range = LinkedHashMap<String, DoubleArray>()
-    val meta = HashMap<String, Pair<String, String>>()
+    val spans = LinkedHashMap<String, MutableList<TagSpan>>()
+    val prefixes = HashMap<String, String>()
+    val cmpWords = HashMap<String, String>()
+    // 比较写法那条的原区间：只有单侧段没被别的档位接上时，才继续用它原来的「大于 1 亿元」；
+    // 一旦并成更宽的段（3 千万元 ~ 无穷），再套「大于」就会把正好等于 3 千万的股票漏掉
+    val cmpSpans = HashMap<String, TagSpan>()
+    val upStyles = HashMap<String, String>()
+    val downStyles = HashMap<String, String>()
+    // 该维度出现过的第一个非空单位：「流通市值50-500亿」的单位只写在右端，合成「50亿及以上」时要补回来
+    val units = HashMap<String, String>()
     for (raw in all) {
         val s = raw.trim()
         if (s.isEmpty()) continue
-        val m = TAG_RANGE_REGEX.find(s)
-        val lo = m?.groupValues?.get(2)?.toDoubleOrNull()
-        val hi = m?.groupValues?.get(3)?.toDoubleOrNull()
-        if (m != null && lo != null && hi != null) {
-            val prefix = m.groupValues[1]
-            val suffix = m.groupValues[4]
-            val key = "R:$prefix|$suffix"
-            val cur = range[key]
-            if (cur == null) {
-                range[key] = doubleArrayOf(lo, hi)
-                meta[key] = prefix to suffix
-                order.add(key)
-            } else {
-                cur[0] = minOf(cur[0], lo)
-                cur[1] = maxOf(cur[1], hi)
-            }
+        val p = parseTag(s)
+        if (p == null) {
+            val key = "S:$s"
+            if (!order.contains(key)) order.add(key)
             continue
         }
-        val key = "S:$s"
-        if (!order.contains(key)) order.add(key)
+        // 键 = 前缀 + 单位族：金额类跨单位算一族（1千万元 与 1亿元 同轴），% 与 倍 各自一族
+        val key = "R:" + p.prefix + "|" + p.family
+        if (spans[key] == null) {
+            spans[key] = ArrayList(4)
+            prefixes[key] = p.prefix
+            order.add(key)
+        }
+        spans.getValue(key).add(p.span)
+        val seenUnit = if (p.span.loUnit.isNotEmpty()) p.span.loUnit else p.span.hiUnit
+        if (seenUnit.isNotEmpty() && !units.containsKey(key)) units[key] = seenUnit
+        if (p.cmp.isNotEmpty() && !cmpWords.containsKey(key)) {
+            cmpWords[key] = p.cmp
+            cmpSpans[key] = p.span
+        }
+        when {
+            p.suffix.isEmpty() -> Unit
+            p.suffix.endsWith("以上") -> if (!upStyles.containsKey(key)) upStyles[key] = p.suffix
+            else -> if (!downStyles.containsKey(key)) downStyles[key] = p.suffix
+        }
     }
     val out = ArrayList<String>(order.size)
     for (k in order) {
-        if (k.startsWith("R:")) {
-            val r = range[k] ?: continue
-            val mt = meta[k] ?: continue
-            out.add(mt.first + fmtTagNum(r[0]) + "-" + fmtTagNum(r[1]) + mt.second)
-        } else {
+        if (!k.startsWith("R:")) {
             out.add(k.removePrefix("S:"))
+            continue
+        }
+        val list = spans[k] ?: continue
+        val prefix = prefixes[k].orEmpty()
+        val cmp = cmpWords[k].orEmpty()
+        for (sp in mergeSpans(list)) {
+            when {
+                // 上界无限：「前缀 + 下界 + 单位 + 以上」，比较写法则为「前缀 + 比较词 + 数字」
+                sp.hi == Double.POSITIVE_INFINITY && sp.lo.isFinite() -> {
+                    val num = sp.loText + sp.loUnit.ifEmpty { units[k].orEmpty() }
+                    val keepCmp = cmp.isNotEmpty() && cmpSpans[k]?.lo == sp.lo
+                    out.add(
+                        if (keepCmp) prefix + cmp + num
+                        else prefix + num + upStyles.getOrDefault(k, "以上"),
+                    )
+                }
+                // 下界无限：「前缀 + 上界 + 单位 + 以下」
+                sp.lo == Double.NEGATIVE_INFINITY && sp.hi.isFinite() -> {
+                    val num = sp.hiText + sp.hiUnit.ifEmpty { units[k].orEmpty() }
+                    val keepCmp = cmp.isNotEmpty() && cmpSpans[k]?.hi == sp.hi
+                    out.add(
+                        if (keepCmp) prefix + cmp + num
+                        else prefix + num + downStyles.getOrDefault(k, "以下"),
+                    )
+                }
+                // 整轴（既没有下界也没有上界）：等于这个维度没限制，写出来反而误导
+                sp.lo == Double.NEGATIVE_INFINITY && sp.hi == Double.POSITIVE_INFINITY -> Unit
+                else -> {
+                    val unit = if (sp.loUnit.isNotEmpty()) sp.loUnit else sp.hiUnit
+                    val sameUnit = sp.loUnit == sp.hiUnit || sp.loUnit.isEmpty() || sp.hiUnit.isEmpty()
+                    // 量级词（亿/万/千亿）只写在末尾：「50-500亿」比「50亿-500亿」顺眼；
+                    // 百分比与「倍」两侧都要带（「-7%—-3%」），否则会被读成减法
+                    val text = when {
+                        !sameUnit -> prefix + sp.loText + sp.loUnit + sepOf(sp) + sp.hiText + sp.hiUnit
+                        unit in TAG_SCALE_UNITS -> prefix + sp.loText + sepOf(sp) + sp.hiText + unit
+                        else -> prefix + sp.loText + unit + sepOf(sp) + sp.hiText + unit
+                    }
+                    out.add(text)
+                }
+            }
+        }
+    }
+    return out
+}
+
+/** 区间分隔符：端点是负数或单位是百分比时用全角破折号，否则半角连字符（「-7%—-3%」不能被读成减法） */
+private fun sepOf(sp: TagSpan): String =
+    if (sp.loText.startsWith("-") || sp.hiText.startsWith("-") || sp.loUnit == "%" || sp.hiUnit == "%") "—" else "-"
+
+/**
+ * 把同一个维度（同前缀同族）的区间并成尽量少的段。
+ *
+ * 相接也算并：1-4 与 4.0以上 → 1以上；50-500亿 与 500亿及以上 → 50亿及以上。
+ * 不相接的（1-2 与 3-4）保持两段 —— 合成一条会把中间那段没选的范围也写进去。
+ */
+private fun mergeSpans(list: List<TagSpan>): List<TagSpan> {
+    if (list.size <= 1) return list
+    val sorted = list.sortedBy { it.lo }
+    val out = ArrayList<TagSpan>(sorted.size)
+    for (sp in sorted) {
+        val last = out.lastOrNull()
+        // 1e-9 挡浮点误差：1.0 与 0.9999999 视为相接
+        if (last != null && sp.lo <= last.hi + 1e-9) {
+            // 端点值取更远的那个，文本跟着端点走：合并后的数字仍写成用户原来看到的样子
+            if (sp.hi > last.hi) {
+                out[out.size - 1] = TagSpan(last.lo, sp.hi, last.loText, last.loUnit, sp.hiText, sp.hiUnit)
+            }
+        } else {
+            out.add(sp)
         }
     }
     return out
@@ -230,6 +454,9 @@ internal fun entryLabelGroupNames(label: String): List<String> {
     return out
 }
 
+/** [mergeTagsJson] 上一次「档位表查不到」提示的内容，用来挡住巡检 800ms 一轮的重复日志 */
+private var lastTagSkipNote: String? = null
+
 /**
  * 把入口卡原有的 `tags` JSON 改写成合并后的标签（纯函数，便于单测）。
  *
@@ -245,8 +472,14 @@ internal fun mergeTagsJson(rawList: List<String>, want: List<String>): String? {
     if (want.isEmpty()) return null
     val byName = LinkedHashMap<String, org.json.JSONObject>()
     val byPrefix = LinkedHashMap<String, org.json.JSONObject>()
+    // 至少有一段原 JSON 解析成功才允许改写：一段都解析不出来时写成空数组，
+    // 卡片下面一条标签都没有，比不合并更糟（调用方按「保持原样」处理）。
+    // 注意这里判的是「解析成功」而不是「解析出元素」—— 自建入口卡的 tags 就是 `[]`，
+    // 它必须能写出合并标签（没有可借的原元素时按档位表补 labelId）。
+    var parsed = false
     for (raw in rawList) {
         val arr = runCatching { org.json.JSONArray(raw) }.getOrNull() ?: continue
+        parsed = true
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             val n = o.optString("labelName").trim()
@@ -256,14 +489,44 @@ internal fun mergeTagsJson(rawList: List<String>, want: List<String>): String? {
             if (prefix.isNotEmpty() && !byPrefix.containsKey(prefix)) byPrefix[prefix] = o
         }
     }
-    if (byName.isEmpty()) return null
+    if (!parsed) return null
     val out = org.json.JSONArray()
+    var skipped = 0
     for (n in want) {
         val src = byName[n] ?: byPrefix[takeTagPrefix(n)]
         val copy = src?.let { runCatching { org.json.JSONObject(it.toString()) }.getOrNull() }
         val e = copy ?: org.json.JSONObject()
         runCatching { e.put("labelName", n) }
+        if (copy == null) {
+            // 新造的元素只有 labelName，宿主按它渲染 chip 时缺 labelId 就画成「无效标签」
+            // （真机症状：卡上标签后面挂一个感叹号）。档位表里查得到这一条，就把真 labelId 补上。
+            // 跨档合成文本（「量比1-4」「流通市值50-500亿」）表里没有原样的一条，
+            // entryForDisplay 会按区间取相交的第一档顶上，文字仍写合成文本。
+            val entry = StrategyLabelTable.entryForDisplay(n)
+            if (entry == null) {
+                // 连区间也反推不出（写法不在档位表体系里）：不写这张卡 ——
+                // 写上去也只是一条点不动的无效标签，不如不显示。
+                skipped++
+                continue
+            }
+            runCatching {
+                e.put("labelId", entry.labelId)
+                e.put("isValid", "1")
+            }
+        } else {
+            // 复制来的元素通常三键齐全；宿主历史数据缺 isValid 时补一个，别继承坏状态。
+            runCatching { if (!e.has("isValid")) e.put("isValid", "1") }
+            runCatching { if (!e.has("labelId")) e.put("labelId", "") }
+        }
         out.put(e)
+    }
+    if (skipped > 0) {
+        // 列表页巡检 800ms 一轮，同一条提示跨轮重复没有信息量，只在这组数字变了时报一次
+        val note = skipped.toString() + "/" + want.size
+        if (lastTagSkipNote != note) {
+            lastTagSkipNote = note
+            GLog.i("$LOG 标签合成：" + skipped + " 条在档位表里查不到，没写进卡片（写了会显示成无效标签）")
+        }
     }
     return out.toString()
 }
@@ -366,6 +629,18 @@ class StrategyMergeFeature : Feature {
 
     /** 列表页巡检每 800ms 跑一次：采集结果没变化就别刷日志（否则一页一分钟上百行） */
     private var lastListStat = ""
+
+    /** 入口卡上属于「某一条策略」的行情字段：克隆来的必须清零，否则外显就是那条策略（见 prepareEntryCard） */
+    private val ENTRY_QUOTE_FIELDS = arrayOf("leadStkCode", "leadStkName", "leadStkPrice", "leadStkZdf", "zdf")
+
+    /** 自建入口卡的伪 id 前缀：真实策略 id 是 19 位数字，这个必然查不到（见 newEntryCard） */
+    private val ENTRY_FAKE_ID_BASE = "90"
+
+    /** 空列表页的三个宿主控件（AIStkStgListAct 的字段名，真机 dump 确认）：列表 / 适配器 / 空态滚动区 */
+    private val LIST_RV_FIELD = "m_RvStg"
+    private val LIST_ADAPTER_FIELD = "m_stgAd"
+    private val LIST_SCROLL_FIELD = "mSrcollView"
+    private val LIST_NO_DATA_FIELD = "mTvNoData"
 
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgMerge
 
@@ -745,6 +1020,187 @@ class StrategyMergeFeature : Feature {
         return inst
     }
 
+    /**
+     * 入口卡上属于「某一条策略」的行情字段，全部清零。
+     *
+     * 真机铁证（2026-11-12）：「聚合组2」与「One」两张卡外显完全一样 —— 同一只 ST棕榈 +7.44%、
+     * 同一个 -0.07%、同一个「风险警示板」标签。根因就是克隆卡把 donor 的 `leadStkCode/
+     * leadStkName/leadStkPrice/leadStkZdf/zdf` 原样带了过来。
+     * 入口卡代表的是一整组策略，没有「自己的龙头股」，这些字段必须归零。
+     */
+    private fun prepareEntryCard(card: Any) {
+        for (name in ENTRY_QUOTE_FIELDS) zeroField(card, name)
+    }
+
+    /** 按字段**声明类型**写零值：类型对不上时 `Field.set` 会抛，宁可跳过也不留半个字段 */
+    private fun zeroField(card: Any, name: String) {
+        val f = Reflect.findField(card.javaClass, name) ?: return
+        val t = f.type
+        val zero: Any = when {
+            t == java.lang.String::class.java -> ""
+            t == Integer.TYPE || t == java.lang.Integer::class.java -> 0
+            t == java.lang.Long.TYPE || t == java.lang.Long::class.java -> 0L
+            t == java.lang.Double.TYPE || t == java.lang.Double::class.java -> 0.0
+            t == java.lang.Float.TYPE || t == java.lang.Float::class.java -> 0f
+            t == java.lang.Boolean.TYPE -> false
+            else -> return
+        }
+        StrategyMergeTargets.write(card, name, zero)
+    }
+
+    /**
+     * 页面上一张策略卡都没有时，自己造一张入口卡。
+     *
+     * 用户主诉（2026-11-12）：没有自建策略时，聚合组在「我的策略」里根本不显示。
+     * 以前入口卡只能从页面某张策略卡克隆，页面空 = 没有 donor = 不建卡。
+     * 宿主 `Strategy` 有无参构造（真机 dump 确认：`com.guosen.android.aistock.data.Strategy`
+     * 无参构造可用），给它 id / name / tags 三个 String 就能被列表适配器渲染。
+     *
+     * id 用 [ENTRY_FAKE_ID_BASE] + 组序号：真实策略 id 是 19 位数字，这里必然「查不到」，
+     * 点进详情页宿主取不到数据 —— 正好，那一页会被 [MergeRun] 整个换成成员并集。
+     */
+    private fun newEntryCard(env: FeatureEnv, index: Int): Any? {
+        val cls = runCatching { env.classLoader.loadClass(StrategyMergeTargets.CLS_STRATEGY) }
+            .getOrNull()
+            ?: runCatching { Class.forName(StrategyMergeTargets.CLS_STRATEGY) }.getOrNull()
+            ?: run {
+                GLog.w("$LOG 找不到宿主策略类 ${StrategyMergeTargets.CLS_STRATEGY}，建不出入口卡")
+                return null
+            }
+        val inst = runCatching {
+            cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        }.getOrNull() ?: run {
+            GLog.w("$LOG 宿主策略类没有无参构造，建不出入口卡")
+            return null
+        }
+        StrategyMergeTargets.write(inst, StrategyMergeTargets.STG_FIELD_ID, ENTRY_FAKE_ID_BASE + index)
+        StrategyMergeTargets.write(inst, StrategyMergeTargets.STG_FIELD_NAME, "")
+        StrategyMergeTargets.write(inst, StrategyMergeTargets.STG_FIELD_TAGS, "[]")
+        return inst
+    }
+
+    /**
+     * 空列表页：列表还在，只是被宿主换成了「未发现内容」。
+     *
+     * 真机 dump（2026-11-12）：AIStkStgListAct 上 m_RvStg: RecyclerView（vis=GONE、720x0）、
+     * mSrcollView: NestedScrollView（vis=VISIBLE，里面是 tv_stg_no_data 空态文案）、
+     * m_stgAd: AIStgAdapter 一直挂着。所以不需要自绘卡片：往 m_stgAd.data 里塞一张自建策略卡、
+     * 把 rv 撑起来、把空态滚上去，宿主自己就按标准卡片渲染，点击也走它自己的「进详情页」逻辑 ——
+     * 详情页按入口名认组的判据（见 start()）在两边完全一致。
+     *
+     * 幂等：伪 id 卡（[ENTRY_FAKE_ID_BASE] + 组序号）用 [isFakeEntryCard] 认出来，每轮重排一次；
+     * 组被停用/删光时把卡摘掉、rv 收回去、空态文案放出来，恢复宿主原样。
+     */
+    private fun decorateEmptyList(env: FeatureEnv, act: Activity) {
+        val rv = StrategyMergeTargets.field(act, LIST_RV_FIELD) as? android.view.ViewGroup
+        val ad = StrategyMergeTargets.field(act, LIST_ADAPTER_FIELD)
+        val scroll = StrategyMergeTargets.field(act, LIST_SCROLL_FIELD) as? View
+        if (rv == null || ad == null) {
+            if (lastListStat != "empty-no-view") {
+                lastListStat = "empty-no-view"
+                GLog.w(
+                    "$LOG 空页找不到列表控件（" + LIST_RV_FIELD + "=" + (rv != null) +
+                        " / " + LIST_ADAPTER_FIELD + "=" + (ad != null) + "），这一轮不建入口",
+                )
+            }
+            return
+        }
+        val merge = runCatching { StrategyMergeStore.decode(env.config.stgMergeGroups) }.getOrNull() ?: return
+        val wanted = ArrayList<Pair<Int, MergeGroup>>()
+        val labels = ArrayList<String>()
+        for ((i, g) in merge.groups.withIndex()) {
+            if (!g.enabled) continue
+            val cnt = StrategyComboCatalog.expandedCount(g.members)
+            if (cnt < 2) continue
+            wanted.add(i to g)
+            labels.add(entryLabelOf(g.name, cnt))
+        }
+        val data = ensureListData(ad)
+        if (data == null) {
+            if (lastListStat != "empty-no-data") {
+                lastListStat = "empty-no-data"
+                GLog.w("$LOG 空页适配器 data 写不进去（" + ad.javaClass.name + "），这一轮不建入口")
+            }
+            return
+        }
+        val existing = ArrayList<Any?>()
+        for (item in data) if (isFakeEntryCard(item)) existing.add(item)
+        var same = existing.size == labels.size
+        if (same) {
+            for (k in existing.indices) {
+                if (stgNameOf(existing[k]) != labels[k]) { same = false; break }
+            }
+        }
+        if (!same) {
+            data.removeAll(existing)
+            for (k in wanted.indices) {
+                val card = newEntryCard(env, wanted[k].first) ?: continue
+                StrategyMergeTargets.write(card, StrategyMergeTargets.STG_FIELD_NAME, labels[k])
+                prepareEntryCard(card)
+                writeCardTags(card, groupTagNames(wanted[k].second, data), clearWhenEmpty = true)
+                data.add(card)
+            }
+            StrategyMergeTargets.notifyAdapter(ad)
+            GLog.i(
+                "$LOG 空页：宿主把列表收成「未发现内容」，已塞入 " + labels.size +
+                    " 张聚合入口卡（" + labels.joinToString(" / ") + "）",
+            )
+        }
+        for (k in wanted.indices) {
+            entryLabels.add(labels[k])
+            entryLabels.add(entryLabelBare(wanted[k].second.name))
+        }
+        val noData = StrategyMergeTargets.field(act, LIST_NO_DATA_FIELD) as? View
+        showEmptyEntry(rv, scroll, noData, labels.isNotEmpty())
+    }
+
+    /**
+     * 空页时把 rv 撑起来、空态滚上去；没有启用组时原样收回去。
+     *
+     * 只用 View 的接口：模块没依赖 androidx.recyclerview，layoutManager / adapter 只能反射问一句
+     * （宿主自己设过，一般不用我们补；真没设就记一条日志，别再静默）。
+     */
+    private fun showEmptyEntry(rv: android.view.ViewGroup, scroll: View?, noData: View?, visible: Boolean) {
+        if (visible) {
+            val noLm = runCatching {
+                rv.javaClass.getMethod("getLayoutManager").invoke(rv) == null
+            }.getOrNull()
+            if (noLm == true && lastListStat != "empty-no-lm") {
+                lastListStat = "empty-no-lm"
+                GLog.w("$LOG 空页的 RecyclerView 没有 LayoutManager，入口卡可能渲染不出来")
+            }
+        }
+        // rv 与「未发现内容」那句同属 mSrcollView 的子节点（真机 dump：NestedScrollView → LinearLayout →
+        // [tv_stg_no_data, rv_ai_stg]），所以滚动区不能 GONE，只把 rv 放开、把那句藏掉。
+        val wantRv = if (visible) View.VISIBLE else View.GONE
+        if (rv.visibility != wantRv) rv.visibility = wantRv
+        if (noData != null) {
+            val wantTv = if (visible) View.GONE else View.VISIBLE
+            if (noData.visibility != wantTv) noData.visibility = wantTv
+        }
+        if (scroll != null && scroll.visibility != View.VISIBLE) scroll.visibility = View.VISIBLE
+    }
+
+    /** 取适配器里那份 data；不可变/空时换一份可写的 ArrayList 进去（宿主空态下 data 常为 null） */
+    private fun ensureListData(ad: Any): MutableList<Any?>? {
+        val cur = StrategyMergeTargets.listField(ad, *StrategyMergeTargets.LIST_DATA_FIELDS)
+        if (cur is MutableList<*>) {
+            @Suppress("UNCHECKED_CAST")
+            return cur as MutableList<Any?>
+        }
+        val fresh = ArrayList<Any?>()
+        for (n in StrategyMergeTargets.LIST_DATA_FIELDS) {
+            if (StrategyMergeTargets.write(ad, n, fresh)) return fresh
+        }
+        return null
+    }
+
+    /** 我们自己造的入口卡：伪 id 是 [ENTRY_FAKE_ID_BASE] + 组序号，真实策略 id 是 19 位数字 */
+    private fun isFakeEntryCard(item: Any?): Boolean {
+        val id = stgIdOf(item) ?: return false
+        return id.length <= 6 && id.startsWith(ENTRY_FAKE_ID_BASE)
+    }
+
     private fun logListAdapters(act: Activity, tag: String) {
         val lists = ArrayList<View>(4)
         collectLists(act.window?.decorView, lists)
@@ -763,6 +1219,21 @@ class StrategyMergeFeature : Feature {
                     "${inner?.let { System.identityHashCode(it) }} data=${data?.size ?: -1} count=$cnt",
             )
         }
+    }
+
+    /**
+     * 并集按涨跌幅降序（与宿主详情页表头那三列的默认口径一致）。
+     *
+     * 不排的话屏幕上就是「一个成员一截」：并集是按成员取数顺序累加的（uniq 是 LinkedHashMap），
+     * 每组内部降序、组与组之间不降序，看着就是「直接组合的」。读不到涨跌幅的行沉到末尾。
+     */
+    private fun sortByPct(list: MutableList<Any>) {
+        if (list.size < 2) return
+        val keyed = ArrayList<Pair<Any, Double>>(list.size)
+        for (e in list) keyed.add(e to (StrategyMergeTargets.pctOf(e) ?: Double.NEGATIVE_INFINITY))
+        keyed.sortWith(compareByDescending { it.second })
+        list.clear()
+        for (p in keyed) list.add(p.first)
     }
 
     /** 详情页里真正装股票的那个适配器（跳过 Header / 空列表占位） */
@@ -891,6 +1362,7 @@ class StrategyMergeFeature : Feature {
         // 慢路一次 = 十几次反射 + 全树扫 60 多个 TextView，勾选时肉眼可见掉帧。
         if (!force && cur != null && cur.size == merged.size &&
             cur.firstOrNull() === merged.firstOrNull() && headerCountsOk(state) &&
+            zdfOk(state) && colTitleOk(state) &&
             android.os.SystemClock.uptimeMillis() - state.lastSlowAt < FAST_SLOW_MS
         ) {
             return true
@@ -917,6 +1389,9 @@ class StrategyMergeFeature : Feature {
         }
         writeHeaderCounts(act, state.upSum, state.downSum, state)
         writeMergedResNum(act, state, merged.size)
+        // 日涨跌幅与列标题行同理：宿主刷新都会把它们弄回 `--` / 收起，放在早返回之前补
+        writeMergedZdf(act, state)
+        restoreColTitle(act, state)
         // 标签条同理：宿主重画后要按合并结果补回去（同内容时内部早返回，几乎零成本）
         applyTagTexts(act, state)
         // 列表可能已经被宿主换成空占位适配器（它那条策略没股票）：先把并集适配器装回列表，
@@ -994,6 +1469,7 @@ class StrategyMergeFeature : Feature {
         state.upSum = snap.up
         state.downSum = snap.down
         state.label = snap.label
+        state.zdfText = mergedZdfText(merged)
         state.tagTexts = snap.tags.ifEmpty { null }
         if (stg != null) StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_NAME, snap.label)
         // 这里**故意只写文本、不写 model / m_stg 上的 upNum、downNum**：
@@ -1006,6 +1482,8 @@ class StrategyMergeFeature : Feature {
         StrategyMergeTargets.notifyAdapter(adapter)
         writeHeaderCounts(act, snap.up, snap.down, state)
         writeMergedResNum(act, state, copy.size)
+        writeMergedZdf(act, state)
+        restoreColTitle(act, state)
         if (state.tagTexts != null) applyTagTexts(act, state)
         startWatch(act, state)
         return true
@@ -1085,10 +1563,9 @@ class StrategyMergeFeature : Feature {
         }
         val data = StrategyMergeTargets.listField(adapter, *StrategyMergeTargets.LIST_DATA_FIELDS)
         if (data.isNullOrEmpty()) {
-            GLog.i(
-                "$LOG 列表页适配器 ${adapter.javaClass.name} 读不到列表数据" +
-                    "（候选 ${StrategyMergeTargets.LIST_DATA_FIELDS.joinToString("/")}）",
-            )
+            // 一条自建策略都没有时宿主会把列表收成「未发现内容」：适配器还在，data 却是 null/空，
+            // 入口卡没地方插，聚合组整组消失（用户主诉 2026-11-12）。空页有自己的入口路径。
+            decorateEmptyList(env, act)
             return
         }
 
@@ -1147,7 +1624,7 @@ class StrategyMergeFeature : Feature {
         val claimed = ArrayList<Any?>()
         // 温和模式的日志去重：这一页每次重扫都别重复刷同一条
         val gentleNoted = HashSet<String>()
-        for (g in merge.groups) {
+        for ((gi, g) in merge.groups.withIndex()) {
             if (!g.enabled) continue
             // 条数按**展开后**算，和详情页头部同一个数：口径成员不是一条策略，
             // 它展开成「市值档 × 量比档」。以前这里用配置里的原始成员数，
@@ -1215,16 +1692,30 @@ class StrategyMergeFeature : Feature {
                     }
                     true
                 }
-                val clone = donor?.let { cloneCard(it) }
+                // 页面上一张可借的策略卡都没有（用户没自建策略 / 全被聚合收起）时**自建**一张：
+                // 入口卡必须存在，否则这一组在列表上完全不显示（用户主诉 2026-11-12）。
+                val clone = donor?.let { cloneCard(it) } ?: newEntryCard(env, gi)
                 val list = data as? MutableList<Any?>
                 val at = if (donor == null) -1 else (list?.indexOfFirst { it === donor } ?: -1)
-                if (donor != null && clone != null && list != null && at >= 0 &&
+                if (clone != null && list != null && (donor == null || at >= 0) &&
                     StrategyMergeTargets.write(clone, StrategyMergeTargets.STG_FIELD_NAME, label)
                 ) {
-                    list.add(at, clone)
+                    // 顺序要紧：先清 donor 的行情字段、再按整组写标签，最后才插进 data ——
+                    // 插进去以后再清，宿主可能已经按旧值画过一帧。
+                    prepareEntryCard(clone)
+                    writeCardTags(clone, groupTagNames(g, data), clearWhenEmpty = true)
+                    list.add(if (at >= 0) at else 0, clone)
                     claimed.add(clone)
                     if (gentleNoted.add(g.id)) {
-                        GLog.i("$LOG 组「" + g.name + "」没有成员卡，克隆「" + stgNameOf(donor) + "」当入口（原卡保留）")
+                        val src = donor?.let { stgNameOf(it) }
+                        GLog.i(
+                            "$LOG 组「" + g.name + "」没有成员卡，" +
+                                (if (src != null) {
+                                    "克隆「" + src + "」当入口（原卡保留）"
+                                } else {
+                                    "自建入口卡 " + ENTRY_FAKE_ID_BASE + gi + "（页面没有可借的策略）"
+                                }),
+                        )
                     }
                     renamed++
                     entryLabels.add(label)
@@ -1427,14 +1918,35 @@ class StrategyMergeFeature : Feature {
      * 宿主卡片是按 `tags` 字符串渲染 chips 的，改完 notify 就会重画；
      * 结果与原标签一致时不写 —— 巡检每 800ms 跑一次，不能每轮都触发整表重绘。
      */
-    private fun writeCardTags(card: Any, want: List<String>): Boolean {
-        if (want.isEmpty()) return false
-        if (StrategyMergeTargets.strategyTagNames(card) == want) return false
+    private fun writeCardTags(card: Any, want: List<String>, clearWhenEmpty: Boolean = false): Boolean {
+        if (want.isEmpty() && !clearWhenEmpty) return false
+        val cur = StrategyMergeTargets.strategyTagNames(card)
         val raw = (StrategyMergeTargets.field(card, StrategyMergeTargets.STG_FIELD_TAGS) as? String)
             ?.trim().orEmpty()
-        val json = mergeTagsJson(listOf(raw), want) ?: return false
+        val json = if (want.isEmpty()) "[]" else (mergeTagsJson(listOf(raw), want) ?: return false)
+        // 拿 [want] 直接比是错的：want 里那些档位表查不到的名字根本不会写进 JSON，
+        // 于是「卡上 2 条 vs want 4 条」永远不等 —— 巡检每 800ms 重写一次 + 整表 notify 一次，
+        // 真机日志里刷了几百行「入口卡标签按整组合并」就是这么来的。按实际写进去的名单比。
+        val written = if (json == "[]") emptyList() else runCatching {
+            val arr = org.json.JSONArray(json)
+            val out = ArrayList<String>(arr.length())
+            for (i in 0 until arr.length()) {
+                val nm = arr.optJSONObject(i)?.optString("labelName").orEmpty().trim()
+                if (nm.isNotEmpty()) out.add(nm)
+            }
+            out
+        }.getOrDefault(emptyList())
+        if (written == cur) return false
         val ok = StrategyMergeTargets.write(card, StrategyMergeTargets.STG_FIELD_TAGS, json)
-        if (ok) GLog.i("$LOG 入口卡标签按整组合并：" + want.joinToString(" + "))
+        if (ok) {
+            GLog.i(
+                if (want.isEmpty()) {
+                    "$LOG 入口卡标签清空（克隆卡不能挂着来源那张卡的标签）"
+                } else {
+                    "$LOG 入口卡标签按整组合并：" + want.joinToString(" + ")
+                },
+            )
+        }
         return ok
     }
 
@@ -1526,6 +2038,131 @@ class StrategyMergeFeature : Feature {
             }
         }
         return ok
+    }
+
+    /**
+     * 并集的**等权平均**涨跌幅，写成宿主那套文案（`+3.22%` / `-1.45%` / `0.00%`）。
+     *
+     * 为什么是等权平均：屏幕上这 N 只就是整份并集，宿主自己的「日涨跌幅」是它按单条策略算的，
+     * 换成并集之后它算不出来、只能挂 `--`。等权平均与列表口径一致（不冒充指数、也不算加权）。
+     */
+    private fun mergedZdfText(list: List<*>): String? {
+        var sum = 0.0
+        var n = 0
+        for (e in list) {
+            val p = StrategyMergeTargets.pctOf(e) ?: continue
+            sum += p
+            n++
+        }
+        if (n == 0) return null
+        val avg = sum / n
+        if (avg > -0.005 && avg < 0.005) return "0.00%"
+        return String.format(Locale.ROOT, "%+.2f%%", avg)
+    }
+
+    /**
+     * 头部「日涨跌幅」摆成并集口径。宿主每轮刷新都会把它写回 `--`，所以跟家数一样归看门狗管。
+     *
+     * 快路只认上一次认下来的那颗 TextView（稳态零扫树）；慢路按「日涨跌幅」这句文案找同一行的
+     * 下一个文本节点 —— 与涨家数 / 跌家数同一套写法（见 [writeHeaderCounts]）。
+     */
+    private fun writeMergedZdf(act: Activity, state: PageState): Boolean {
+        val want = state.zdfText ?: return false
+        val cached = state.zdfTvRef?.get()
+        if (cached != null && cached.isAttachedToWindow) {
+            if (cached.text?.toString() == want) return false
+            cached.text = want
+            dyedZdf(cached, want, state)
+            GLog.i("$LOG 头部日涨跌幅 → $want（并集等权平均）")
+            return true
+        }
+        val root = act.window?.decorView ?: return false
+        val texts = ArrayList<TextView>(96)
+        collectTextViews(root, texts)
+        for (i in texts.indices) {
+            if (texts[i].text?.toString()?.trim() != "日涨跌幅") continue
+            val parent = texts[i].parent as? ViewGroup ?: continue
+            var self = -1
+            for (j in 0 until parent.childCount) {
+                if (parent.getChildAt(j) === texts[i]) { self = j; break }
+            }
+            if (self < 0) continue
+            for (j in self + 1 until parent.childCount) {
+                val c = parent.getChildAt(j) as? TextView ?: continue
+                val t = c.text?.toString()?.trim() ?: continue
+                // 只认「占位 --」或「带百分号」的兄弟节点，别把后面别的标签当成数字
+                if (t != "--" && !t.contains('%')) continue
+                c.text = want
+                dyedZdf(c, want, state)
+                state.zdfTvRef = WeakReference(c)
+                GLog.i("$LOG 头部日涨跌幅 → $want（并集等权平均）")
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 涨跌数字染色：红绿从「涨家数」「跌家数」抄宿主自己配好的颜色。
+     *
+     * 不能自己写死色值 —— 用户的主题 / 夜间模式下宿主用的是自己的资源色。
+     */
+    private fun dyedZdf(tv: TextView, text: String, state: PageState) {
+        val src = when {
+            text.startsWith("-") -> state.downTvRef?.get() ?: state.upTvRef?.get()
+            text.startsWith("+") -> state.upTvRef?.get() ?: state.downTvRef?.get()
+            else -> null
+        } ?: return
+        runCatching { tv.setTextColor(src.textColors) }
+    }
+
+    /** 头部日涨跌幅还是不是我们写的那份（快路判据） */
+    private fun zdfOk(state: PageState): Boolean {
+        val want = state.zdfText ?: return true
+        val tv = state.zdfTvRef?.get() ?: return false
+        if (!tv.isAttachedToWindow) return false
+        return tv.text?.toString() == want
+    }
+
+    /**
+     * 列标题行（名称 / 最新价 / 涨跌幅）摆回来。
+     *
+     * 宿主换成空占位适配器那一刻会把它一起收起（探针：聚合前 `ll_top vis=0`，写回前已 `vis=8`，
+     * 而且全程没有 stgfilter 的「列标题行已收起」日志 —— 是宿主自己收的）。列表里重新装满
+     * 股票行之后它**不会自己回来**，所以要在写回并集之后、以及每轮巡检里补一次。
+     *
+     * 列表是空的（0 只）时不动它：那时候收起正是宿主该有的样子。
+     */
+    private fun restoreColTitle(act: Activity, state: PageState): Boolean {
+        var v = state.colTitleRef?.get()
+        if (v == null || !v.isAttachedToWindow) {
+            // colTitleId：-1 还没查 / -2 这页确实没有（查过一次就定案）/ 其他是真实 id
+            if (state.colTitleId == -1) {
+                val found = act.resources.viewIdOrZero(StrategyMergeTargets.COL_TITLE_ID)
+                if (found == 0) {
+                    state.colTitleId = COL_TITLE_ABSENT
+                    GLog.i("$LOG 这页没有列标题行，之后不再找")
+                    return false
+                }
+                state.colTitleId = found
+            }
+            val id = state.colTitleId
+            if (id == COL_TITLE_ABSENT) return false
+            v = runCatching { act.findViewById<View>(id) }.getOrNull() ?: return false
+            state.colTitleRef = WeakReference(v)
+        }
+        if (v.visibility == View.VISIBLE) return false
+        v.visibility = View.VISIBLE
+        GLog.i("$LOG 列标题行（名称 / 最新价 / 涨跌幅）已摆回来")
+        return true
+    }
+
+    /** 列标题行在不在（快路判据） */
+    private fun colTitleOk(state: PageState): Boolean {
+        // 查过一次、这页就没这个 id：当作「无需管」，否则快路每跳都失败，勾选股票时肉眼掉帧
+        if (state.colTitleId == COL_TITLE_ABSENT) return true
+        val v = state.colTitleRef?.get() ?: return false
+        return v.isAttachedToWindow && v.visibility == View.VISIBLE
     }
 
     private fun collectTextViews(v: View?, out: MutableList<TextView>) {
@@ -1700,6 +2337,11 @@ class StrategyMergeFeature : Feature {
             return
         }
 
+        // 本页这条策略**自己**是不是该组的成员：只有是，才允许把这一页的列表当起点。
+        // 不是 = 用户点的是我们克隆 / 自建的入口卡：卡上的 stId 要么是 donor（克隆来源那条
+        // 策略）的，要么是伪 id，而这一页的列表就是 donor 的股票 —— 真机症状正是「聚合组2」
+        // 里冒出 One 的 100 只（日志「起点 stId=1638385366824128512：本页 100 只」之后待取 24 个）。
+        val seedIsMember = group.members.any { hits(it) }
         val targets = members.entries.filter { it.key != pageStId }.map { it.key to it.value }
         val memberIds = members.keys.toList()
         // 头部名字与列表入口卡同口径：列表是「聚合 · 组名（N 条）」，点进来必须一模一样
@@ -1772,7 +2414,10 @@ class StrategyMergeFeature : Feature {
                     (System.currentTimeMillis() - cachedSnap.at) + "ms 前），后台校验这一轮",
             )
         }
-        val run = MergeRun(env, act, state, model, stg, adapter, pageStId, targets, label, memberIds, cacheKey)
+        val run = MergeRun(
+            env, act, state, model, stg, adapter, pageStId,
+            seedIsMember, targets, label, memberIds, cacheKey,
+        )
         synchronized(state) { state.run = run }
         GLog.i(
             "$LOG 开始聚合 stId=$pageStId，组 ${members.size} 个成员" +
@@ -1816,6 +2461,7 @@ class StrategyMergeFeature : Feature {
         if (state.listId == 0) return null
         return runCatching { act.findViewById<View>(state.listId) as? ListView }.getOrNull()
     }
+
 
     // ------------------------------------------------------------------ 快照 / 回滚
 
@@ -2205,6 +2851,18 @@ class StrategyMergeFeature : Feature {
 
         /** 标签条那个 RecyclerView（弱引用，免得每次巡检都遍历整棵视图树） */
         var tagRvRef: WeakReference<Any>? = null
+
+        /** 头部「日涨跌幅」那颗数字（弱引用）：宿主算不出组合涨跌幅，刷新后总写回 `--` */
+        var zdfTvRef: WeakReference<TextView>? = null
+
+        /** 并集的**等权平均**涨跌幅文案（`+3.22%` / `0.00%`）；null = 这轮还没算 */
+        var zdfText: String? = null
+
+        /** 列标题行（名称 / 最新价 / 涨跌幅）那个 View（弱引用，id = [StrategyMergeTargets.COL_TITLE_ID]） */
+        var colTitleRef: WeakReference<View>? = null
+
+        /** `ll_top` 的资源 id 缓存：-1 还没查过，0 = 这页没有 */
+        var colTitleId = -1
     }
 
     // ------------------------------------------------------------------ 流水线
@@ -2227,6 +2885,8 @@ class StrategyMergeFeature : Feature {
         private val stg: Any,
         private val adapter: Any,
         private val pageStId: String,
+        /** 本页这条策略本身是不是组成员（不是 = 用户点的是入口卡，见 [start] 的 seed 门控） */
+        private val seedIsMember: Boolean,
         private val targets: List<Pair<String, String>>,
         private val label: String,
         private val memberIds: List<String>,
@@ -2324,6 +2984,14 @@ class StrategyMergeFeature : Feature {
                     abort("页面已销毁")
                     return
                 }
+                if (!seedIsMember) {
+                    // 本页不是组成员 = 用户点的是聚合入口卡。这一页的列表属于克隆来源那条策略，
+                    // 等它、吃它都会把别人的股票并进来（真机：聚合组2 = One 的 100 只）。
+                    val nm = (StrategyMergeTargets.field(stg, StrategyMergeTargets.STG_FIELD_NAME) as? String).orEmpty()
+                    GLog.i("$LOG 本页不是组成员（stId=$pageStId name=$nm），不吃本页列表，直接按成员取")
+                    fetchNext()
+                    return
+                }
                 val seed = seedList()
                 if (seed.isNullOrEmpty()) {
                     // 本页自己的列表还没回来：先等它，否则并集里会缺「本页策略」这一份
@@ -2341,6 +3009,11 @@ class StrategyMergeFeature : Feature {
         /** 等本页自己的列表（`m_stkList` / `adapter.data` 任意一份非空就够） */
         private fun awaitSeed(startedAt: Long) {
             if (cancelled) return
+            if (!seedIsMember) {
+                // 入口卡页：等来的只会是 donor 那张列表，等它没有意义
+                fetchNext()
+                return
+            }
             if (!isAlive()) {
                 abort("页面已销毁")
                 return
@@ -2867,6 +3540,7 @@ class StrategyMergeFeature : Feature {
                 // 宿主刷新时会就地 clear + addAll 我们交给它的那个 List（真机 2026-11-11 21:17:40
                 // 抓到 merged 从 64 被改成 47），所以自己必须留一份干净的 merged 给重套用。
                 // 与上次结果完全一致时不重写：进页面秒套的就是这份内容，重写只会让列表闪一下。
+                sortByPct(merged)
                 val sameAsCached = cached != null && !degraded && cached.sameAs(ids)
                 state.mergedRef = WeakReference<Any>(merged)
                 state.mergedStrong = merged
@@ -2911,6 +3585,8 @@ class StrategyMergeFeature : Feature {
                 state.applied = true
                 state.upSum = upSum
                 state.downSum = downSum
+                // 头部「日涨跌幅」口径：并集等权平均（宿主自己算不出来，见 writeMergedZdf）
+                state.zdfText = mergedZdfText(merged)
                 if (prices.isNotEmpty()) {
                     StrategyMergeTargets.write(
                         adapter,
@@ -2945,6 +3621,10 @@ class StrategyMergeFeature : Feature {
                 // 宿主 showStg 之后若把列表换成了空占位适配器（它那条策略当前没股票），
                 // 并集就永远显示不出来 —— 当场把并集适配器装回列表（真机 13:12 / 13:16 的「0 只」）。
                 reattachIfSwapped(act)
+                // 表头两处：宿主在换空占位适配器时收起了列标题行、并把日涨跌幅写成 --，
+                // 列表已经装回并集，这里当场补齐（之后还有看门狗兜底）。
+                writeMergedZdf(act, state)
+                restoreColTitle(act, state)
                 // 宿主在这之后再刷一轮自己的响应，会把涨跌家数顶回单策略的值（真机实测 16/1），
                 // 所以补两次延迟写回：让它自己的刷新先落地，我们最后覆盖。
                 for (delayMs in HEADER_RETRY_DELAYS) {
@@ -2955,8 +3635,10 @@ class StrategyMergeFeature : Feature {
                         StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_UP_NUM, upSum)
                         StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, downSum)
                         // 别调宿主 showStg：它会把列表按宿主自己的 m_stkList 重画一遍（回落来源），
-                        // 头部这两行文本自己写就够了。
+                        // 头部这三处文本自己写就够了。
                         writeHeaderCounts(act, upSum, downSum, state)
+                        writeMergedZdf(act, state)
+                        restoreColTitle(act, state)
                     }, delayMs)
                 }
                 // ⑤ 「策略个股 N 只」宿主不会按 data 重算，自己写成交互只数
