@@ -21,11 +21,42 @@ Make GoldenSun Great Again！
 不采集任何个人信息，所有改动只发生在你自己的手机上；
 个别功能（智能盯盘快捷配置）会按你的操作调用金太阳自身接口保存你自己的提醒设置，与手动在 App 里点一遍完全相同。
 
-功能以模块 App「功能」页为准。
+功能以模块 App「功能」页为准，这里按分区列一遍，方便核对版本差异。
+
+## 功能
+
+10 个分区、22 个开关，默认全部关闭；模块 App「功能」页按这个顺序分组，打开即生效。
+
+| 分区 | 开关 | 作用 |
+| --- | --- | --- |
+| 登录 | 隐藏 新股申购 弹窗 | 登录后不再弹「今日新股申购提醒」 |
+| 策略页 | 直达标准行情 | 策略详情里点股票直接进个股详情页，也可改用左右滑动切换 |
+| 策略页 | 增加 全选 按钮 | 多选栏「取消」左边加一颗，一次勾上当前策略的全部股票 |
+| 策略页 | 增加 截图并添加 按钮 | 多选态底栏「确认添加」左边加一颗：打开一次真实详情页逐只截图存相册，再自动替你点宿主「确认添加」 |
+| 策略页 | 增加 筛选股票 菜单项 | 右上角三点菜单里加筛选面板，筛选条件可按策略分别保存 |
+| 智能选股 | 我的策略聚合 | 几条自建策略并成一张原生结果页，入口卡挂在策略列表上，成员与上限在「聚合组设置」里调 |
+| 股票详情页 | 增加 智能盯盘 入口 | 详情页底栏「自选」与「更多」之间加一格，直接进盯盘页 |
+| 智能盯盘 | 增加 配置 按钮 | 盯盘价格页（H5）「保存」右边加「配置」，按方案算好涨到 / 跌到填进去，再替你点一次宿主「保存」 |
+| 智能盯盘 | 优化确定逻辑 | 涨到、跌到都空着也能保存（等于撤掉这条盯盘） |
+| 智能盯盘 | 无需确定保存盯盘 | 保存后只弹一条轻提示并自动返回，返回位置可设 |
+| 智能盯盘 | 盯盘数据卡片拓展 | 点盯盘数据卡片直接跳个股详情页 |
+| 底栏 | 隐藏 理财 入口 | 主界面底栏去掉「理财」入口 |
+| 首页 | 隐藏 横幅 | 收起首页快捷入口下方那条横幅 |
+| 行情市场 | 隐藏 滚动横幅与快捷入口 | 市场概览下面那条滚动横幅与它下面那排快捷入口一起收起 |
+| 行情市场 | 板块显示单行 | 板块区压成一行，整块变矮 |
+| 行情市场 | 隐藏 指数概览 | 顶部那块指数概览整块收起 |
+| 行情市场 | 市场概览高度优化 | 市场概览的图表区（含柱状图）整体压矮 |
+| 行情市场 | 增加 涨跌与自选 筛选项 | 沪深京A排行榜的筛选面板里追加「涨家 / 跌家 / 自选」三行，并据此收起不匹配的排行榜行 |
+| 自选 | 自选分组复制 | 右上角「编辑」按钮换成「复制」：短按按当前规则复制，长按可选其它规则、分享文本、导出图片 / PDF，字段在「复制设置」里调 |
+| 显示 | 手势导航条同色 | 安卓底部小白条按页面吸色取色 |
+| 显示 | 自选股高亮 | 已加入自选的股票名称改用高亮色显示，颜色可换 |
+| 显示 | 自选股名称加粗 | 同一批自选股的名称加粗 |
+
+「设置」页另外管主题、语言、可预测返回、桌面图标、液态玻璃与玻璃光效、配置备份 / 恢复 / 重置、日志等级与导出；多数开关旁边还能进对应的二级设置（滑动设置、聚合组设置、方案设置、复制设置、高亮颜色设置…）。
 
 ## 环境要求
 
-国信金太阳**不锁版本**：模块按控件名、类名与接口特征定位，宿主升级到新版本后无需等模块跟进适配，直接可用。
+国信金太阳**不锁版本**：模块按控件名、类名与接口特征定位，宿主升级一般不必等模块跟进。万一某个开关在新版宿主里失灵，多半是定位用的类名 / 控件名变了 —— 定位用的候选常量（类名 / 控件 id / 文案）集中在各功能的 `Targets.kt` 里（仓库内共 16 份），按[排错手册第 6 节](https://github.com/MVennn/GSAuxiliary/blob/main/docs/TROUBLESHOOTING.md#6-app-升级后失效)改对应常量，再用 `tools/probe/` 重新定位即可。
 
 安卓 8.1+，以及**较新的 LSPosed**（需要现代 Xposed API 102 与热重载能力）。过旧的 LSPosed 版本、太极 / LSPatch / EdXposed 等其它 Xposed 实现会**静默不加载**（表现为已启用但零日志、零生效）；如何判断框架新旧见 [排错手册](https://github.com/MVennn/GSAuxiliary/blob/main/docs/TROUBLESHOOTING.md#8-热重载相关)。
 
@@ -53,6 +84,17 @@ Make GoldenSun Great Again！
     `adb shell su -c "grep GSZXEnhance /data/adb/lspd/log/modules_*.log | tail -50"`
   - 模块 App 自己进程的日志在 logcat 里：`adb logcat -s GSZXEnhance`
 
+## 文档
+
+全部文档的索引在 [docs/README.md](https://github.com/MVennn/GSAuxiliary/blob/main/docs/README.md)。常用的几篇：
+
+- [架构说明](https://github.com/MVennn/GSAuxiliary/blob/main/docs/ARCHITECTURE.md)：分层、注入点与进程模型
+- [扩展指南](https://github.com/MVennn/GSAuxiliary/blob/main/docs/EXTENDING.md)：加一个新功能要做哪几步、合入前自检什么
+- [构建](https://github.com/MVennn/GSAuxiliary/blob/main/docs/BUILD.md) · [版本规范](https://github.com/MVennn/GSAuxiliary/blob/main/docs/VERSIONING.md) · [发布清单](https://github.com/MVennn/GSAuxiliary/blob/main/docs/RELEASE.md)：从改代码到出 Release
+- [排错手册](https://github.com/MVennn/GSAuxiliary/blob/main/docs/TROUBLESHOOTING.md)：按「现象 → 步骤 → 原因 / 解法」组织；装不上、开关点了没反应、热重载失灵先看它
+- 功能专项 14 篇 `FEATURE-*.md`（见 [docs/](https://github.com/MVennn/GSAuxiliary/blob/main/docs/)）：一个功能一篇，写目标、真机实测的链路契约与实现要点
+- [更新日志](https://github.com/MVennn/GSAuxiliary/blob/main/CHANGELOG.md)：每个版本改了什么、为什么改
+
 ## 免责声明
 
 本项目仅供学习与个人使用。
@@ -75,7 +117,7 @@ Make GoldenSun Great Again！
 | 项目                                                                                                                                    | 用途                                  |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
 | [**LSPosed**](https://github.com/LSPosed/LSPosed) · [**libxposed**](https://central.sonatype.com/artifact/io.github.libxposed/api)    | 模块框架与现代 Xposed API（API 102）         |
-| [**Miuix**](https://github.com/miuix-kotlin-multiplatform/miuix)                                                                      | 设置界面的 UI 组件库（小米 HyperOS 风格 Compose） |
+| [**Miuix**](https://github.com/compose-miuix-ui/miuix)                                                                                | 设置界面的 UI 组件库（小米 HyperOS 风格 Compose） |
 | [**AndroidLiquidGlass**](https://github.com/Kyant0/AndroidLiquidGlass)（`io.github.kyant0:backdrop`）                                   | 液态玻璃顶栏 / 悬浮底栏 / 弹窗的折射与模糊效果          |
 | [**Jetpack Compose**](https://developer.android.com/jetpack/compose) · [**AndroidX**](https://developer.android.com/jetpack/androidx) | 全部界面实现的基础设施                         |
 | [**Kotlin**](https://github.com/JetBrains/kotlin)                                                                                     | 模块与设置界面的实现语言                        |
