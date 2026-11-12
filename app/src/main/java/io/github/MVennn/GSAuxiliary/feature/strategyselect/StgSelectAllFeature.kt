@@ -194,6 +194,12 @@ class StgSelectAllFeature : Feature {
      */
     @Volatile private var batchClicking = false
 
+    /** 诊断用：批量点击期间三段耗时（临时插桩，定位完即删） */
+    private var tProbe = 0L
+    private var tClick = 0L
+    private var tSync = 0L
+    private var nProbe = 0
+
     /**
      * 正在跑的那一轮挂在哪个列表上（弱引用）。
      *
@@ -363,22 +369,14 @@ class StgSelectAllFeature : Feature {
         var pricesOk = true
         for (i in 0 until total) {
             if (!lv.isItemChecked(header + i)) continue
-            val item = runCatching { adapter.getItem(i) }.getOrNull() ?: return
-            val raw = rawCodeOfItem(item) ?: return
+            val raw = rowRawCodeAt(adapter, total, i) ?: return
             val code = raw.substringBefore('.').trim()
             val market = raw.substringAfter('.', "").trim()
             if (code.isEmpty() || market.isEmpty()) return
             codes.add(code)
             markets.add(market)
-            val price = StgSelectAllTargets.PRICE_FIELDS.firstNotNullOfOrNull { name ->
-                runCatching { Reflect.findField(item.javaClass, name)?.get(item) }.getOrNull()
-            }
-            when (price) {
-                null -> pricesOk = false
-                is String -> prices.add(price)
-                is Number -> prices.add(price.toString())
-                else -> pricesOk = false
-            }
+            val price = rowPriceAt(adapter, total, i)
+            if (price == null) pricesOk = false else prices.add(price)
         }
         confirmList = WeakReference(lv)
         confirmSelection = if (codes.isEmpty()) null else Selection(
@@ -1429,7 +1427,11 @@ class StgSelectAllFeature : Feature {
         val row: View? = if (visible) {
             lv.getChildAt(childIdx)
         } else {
-            runCatching { adapter.getView(index, null, lv) }.getOrNull()
+            val t0 = android.os.SystemClock.elapsedRealtimeNanos()
+            val probe = runCatching { adapter.getView(index, null, lv) }.getOrNull()
+            tProbe += (android.os.SystemClock.elapsedRealtimeNanos() - t0) / 1_000_000L
+            nProbe++
+            probe
         }
         if (row == null) {
             noteFailure(run, "第 $index 行拿不到视图，跳过（下一轮再试）")
@@ -1457,6 +1459,11 @@ class StgSelectAllFeature : Feature {
         val began = android.os.SystemClock.elapsedRealtime()
         val size = run.click.size
         batchClicking = true
+        tProbe = 0L
+        tClick = 0L
+        tSync = 0L
+        nProbe = 0
+        rowCodes = run.adapter?.let { RowCodes(it, it.count) }
         try {
             while (run.cursor < size) {
                 // 被取消（关开关 / 退出多选态 / 又点了一次）→ 立刻停
@@ -1473,7 +1480,8 @@ class StgSelectAllFeature : Feature {
             val elapsed = android.os.SystemClock.elapsedRealtime() - began
             GLog.i(
                 "策略全选：一次性点击 $size 行完成（耗时 ${elapsed}ms，失败 ${run.failedThisRound}" +
-                    "，宿主计数 ${run.hostCount} → ${selectedCount(lv)}）",
+                    "，宿主计数 ${run.hostCount} → ${selectedCount(lv)}）" +
+                    " [分段：造View ${tProbe}ms/$nProbe 行、宿主点击 ${tClick}ms、校正模型 ${tSync}ms]",
             )
             // 逐行版在每次点击后校正（筛选下提交包会记错票）；批量版收尾做一次即可。
             runCatching { syncHostModel(lv) }
@@ -1484,6 +1492,7 @@ class StgSelectAllFeature : Feature {
             scheduleNextRound(env, run, ROUND_SETTLE_MS)
         } finally {
             batchClicking = false
+            rowCodes = null
         }
     }
 
@@ -1563,6 +1572,7 @@ class StgSelectAllFeature : Feature {
             (row as? Checkable)?.let { it.isChecked = !run.wantChecked }
             (row.findViewById<View>(run.ctId) as? CheckedTextView)?.isChecked = !run.wantChecked
         }
+        val tc0 = android.os.SystemClock.elapsedRealtimeNanos()
         try {
             var handled = false
             // 不绕过回映射：筛选包装器会把适配器位置换成全量下标再转给宿主监听器，
@@ -1576,12 +1586,15 @@ class StgSelectAllFeature : Feature {
         } catch (t: Throwable) {
             noteFailure(run, "触发行点击失败 index=$index（下一轮按表核对）", t)
         }
+        tClick += (android.os.SystemClock.elapsedRealtimeNanos() - tc0) / 1_000_000L
         // 宿主记下的可能是「全量列表同下标」的另一只票（见 [syncHostModel]）：
         // 每次合成点击后立刻按屏幕上的真实代码校正一次，确认添加才会提交对的票。
         // 批量首轮也保留这一下：筛选下宿主按位置记错票，若隔到最后才修，
         // 中间点击可能因错票碰撞而少加一行（无筛选时该函数自己早退，开销可忽略）。
+        val ts0 = android.os.SystemClock.elapsedRealtimeNanos()
         runCatching { syncHostModel(lv) }
             .onFailure { GLog.w("全选：点击后校正宿主模型异常", it) }
+        tSync += (android.os.SystemClock.elapsedRealtimeNanos() - ts0) / 1_000_000L
     }
 
     /** 把「下一轮」排到稍后；列表已脱离窗口就直接收尾 */
@@ -2323,6 +2336,108 @@ class StgSelectAllFeature : Feature {
     }
 
     /**
+     * 批量点击期间的逐行数据缓存（2026-11-12）。
+     *
+     * 一次全选要发 N 次合成点击，而**每次**点击后都要校正宿主模型、捕获选择，
+     * 两件事都要逐行读「代码 / 市场 / 价格 / 全量同下标条目」。285 行时这份 O(N)
+     * 工作被重复做 285 遍 —— 真机实测 1234ms，占全选总耗时 1763ms 的七成，
+     * 主线程一口气卡住，用户看到的就是「点了全选没反应，然后突然全勾上」。
+     * 批量期间行数据是静态的（筛选快照一变 clickOneRow 就重开一轮，缓存跟着重建），
+     * 所以按位置缓存一次即可。
+     */
+    private class RowCodes(val adapter: android.widget.ListAdapter, val total: Int) {
+        val item = arrayOfNulls<Any?>(total)
+        val itemRead = BooleanArray(total)
+        val raw = arrayOfNulls<String>(total)
+        val rawRead = BooleanArray(total)
+        val price = arrayOfNulls<String>(total)
+        val priceRead = BooleanArray(total)
+        val twin = arrayOfNulls<String>(total)
+        val twinRead = BooleanArray(total)
+    }
+
+    /** 当前批量轮的逐行缓存；非批量路径为 null（各函数自动退回原实现） */
+    private var rowCodes: RowCodes? = null
+
+    private fun rowCodesFor(adapter: android.widget.ListAdapter, total: Int): RowCodes? {
+        val c = rowCodes ?: return null
+        return if (c.adapter === adapter && c.total == total) c else null
+    }
+
+    private fun rowItemAt(adapter: android.widget.ListAdapter, total: Int, index: Int): Any? {
+        val c = rowCodesFor(adapter, total) ?: return runCatching { adapter.getItem(index) }.getOrNull()
+        if (!c.itemRead[index]) {
+            c.item[index] = runCatching { adapter.getItem(index) }.getOrNull()
+            c.itemRead[index] = true
+        }
+        return c.item[index]
+    }
+
+    private fun rowRawCodeAt(adapter: android.widget.ListAdapter, total: Int, index: Int): String? {
+        val c = rowCodesFor(adapter, total)
+        if (c == null) return rawCodeOfItem(rowItemAt(adapter, total, index))
+        if (!c.rawRead[index]) {
+            c.raw[index] = rawCodeOfItem(rowItemAt(adapter, total, index))
+            c.rawRead[index] = true
+        }
+        return c.raw[index]
+    }
+
+    private fun rowPriceAt(adapter: android.widget.ListAdapter, total: Int, index: Int): String? {
+        val c = rowCodesFor(adapter, total)
+        val item = rowItemAt(adapter, total, index)
+        if (c == null) return priceOfItem(item)
+        if (!c.priceRead[index]) {
+            c.price[index] = priceOfItem(item)
+            c.priceRead[index] = true
+        }
+        return c.price[index]
+    }
+
+    private fun rowTwinAt(adapter: android.widget.ListAdapter, total: Int, index: Int): String? {
+        val c = rowCodesFor(adapter, total)
+        val compute: () -> String? = {
+            StgFilterBridge.sourceItemAt(index, adapter)
+                ?.let { rawCodeOfItem(it) }
+                ?.let { StgSelectAllPlan.normalizeCode(it) }
+        }
+        if (c == null) return compute()
+        if (!c.twinRead[index]) {
+            c.twin[index] = compute()
+            c.twinRead[index] = true
+        }
+        return c.twin[index]
+    }
+
+    /**
+     * 与 [rowCode] 同语义（含「不像代码」的日志），只是批量期间读缓存。
+     *
+     * 缓存只存数据对象，不做校验 —— 校验与日志仍走同一条判据，避免两条实现打架。
+     */
+    private fun cachedRowCode(adapter: android.widget.ListAdapter, total: Int, index: Int): String? {
+        if (rowCodesFor(adapter, total) == null) return rowCode(adapter, index)
+        val raw = rowRawCodeAt(adapter, total, index)
+        if (raw == null || !StgSelectAllPlan.isCodeLike(raw)) {
+            noteRowCodeMiss(index, "批量缓存 raw=${maskCode(raw)}")
+            return null
+        }
+        return raw
+    }
+
+    /** 一行里的价格字符串（读不到 / 不是字符串或数字 → null） */
+    private fun priceOfItem(item: Any?): String? {
+        if (item == null) return null
+        val v = StgSelectAllTargets.PRICE_FIELDS.firstNotNullOfOrNull { name ->
+            runCatching { Reflect.findField(item.javaClass, name)?.get(item) }.getOrNull()
+        } ?: return null
+        return when (v) {
+            is String -> v
+            is Number -> v.toString()
+            else -> null
+        }
+    }
+
+    /**
      * 把宿主自己的选中模型（`checkCodes`）校正成「屏幕上真正勾着的那几只」。
      *
      * ## 为什么必须校正（2026-10-28 真机定位）
@@ -2396,14 +2511,12 @@ class StgSelectAllFeature : Feature {
         for (i in 0 until total) {
             checked[i] = lv.isItemChecked(header + i)
             val trueCode = if (checked[i]) {
-                StgSelectAllPlan.normalizeCode(rowCode(adapter, i) ?: return)
+                StgSelectAllPlan.normalizeCode(cachedRowCode(adapter, total, i) ?: return)
             } else {
                 null
             }
             if (trueCode != null) expected.add(trueCode)
-            val twin = StgFilterBridge.sourceItemAt(i, adapter)
-                ?.let { rawCodeOfItem(it) }
-                ?.let { StgSelectAllPlan.normalizeCode(it) }
+            val twin = rowTwinAt(adapter, total, i)
             if (twin == null) continue
             if (trueCode != null) twinToTrue[twin] = trueCode else twinStale.add(twin)
         }
