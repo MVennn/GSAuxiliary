@@ -134,17 +134,20 @@ v.draw(Canvas(bmp))   // 主线程
 
 ## 8. 接入一个新 App
 
-```bash
-# 一次性：把目标包名加进 TBridge 的 scope
-python tools/tbridge.py scope-add com.example.app
+（`tbridge.py` / `scope.py` 在兄弟仓 `TBridge` 的 `tools/` 下，本仓不复制它；两仓并列摆放时把下面的 `tools/` 换成 `../TBridge/tools/`。）
 
-# 之后每个 App 一样
-python tools/tbridge.py -p com.example.app tree
-python tools/tbridge.py -p com.example.app tap --text 登录
+```bash
+# 一次性：把目标包名加进 TBridge 的 scope（模块包名 + 目标包名）
+python tools/scope.py io.github.MVennn.tbridge com.example.app
+
+# 之后每个 App 一样（包名是第一个位置参数，没有 -p / --text）
+python tools/tbridge.py com.example.app tree
+python tools/tbridge.py com.example.app tap 登录
 ```
 
-`scope-add` 的实现：设备没有 `sqlite3`，走「pull `modules_config.db` → PC 侧 sqlite3 改 → push 回 →
-`kill -9` 目标进程」三步。这是唯一需要 root 的操作，其余全走 socket。
+`scope.py` 的实现：把 SQL 推到 `/data/local/tmp`，再 `su -c sqlite3` 直接改设备上的
+`/data/adb/lspd/config/modules_config.db`（`scope` 表），最后 `setprop ctl.restart zygote` 生效。
+这是唯一需要 root 的操作，其余全走 socket。
 
 > [待补] `modules_config.db` 的表结构还没读出来：直接 pull 得到 77,824 字节但
 > `sqlite_master` 为空 —— 数据在 WAL 里，需要连 `-wal` / `-shm` 一起拉（本轮 cp 因路径问题失败）。

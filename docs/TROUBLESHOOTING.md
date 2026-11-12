@@ -384,11 +384,13 @@ bash tools/drive.sh "key 224" "wait 2" "swipe 540 2000 540 900 250" "wait 3" "la
 - **现象**：Windows 中文控制台（cp936）跑 `python -I tools/check-docs.py`，最后一行
   `print(f"✓ …")` 抛 `UnicodeEncodeError: 'gbk' codec can't encode character '\u2713'`，
   脚本以**退出码 1** 结束 —— 检查其实全过，门禁却报红。CI 是 UTF-8，看不到，能长期潜伏。
+  （通用坑示例：示例命令来自 ModelBus 仓 `tools` 目录下的 `check-docs.py`；本仓门禁是 `python tools/ci/check_links.py`，另有 `check_switches.py` 等，见 docs 索引 [README.md](README.md)。）
 - **根因**：`✓` U+2713 / `✗` U+2717 / `⚠` U+26A0 不在 cp936 码表，`sys.stdout` 在这个环境里
   就是 `gbk`；`python -I` 会把 `PYTHONIOENCODING` / `PYTHONUTF8` 一起忽略，所以「设个环境变量」
   不是解法 —— 必须改脚本。
 - **解法**：结论行只用 ASCII（`[OK]` / `[FAIL]` / `[!]`）；入口再加
   `if hasattr(sys.stdout, "reconfigure"): sys.stdout.reconfigure(errors="replace")`，
-  非 GBK 字符降级成 `?` 而不是抛异常。同一问题首次记录见 ZcodeAIModels 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。
+  非 GBK 字符降级成 `?` 而不是抛异常。同一问题首次记录见 ModelBus 仓「踩坑总汇」第 36 节（跨仓引用，非本仓路径）。
 - **验证**：`python -I tools/check-docs.py` → `[OK] …`、退出码 0；反证：把 `✓` 改回原样，
   同一命令退出码 1 并抛 `UnicodeEncodeError`。
+  （示例命令来自 ModelBus 仓 `tools` 目录下的 `check-docs.py`；本仓等价门禁是 `python tools/ci/check_links.py`。）
