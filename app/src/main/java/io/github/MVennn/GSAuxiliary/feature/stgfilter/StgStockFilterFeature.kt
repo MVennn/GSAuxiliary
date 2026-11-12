@@ -2,6 +2,8 @@ package io.github.MVennn.GSAuxiliary.feature.stgfilter
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -20,6 +22,7 @@ import io.github.MVennn.GSAuxiliary.feature.filter.FilterRow
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterScopes
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterStore
 import io.github.MVennn.GSAuxiliary.feature.filter.CodeMarketParts
+import io.github.MVennn.GSAuxiliary.feature.filter.PercentTimeline
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
@@ -225,12 +228,14 @@ class StgStockFilterFeature : Feature {
     private val states = Collections.synchronizedMap(WeakHashMap<Any, AdapterState>())
 
     /**
-     * 「代码.市场 → 涨跌幅」的兜底表。
+     * 「代码.市场 → 涨跌幅」的时间线（见 [PercentTimeline]）。
      *
-     * 只在数据项上的 `zdf` 读不到时才用 —— 行情推送是**原地刷行内文案**的，
-     * 未必会写回数据项字段，所以顺手把行内 `#tv_item_stk_percent` 的文案记一份。
+     * 老版本这里是一张「兜底表」，只在数据项字段读不到时才用 —— 于是字段若是加载时的快照，
+     * 行情原地刷文案就永远改不动判定，**涨转跌的股票会一直留在列表里**（2026-11-12 报）。
+     * 现在两侧都记样本、按「谁最近变化过」裁决：可见行由 [sweepVisiblePercents] 每 500ms 采一次，
+     * 字段每轮重算读一次。
      */
-    private val percentByCam = Collections.synchronizedMap(WeakHashMap<Any, MutableMap<String, Double>>())
+    private val percentTrack = PercentTimeline()
 
     // ------------------------------------------------------------------ 反射缓存（规则 2.1）
 
@@ -315,6 +320,17 @@ class StgStockFilterFeature : Feature {
          * 只用于清理归属判定，不参与任何功能判据。
          */
         @Volatile var owner: java.lang.ref.WeakReference<Activity>? = null
+
+        /**
+         * 上一次**整表重算**的时刻，以及当时那批数据项（只比身份，不比内容）。
+         *
+         * 宿主一次「全选 / 反选」是逐行合成点击，每点一行就 `notifyDataSetChanged()` 一次：
+         * 634 行就是一帧里几百次通知，每次都整表重算（逐项反射读字段）——
+         * 用户感知到的「全选一下卡住两秒」正是这么来的。
+         * 这类连续通知里**数据项根本是同一批同序**，重算结果必然一样，可以整批跳过。
+         */
+        @Volatile var lastApplyAt = 0L
+        @Volatile var lastFull: List<Any>? = null
     }
 
     /**
@@ -447,6 +463,21 @@ class StgStockFilterFeature : Feature {
 
     private val proxiedLists = Collections.synchronizedMap(WeakHashMap<ListView, ProxyRecord>())
 
+    /**
+     * `applyFilter` 的**重入闸**（2026-11-12 真机主线程打死的根治）。
+     *
+     * 症状：聚合取到最后几格时主线程卡死，看门狗连打
+     * `主线程已 3006ms/3515ms/… 没动（聚合 …）栈：`，栈是无限循环 ——
+     * `applyFilter` 还原 `lv.adapter = base` → `ListView.setAdapter` →
+     * 我们自己的 setAdapter 后置钩子 → `onAdapterSet` → `applyFilter` → 又一次 `lv.adapter = base` …
+     * 记账（`st.proxy = null` 等）原来写在赋值**之后**，每一层都判「列表上还挂着代理」，
+     * 一层层往下递归，永远回不来；宿主随后 ANR。
+     *
+     * 闸住之后：同一次调用链里第二次进 `applyFilter` 直接返回；记账改到赋值**之前**清，
+     * 嵌套层也不会再判成「还挂着代理」。
+     */
+    private val filtering = ThreadLocal<Boolean>()
+
     /** 这个 adapter 是不是我们装在这个列表上的过滤代理（身份判据，不依赖类名） */
     private fun isProxiedOnList(lv: ListView, a: Any?): Boolean =
         a != null && synchronized(proxiedLists) { proxiedLists[lv]?.proxy === a }
@@ -490,6 +521,7 @@ class StgStockFilterFeature : Feature {
         hooked += hookGetView(env, bag)
         hooked += hookListViewSetAdapter(env, bag)
         hooked += hookActivityResume(env, bag)
+        hooked += hookActivityPause(env, bag)
 
         if (hooked == 0) {
             GLog.e("筛选股票：没有任何钩子装上（宿主类名可能已变，用 tools/probe 重新定位）")
@@ -608,7 +640,7 @@ class StgStockFilterFeature : Feature {
                         runCatching {
                             val self = chain.thisObject
                             if (self != null && StgStockFilterTargets.isTargetAdapter(self.javaClass.name)) {
-                                applyFilter(env, self, notify = false)
+                                if (!skipStormNotify(self)) applyFilter(env, self, notify = false)
                             }
                         }.onFailure { GLog.w("筛选股票：notifyDataSetChanged 前置处理异常", it) }
                         chain.proceed()
@@ -679,6 +711,35 @@ class StgStockFilterFeature : Feature {
                     }
             )
         }
+        return methods.size
+    }
+
+    /**
+     * 挂 `Activity#onPause` —— 页面切走就把动态重算的节拍器停掉。
+     *
+     * 节拍器由 [onActivityResumed] 启动；不停的话，页面退到后台（或留在栈底）之后
+     * 每 500ms 还会醒一次主线程去扫一个没人看的列表。
+     */
+    private fun hookActivityPause(env: FeatureEnv, bag: HookBag): Int {
+        val cls = Reflect.loadClass("android.app.Activity", env.classLoader) ?: return 0
+        val methods = Reflect.methodsNamed(cls, "onPause")
+        for (m in methods) {
+            bag.add(
+                env.xposed.hook(m)
+                    .setId("stgfilter:onPause")
+                    .intercept { chain ->
+                        val result = chain.proceed()
+                        runCatching {
+                            val self = chain.thisObject
+                            if (self is Activity && trackedActivity() === self) {
+                                stopPercentTicker("页面已切走")
+                            }
+                        }.onFailure { GLog.w("筛选股票：onPause 处理异常", it) }
+                        result
+                    }
+            )
+        }
+        if (methods.isNotEmpty()) GLog.i("筛选股票：已挂 Activity.onPause ×${methods.size}")
         return methods.size
     }
 
@@ -760,7 +821,48 @@ class StgStockFilterFeature : Feature {
      *               false 表示当前正处于宿主 `notifyDataSetChanged` 的**前置**钩子里，
      *               原方法马上会通知，不用也不要重复通知。
      */
+    /**
+     * 连续 `notifyDataSetChanged` 的合并（「全选 / 反选」那一类的卡顿来源）。
+     *
+     * 判据两条件同时成立才跳过：
+     *  1. 距上一次整表重算不到 [STORM_WINDOW_MS]；
+     *  2. 数据项与上次那批是**同一批同序**（逐项 `===`，不做内容比较，O(n) 但只读引用）。
+     *
+     * 宿主真换了数据（`clear()` + `addAll()`、整表替身）时第 2 条立刻不等，照旧同步重算，
+     * 不会出现「换了策略还按上一批筛」；行情原地刷字段那一类，最多晚 [STORM_WINDOW_MS] 落一次。
+     */
+    private fun skipStormNotify(adapter: Any): Boolean {
+        val ctx = trackedActivity() ?: return false
+        val st = stateOf(adapter, ctx)
+        if (st.lastApplyAt == 0L) return false
+        val now = SystemClock.uptimeMillis()
+        if (now - st.lastApplyAt >= STORM_WINDOW_MS) return false
+        val full = readData(adapter) ?: return false
+        return sameIdentity(full, st.lastFull)
+    }
+
+    /** 逐项比身份（不比值）：宿主原地改内容时引用不变，正是我们要合并的那些通知 */
+    private fun sameIdentity(a: List<Any>, b: List<Any>?): Boolean {
+        if (b == null || a.size != b.size) return false
+        for (i in a.indices) if (a[i] !== b[i]) return false
+        return true
+    }
+
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
+        if (filtering.get() == true) {
+            // 见 [filtering]：这一层是我们自己 setAdapter 触发的嵌套调用，放行
+            return
+        }
+        filtering.set(true)
+        try {
+            applyFilter0(env, adapter, notify)
+        } finally {
+            filtering.set(false)
+        }
+    }
+
+    /** [applyFilter] 的本体；入口只做重入闸。 */
+    private fun applyFilter0(env: FeatureEnv, adapter: Any, notify: Boolean) {
         val ctx = trackedActivity() ?: return noteApplySkip("没有 trackedActivity")
         val lv = trackedList.get()?.get() ?: findListView(ctx) ?: return noteApplySkip("找不到列表控件")
         val base = adapter as? android.widget.ListAdapter ?: return noteApplySkip("适配器不是 ListAdapter")
@@ -785,6 +887,9 @@ class StgStockFilterFeature : Feature {
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
         val full = readData(adapter) ?: return noteApplySkip("读不到适配器的 data 字段（${adapter.javaClass.name}）")
+        // 记账：这一趟算完之后，[STORM_WINDOW_MS] 内同一批数据项的连续通知不再重算（见 [skipStormNotify]）
+        st.lastApplyAt = SystemClock.uptimeMillis()
+        st.lastFull = full
         val active = env.config.stgStockFilter && filtersBy(env, ctx).active
 
         // 功能关掉 / 三个都不勾 / 数据还没到 → 把 ListView 换回原适配器
@@ -804,12 +909,14 @@ class StgStockFilterFeature : Feature {
             // ② 类名兜底（跨实例，见 [isFilteredAdapter]）。
             val liveOnList = unwrapHeaderAdapter(lv.adapter)
             if (st.proxy != null || isProxiedOnList(lv, liveOnList) || isFilteredAdapter(liveOnList)) {
-                runCatching { lv.adapter = base }
-                    .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
+                // 先清记账、再动列表：`lv.adapter = base` 会同步进我们自己的后置钩子，
+                // 那一层要是还判「列表上挂着过滤代理」就会再还原一次，无限递归（见 [filtering]）
                 st.proxy = null
                 st.snap = null
                 synchronized(proxiedLists) { proxiedLists.remove(lv) }
                 StgFilterBridge.publish(null)
+                runCatching { lv.adapter = base }
+                    .onFailure { GLog.w("筛选股票：还原适配器失败", it) }
                 lastPublishSkip = null
                 lastSummary = null
                 GLog.i("筛选股票：筛选未生效，已还原全量（${full.size} 只）")
@@ -823,6 +930,8 @@ class StgStockFilterFeature : Feature {
             // 过滤代理已经不在列表上 → 行点击的回映射也没有存在意义，拆回宿主自己的监听
             // （规则 1.1；否则列表上永久多一层透传，热重载后还会再叠一层）。
             unwrapRowClick(lv)
+            // 已经不在筛了：样本留着只会让下一次开筛从旧时间线起步
+            percentTrack.reset()
             return
         }
 
@@ -834,6 +943,9 @@ class StgStockFilterFeature : Feature {
         var zx = 0
         var flat = 0
         val typeHits = IntArray(FilterRow.TYPE_ROWS.size)
+        // 一整趟共用一个时间戳：这一趟读到的字段值都算「此刻」的观察，
+        // 逐项取时间会让后几只股票凭空比前面「更新」。
+        val now = SystemClock.uptimeMillis()
         for ((i, item) in full.withIndex()) {
             // 一只股票的两个维度一次算清：方向类别（自选优先 / 平盘独立）+ 类型位掩码
             //
@@ -851,7 +963,7 @@ class StgStockFilterFeature : Feature {
             //     （`StockInfo` 是构造后填充的，部分填充是真实存在的形态）。
             val (code, market) = CodeMarketParts.split(cam)
             val inZx = isInWatchlist(code, market)
-            val pct = percentOf(adapter, item, cam, fields)
+            val pct = percentOf(item, cam, fields, now)
             when (StockFilters.categoryOf(inZx, pct)) {
                 Category.ZX -> zx++
                 Category.UP -> up++
@@ -1496,17 +1608,14 @@ class StgStockFilterFeature : Feature {
         }
     }
 
-    /** 记录「代码.市场 → 行内涨跌幅文案」，只在数据项字段缺失时当兜底 */
+    /** 记录「代码.市场 → 行内涨跌幅文案」，与数据项字段一起交给 [percentTrack] 裁决 */
     private fun recordRowPercent(adapter: Any, position: Int, row: View) {
         if (position < 0) return
         runCatching {
             val item = itemAt(adapter, position) ?: return@runCatching
             val cam = codeAndMarket(item) ?: return@runCatching
             val pct = parsePercent(percentView(row)?.text?.toString()) ?: return@runCatching
-            val map = synchronized(percentByCam) {
-                percentByCam.getOrPut(adapter) { HashMap() }
-            }
-            synchronized(map) { map[cam] = pct }
+            percentTrack.observeText(cam, pct, SystemClock.uptimeMillis())
         }.onFailure {
             // 记不上 → 这一行的涨跌幅按「平盘」归类 → 方向筛选会把它藏掉（or 反之）。
             // 症状是「筛选结果不对」，没有日志就无从下手（§3.3）。
@@ -1554,8 +1663,14 @@ class StgStockFilterFeature : Feature {
         return types or StockTypes.byCodeAndMarket(code, market, name)
     }
 
-    /** 涨跌幅：先读数据项字段（实测 `zdf`，BigDecimal），再退回行内文案记录 */
-    private fun percentOf(adapter: Any, item: Any, cam: String?, fields: ItemFields): Double? {
+    /**
+     * 涨跌幅：数据项字段与行内文案**按「谁最近变化过」裁决**（见 [PercentTimeline]）。
+     *
+     * 老版本是「字段优先、文案只在字段读不到时兜底」—— 字段若是加载时的快照，
+     * 行情原地刷文案就永远改不动判定：涨转跌的股票一直留在列表里。
+     */
+    private fun percentOf(item: Any, cam: String?, fields: ItemFields, now: Long): Double? {
+        var fieldPct: Double? = null
         for (f in fields.percent) {
             val v = f?.let { runCatching { it.get(item) }.getOrNull() } ?: continue
             val d = when (v) {
@@ -1563,13 +1678,13 @@ class StgStockFilterFeature : Feature {
                 is String -> v.toDoubleOrNull()
                 else -> null
             }
-            if (d != null) return d
+            if (d != null) {
+                fieldPct = d
+                break
+            }
         }
-        if (cam != null) {
-            val map = synchronized(percentByCam) { percentByCam[adapter] }
-            if (map != null) synchronized(map) { return map[cam] }
-        }
-        return null
+        if (cam == null) return fieldPct
+        return percentTrack.resolve(cam, fieldPct, now)
     }
 
     // ------------------------------------------------------------------ 页面回调
@@ -1600,6 +1715,8 @@ class StgStockFilterFeature : Feature {
         val a = liveAdapter(activity) ?: return
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：onResume 对齐失败", it) }
+        // 行情是「原地刷行内文案」推的、不发通知 —— 回到本页就把动态重算的节拍器拉起来
+        startPercentTicker(env, activity)
 
         // 从个股页返回时，宿主通常还在重新拉数据：上面这次对齐拿到的多半是空列表
         // （于是什么代理都没装上）。数据到位后如果没走 notifyDataSetChanged
@@ -1615,6 +1732,126 @@ class StgStockFilterFeature : Feature {
         }, RESUME_RECHECK_MS)
     }
 
+    // ------------------------------------------------------------------ 动态重算（节拍器）
+
+    /**
+     * 一拍。
+     *
+     * 只做两件事：采集屏幕上那些行的涨跌幅文案 → 文案变了（或代理不在列表上）就重算一次。
+     * **没变化就整拍跳过** —— 宿主行情刷新是全 App 最热的路径，不该每 500ms 白扫一遍全量。
+     */
+    private val tick: Runnable = Runnable { tickLoop() }
+
+    /** 一拍的实际逻辑（单独成函数：属性初始化器里自引用会让 Kotlin 类型检查递归） */
+    private fun tickLoop() {
+        if (!tickerRunning) return
+        val env = tickerEnv
+        val act = trackedActivity()
+        if (env == null || act == null) {
+            stopPercentTicker("页面已不在")
+            return
+        }
+        if (act.isFinishing || act.isDestroyed) {
+            stopPercentTicker("页面已结束")
+            return
+        }
+        runCatching { tickOnce(env, act) }
+            .onFailure { GLog.w("筛选股票：动态重算失败", it) }
+        if (tickerRunning) tickerHandler?.postDelayed(tick, TICK_MS)
+    }
+
+    private fun tickOnce(env: FeatureEnv, act: Activity) {
+        if (!env.config.stgStockFilter || !filtersBy(env, act).active) {
+            stopPercentTicker("没有生效的筛选条件")
+            return
+        }
+        val lv = trackedList.get()?.get() ?: findListView(act) ?: return
+        val adapter = liveAdapter(act) ?: return
+        val textChanged = sweepVisiblePercents(act, lv, adapter)
+        val st = stateOf(adapter, act)
+        val installed = st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy
+        // 每 SLOW_TICKS 拍（≈ SLOW_TICKS × TICK_MS）无条件全量重算一次：
+        // 被筛掉的行已经不可见、文案停止更新，它的「跌转涨」只能靠数据项字段刷新来翻案，
+        // 而宿主的字段刷新未必伴随 notifyDataSetChanged。结果没变时 applyFilter0 自己会早退，
+        // 不会白 notify，所以这一拍的代价只是几十行反射读。
+        val slowDue = if (!textChanged && installed) advanceSlowPhase() else false
+        // 文案没变、代理也还挂在列表上、又没到慢拍 → 什么都不用做
+        if (!textChanged && installed && !slowDue) return
+        applyFilter(env, adapter, notify = true)
+    }
+
+    /**
+     * 采集「屏幕上真正显示着的行」的涨跌幅文案。
+     *
+     * 下标回映射与「自选高亮」同一口径：列表位置减去表头行数，筛选生效时再经
+     * [AdapterState.snap] 的 keptIndices 换回全量下标 —— 不换就会拿别的股票的文案去判这一行。
+     *
+     * @return 有没有哪一行的文案与上一次采集不同（变了才值得整份重算）
+     */
+    private fun sweepVisiblePercents(act: Activity, lv: ListView, adapter: Any): Boolean {
+        val first = lv.firstVisiblePosition
+        if (first < 0) return false
+        val headerCount = lv.headerViewsCount
+        val rows = stateOf(adapter, act).snap?.keptIndices
+        val now = SystemClock.uptimeMillis()
+        var changed = false
+        val n = lv.childCount
+        for (i in 0 until n) {
+            val pos = first + i
+            if (pos < headerCount) continue
+            val dataPos = pos - headerCount
+            val idx: Int
+            if (rows == null) {
+                idx = dataPos
+            } else {
+                if (dataPos >= rows.size) continue
+                idx = rows[dataPos]
+            }
+            val row = lv.getChildAt(i) ?: continue
+            val pct = parsePercent(percentView(row)?.text?.toString()) ?: continue
+            val cam = itemAt(adapter, idx)?.let { codeAndMarket(it) } ?: continue
+            if (percentTrack.observeText(cam, pct, now)) changed = true
+        }
+        return changed
+    }
+
+    /** 拉起节拍器（幂等）。只有「功能开着 + 至少勾了一项」才值得跑。 */
+    private fun startPercentTicker(env: FeatureEnv, act: Activity) {
+        if (!env.config.stgStockFilter || !filtersBy(env, act).active) return
+        val h = act.window?.decorView?.handler ?: return
+        tickerEnv = env
+        // 同一个 Handler 且已经在跳 → 什么都不用做。
+        // 换了 Handler（页面重建 / 视图重挂）就必须在新 Handler 上**重新排一拍**：
+        // 只 removeCallbacks 旧的不重排，等于把节拍器静默掐死（tickerRunning 还是 true，谁也不会再拉起它）。
+        if (h === tickerHandler && tickerRunning) return
+        tickerHandler?.removeCallbacks(tick)
+        tickerHandler = h
+        tickerRunning = true
+        h.postDelayed(tick, TICK_MS)
+        GLog.i("筛选股票：动态重算已启动（每 ${TICK_MS}ms 采集一次可见行涨跌幅）")
+    }
+
+    /**
+     * 慢拍计时：返回这一拍是不是「该全量重算」。只有文案没变化时才会走到这里。
+     *
+     * 单独成函数是因为它要改 [tickPhase]，写在 [tickOnce] 的早退条件里会看不出来它带副作用。
+     */
+    private fun advanceSlowPhase(): Boolean {
+        tickPhase = (tickPhase + 1) % SLOW_TICKS
+        return tickPhase == 0
+    }
+
+    /** 停表（幂等）；[reason] 进日志，用于区分「切页 / 关功能 / 页销毁」 */
+    private fun stopPercentTicker(reason: String) {
+        tickerHandler?.removeCallbacks(tick)
+        if (!tickerRunning) return
+        tickerRunning = false
+        tickerHandler = null
+        tickerEnv = null
+        tickPhase = 0
+        GLog.i("筛选股票：动态重算已停止（$reason）")
+    }
+
     internal fun onFilterApplied(env: FeatureEnv, activity: Activity, applied: StockFilters) {
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         lastSummary = null
@@ -1625,10 +1862,12 @@ class StgStockFilterFeature : Feature {
         val a = liveAdapter(activity) ?: return noteApplySkip("拿不到当前列表在用的适配器")
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
+        startPercentTicker(env, activity)
     }
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
         StockFilterStore.invalidate()
+        if (!cfg.stgStockFilter) stopPercentTicker("功能已关闭")
         val act = trackedActivity() ?: return
         // ⚠️ **关掉开关时把行点击的包装拆回去**（规则 1.1）：
         // 不拆的话宿主列表上永久多一层转发，而热重载后新实例还会再包一层。
@@ -1638,6 +1877,7 @@ class StgStockFilterFeature : Feature {
         val a = liveAdapter(act) ?: return
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
+        if (cfg.stgStockFilter) startPercentTicker(env, act)
     }
 
     /**
@@ -1654,6 +1894,12 @@ class StgStockFilterFeature : Feature {
      * 仍然是 `onConfigChanged(false)` 与 `unwrapRowClick`（功能关闭时用）。
      */
     override fun onActivityDestroyed(activity: Activity) {
+        // 节拍器与涨跌幅时间线都跟着这一页走：页面没了就别再醒主线程；
+        // 时间线按「代码.市场」存，跨页面继续用只会拿上一页的旧文案判这一页。
+        if (trackedActivity() === activity) {
+            stopPercentTicker("页面已销毁")
+            percentTrack.reset()
+        }
         val hasRecords = synchronized(states) { states.isNotEmpty() } ||
             synchronized(wrappedLists) { wrappedLists.isNotEmpty() } ||
             synchronized(proxiedLists) { proxiedLists.isNotEmpty() } ||
@@ -1806,6 +2052,18 @@ class StgStockFilterFeature : Feature {
 
     @Volatile private var pendingRefilter = false
 
+    /** 动态重算的节拍器开着没有（见 [tick]） */
+    @Volatile private var tickerRunning = false
+
+    /** 节拍器要用的 env —— 钩子里拿不到它，只能存一份 */
+    @Volatile private var tickerEnv: FeatureEnv? = null
+
+    /** 节拍器挂在谁的 Handler 上（宿主的 main Handler，不自己起 Looper） */
+    private var tickerHandler: Handler? = null
+
+    /** 慢拍计数（见 [advanceSlowPhase]）：文案一直没变化的那些拍攒到 [SLOW_TICKS] 就强制全量重算一次 */
+    private var tickPhase = 0
+
     private companion object {
         /** 菜单展示方法名（全重载都挂） */
         val POPUP_SHOW_METHODS = arrayOf("showAsDropDown", "showAtLocation")
@@ -1821,6 +2079,33 @@ class StgStockFilterFeature : Feature {
          * 从个股页返回时宿主还在重新拉数据，得给它一点时间；已经装上就幂等早退。
          */
         const val RESUME_RECHECK_MS = 600L
+
+        /**
+         * 连续通知的合并窗口（毫秒）：同一窗内、同一批数据项的重复 `notifyDataSetChanged` 只算一次。
+         *
+         * 取自「全选 / 反选」的实测形态：逐行合成点击一帧内刷几百次通知，间隔都是 0–2ms；
+         * 32ms ≈ 两帧，够把一次风暴并成一次重算，又不至于让行情刷新看起来迟滞。
+         */
+        const val STORM_WINDOW_MS = 32L
+
+        /**
+         * 动态重算的节拍（见 [tick]）。
+         *
+         * 行情推送是**原地刷行内文案**的：既不改数据项字段，也不发 `notifyDataSetChanged`。
+         * 没有这一拍，一只股票从涨变跌之后会一直留在列表里 —— 用户 2026-11-12 报的就是这个。
+         * 一拍只做「扫可见行文案 + 比一比」，文案没变就跳过（每 [SLOW_TICKS] 拍补一次全量）；
+         * 真变了才重算，且只有行数变了才会通知列表（[applyFilter] 的「结果没变就早退」兜着重复通知）。
+         */
+        const val TICK_MS = 500L
+
+        /**
+         * 多少拍做一次「无条件全量重算」（10 × 500ms = 5s）。
+         *
+         * 为什么还需要慢拍：被筛掉的行已经不在屏幕上了，它的文案停止更新 —— 判定会**粘住**。
+         * 「跌转涨」想让它回来，只能靠数据项字段刷新来翻案，而宿主的字段刷新未必发通知。
+         * 结果没变时 [applyFilter0] 自己会早退（不发 notify、不重建代理），所以这一拍不打断滚动。
+         */
+        const val SLOW_TICKS = 10
 
         /** `+9.99%` / `-1.45%` / `0.00%` / `--` */
         fun parsePercent(s: String?): Double? {

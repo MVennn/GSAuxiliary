@@ -108,6 +108,49 @@ class StockFiltersTest {
     }
 
     @Test
+    fun `自选叠方向 - 勾自选又勾涨家 自选里的跌家要剔除`() {
+        val f = StockFilters(up = true, zx = true)
+        // 自选 + 涨 → 留下
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = 2.5), "自选里的涨家该留下")
+        // 自选 + 跌 → 用户报的就是这一只：只勾自选时它会留下，勾了涨家之后必须剔除
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = -1.2), "自选里的跌家必须被剔除")
+        // 自选 + 平盘 → 不属于任何一侧
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = 0.0), "自选里的平盘不属于涨家")
+        // 自选 + 涨幅读不到 → 不能当涨家
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = null), "读不到涨跌幅时不能算涨家")
+        // 非自选：照旧按类别判
+        assertTrue(f.keepsDirection(inWatchlist = false, percent = 2.5))
+        assertFalse(f.keepsDirection(inWatchlist = false, percent = -1.2))
+    }
+
+    @Test
+    fun `自选叠方向 - 只勾自选时仍然显示全部自选`() {
+        val f = StockFilters(zx = true)
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = -5.0), "没勾涨跌，自选里的跌家也要留")
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = 0.0))
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = null))
+        assertFalse(f.keepsDirection(inWatchlist = false, percent = 5.0), "非自选照旧按类别排除")
+    }
+
+    @Test
+    fun `自选叠方向 - 勾自选加跌家只留自选里的跌家`() {
+        val f = StockFilters(down = true, zx = true)
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = -3.0))
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = 3.0), "自选里的涨家被跌家条件排除")
+        assertTrue(f.keepsDirection(inWatchlist = false, percent = -3.0))
+        assertFalse(f.keepsDirection(inWatchlist = false, percent = 3.0))
+    }
+
+    @Test
+    fun `自选叠方向 - 三项全勾仍按方向限制自选`() {
+        val f = StockFilters(up = true, down = true, zx = true)
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = 4.0))
+        assertTrue(f.keepsDirection(inWatchlist = true, percent = -4.0))
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = 0.0), "平盘仍不属任何类别")
+        assertFalse(f.keepsDirection(inWatchlist = true, percent = null))
+    }
+
+    @Test
     fun `八项每一项都能独立改变结果 - 没有哑项`() {
         // 逐项翻转后「这只股票是否显示」必须变化 —— 防止「界面上有这一项、底下不起作用」
         // （历史上出过一次「跳过保存确认」是假开关：isEnabled 的 or 链漏了一位）

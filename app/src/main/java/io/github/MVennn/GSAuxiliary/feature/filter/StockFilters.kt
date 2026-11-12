@@ -19,6 +19,9 @@ package io.github.MVennn.GSAuxiliary.feature.filter
  * 与宿主行情筛面板的出厂状态一致：用户第一次打开两个面板看到的都是「没在筛」。
  *
  * 两类条件之间取**交集**：既要满足方向，也要满足类型。
+ *
+ * 同一个维度内部也可以叠加：勾了「自选股票」之后如果还勾了「涨家股票」/「跌家股票」，
+ * 自选股还要落在勾中的方向上（自选里的跌家不会因为「自选」被勾中就跟着留下）。
  */
 data class StockFilters(
     val up: Boolean = false,
@@ -67,17 +70,40 @@ data class StockFilters(
     /**
      * 方向维度：这一只股票该不该留下。
      *
-     * 与需求（2.16.1 起实测）一致：**自选优先，平盘不属于任何类别** ——
-     * 只勾「涨家股票」时，自选里正在涨的股票也不显示；只要开了方向筛选，
-     * 平盘（涨幅读不到 / 恰好为 0）就看不见 —— 这是「未勾选的类别不显示」的直接推论。
+     * **自选优先，平盘不属于任何类别** —— 只勾「涨家股票」时，自选里正在涨的股票也不显示；
+     * 只要开了方向筛选，平盘（涨幅读不到 / 恰好为 0）就看不见 —— 这是「未勾选的类别不显示」的直接推论。
+     *
+     * ## 自选类别内部再叠一层方向（2026-11-12 修）
+     *
+     * 自选股一律归 [Category.ZX]，涨 / 跌这两项对它们本来不起作用 —— 于是
+     * 「勾自选 + 勾涨家」会把自选里的**跌家**一起留下，用户看到的就是「筛了跟没筛一样」。
+     * 现在：自选类别被勾中之后，**若还勾了涨 / 跌，自选股也要落在勾中的方向上**；
+     * 只勾自选（涨跌都不勾）时仍然是「全部自选」。
+     *
+     * 「只勾涨家、不勾自选」时自选股仍然不显示（类别优先，宿主原有规矩，未变）。
      */
     fun keepsDirection(inWatchlist: Boolean, percent: Double?): Boolean {
         if (!directionFiltering) return true
         return when (categoryOf(inWatchlist, percent)) {
-            Category.ZX -> zx
+            Category.ZX -> zx && keepsWatchlistDirection(percent)
             Category.UP -> up
             Category.DOWN -> down
             Category.FLAT -> false
+        }
+    }
+
+    /**
+     * 自选股内部的方向限定（只有在「自选」被勾中时才会问到这里）。
+     *
+     * 没勾涨 / 跌 → 自选股全留；勾了 → 必须落在勾中的那一侧，平盘不属任何一侧。
+     */
+    private fun keepsWatchlistDirection(percent: Double?): Boolean {
+        if (!up && !down) return true
+        if (percent == null) return false
+        return when {
+            percent > 0.0 -> up
+            percent < 0.0 -> down
+            else -> false
         }
     }
 
