@@ -193,6 +193,21 @@ internal class DialogController {
         private set
 
     /**
+     * 「这一次弹出」的编号：只在**从没弹窗到有弹窗**时 +1。
+     *
+     * 弹层内容原地刷新（多选菜单点一下勾选 / 取消、确认弹窗换文案）时编号不变。
+     * 入场动画只认这个编号 —— 早先按 `spec` 对象做 key，每换一次 spec 就从 0 重播缩放，
+     * 表现就是「点一下勾选，菜单闪一下」（2026-11-12 用户报的）。
+     */
+    var openSeq by mutableStateOf(0)
+        private set
+
+    /** 打开一个新弹窗：只有原本没有弹窗（或在播退出动画）时才算「新的一次」 */
+    private fun opened() {
+        if (spec == null || closing) openSeq++
+    }
+
+    /**
      * 「关闭之后再执行」的动作（见 [dismiss]）。
      *
      * 弹层里的点击**不能**顺手把配置写掉：`commit()` 会同步回调
@@ -210,6 +225,7 @@ internal class DialogController {
         // （afterDismiss 已排队），那个动作不能再落到新弹窗关闭时执行。
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 
@@ -217,12 +233,14 @@ internal class DialogController {
     fun showMultiChoice(s: MultiChoiceDialogSpec) {
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 
     fun showConfirm(s: ConfirmDialogSpec) {
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 
@@ -230,6 +248,7 @@ internal class DialogController {
     fun showImage(s: ImageDialogSpec) {
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 
@@ -240,6 +259,7 @@ internal class DialogController {
         if (spec is AgreementDialogSpec && !closing) return
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 
@@ -247,6 +267,7 @@ internal class DialogController {
     fun showTextInput(s: TextInputDialogSpec) {
         afterDismiss = null
         closing = false
+        opened()
         spec = s
     }
 

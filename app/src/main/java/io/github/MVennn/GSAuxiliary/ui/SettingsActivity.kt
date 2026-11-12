@@ -109,6 +109,11 @@ class SettingsActivity : ComponentActivity() {
                 key == ROUTE_STRATEGY_MERGE -> Route.StrategyMerge
                 key.startsWith(ROUTE_STRATEGY_MERGE + ":") ->
                     Route.StrategyMergeEdit(key.substringAfter(':'))
+                // 四级页：深链 "aistare_strategy_merge_cond:<组 id>[#<成员名>]" 直达组合维度页；
+                // 带 # 就是编辑那一条组合成员，不带就是新建一条
+                key.startsWith(ROUTE_STRATEGY_MERGE_COND + ":") -> key.substringAfter(':').let { body ->
+                    Route.StrategyMergeCond(body.substringBefore('#'), body.substringAfter('#', ""))
+                }
                 else -> null
             }
         }

@@ -78,8 +78,8 @@
     <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
 
     <!-- 智能选股 -->
-    <string name="feature_stg_merge_switch">我的策略整合</string>
-    <string name="feature_stg_merge_switch_summary">策略详情页合并同组策略的股票</string>
+    <string name="feature_stg_merge_switch">我的策略聚合</string>
+    <string name="feature_stg_merge_switch_summary">策略详情页显示聚合组全部股票</string>
     <string name="feature_stg_merge_entry">聚合组设置</string>
 
     <!-- 自选 -->
@@ -332,7 +332,7 @@
     <string name="preview_sample_in">示例股票甲</string>
     <string name="preview_sample_out">示例股票乙</string>
 
-    <!-- ============================ 我的策略整合（二级 + 三级菜单） ============================ -->
+    <!-- ============================ 我的策略聚合（二级 + 三级菜单） ============================ -->
     <!-- 开关与入口行在一级「功能」页的「智能选股」分区；二级页列聚合组，三级页编一个组。
          一个聚合组把多个原生策略的股票并到一起，详情页显示并集；组内不足 2 个策略不生效，
          这句状态由 stg_merge_group_state_* 三条构成，页面上不再另写说明文字。 -->
@@ -357,10 +357,11 @@
     <string name="stg_merge_group_state_off">已停用</string>
     <string name="stg_merge_group_state_pending">未生效，至少要 %1$d 个策略</string>
     <string name="detail_stg_merge_edit_title">编辑聚合组</string>
-    <string name="stg_merge_group_rename_title">修改组名</string>
+    <string name="stg_merge_group_rename_title">重命名聚合组</string>
     <string name="stg_merge_group_rename_message">只在本机显示，不影响宿主里的策略</string>
-    <string name="stg_merge_group_enable_title">启用这一组</string>
-    <string name="stg_merge_group_enable_summary">关掉后详情页按宿主原策略显示，不动宿主里的数据</string>
+    <string name="stg_merge_group_enable_title">参与聚合</string>
+    <string name="stg_merge_group_enable_summary_on">详情页显示本组全部股票</string>
+    <string name="stg_merge_group_enable_summary_off">详情页只显示单个策略</string>
     <!-- 组行 ⋮ 菜单（与「一键配置」方案页同一套操作与文案） -->
     <string name="stg_merge_menu_rename">重命名</string>
     <string name="stg_merge_menu_move_up">上移</string>
@@ -369,6 +370,16 @@
     <string name="stg_merge_menu_disable">停用</string>
     <string name="stg_merge_menu_duplicate">复制</string>
     <string name="stg_merge_section_members">成员策略</string>
+    <string name="stg_merge_member_combo">新建组合</string>
+    <string name="stg_merge_cond_title">组合维度</string>
+    <string name="stg_merge_cond_dim_summary">%1$s · %2$d 项</string>
+    <string name="stg_merge_cond_add">添加维度</string>
+    <string name="stg_merge_cond_total_title">展开结果</string>
+    <string name="stg_merge_cond_total">共 %1$d 条组合</string>
+    <string name="stg_merge_cond_done">完成</string>
+    <string name="stg_merge_cond_remove_dim">删除这一维</string>
+    <string name="stg_merge_section_cond_import">从组合成员导入</string>
+    <string name="stg_merge_cond_import_taken">已经在本组</string>
     <string name="stg_merge_member_add">添加成员</string>
     <string name="stg_merge_member_label_detail">策略标签 · %1$s</string>
     <string name="stg_merge_member_label_pending">策略标签 · %1$s · 点这一行选档位</string>
@@ -376,7 +387,7 @@
     <string name="stg_merge_section_host">从金太阳导入</string>
     <string name="stg_merge_host_sync_title">策略清单</string>
     <string name="stg_merge_host_sync">上次同步 %1$s · 共 %2$d 条</string>
-    <string name="stg_merge_host_empty_title">还没读到金太阳的策略</string>
+    <string name="stg_merge_host_empty_title">还没有同步到金太阳的策略</string>
     <string name="stg_merge_host_empty_summary">打开一次金太阳的「我的策略」列表，再回到这里</string>
     <string name="stg_merge_host_item_added">已在当前组里</string>
     <string name="stg_merge_host_item_no_tag">无标签</string>

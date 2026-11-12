@@ -139,7 +139,8 @@ class StrategyComboCatalogTest {
     @Test
     fun 条件成员编码能原样还原() {
         val key = condKey(listOf("50-70亿", "70-100亿"), listOf("1.5-2.0"))
-        assertEquals("cond:50-70亿,70-100亿|1.5-2.0", key)
+        // 新写法只写 labelId（顺序：市值档、量比档），与宿主的 labelId 一一对应
+        assertEquals("cond:332921024326664192,332921124713136128,1363924975269969920", key)
         val back = StrategyComboCatalog.conditionOfKey(key)
         assertEquals(listOf("50-70亿", "70-100亿"), back?.markets?.map { it.name })
         assertEquals(listOf("1.5-2.0"), back?.ratios?.map { it.name })
@@ -162,7 +163,7 @@ class StrategyComboCatalogTest {
         val combos = StrategyComboCatalog.combosOf(c)
         assertEquals(4, combos.size)
         for (combo in combos) {
-            assertEquals(2, combo.key.split('|').size, "条件组合的 key 是两段：档位|档位")
+            assertEquals(2, combo.key.split(',').size, "条件组合的 key 是两段 labelId：市值,量比")
             val back = StrategyComboCatalog.comboOfKey(combo.key)
             assertEquals(combo.labelIds, back?.labelIds, "两段 key 必须能还原出同样的 labelId 才能真取数")
         }
@@ -188,5 +189,85 @@ class StrategyComboCatalogTest {
         assertEquals("50-70亿 × 1.5-2.0", StrategyComboCatalog.displayName("50-70亿|1.5-2.0"))
         // 档位表里没有的写法不许瞎认，否则脏配置会让详情页多出一条不存在的标签
         assertEquals(emptyList(), StrategyComboCatalog.tagNamesOfKey("combo:999亿|9.9"))
+    }
+
+    @Test
+    fun 标签成员的标签按档位表反推() {
+        // label:1363924975269969920 = 量比1.5-2.0；label:332921024326664192 = 流通市值50-70亿
+        assertEquals(
+            listOf("量比1.5-2.0"),
+            StrategyComboCatalog.tagNamesOfKey("label:1363924975269969920"),
+        )
+        assertEquals(
+            listOf("流通市值50-70亿"),
+            StrategyComboCatalog.tagNamesOfKey("label:332921024326664192"),
+        )
+    }
+
+    @Test
+    fun 队列里的标签成员也认得出() {
+        // 聚合队列把成员 key 统一包成 combo: 前缀，裸 label: 认不出就会整条丢标签
+        val key = StrategyComboCatalog.COMBO_PREFIX + "label:1363924975269969920"
+        assertEquals("1363924975269969920", StrategyComboCatalog.labelIdOf(key))
+        assertEquals(listOf("量比1.5-2.0"), StrategyComboCatalog.tagNamesOfKey(key))
+        assertEquals("量比1.5-2.0", StrategyComboCatalog.displayName(key))
+        assertEquals("1363924975269969920", StrategyComboCatalog.comboOfKey(key)?.labelIds?.first())
+    }
+
+    @Test
+    fun 标签成员按一条算() {
+        assertEquals(1, StrategyComboCatalog.expandedCount(listOf(m("label:1363924975269969920"))))
+        assertEquals(2, StrategyComboCatalog.expandedCount(listOf(
+            m("label:1363924975269969920"),
+            m("label:332921024326664192"),
+        )))
+    }
+
+    @Test
+    fun 任意两维组合按维展开成笛卡尔积() {
+        val marketAll = StrategyComboCatalog.dimOf(StrategyLabelTable.nodeOf("332920492044320768")!!)
+        val market = marketAll.copy(
+            tiers = marketAll.tiers.filter { it.labelId == "332921024326664192" || it.labelId == "332921124713136128" },
+        )
+        val newHighAll = StrategyComboCatalog.dimOf(StrategyLabelTable.nodeOf("313635226150502400")!!)
+        val newHigh = newHighAll.copy(
+            tiers = newHighAll.tiers.filter { it.labelId == "313635411240943616" },
+        )
+        val c = StrategyComboCatalog.Condition(listOf(market, newHigh))
+        assertEquals(2, c.comboCount, "两段市值 × 一档创新高 = 两条组合，与量比无关")
+        assertEquals(
+            listOf("流通市值50-70亿", "流通市值70-100亿", "创新高20交易日"),
+            StrategyComboCatalog.tagNamesOf(c),
+        )
+        assertEquals("流通市值50-100亿 · 创新高20交易日", StrategyComboCatalog.summaryText(c))
+        val combos = StrategyComboCatalog.combosOf(c)
+        assertEquals(2, combos.size)
+        for (combo in combos) {
+            assertEquals(2, combo.key.split(',').size)
+            assertEquals(combo.labelIds, StrategyComboCatalog.comboOfKey(combo.key)?.labelIds)
+        }
+        // 编码 → 还原：两维各自并回去，维度顺序不变
+        val back = StrategyComboCatalog.conditionOfKey(StrategyComboCatalog.condKey(c))!!
+        assertEquals(listOf("流通市值", "创新高"), back.dims.map { it.title })
+        assertEquals(2, back.comboCount)
+    }
+
+    @Test
+    fun 三维组合的条数是各维档数连乘() {
+        val marketAll = StrategyComboCatalog.dimOf(StrategyLabelTable.nodeOf("332920492044320768")!!)
+        val ratioAll = StrategyComboCatalog.dimOf(StrategyLabelTable.nodeOf("1363923810041987072")!!)
+        val newHighAll = StrategyComboCatalog.dimOf(StrategyLabelTable.nodeOf("313635226150502400")!!)
+        val c = StrategyComboCatalog.Condition(
+            listOf(
+                marketAll.copy(tiers = marketAll.tiers.take(2)),
+                ratioAll.copy(tiers = ratioAll.tiers.take(3)),
+                newHighAll.copy(tiers = newHighAll.tiers.filter { it.labelId == "313635411240943616" }),
+            ),
+        )
+        assertEquals(6, c.comboCount)
+        assertEquals(6, StrategyComboCatalog.combosOf(c).size)
+        // 加一维以后，老的两维读法（markets / ratios）仍然读得到，历史配置不受影响
+        assertEquals(2, c.markets.size)
+        assertEquals(3, c.ratios.size)
     }
 }

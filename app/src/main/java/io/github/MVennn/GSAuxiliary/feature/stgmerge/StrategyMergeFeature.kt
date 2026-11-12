@@ -9,6 +9,8 @@ import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.core.MainThreadStallWatchdog
+import io.github.MVennn.GSAuxiliary.core.MergeConfig
 import io.github.MVennn.GSAuxiliary.core.MergeGroup
 import io.github.MVennn.GSAuxiliary.core.MergeMember
 import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
@@ -35,6 +37,18 @@ private const val SETTLE_MS = 600L
 
 /** 宿主刷新后重新套回并集的最小间隔：太密会和宿主刷新互相踩成活锁 */
 private const val REAPPLY_MIN_INTERVAL_MS = 500L
+
+/**
+ * 快路的**时间闸**：距离上一次完整慢路不到这么多毫秒，就走了快路直接收工。
+ *
+ * 以前是「连跳 3 次就强制走一次慢路」，计数闸在「一次通知风暴」里等于没闸 ——
+ * 宿主一次「全选 / 反选」是逐行合成点击，一帧刷几百次 notify，前 3 次快路之后
+ * 剩下的几百次全走慢路（十几次反射 + 标签补写 + 适配器重挂），
+ * 用户感知到的就是「勾选一下卡两秒」。
+ * 改成时间闸：同一帧里的几百次通知只算一次，稳态最多每 [FAST_SLOW_MS] 补一次慢路。
+ * 看门狗那一路用 `force = true` 绕过它，保证「宿主悄悄重画头部」总有一个周期能纠回来。
+ */
+private const val FAST_SLOW_MS = 400L
 
 /** 看门狗巡检间隔：宿主既会直接改适配器 data（不 notify），也会在我们写回后重写头部文本 */
 private const val WATCH_INTERVAL_MS = 700L
@@ -167,12 +181,16 @@ internal fun takeTagPrefix(name: String): String =
 private val ENTRY_LABEL_COUNT_REGEX = Regex("（\\s*\\d+\\s*条）")
 
 /**
- * 列表页入口卡的显示名：「组名」→「聚合 · 组名（N 条）」，纯函数便于单测。
+ * 列表页入口卡的显示名：「组名」→「聚合 · 组名」，纯函数便于单测。
  *
  * 组名自己就以「聚合」开头时不再叠前缀，否则会出现「聚合 · 聚合（聚合）」这种读不懂的名字。
+ *
+ * [memberCount] 已不再进卡名（2026-11-12 用户要求去掉「（N 条）」：那是实现细节，
+ * 卡上一串数字既容易过期又占地方）。参数保留是因为调用点本来就算好了这个数，
+ * 且详情页/设置页仍按同一个展开数判上限。
  */
-internal fun entryLabelOf(groupName: String, memberCount: Int): String =
-    entryLabelBare(groupName) + "（" + memberCount + " 条）"
+@Suppress("UNUSED_PARAMETER")
+internal fun entryLabelOf(groupName: String, memberCount: Int): String = entryLabelBare(groupName)
 
 /**
  * 入口卡去掉条数尾巴的形式：「聚合 · 组名」。
@@ -296,6 +314,31 @@ class StrategyMergeFeature : Feature {
     private val lastSkip = ThreadLocal<String>()
 
     /**
+     * `ListView.setAdapter` 后置钩子的重入闸。
+     *
+     * 钩子里会「重新套并集 / 起一轮取数」，这两件事都可能再次 `lv.adapter = …`
+     * （宿主刷新时是它自己换、换完我们的钩子又装回去），同一线程一进一出就成链。
+     * 真机 2026-11-12 13:38 那次主线程卡死就是 stgfilter 的还原 → 我们的 setAdapter 钩子 →
+     * 再还原的无限递归（栈见 docs/FEATURE-STRATEGY-MERGE.md §25）。这里只放**第一层**进来，
+     * 嵌套层原样放行（外层已经处理过这一帧）。
+     */
+    private val setAdapterBusy = ThreadLocal<Boolean>()
+
+    /**
+     * 宿主最近一次**自己**塞进适配器的列表（拷贝）与它的代次。
+     *
+     * 聚合期间我们要把上一轮的完整并集顶在屏幕上：不然 24 个成员挨个渲染，
+     * 用户看到的就是「完整的 787 只 → 宿主换成第一个成员的 12 只 → 61 只 …… 一路长回来」。
+     * 顶出去的代价是适配器 `data` 不再等于宿主的响应，轮询就不能再拿 `data` 变没变判
+     * 「这一格到了」。所以在适配器 notify 的那一刻先把宿主那份抄下来，轮询只认这份 + 代次。
+     */
+    private val hostPayload = ArrayList<Any?>()
+    @Volatile private var hostPayloadGen = 0
+
+    /** 我们自己写适配器 `data` 时置位：同一线程里 notify 会回头进钩子，别把自己的写入当成宿主响应 */
+    private val ownAdapterWrite = ThreadLocal<Boolean>()
+
+    /**
      * 「我的策略」列表页的巡检循环。
      *
      * 只靠 onResume 补一次不够：宿主下拉刷新 / 上拉分页会**整页重拉**策略（新对象、原生名），
@@ -310,6 +353,16 @@ class StrategyMergeFeature : Feature {
      * 「成员原名 → stId」，也不该把合并后的标签当成原生标签记进索引。
      */
     private val entryLabels = Collections.synchronizedSet(HashSet<String>())
+
+    /**
+     * 组名 → 入口卡原来的身份（stId / 原名 / 原生标签）。
+     *
+     * 入口卡被我们改名成「聚合 · X（N 条）」以后，页面上就再也扫不出它是哪条策略了；
+     * 而它本来就是宿主里的一条真策略。不记下来，「从金太阳导入」里就永久少这一条，
+     * 用户会以为策略被删了（真机现象：组一启用，500e 从清单里消失）。
+     */
+    private val entryOriginals = Collections.synchronizedMap(HashMap<String, StrategyStgIndex.Entry>())
+
 
     /** 列表页巡检每 800ms 跑一次：采集结果没变化就别刷日志（否则一页一分钟上百行） */
     private var lastListStat = ""
@@ -369,20 +422,33 @@ class StrategyMergeFeature : Feature {
             bag.add(
                 env.xposed.hook(m).setId("$id:setAdapter:$n").intercept { chain ->
                     val result = chain.proceed()
-                    runCatching {
-                        val lv = chain.thisObject as? ListView
-                        val act = findActivity(lv?.context)
-                        // 只认真正装股票的那个适配器：宿主会先挂 AIStkEmptyAdapter（空列表占位），
-                        // 那时去聚合会把 StockInfo 塞进按 String 取数据的适配器，直接崩宿主。
-                        val a = lv?.adapter?.let { StrategyMergeTargets.unwrapListAdapter(it) }
-                        if (act != null && isDetailPage(act) &&
-                            a != null && StrategyMergeTargets.isPageAdapter(a.javaClass.name)
-                        ) {
-                            // 宿主自己刷新（实测 10~12 秒一次）会重挂适配器并塞回单策略那份数据，
-                            // 已经算好的并集就这么被顶掉了 —— 先试把它重新套回去，套不住才重取。
-                            if (!reapplyIfNeeded(act, a)) start(env, act, lv)
-                        }
-                    }.onFailure { GLog.w("$LOG setAdapter 后置处理失败", it) }
+                    if (setAdapterBusy.get() == true) return@intercept result
+                    setAdapterBusy.set(true)
+                    try {
+                        runCatching {
+                            val lv = chain.thisObject as? ListView
+                            val act = findActivity(lv?.context)
+                            // 只认真正装股票的那个适配器：宿主会先挂 AIStkEmptyAdapter（空列表占位），
+                            // 那时去聚合会把 StockInfo 塞进按 String 取数据的适配器，直接崩宿主。
+                            val a = lv?.adapter?.let { StrategyMergeTargets.unwrapListAdapter(it) }
+                            if (act != null && isDetailPage(act) && lv != null) {
+                                if (a != null && StrategyMergeTargets.isPageAdapter(a.javaClass.name)) {
+                                    val st = stateOf(act)
+                                    synchronized(st) { st.lvRef = WeakReference<Any>(lv) }
+                                    // 宿主自己刷新（实测 10~12 秒一次）会重挂适配器并塞回单策略那份数据，
+                                    // 已经算好的并集就这么被顶掉了 —— 先试把它重新套回去，套不住才重取。
+                                    if (!reapplyIfNeeded(act, a)) start(env, act, lv)
+                                } else {
+                                    // 宿主自己那条策略当前没有股票时会挂 AIStkEmptyAdapter（data 是 String
+                                    // 提示语）。就这么放它挂着，我们写回的并集永远没人看见（真机 13:12 / 13:16
+                                    // 那次用户看到的就是「0 只」）—— 当场把并集适配器装回去。
+                                    reattachIfSwapped(act, lv)
+                                }
+                            }
+                        }.onFailure { GLog.w("$LOG setAdapter 后置处理失败", it) }
+                    } finally {
+                        setAdapterBusy.set(false)
+                    }
                     result
                 },
             )
@@ -449,11 +515,97 @@ class StrategyMergeFeature : Feature {
         return n
     }
 
-    /** `notifyDataSetChanged` 前把 data 换成并集（节流关掉：这一枪必须打中） */
+    /**
+     * `notifyDataSetChanged` 前把 data 换成并集（节流关掉：这一枪必须打中）。
+     *
+     * 顺序不能换：**先抄宿主那一帧**（取数窗口里这是唯一可信的「这一格到了」信号），
+     * 再把上一轮的并集顶回 `data`，宿主的 notify 接着画出来的就是并集。
+     * 抄完再顶，抄到的才不会是自己的写入。
+     */
     private fun patchBeforeNotify(adapter: Any?) {
         if (adapter == null || !StrategyMergeTargets.isPageAdapter(adapter.javaClass.name)) return
         val act = currentDetailActivity() ?: return
+        val state = stateOf(act)
+        if (!isMerging(state) && state.mergedStrong == null) {
+            reapplyIfNeeded(act, adapter, throttle = false)
+            return
+        }
+        if (ownAdapterWrite.get() != true) captureHostPayload(state, adapter)
+        runCatching { holdUnionWhileRunning(act, state, adapter) }
+            .onFailure { GLog.w("$LOG 顶住并集失败", it) }
         reapplyIfNeeded(act, adapter, throttle = false)
+    }
+
+    /** 这一页正在跑一轮聚合（取数窗口） */
+    private fun isMerging(state: PageState): Boolean = synchronized(state) { state.running }
+
+    /**
+     * 把宿主这一帧的列表抄进 [hostPayload] 并推进代次。
+     *
+     * 只在取数窗口里抄：平时抄了没人用，白拷 800 个元素。
+     * 拷贝是必须的 —— 宿主下一帧会就地 `clear + addAll` 同一个 List 实例，
+     * 不拷的话我们手里的「这一格的结果」会被改写成下一格的。
+     */
+    private fun captureHostPayload(state: PageState, adapter: Any) {
+        if (!isMerging(state)) return
+        val cur = StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA) ?: return
+        val copy = ArrayList<Any?>(cur.size)
+        copy.addAll(cur)
+        synchronized(hostPayload) {
+            hostPayload.clear()
+            hostPayload.addAll(copy)
+            hostPayloadGen++
+        }
+        // 家数也要在同一时刻抄下来：这一步在「把自己的聚合值写回 model」之前，
+        // 抄到的才是宿主自己的统计。晚一步抄到的就是我们上一帧写进去的聚合值。
+        (synchronized(state) { state.run })?.captureHostStats()
+    }
+
+    private fun payloadGen(): Int = hostPayloadGen
+
+    private fun payloadSnapshot(): List<*> = synchronized(hostPayload) { ArrayList<Any?>(hostPayload) }
+
+    /**
+     * 取数窗口里把上一轮的完整并集顶回适配器，并且只写 `data`、**不 notify**：
+     * 宿主自己的 `notifyDataSetChanged` 紧接着就会画这一帧，多喊一次只会多一帧闪烁。
+     *
+     * 只在「宿主这份比并集小」时顶：宿主偶尔会给出比上一轮还大的列表（比如 500e 那天），
+     * 那种情况没理由把它缩回来。
+     */
+    private fun holdUnionWhileRunning(act: Activity, state: PageState, adapter: Any) {
+        if (!isMerging(state)) return
+        val held = state.mergedStrong ?: return
+        if (held.isEmpty()) return
+        val cur = StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA)
+        if (cur != null && cur.size >= held.size) return
+        val before = cur?.size ?: 0
+        ownAdapterWrite.set(true)
+        try {
+            // 交副本：宿主刷新时会就地清空这份 list
+            val copy = ArrayList<Any>(held.size)
+            for (e in held) if (e != null) copy.add(e)
+            val ok = StrategyMergeTargets.write(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA, copy)
+            if (!ok) {
+                GLog.w("$LOG 顶住并集失败：data 写不进去（适配器换了？）")
+                return
+            }
+            // 头部跟着一起顶：列表是整份并集、家数却写着某个成员的，看着更乱
+            (synchronized(state) { state.run })?.holdHeaderCounts()
+            writeHeaderCounts(act, state.upSum, state.downSum, state)
+            // 筛选代理（stgfilter 的 FilteredAdapter）在 notify 之前就把下标表算完了，
+            // 我们这笔写晚了一步：代理仍按宿主那一格的行数显示。再喊一次 notify，
+            // 代理的前置钩子会按新的全量重算下标表，屏幕才是整份并集（筛了就还是筛后的）。
+            StrategyMergeTargets.notifyAdapter(adapter)
+            // 计数必须在 notify 之后再写：`策略个股 X/总数` 里的 X 是从代理现算的可见行数读的，
+            // 写在 notify 之前读到的是**上一格**的行数（真机 34/636 → 27/636 → 69/636 乱跳）。
+            writeMergedResNum(act, state, held.size)
+        } finally {
+            ownAdapterWrite.set(false)
+        }
+        if (!state.holdNoted) {
+            state.holdNoted = true
+            GLog.i("$LOG 取数期间顶住上一轮并集 ${held.size} 只（宿主这一帧 $before 只，不缩）")
+        }
     }
 
     /** 当前还活着、且已经聚合过的详情页（钩子里拿不到 Activity，只能按状态表反查） */
@@ -562,6 +714,31 @@ class StrategyMergeFeature : Feature {
         return false
     }
 
+    /**
+     * 浅拷一份宿主策略对象（列表适配器里的每一行就是一个策略 bean）。
+     *
+     * 纯条件组在列表页没有成员卡可用，以前是**借**用户一张真策略改名 —— 用户的原策略当场从列表里消失。
+     * 现在复制一份、只改复制品那一个字段，插进 data 里多出一张卡，原来的一个字都不动。
+     * 拿不到无参构造或复制失败就返回 null，调用方按「这一轮不建入口」处理，不会把页面搞坏。
+     */
+    private fun cloneCard(src: Any): Any? {
+        val cls = src.javaClass
+        val inst = runCatching {
+            cls.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        }.getOrNull() ?: return null
+        var c: Class<*>? = cls
+        while (c != null && c != Any::class.java) {
+            for (f in c.declaredFields) {
+                if (java.lang.reflect.Modifier.isStatic(f.modifiers)) continue
+                if (!runCatching { f.isAccessible = true }.isSuccess) continue
+                val v = runCatching { f.get(src) }.getOrNull() ?: continue
+                runCatching { f.set(inst, v) }
+            }
+            c = c.superclass
+        }
+        return inst
+    }
+
     private fun logListAdapters(act: Activity, tag: String) {
         val lists = ArrayList<View>(4)
         collectLists(act.window?.decorView, lists)
@@ -582,6 +759,37 @@ class StrategyMergeFeature : Feature {
         }
     }
 
+    /**
+     * 适配器接线探针（临时）：把每个 ListView 的适配器、数据字段身份、model 股票列表身份都打出来。
+     *
+     * 目的是查「谁把自己的股票列表交给了 AIStkEmptyAdapter」——它 convert 第一行就把 item 强转 String，
+     * 拿到 StockInfo 就 ClassCastException 崩宿主。身份码相同 = 同一个 List 实例被两个适配器共用。
+     */
+    private fun logWiring(act: Activity, tag: String) {
+        val model = StrategyMergeTargets.field(act, *StrategyMergeTargets.ACT_FIELD_MODEL)
+        val stk = StrategyMergeTargets.listField(model, StrategyMergeTargets.MODEL_FIELD_STK_LIST)
+        GLog.i(
+            "$LOG [wire:$tag] model.m_stkList@${System.identityHashCode(stk)} " +
+                "size=${stk?.size ?: -1} first=${stk?.firstOrNull()?.javaClass?.simpleName}",
+        )
+        val lists = ArrayList<View>(4)
+        collectLists(act.window?.decorView, lists)
+        for ((i, v) in lists.withIndex()) {
+            val la = adapterOf(v)
+            if (la == null) continue
+            val inner = StrategyMergeTargets.unwrapListAdapter(la)
+            val d = StrategyMergeTargets.listField(inner, StrategyMergeTargets.ADAPTER_FIELD_DATA)
+            GLog.i(
+                "$LOG [wire:$tag] 列表#$i ${v.javaClass.simpleName} " +
+                    "lv=${la.javaClass.simpleName}@${System.identityHashCode(la)} " +
+                    "inner=${inner?.javaClass?.simpleName}@${inner?.let { System.identityHashCode(it) }} " +
+                    "data@${System.identityHashCode(d)} size=${d?.size ?: -1} " +
+                    "first=${d?.firstOrNull()?.javaClass?.simpleName}",
+            )
+        }
+    }
+
+    /** 详情页里真正装股票的那个适配器（跳过 Header / 空列表占位） */
     private fun findDetailAdapter(act: Activity): Any? {
         val lists = ArrayList<View>(4)
         collectLists(act.window?.decorView, lists)
@@ -590,6 +798,57 @@ class StrategyMergeFeature : Feature {
             if (StrategyMergeTargets.isPageAdapter(a.javaClass.name)) return a
         }
         return null
+    }
+
+    /**
+     * 宿主把列表换成**空占位适配器**之后，把并集那个适配器装回去。
+     *
+     * 为什么必须装回去：`AIStkEmptyAdapter` 的 data 是 String 提示语，往里塞 StockInfo 会
+     * ClassCastException；而宿主在「自己那条策略当前没有股票」时就这么换 —— 真机 2026-11-12
+     * 13:12 / 13:16 两次都是这个形态：`[wire:finish-before] 列表#0 lv=AIStkEmptyAdapter data size=1 first=String`。
+     * 我们随后写的是那个**已经不在列表上**的适配器，界面永远「暂无数据」，用户看到的就是 0 只。
+     *
+     * 装回去要赶在同一帧布局前（本函数全程同步、主线程），界面不会闪过「暂无数据」。
+     *
+     * @param only 只查这一个列表（setAdapter 钩子里能直接拿到它）；null = 先按快照、再扫视图树
+     * @return true = 真的装回去了
+     */
+    private fun reattachIfSwapped(act: Activity, only: ListView? = null): Boolean {
+        val state = stateOf(act)
+        if (!state.applied) return false
+        val merged = state.mergedStrong
+        if (merged.isNullOrEmpty()) return false
+        val ours = synchronized(state) { state.adapterRef?.get() }
+            ?.takeIf { StrategyMergeTargets.isPageAdapter(it.javaClass.name) } ?: return false
+        val lists = ArrayList<ListView>(4)
+        if (only != null) {
+            lists.add(only)
+        } else {
+            val cached = synchronized(state) { state.lvRef?.get() } as? ListView
+            if (cached != null && cached.isAttachedToWindow) {
+                lists.add(cached)
+            } else {
+                val all = ArrayList<View>(4)
+                collectLists(act.window?.decorView, all)
+                for (v in all) if (v is ListView) lists.add(v)
+            }
+        }
+        for (lv in lists) {
+            val cur = adapterOf(lv) ?: continue
+            val inner = StrategyMergeTargets.unwrapListAdapter(cur)
+            if (inner === ours) continue
+            if (inner?.javaClass?.name != StrategyMergeTargets.CLS_EMPTY_ADAPTER) continue
+            val ok = runCatching {
+                lv.adapter = ours as android.widget.ListAdapter
+                true
+            }.getOrDefault(false)
+            if (!ok) continue
+            synchronized(state) { state.lvRef = WeakReference<Any>(lv) }
+            GLog.i("$LOG 宿主把列表换成了空占位适配器，已把并集适配器装回去（${merged.size} 只）")
+            StrategyMergeTargets.notifyAdapter(ours)
+            return true
+        }
+        return false
     }
 
     /**
@@ -610,7 +869,7 @@ class StrategyMergeFeature : Feature {
                 if (!state.applied || act.isFinishing || act.isDestroyed) return
                 runCatching {
                     val adapter = synchronized(state) { state.adapterRef?.get() }
-                    if (adapter != null) reapplyIfNeeded(act, adapter, throttle = false)
+                    if (adapter != null) reapplyIfNeeded(act, adapter, throttle = false, force = true)
                 }.onFailure { GLog.w("$LOG 看门狗重套失败", it) }
                 mainHandler.postDelayed(this, WATCH_INTERVAL_MS)
             }
@@ -628,11 +887,21 @@ class StrategyMergeFeature : Feature {
         if (old != null) mainHandler.removeCallbacks(old)
     }
 
-    private fun reapplyIfNeeded(act: Activity, adapter: Any, throttle: Boolean = true): Boolean {
+    /**
+     * 把并集重新套回这一页（宿主刷新后 / 看门狗定期 / notify 前置）。
+     *
+     * @param throttle true 时受 [REAPPLY_MIN_INTERVAL_MS] 节流（给宿主自己刷新的那一路用）
+     * @param force true 时**强制走完整慢路**，跳过快路的时间闸 —— 只给看门狗用，
+     *              它是「宿主把头部重画成单策略数字」的唯一兜底，不能被合并掉。
+     */
+    private fun reapplyIfNeeded(
+        act: Activity,
+        adapter: Any,
+        throttle: Boolean = true,
+        force: Boolean = false,
+    ): Boolean {
         val state = stateOf(act)
-        val merged = synchronized(state) {
-            if (!state.applied) null else state.mergedRef?.get() as? List<*>
-        } ?: return false
+        val merged = (if (state.applied) state.mergedStrong else null) ?: return false
         if (state.running) return true
         // 用聚合时那一个适配器：页面里不止一个 ListView，按视图树重新找容易找到别的那个，
         // 写了半天其实写给了没人用的列表（真机 21:24 重套日志成功但界面纹丝不动）。
@@ -640,6 +909,16 @@ class StrategyMergeFeature : Feature {
             ?.takeIf { StrategyMergeTargets.isPageAdapter(it.javaClass.name) }
             ?: adapter
         val cur = StrategyMergeTargets.listField(target, StrategyMergeTargets.ADAPTER_FIELD_DATA)
+        // 快路：列表没被宿主动过、头部两颗数字也还是我们写的那份 —— 直接收工。
+        // 这一页每个 notify（勾选股票、全选 / 反选、截图前翻页）都会走到这里，
+        // 慢路一次 = 十几次反射 + 全树扫 60 多个 TextView，勾选时肉眼可见掉帧。
+        if (!force && cur != null && cur.size == merged.size &&
+            cur.firstOrNull() === merged.firstOrNull() && headerCountsOk(state) &&
+            android.os.SystemClock.uptimeMillis() - state.lastSlowAt < FAST_SLOW_MS
+        ) {
+            return true
+        }
+        state.lastSlowAt = android.os.SystemClock.uptimeMillis()
         // 头部三处文本（策略名称 / 涨跌家数 / 策略个股N只）宿主每轮刷新都会重写，
         // 和数据有没有被改无关，所以放在早返回之前：同值 setText 不会闪。
         val model = StrategyMergeTargets.field(act, *StrategyMergeTargets.ACT_FIELD_MODEL)
@@ -659,10 +938,13 @@ class StrategyMergeFeature : Feature {
             StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_UP_NUM, state.upSum)
             StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, state.downSum)
         }
-        writeHeaderCounts(act, state.upSum, state.downSum)
+        writeHeaderCounts(act, state.upSum, state.downSum, state)
         writeMergedResNum(act, state, merged.size)
         // 标签条同理：宿主重画后要按合并结果补回去（同内容时内部早返回，几乎零成本）
         applyTagTexts(act, state)
+        // 列表可能已经被宿主换成空占位适配器（它那条策略没股票）：先把并集适配器装回列表，
+        // 否则下面写的是「不在列表上」的那个适配器，界面永远「暂无数据」= 用户看到的 0 只。
+        reattachIfSwapped(act)
         // 第一项还是同一实例 → 宿主没动过数据，列表仍是并集
         if (cur != null && cur.size == merged.size && cur.firstOrNull() === merged.firstOrNull()) {
             return true
@@ -683,6 +965,20 @@ class StrategyMergeFeature : Feature {
                 "${target.javaClass.simpleName}@${System.identityHashCode(target)}，写后 data=$after）",
         )
         return true
+    }
+
+    /**
+     * 头部「涨家数 / 跌家数」还是不是我们写的聚合值。
+     *
+     * 只读上一次认下来的两颗 TextView（弱引用），**不扫视图树** —— 看门狗每 700ms 一跳，
+     * 加上宿主每次 notify 都会触发一次重套，全树扫描是这一页卡顿的主要来源。
+     */
+    private fun headerCountsOk(state: PageState): Boolean {
+        val up = state.upTvRef?.get() ?: return false
+        val down = state.downTvRef?.get() ?: return false
+        if (!up.isAttachedToWindow || !down.isAttachedToWindow) return false
+        return up.text?.toString() == state.upSum.toString() &&
+            down.text?.toString() == state.downSum.toString()
     }
 
     /**
@@ -715,6 +1011,7 @@ class StrategyMergeFeature : Feature {
         }
         val copy = ArrayList<Any>(merged)
         state.mergedRef = WeakReference<Any>(copy)
+        state.mergedStrong = copy
         state.mergedSize = copy.size
         state.applied = true
         state.upSum = snap.up
@@ -730,7 +1027,7 @@ class StrategyMergeFeature : Feature {
         state.originalStId?.let { StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_ID, it) }
         state.touchedId = false
         StrategyMergeTargets.notifyAdapter(adapter)
-        writeHeaderCounts(act, snap.up, snap.down)
+        writeHeaderCounts(act, snap.up, snap.down, state)
         writeMergedResNum(act, state, copy.size)
         if (state.tagTexts != null) applyTagTexts(act, state)
         startWatch(act, state)
@@ -825,15 +1122,18 @@ class StrategyMergeFeature : Feature {
         // 再采一遍会把「成员原名 → stId」和「原生标签」两条正路数据污染掉。
         var indexed = 0
         var tagCount = 0
+        // 这一轮页面上真实存在的策略：广播给模块 App 用这个，不用索引全量（见 ①.b）
+        val live = ArrayList<StrategyStgIndex.Entry>(data.size)
         for (item in data) {
             val nm = stgNameOf(item)
             if (nm != null && entryLabels.contains(nm)) continue
             val sid = stgIdOf(item)
+            val tags = StrategyMergeTargets.strategyTagNames(item)
             if (!nm.isNullOrEmpty() && !sid.isNullOrEmpty()) {
                 StrategyStgIndex.remember(nm, sid)
+                live.add(StrategyStgIndex.Entry(sid, nm, tags))
                 indexed++
             }
-            val tags = StrategyMergeTargets.strategyTagNames(item)
             if (!sid.isNullOrEmpty() && tags.isNotEmpty()) {
                 StrategyStgIndex.rememberTags(sid, tags)
                 tagCount++
@@ -846,21 +1146,30 @@ class StrategyMergeFeature : Feature {
             GLog.i("$LOG 已登记 $indexed 条策略（$tagCount 条带标签），成员标签取自这一页")
         }
 
-        // ①.b 顺手把这份清单广播给模块 App：两个进程不同 UID，模块 App 读不到宿主的私有数据，
+        // 组配置要用来补「被收起但确实存在」的成员卡（见 ①.b），先解出来；
+        // 解不出来就整页不装饰，也就没有可广播的清单。
+        val merge = runCatching { StrategyMergeStore.decode(cfg.stgMergeGroups) }.getOrNull() ?: return
+
+        // ①.b 把**这一页实际存在的策略**广播给模块 App：两个进程不同 UID，模块 App 读不到宿主的私有数据，
         //      设置页「从金太阳导入」那份列表只能由宿主主动发（见 core/StgCatalogBroadcast）。
+        //      只发 live 不发索引全量：索引只增不删，删掉的策略 / 早前接口批量建的策略会一直留在里面，
+        //      导进聚合组就是一条取不到数的死成员（真机症状：清单里冒出 T4 / TPMP50）。
         //      发送有两道节流，巡检每 800ms 跑一轮也不会把广播刷爆。
-        StrategyStgCatalog.publish(act)
+        //      但启用组的成员卡在 ③ 会被从 adapter 数据里摘掉、入口卡在 ② 会被改名，
+        //      这两类在下一轮都读不到原名 —— 它们是真策略，得按配置 / 改名时的记录补回来，
+        //      否则「从金太阳导入」里少几条，用户以为策略被删了。所以发送放在 ③ 之后。
 
         // ② 每个启用组只把**一张**成员卡片改名成「聚合 · 组名（N 条）」当入口，并把这组标签合并后写回；
         //    其余成员卡从列表数据里摘掉 —— 聚合的意思就是「几条并成一条」，成员卡还各占一行，
         //    用户会以为聚合没生效（真机反馈：入口卡看着像绑在 70e 上，50e / 100e 还挂着）。
-        val merge = runCatching { StrategyMergeStore.decode(cfg.stgMergeGroups) }.getOrNull() ?: return
         var renamed = 0
         var retagged = 0
         val toHide = ArrayList<Any?>()
         // 已经被别的组拿去当入口的卡：纯条件组借卡时要避开，否则两个组抢同一张，
         // 后写的那组把名字覆盖掉，前一组就再没有入口了。
         val claimed = ArrayList<Any?>()
+        // 温和模式的日志去重：这一页每次重扫都别重复刷同一条
+        val gentleNoted = HashSet<String>()
         for (g in merge.groups) {
             if (!g.enabled) continue
             // 条数按**展开后**算，和详情页头部同一个数：口径成员不是一条策略，
@@ -893,27 +1202,70 @@ class StrategyMergeFeature : Feature {
             // 入口卡放在组里**第一个成员**的位置，不是 data 里随便那张：
             // 以前按页面顺序挑，用户看到的就是「聚合卡绑在 70e 上」，排在它前面的 50e / 100e 还单独挂着。
             var card = done ?: stale
+            // 这张卡是不是**用户自己的策略卡**（按成员名匹配到的）：是的话下面走温和模式，
+            // 不改名、不收卡 —— 用户原来的策略要留在列表里。
+            var fromMember = false
             if (card == null) {
                 for (m in g.members) {
                     val hit = data.firstOrNull { item -> claimed.none { it === item } && sameMember(m, item) }
                     if (hit != null) {
                         card = hit
+                        fromMember = true
                         break
                     }
                 }
             }
-            // 纯条件组（成员全是 cond: / combo: 占位，或成员名在宿主里还没见过）在页面上没有自己的卡。
-            // 以前这里直接 continue，于是「模块里配好了组、宿主列表里根本没入口」——
-            // 真机上就是「聚合组1（12 条）」配得好好的，可哪都点不进去。
-            // 借一张还没被别组占用的原生策略卡当入口：改名之后点进去靠名字反解认组（hits 的第③路），
-            // 归组不看这张卡自己是谁，所以借哪张都一样。改名只写内存里的策略对象，
-            // 宿主下一轮自己刷新就恢复原名，不往服务器写脏数据。
+            // 纯条件组（成员全是 cond: / combo: 占位，或成员名在宿主里还没见过）在页面上一张卡都没有。
+            //
+            // 以前的做法是**借**一张用户自己的策略卡改名当入口 —— 用户看到的正是「我的策略被聚合吃掉了」：
+            // 量500 从列表里消失，只剩一张「聚合组2（24 条）」。
+            // 现在改成**克隆**：浅拷一份策略对象、只改克隆那份的名字，插在原卡前面。
+            // 原卡一动不动，列表里两张都在。点克隆卡进详情页时，宿主把卡上的名字原样带过去，
+            // 那就是本组的入口名「组名（N 条）」，详情页的命中判据 ③ 认得出这是哪一组。
+            if (card == null) {
+                val donor = data.firstOrNull { item ->
+                    val n = stgNameOf(item) ?: return@firstOrNull false
+                    if (n.isEmpty()) return@firstOrNull false
+                    if (stgIdOf(item).isNullOrEmpty()) return@firstOrNull false
+                    // 裸组名的入口卡（组名自己就以「聚合」开头，卡名等于组名）正则认不出来，
+                    // 再按 entryLabels 精确排除一次，免得把别组的入口卡克隆一份当自己的
+                    if (entryLabelGroupNames(n).isNotEmpty() || n in entryLabels) return@firstOrNull false
+                    // 自己的临时策略（整轮复用那条）不能借：收尾就删，入口卡会跟着消失
+                    if (n.startsWith(StrategyComboClient.TEMP_PREFIX)) return@firstOrNull false
+                    if (claimed.any { it === item }) return@firstOrNull false
+                    if (merge.groups.any { gg -> gg.enabled && gg.members.any { sameMember(it, item) } }) {
+                        return@firstOrNull false
+                    }
+                    true
+                }
+                val clone = donor?.let { cloneCard(it) }
+                val list = data as? MutableList<Any?>
+                val at = if (donor == null) -1 else (list?.indexOfFirst { it === donor } ?: -1)
+                if (donor != null && clone != null && list != null && at >= 0 &&
+                    StrategyMergeTargets.write(clone, StrategyMergeTargets.STG_FIELD_NAME, label)
+                ) {
+                    list.add(at, clone)
+                    claimed.add(clone)
+                    if (gentleNoted.add(g.id)) {
+                        GLog.i("$LOG 组「" + g.name + "」没有成员卡，克隆「" + stgNameOf(donor) + "」当入口（原卡保留）")
+                    }
+                    renamed++
+                    entryLabels.add(label)
+                    entryLabels.add(bare)
+                    continue
+                }
+                GLog.w("$LOG 组「" + g.name + "」建不出入口卡（页面 " + data.size + " 张，克隆=" + (clone != null) + "），这一轮不建入口")
+                continue
+            }
+            /* 旧的借卡逻辑（改名版）保留在这里便于回滚，正常不会再走到：
             if (card == null) {
                 card = data.firstOrNull { item ->
                     val n = stgNameOf(item) ?: return@firstOrNull false
                     if (n.isEmpty()) return@firstOrNull false
                     if (stgIdOf(item).isNullOrEmpty()) return@firstOrNull false
                     if (entryLabelGroupNames(n).isNotEmpty()) return@firstOrNull false
+                    // 自己的临时策略（整轮复用那条）更不能借：收尾就删，入口卡会跟着消失
+                    if (n.startsWith(StrategyComboClient.TEMP_PREFIX)) return@firstOrNull false
                     if (claimed.any { it === item }) return@firstOrNull false
                     // 别组的**成员卡**也不能借：那组的 ③ 步会把自己的成员卡从列表里摘掉，
                     // 借过来的入口卡跟着消失，两组同时没入口。
@@ -926,11 +1278,29 @@ class StrategyMergeFeature : Feature {
                     GLog.i("$LOG 组「" + g.name + "」在页面上没有成员卡，借「" + stgNameOf(card) + "」当入口")
                 }
             }
-            if (card == null) {
-                GLog.w("$LOG 组「" + g.name + "」借不到策略卡（页面 " + data.size + " 张），这一轮不建入口")
+            */
+            if (fromMember) {
+                // 温和模式：这一组在列表上有用户自己的成员卡，点它进详情页就按 stId 归组聚合成并集
+                // （见命中判据 ① ），没有任何理由把卡改掉或收起来。
+                // 改造前这里会：把首张成员卡改名成「聚合 · X（N 条）」、其余成员卡从适配器数据里摘掉 ——
+                // 用户看到的正是「我的策略被聚合吃掉了」：量50 / 量70 / 量100 / 量500 只剩一张。
+                if (gentleNoted.add(g.id)) {
+                    GLog.i("$LOG 组「" + g.name + "」在列表上有成员卡，走温和模式（不改名、不收卡）")
+                }
                 continue
             }
             claimed.add(card)
+            // 改名之前先把这张卡的真实身份记进 [entryOriginals]：改完以后页面上只剩「聚合 · X（N 条）」，
+            // 下一轮再怎么扫也扫不出它是哪条策略，「从金太阳导入」里就永久少一条。
+            if (done == null) {
+                val origName = stgNameOf(card).orEmpty()
+                val origId = stgIdOf(card).orEmpty()
+                if (origName.isNotEmpty() && origId.isNotEmpty() &&
+                    entryLabelGroupNames(origName).isEmpty() && origName !in entryLabels
+                ) {
+                    entryOriginals[g.name] = StrategyStgIndex.Entry(origId, origName, StrategyStgIndex.tagsOf(origId))
+                }
+            }
             if (done == null && StrategyMergeTargets.write(card, StrategyMergeTargets.STG_FIELD_NAME, label)) {
                 renamed++
                 entryLabels.add(label)
@@ -972,6 +1342,52 @@ class StrategyMergeFeature : Feature {
                     "聚合入口 $renamed 个、合并标签 $retagged 张卡、收起成员卡 $hidden 张",
             )
         }
+
+        // ④ 清单广播（见 ①.b）：页面上还在的 + 被收起的成员 + 被改名的入口卡，三份合起来才是
+        //    「宿主里真实存在的策略」。三道来源缺一条，用户就会在导入清单里看到少东西。
+        val published = ArrayList<StrategyStgIndex.Entry>(live.size + entryOriginals.size)
+        published.addAll(live)
+        published.addAll(entryOriginals.values)
+        val entryNames = merge.groups.filter { it.enabled }
+            .mapTo(HashSet()) { entryLabelOf(it.name, it.members.size) }
+        StrategyStgCatalog.publish(act, withGroupMembers(merge, published), entryNames)
+    }
+
+    /**
+     * 广播给模块 App 的清单 = 这一页看得到的策略 + 被启用组收起来的成员卡。
+     *
+     * 为什么不直接用 [live]：聚合生效后，成员卡会被从 adapter 数据里摘掉（避免同一批股票重复出现），
+     * 下一轮巡检就再也读不到它们 —— 而它们是最真实存在的一批策略，少了几条用户会以为策略被删了
+     * （真机症状：把「量500」「量70」加进组后，导入清单从 8 条掉到 6 条）。
+     *
+     * 这里只补**配置里点名的成员**，不碰 [StrategyStgIndex] 的历史：索引只增不删，
+     * 早前用接口批量建过又没了的策略会永远留在里面（T4 / TPMP50 就是这么冒出来的）。
+     * 条件 / 组合 / 标签成员不是宿主策略，按前缀跳过。
+     */
+    private fun withGroupMembers(merge: MergeConfig, live: List<StrategyStgIndex.Entry>): List<StrategyStgIndex.Entry> {
+        if (merge.groups.none { it.enabled }) return live
+        val ids = HashSet<String>(live.size * 2)
+        for (e in live) ids.add(e.stId)
+        val out = ArrayList<StrategyStgIndex.Entry>(live.size + 4)
+        out.addAll(live)
+        for (g in merge.groups) {
+            if (!g.enabled) continue
+            for (m in g.members) {
+                val nm = m.name.trim()
+                if (nm.isEmpty()) continue
+                if (nm.startsWith(StrategyComboCatalog.COND_PREFIX) ||
+                    nm.startsWith(StrategyComboCatalog.COMBO_PREFIX) ||
+                    nm.startsWith(StrategyComboCatalog.LABEL_PREFIX)
+                ) {
+                    continue
+                }
+                // 成员只填名称时靠索引把名字解析回 stId；解析不出来说明这条成员本来就没下发成功
+                val sid = m.stId.trim().ifEmpty { StrategyStgIndex.idOf(nm) ?: "" }
+                if (sid.isEmpty() || !ids.add(sid)) continue
+                out.add(StrategyStgIndex.Entry(sid, nm, StrategyStgIndex.tagsOf(sid)))
+            }
+        }
+        return out
     }
 
     /** 列表页策略卡上的名称（宿主字段是 private，反射读） */
@@ -1007,6 +1423,11 @@ class StrategyMergeFeature : Feature {
             // 不在这里按档位表反推，标签条就会整个缺掉市值维度（真机：中盘组只显示「量比4.0以上」）。
             StrategyComboCatalog.bucketOfMember(m.name, m.stId)?.let { pool.addAll(StrategyComboCatalog.tagNamesOf(it)) }
             StrategyComboCatalog.conditionOfMember(m.name, m.stId)?.let { pool.addAll(StrategyComboCatalog.tagNamesOf(it)) }
+            // 标签成员（`label:<labelId>`）同理：它也不是宿主策略，原生 tags 一条都采不到，
+            // 必须按档位表反推，否则 pool 是空的 → writeCardTags 直接返回 false →
+            // 入口卡保留借来那张卡的标签（真机：聚合组2 选了「量比1.5-2.0 + 流通市值50-70亿」，
+            // 卡上却写着「流通市值500亿及以上 / 创新高20交易日」）。
+            StrategyComboCatalog.labelIdOf(m.name)?.let { pool.addAll(StrategyComboCatalog.tagNamesOfKey(m.name)) }
             val sid = m.stId.trim().ifEmpty { StrategyStgIndex.idOf(m.name).orEmpty() }
             val fromIndex = if (sid.isNotEmpty()) StrategyStgIndex.tagsOf(sid) else emptyList()
             if (fromIndex.isNotEmpty()) {
@@ -1074,7 +1495,24 @@ class StrategyMergeFeature : Feature {
      * 那是它最后一次取数那条策略的统计），只能按文案认节点、写 TextView。
      * 纯 UI 写文本，不动宿主数据；宿主下次自己刷新时会覆盖回来，所以跟着补写一起调。
      */
-    private fun writeHeaderCounts(act: Activity, up: Int, down: Int): Boolean {
+    private fun writeHeaderCounts(act: Activity, up: Int, down: Int, state: PageState? = null): Boolean {
+        // 快路：已经认过这两颗数字就不必再扫树，稳态只剩两次 String 比较
+        val cachedUp = state?.upTvRef?.get()
+        val cachedDown = state?.downTvRef?.get()
+        if (cachedUp != null && cachedDown != null &&
+            cachedUp.isAttachedToWindow && cachedDown.isAttachedToWindow
+        ) {
+            var changed = false
+            if (cachedUp.text?.toString() != up.toString()) {
+                cachedUp.text = up.toString()
+                changed = true
+            }
+            if (cachedDown.text?.toString() != down.toString()) {
+                cachedDown.text = down.toString()
+                changed = true
+            }
+            return changed
+        }
         val root = act.window?.decorView ?: return false
         val texts = ArrayList<TextView>(96)
         collectTextViews(root, texts)
@@ -1099,6 +1537,13 @@ class StrategyMergeFeature : Feature {
                 val c = parent.getChildAt(j) as? TextView ?: continue
                 if (c.text?.toString()?.trim()?.toIntOrNull() == null) continue
                 c.text = target.toString()
+                // 认出来的这颗数字记下来：下一跳就不必再扫整棵树
+                if (state != null) {
+                    when (label) {
+                        "涨家数" -> state.upTvRef = WeakReference(c)
+                        "跌家数" -> state.downTvRef = WeakReference(c)
+                    }
+                }
                 ok = true
                 break
             }
@@ -1169,8 +1614,9 @@ class StrategyMergeFeature : Feature {
         val pageName = (StrategyMergeTargets.field(stg, StrategyMergeTargets.STG_FIELD_NAME) as? String)?.trim().orEmpty()
         // 先把自己登记进名称索引：成员只填名称时，靠它把「当前页」也解析成 stId
         StrategyStgIndex.remember(pageName, pageStId)
-        // 可能是进程刚起、用户直接点进详情页（列表页那一轮还没跑）：顺手补发一次清单
-        StrategyStgCatalog.publish(act)
+        // 这里不再补发策略清单：详情页只有当前这一条策略，发出去要么是一份残缺清单、
+        // 要么得回头去读索引全量（含已删除的旧策略，见 StrategyStgCatalog 类注释）。
+        // 清单只由列表页按「页面实测条目」发送；用户要导入，本来就得先打开一次「我的策略」。
 
         // 只认「已启用且成员里包含当前页策略」的那一个组；一个策略同时属于多个组时取第一个。
         // 三条匹配路，按可靠性排序：
@@ -1186,10 +1632,19 @@ class StrategyMergeFeature : Feature {
             return nm.isNotEmpty() && nm == pageName
         }
         val labelNames = entryLabelGroupNames(pageName)
+        // ⚠️ 不要按「克隆卡的 stId」认组：克隆卡与原卡是**同一个 stId**，按 stId 认会把
+        // 用户点自己的「量500」也当成聚合入口。详情页只认名字（② 那条），克隆卡带的就是入口名。
+        // ③ 卡名与「组名」精确相等（2026-11-12 卡名去掉「（N 条）」以后新增的一条路）：
+        //    组名自己就以「聚合」开头时（如「聚合组2」）卡名就是裸组名，而
+        //    entryLabelGroupNames 只认带「聚合 · 」前缀的裸名，靠它认不出来 ——
+        //    真机症状是「点聚合组2 的卡进去不聚合：跳过：没有包含当前策略的已启用聚合组」。
         val group = merge.groups.firstOrNull { g -> g.enabled && g.members.any { hits(it) } }
             ?: merge.groups.firstOrNull { g ->
-                g.enabled && g.name.trim().let { gn -> gn.isNotEmpty() && labelNames.contains(gn) }
+                val gn = g.name.trim()
+                g.enabled && gn.isNotEmpty() &&
+                    (labelNames.contains(gn) || pageName == gn || pageName == entryLabelOf(gn, g.members.size))
             }
+
         if (group == null) {
             noteSkip(act, "没有包含当前策略的已启用聚合组（stId=$pageStId name=$pageName）")
             return
@@ -1280,7 +1735,7 @@ class StrategyMergeFeature : Feature {
         var skip: String? = null
         var rollbackFirst = false
         synchronized(state) {
-            val merged = state.mergedRef?.get() as? List<*>
+            val merged = state.mergedStrong
             val data = StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA)
             val idle = System.currentTimeMillis() - state.finishedAt
             if (state.running) {
@@ -1332,6 +1787,7 @@ class StrategyMergeFeature : Feature {
             state.adapterRef = WeakReference<Any>(adapter)
             captureOrigin(act, state, model, stg, adapter, pageStId)
         }
+        logWiring(act, "start")
         // 上次算出来的完整并集先套上：用户第一眼就是完整结果，这一轮只当后台校验。
         // 没有它，每进一次页面都要看「宿主单策略 → 残缺并集 → 完整并集」来回翻三次。
         if (cachedSnap != null && applySnapshot(act, state, model, stg, adapter, cachedSnap)) {
@@ -1375,9 +1831,14 @@ class StrategyMergeFeature : Feature {
 
     /** 按资源名找这页的股票 ListView（`lvStks`） */
     private fun currentListView(act: Activity): ListView? {
-        val listId = act.resources.viewIdOrZero(*StrategyMergeTargets.LIST_ID_CANDIDATES)
-        if (listId == 0) return null
-        return runCatching { act.findViewById<View>(listId) as? ListView }.getOrNull()
+        // 资源名查 id（viewIdOrZero 走 getIdentifier，是字符串查表）在每 700ms 一跳的看门狗里太浪费，
+        // 查一次记在 PageState 上：-1 = 还没查，0 = 这页确实没有。
+        val state = stateOf(act)
+        if (state.listId < 0) {
+            state.listId = act.resources.viewIdOrZero(*StrategyMergeTargets.LIST_ID_CANDIDATES)
+        }
+        if (state.listId == 0) return null
+        return runCatching { act.findViewById<View>(state.listId) as? ListView }.getOrNull()
     }
 
     // ------------------------------------------------------------------ 快照 / 回滚
@@ -1397,13 +1858,14 @@ class StrategyMergeFeature : Feature {
         state.originalDown = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM)
         state.originalData = StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA)
         state.originalPrice = StrategyMergeTargets.mapField(adapter, StrategyMergeTargets.ADAPTER_FIELD_PRICE_MAP)
-        state.originalResNum = readResNum(act)
+        state.originalResNum = readResNum(act, state)
         state.hostResNumTail = state.originalResNum
             ?.let { StrategyMergeTargets.RES_NUM_REGEX.find(it)?.groupValues?.getOrNull(1) }
             ?: state.hostResNumTail
         state.applied = false
         state.touchedId = false
         state.mergedRef = null
+        state.mergedStrong = null
         state.mergedSize = 0
         state.finishedAt = 0L
     }
@@ -1434,7 +1896,7 @@ class StrategyMergeFeature : Feature {
                 }
                 StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM, state.originalUp)
                 StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, state.originalDown)
-                state.originalResNum?.let { writeResNum(act, it) }
+                state.originalResNum?.let { writeResNum(act, it, state) }
                 StrategyMergeTargets.showStg(act)
             }
             if (touchedId) {
@@ -1472,6 +1934,7 @@ class StrategyMergeFeature : Feature {
     /** 清记账；进程级快照只在自己这页的东西才清，别把别页的结果抹了 */
     private fun clearState(act: Activity, state: PageState) {
         state.mergedRef = null
+        state.mergedStrong = null
         state.mergedSize = 0
         state.finishedAt = 0L
         state.run = null
@@ -1482,13 +1945,22 @@ class StrategyMergeFeature : Feature {
     // ------------------------------------------------------------------ 头部文案
 
     /** 「策略个股 N 只」：宿主只按自己的单策略写，聚合后不会自己按 data 重算，得自己填 */
-    private fun writeResNum(act: Activity, text: String): Boolean {
+    private fun writeResNum(act: Activity, text: String, state: PageState? = null): Boolean {
+        val cached = state?.resNumTvRef?.get()
+        if (cached != null && cached.isAttachedToWindow) {
+            if (cached.text?.toString() == text) return true
+            return runCatching {
+                cached.text = text
+                true
+            }.getOrDefault(false)
+        }
         val id = act.resources.viewIdOrZero(*StrategyMergeTargets.RES_NUM_ID_CANDIDATES)
         if (id == 0) {
             GLog.i("$LOG 找不到 tv_stg_res_num，计数文案保持宿主原样")
             return false
         }
         val tv = runCatching { act.findViewById<View>(id) as? TextView }.getOrNull() ?: return false
+        if (state != null) state.resNumTvRef = WeakReference(tv)
         return runCatching {
             tv.text = text
             true
@@ -1496,10 +1968,13 @@ class StrategyMergeFeature : Feature {
     }
 
     /** 读当前计数文案（回滚要原样还回去，不能按只数猜） */
-    private fun readResNum(act: Activity): String? {
+    private fun readResNum(act: Activity, state: PageState? = null): String? {
+        val cached = state?.resNumTvRef?.get()
+        if (cached != null && cached.isAttachedToWindow) return runCatching { cached.text?.toString() }.getOrNull()
         val id = act.resources.viewIdOrZero(*StrategyMergeTargets.RES_NUM_ID_CANDIDATES)
         if (id == 0) return null
         val tv = runCatching { act.findViewById<View>(id) as? TextView }.getOrNull() ?: return null
+        if (state != null) state.resNumTvRef = WeakReference(tv)
         return runCatching { tv.text?.toString() }.getOrNull()
     }
 
@@ -1514,7 +1989,7 @@ class StrategyMergeFeature : Feature {
      * 少于并集只数就是筛选中。两边格式逐字一致，写同值互相 no-op，不会来回覆盖。
      */
     private fun writeMergedResNum(act: Activity, state: PageState, total: Int) {
-        val cur = readResNum(act)
+        val cur = readResNum(act, state)
         val shown = shownStockRows(act)
         val filtered = shown != null && total > 0 && shown < total
         val want = if (filtered) {
@@ -1526,7 +2001,7 @@ class StrategyMergeFeature : Feature {
             String.format(Locale.ROOT, StrategyMergeTargets.RES_NUM_FORMAT, total) + tail
         }
         if (cur == want) return
-        if (writeResNum(act, want) && filtered) {
+        if (writeResNum(act, want, state) && filtered) {
             GLog.i("$LOG 计数 → $want（筛选中：列表 $shown 行 / 并集 $total 只）")
         }
     }
@@ -1669,12 +2144,32 @@ class StrategyMergeFeature : Feature {
 
         /** 写回数据的那个适配器（弱引用：不能反向把 Activity 钉住） */
         var adapterRef: WeakReference<Any>? = null
+
+        /**
+         * 装股票的那个 [ListView]（弱引用）。
+         *
+         * 宿主会把列表适配器换成空占位（[StrategyMergeTargets.CLS_EMPTY_ADAPTER]），
+         * 那时我们手里只剩适配器实例、没有视图，就没法把并集装回去 —— 记一份列表引用。
+         */
+        var lvRef: WeakReference<Any>? = null
         var watch: Runnable? = null
 
         /** 写回适配器的并集实例（与 `adapter.data` 同一对象即「界面上已经是聚合结果」） */
         var mergedRef: WeakReference<Any>? = null
 
+        /**
+         * 同一份并集的**强引用**。
+         *
+         * `mergedRef` 是弱引用，而这份 list 在交出去之后就没有别人强引用着（适配器拿的是我们
+         * 另交的一份副本），GC 随时能把它收走。真机表现：进页面头几帧「顶住并集」生效，随后
+         * `mergedRef.get()` 变 null，界面当场退回宿主那一格（6 只 / 99 只）并一路越长越少地抽。
+         */
+         var mergedStrong: List<Any?>? = null
+
         var mergedSize = 0
+
+        /** 本轮「顶住并集」只打一条日志，别刷屏 */
+        var holdNoted = false
 
         /** 原样快照：出岔子要还回去的那份 */
         var originalStId: String? = null
@@ -1692,6 +2187,23 @@ class StrategyMergeFeature : Feature {
          * 从筛选切回不筛时就读不到尾巴了 —— 记一份原样，切回去还能带上取数时间。
          */
         var hostResNumTail: String? = null
+
+        /**
+         * 头部「涨家数 / 跌家数」两颗数字与计数栏的弱引用。
+         *
+         * 看门狗 700ms 一跳，每跳都从 decorView 全树扫一遍 TextView（这一页有 60 多个），
+         * 叠加宿主自己每帧的 notify —— 用户在多选态勾股票、点「全选 / 反选」时感知最明显。
+         * 缓存之后稳态只剩几次 String 比较，不再碰视图树。
+         */
+        /** 上一次走完整慢路的时刻，配合 [FAST_SLOW_MS] 把一次通知风暴并成一次（见 [reapplyIfNeeded]） */
+        var lastSlowAt = 0L
+
+        /** `lvStks` 的资源 id 缓存：-1 还没查过，0 = 这页没有 */
+        var listId = -1
+
+        var upTvRef: WeakReference<TextView>? = null
+        var downTvRef: WeakReference<TextView>? = null
+        var resNumTvRef: WeakReference<TextView>? = null
 
         /** 是否写过 `m_stg.id`（回滚只还原动过的） */
         var touchedId = false
@@ -1766,6 +2278,16 @@ class StrategyMergeFeature : Feature {
         private var lastResendAt = 0L
 
         /**
+         * 上一帧我们自己写进宿主字段的家数。
+         *
+         * 取数窗口里要把聚合家数写回 `m_stg`/`model`，宿主重画头部才是聚合口径；
+         * 但这两个字段同时又是「这一份响应的家数」，读回来会把自己写的值再累加一遍。
+         * 记住写进去的数字，[addStat] 认出来就跳过。
+         */
+        private var wroteUp = Int.MIN_VALUE
+        private var wroteDown = Int.MIN_VALUE
+
+        /**
          * 本轮为口径成员建出来的**临时策略 stId**。
          *
          * 宿主账号上限 10 条，用户已占 8 条 —— 任何时刻只可能多挂 2 条，
@@ -1773,6 +2295,14 @@ class StrategyMergeFeature : Feature {
          * 成员取完、轮次结束、页面销毁，三条路都得回来把这里清空。
          */
         private val tempIds: MutableSet<String> = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
+
+        /**
+         * 整轮只建一条临时策略，成员之间靠改标签轮转。
+         *
+         * 宿主账号上限 10 条策略，用户自己就能占满；「每格建一条再删」在名额紧时
+         * 24 个成员会全军覆没（真机 code 4100）。这里任何时刻只占 1 个名额。
+         */
+        private val comboSlot = StrategyComboClient.TempSlot()
 
         /** 各成员策略的标签（tagName）：换 id 取数后 model 里就是该成员的，取完一起合并 */
         private val tagNames = LinkedHashSet<String>()
@@ -1803,9 +2333,12 @@ class StrategyMergeFeature : Feature {
             cancelled = true
             state.run = null
             synchronized(state) { state.running = false }
+            MainThreadStallWatchdog.stop("取消 stId=$pageStId")
+            GLog.i("$LOG 本轮被叫停（已取 ${uniq.size} 只）")
         }
 
         fun start() {
+            MainThreadStallWatchdog.start("聚合 stId=$pageStId 成员 ${targets.size} 个")
             try {
                 if (cancelled) return
                 if (!isAlive()) {
@@ -1891,7 +2424,10 @@ class StrategyMergeFeature : Feature {
          * 换 id 是唯一的开关 —— 写不进这个字段就不可能拿到这一成员，直接跳过（标 degraded）。
          */
         private fun fetchNext() {
-            if (cancelled) return
+            if (cancelled) {
+                GLog.w("$LOG 取下一个成员时发现本轮已取消（已取 ${uniq.size} 只，队列还剩 ${queue.size} 个）")
+                return
+            }
             if (!isAlive()) {
                 abort("页面已销毁")
                 return
@@ -1932,18 +2468,22 @@ class StrategyMergeFeature : Feature {
                 return
             }
             comboExecutor.execute {
-                val r = runCatching { StrategyComboClient.createTemp(combo) }
+                val r = runCatching {
+                    val id = comboSlot.ensure(combo)
+                    comboSlot.apply(combo)
+                    id
+                }
                 mainHandler.post {
                     if (cancelled) return@post
                     val tmpId = r.getOrNull()
                     if (tmpId == null) {
-                        GLog.w("$LOG 口径成员 $memberName 建临时策略失败：" + (r.exceptionOrNull()?.message ?: ""))
+                        GLog.w("$LOG 口径成员 $memberName 取数失败：" + (r.exceptionOrNull()?.message ?: ""))
                         degraded = true
                         fetchNext()
                         return@post
                     }
                     tempIds.add(tmpId)
-                    GLog.i("$LOG 口径成员 $memberName 建好临时策略 $tmpId，交给宿主取数")
+                    GLog.i("$LOG 口径成员 $memberName 已把临时策略 $tmpId 的标签切成本组合，交给宿主取数")
                     takeMember(tmpId, memberName)
                 }
             }
@@ -1952,6 +2492,10 @@ class StrategyMergeFeature : Feature {
         /** 写 id + 发命令 + 起轮询；普通成员与口径的临时策略共用这一段 */
         private fun takeMember(memberStId: String, memberName: String) {
             val base = signature()
+            // 取数窗口里我们可能把并集顶在适配器上（holdUnionWhileRunning），
+            // 那一枪会改 `data` —— 只靠签名会把「自己顶的那一枪」当成宿主返回。
+            // 代次只由「宿主自己塞进来的那一帧」推进，判到达用它。
+            val baseGen = payloadGen()
             if (!StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_ID, memberStId)) {
                 GLog.w("$LOG 成员 $memberName（$memberStId）写不进 m_stg.id")
                 if (!retryOrGiveUp(memberStId, memberName, "写不进 id")) degraded = true
@@ -1968,26 +2512,18 @@ class StrategyMergeFeature : Feature {
             attempts++
             GLog.i("$LOG 请求成员第 $attempts 次：$memberName（$memberStId）")
             val startedAt = System.currentTimeMillis()
-            post { poll(memberStId, memberName, base, startedAt) }
+            post { poll(memberStId, memberName, base, baseGen, startedAt) }
         }
 
         /**
-         * 口径成员（临时策略）不能重排：队尾再排一轮时那条策略早就被删了，写进去的 id 是死的。
-         * 所以临时策略失败就地放弃 —— 删掉临时策略、标 degraded、继续下一个成员。
+         * 口径成员不能重排：队尾再排一轮时，那条整轮复用的临时策略早被下一个组合改了标签，
+         * 写进去的 id 还在但内容已经不是这一格了，重试只会把别人的股票算进来。
+         * 所以就地放弃、标 degraded、继续下一个成员；临时策略留到整轮收尾再删。
          */
         private fun retryOrGiveUp(memberStId: String, memberName: String, why: String): Boolean {
             if (!tempIds.contains(memberStId)) return requeue(memberStId, memberName, why)
-            GLog.w("$LOG 口径成员 $memberName（$memberStId）$why，临时策略不重试")
-            releaseTemp(memberStId)
+            GLog.w("$LOG 口径成员 $memberName（$memberStId）$why，临时策略整轮复用，这一格不重试")
             return false
-        }
-
-        /**
-         * 删一条临时策略。宿主名额只剩 2 个，漏删一次后面全建不出来，所以每处结束分支都要调。
-         */
-        private fun releaseTemp(stId: String) {
-            if (!tempIds.remove(stId)) return
-            comboExecutor.execute { StrategyComboClient.dropTemp(stId) }
         }
 
         /** 轮次结束兜底：把还没删的临时策略一次性清掉（页面关掉 / 超时 / 异常三条路都走这） */
@@ -1995,7 +2531,10 @@ class StrategyMergeFeature : Feature {
             val left = synchronized(tempIds) { tempIds.toList() }
             if (left.isEmpty()) return
             tempIds.clear()
-            comboExecutor.execute { for (id in left) StrategyComboClient.dropTemp(id) }
+            comboExecutor.execute {
+                comboSlot.release()
+                for (id in left) StrategyComboClient.dropTemp(id)
+            }
             GLog.i("$LOG 收尾清掉 ${left.size} 条临时策略")
         }
 
@@ -2025,8 +2564,20 @@ class StrategyMergeFeature : Feature {
          * 单成员最多等 [StrategyMergeTargets.MEMBER_TIMEOUT_MS]（实测换列表 1~3 秒），
          * 到点跳过并标 degraded；总时长受 [StrategyMergeTargets.TOTAL_TIMEOUT_MS] 约束。
          */
-        private fun poll(memberStId: String, memberName: String, base: String, startedAt: Long) {
-            if (cancelled) return
+        private fun poll(
+            memberStId: String,
+            memberName: String,
+            base: String,
+            baseGen: Int,
+            startedAt: Long,
+        ) {
+            if (cancelled) {
+                GLog.w(
+                    "$LOG 成员 $memberName（$memberStId）的轮询发现本轮已取消，停在这里" +
+                        "（已取 ${uniq.size} 只，等 ${System.currentTimeMillis() - startedAt}ms）",
+                )
+                return
+            }
             if (!isAlive()) {
                 abort("页面已销毁")
                 return
@@ -2038,7 +2589,6 @@ class StrategyMergeFeature : Feature {
             // 还会把总预算吃光。给个更短的确认窗口，到点仍为空就按「0 只」放过（不标 degraded：空是真实结果）。
             if (waited >= COMBO_EMPTY_CONFIRM_MS && tempIds.contains(memberStId) && seedList().isNullOrEmpty()) {
                 GLog.i("$LOG 口径成员 $memberName（$memberStId）列表为空，按 0 只放过（等 ${waited}ms）")
-                releaseTemp(memberStId)
                 fetchNext()
                 return
             }
@@ -2064,20 +2614,26 @@ class StrategyMergeFeature : Feature {
                     fetchNext()
                     return
                 }
-                post { poll(memberStId, memberName, base, startedAt) }
+                post { poll(memberStId, memberName, base, baseGen, startedAt) }
                 return
             }
-            if (signature() != base) {
-                val list = seedList()
+            // 到达判据：优先认「宿主自己塞进来的那一帧」（代次推进）；
+            // 只有没在顶并集时才退回比签名 —— 顶住时 `data` 被我们改过，签名不可信。
+            val genMoved = payloadGen() != baseGen
+            val arrived = genMoved || (!holdingUnion() && signature() != base)
+            if (arrived) {
+                val list = if (genMoved) payloadSnapshot() else seedList()
                 val added = absorb(list)
                 absorbPrices(StrategyMergeTargets.mapField(adapter, StrategyMergeTargets.ADAPTER_FIELD_PRICE_MAP))
                 absorbTags()
                 addStat(list?.size ?: 0)
-                releaseTemp(memberStId)
                 GLog.i(
                     "$LOG 成员 $memberName（$memberStId）到位：${list?.size ?: 0} 只（新增 $added），" +
                         "累计 ${uniq.size} 只，用时 ${waited}ms",
                 )
+                // 没有上一轮并集可顶（本轮是冷启动第一跑）时，至少让界面**只增不减**：
+                // 宿主每换一个成员就把列表缩回那一格，用户看到的就是 12 → 73 → 12 → … 来回抽。
+                showGrowingUnion()
                 fetchNext()
                 return
             }
@@ -2090,8 +2646,27 @@ class StrategyMergeFeature : Feature {
                 fetchNext()
                 return
             }
-            post { poll(memberStId, memberName, base, startedAt) }
+            post { poll(memberStId, memberName, base, baseGen, startedAt) }
         }
+
+        /**
+         * 冷启动第一跑：把「已经取到的并集」写回界面，列表只长不缩。
+         *
+         * 有上一轮缓存时这条路不走（[holdUnionWhileRunning] 会整份顶住，一步到位）；
+         * 没缓存时每换一个成员宿主的列表都会缩回那一格，来回抽比慢更难看。
+         */
+        private fun showGrowingUnion() {
+            if (holdingUnion() || uniq.isEmpty()) return
+            val copy = ArrayList<Any>(uniq.size)
+            copy.addAll(uniq.values)
+            if (!StrategyMergeTargets.write(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA, copy)) return
+            StrategyMergeTargets.notifyAdapter(adapter)
+            writeMergedResNum(act, state, copy.size)
+        }
+
+        /** 本轮是否把上一轮的并集顶在屏幕上（有缓存才会顶，顶住时 `data` 不算宿主响应） */
+        private fun holdingUnion(): Boolean =
+            state.mergedStrong?.isNotEmpty() == true
 
         /**
          * 列表签名：模型列表尺寸 / 适配器列表尺寸 / 首尾两行的 `codeAndMarket`。
@@ -2114,9 +2689,78 @@ class StrategyMergeFeature : Feature {
          * 没换统计字段，读到的就是上一份数据（甚至是上一轮我们自己写回去的聚合值）的家数，
          * 上界一卡就挡住；真机实测过没有这道闸时每进一次详情页涨家数就 +134。
          */
+        /**
+         * 取数窗口里把聚合家数写回宿主自己那两个字段（`m_stg` 与 `model` 各一份）。
+         *
+         * 宿主每换一个成员都会按这两个字段重画头部；不写回去，屏幕上就是「这一格的家数」，
+         * 真机实测 7/2 → 1/0 来回跳，用户以为聚合算错了。写之前记下数字，[addStat] 认出来跳过。
+         */
+        fun holdHeaderCounts() {
+            val cachedUp = state.upSum
+            val cachedDown = state.downSum
+            // 有上一轮聚合值就顶上一轮的（一步到位）；冷启动第一跑没有，就用本轮已经累到的
+            val up = if (cachedUp > 0 || cachedDown > 0) cachedUp else upSum
+            val down = if (cachedUp > 0 || cachedDown > 0) cachedDown else downSum
+            if (up <= 0 && down <= 0) return
+            wroteUp = up
+            wroteDown = down
+            runCatching {
+                StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM, up)
+                StrategyMergeTargets.write(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, down)
+                StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_UP_NUM, up)
+                StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, down)
+            }.onFailure { GLog.w("$LOG 回写聚合家数失败", it) }
+        }
+
+        /**
+         * 宿主这一帧自己的涨跌家数，在 [holdHeaderCounts] 覆盖 model 之前抄下来。
+         *
+         * 为什么不能现读 model：取数窗口里每一帧我们都把聚合值写回那两个字段，
+         * 现读读到的就是自己写的数，再累加一次既会污染、又会被 wroteUp 那道闸整段跳过
+         * （真机 24 成员组收尾时「已渲染 636 只（涨 0 / 跌 0）」就是这么来的）。
+         */
+        private var hostUp = -1
+        private var hostDown = -1
+
+        fun captureHostStats() {
+            if (!synchronized(state) { state.running }) return
+            hostUp = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM)
+            hostDown = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM)
+        }
+
+        /**
+         * 诊断：把并集第一行的类名与全部字段打一次日志。
+         *
+         * 只在「读不到涨跌幅字段」时触发一次 —— 宿主换了 `StockInfo` 的字段名，
+         * 日志里的那份清单就是新的候选表。
+         */
+        private var rowDumped = false
+
+        private fun dumpRowFieldsOnce(list: List<*>?) {
+            if (rowDumped) return
+            val e = list?.firstOrNull { it != null } ?: return
+            rowDumped = true
+            val sb = StringBuilder()
+            var c: Class<*>? = e.javaClass
+            while (c != null && c != Any::class.java) {
+                for (f in c.declaredFields) {
+                    if (java.lang.reflect.Modifier.isStatic(f.modifiers)) continue
+                    runCatching { f.isAccessible = true }
+                    val v = runCatching { f.get(e) }.getOrNull()
+                    sb.append(f.name).append(':').append(f.type.simpleName).append('=')
+                    sb.append(if (v is String) v.take(20) else v?.toString()?.take(20) ?: "null")
+                    sb.append(" | ")
+                }
+                c = c.superclass
+            }
+            GLog.i("$LOG [row] ${e.javaClass.name} :: $sb")
+        }
+
         private fun addStat(size: Int): Boolean {
-            val u = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM)
-            val d = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM)
+            val u = hostUp
+            val d = hostDown
+            // 宿主这一帧没重写家数（抄到的还是我们上一帧写进去的聚合值）→ 不是真统计，别累加
+            if (u == wroteUp && d == wroteDown) return false
             if (u < 0 || d < 0 || (size > 0 && u + d > size)) {
                 GLog.w("$LOG 这份响应的统计 $u/$d 和列表 $size 只对不上，不计入家数")
                 return false
@@ -2202,6 +2846,7 @@ class StrategyMergeFeature : Feature {
         private fun finish() {
             if (cancelled) return
             cancelled = true
+            MainThreadStallWatchdog.stop("轮次结束 stId=$pageStId")
             // 还没删掉的临时策略在这里兜底：下面每个 return 都是「这一轮结束」，
             // 漏掉就会占着宿主名额（上限 10 条），下一轮直接建不出来。
             cleanupTemps()
@@ -2227,6 +2872,7 @@ class StrategyMergeFeature : Feature {
                     return
                 }
 
+                logWiring(act, "finish-before")
                 // 写回前最后一道闸：适配器在聚合途中被宿主换掉（空适配器 / 别的列表）就整轮放弃
                 if (!StrategyMergeTargets.isPageAdapter(adapter.javaClass.name)) {
                     GLog.w(
@@ -2241,6 +2887,7 @@ class StrategyMergeFeature : Feature {
                 // 与上次结果完全一致时不重写：进页面秒套的就是这份内容，重写只会让列表闪一下。
                 val sameAsCached = cached != null && !degraded && cached.sameAs(ids)
                 state.mergedRef = WeakReference<Any>(merged)
+                state.mergedStrong = merged
                 state.mergedSize = merged.size
                 if (sameAsCached) {
                     GLog.i("$LOG 本轮与上次结果一致（${merged.size} 只），列表不重写")
@@ -2265,6 +2912,20 @@ class StrategyMergeFeature : Feature {
                     upSum = cached.up
                     downSum = cached.down
                 }
+                // 口径成员的响应里 upNum/downNum 恒为 -1（宿主只给真实策略算家数），累加出来只能是
+                // 0/0 —— 真机 24 组合组收尾时头部就是「涨 0 / 跌 0」。并集每一行都自带涨跌幅，
+                // 直接数一遍：至少和屏幕上这 N 只对得上，比 0/0 强。
+                if (upSum + downSum < merged.size) {
+                    val counted = StrategyMergeTargets.countUpDown(merged)
+                    if (counted != null && counted.first + counted.second >= merged.size * 0.8) {
+                        GLog.i("$LOG 家数按并集重数：${counted.first}/${counted.second}（累加只拿到 $upSum/$downSum）")
+                        upSum = counted.first
+                        downSum = counted.second
+                    } else {
+                        dumpRowFieldsOnce(merged)
+                        GLog.w("$LOG 并集里读不到涨跌幅字段，家数仍是 $upSum/$downSum")
+                    }
+                }
                 state.applied = true
                 state.upSum = upSum
                 state.downSum = downSum
@@ -2283,6 +2944,8 @@ class StrategyMergeFeature : Feature {
                 if (!StrategyMergeTargets.notifyAdapter(adapter)) {
                     GLog.w("$LOG 适配器 notifyDataSetChanged 调不到，列表可能不刷新")
                 }
+                logWiring(act, "finish-after")
+                mainHandler.postDelayed({ if (!act.isFinishing) logWiring(act, "finish+600") }, 600L)
                 // ③ 头部：组名 + 涨跌合计，再让宿主自己按 m_stg 重画一遍
                 StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_NAME, label)
                 state.label = label
@@ -2296,9 +2959,12 @@ class StrategyMergeFeature : Feature {
                 StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_ID, pageStId)
                 state.touchedId = false
                 StrategyMergeTargets.showStg(act)
-                if (!writeHeaderCounts(act, upSum, downSum)) {
+                if (!writeHeaderCounts(act, upSum, downSum, state)) {
                     GLog.i("$LOG 头部涨跌家数没找到可写的节点（文案可能改了）")
                 }
+                // 宿主 showStg 之后若把列表换成了空占位适配器（它那条策略当前没股票），
+                // 并集就永远显示不出来 —— 当场把并集适配器装回列表（真机 13:12 / 13:16 的「0 只」）。
+                reattachIfSwapped(act)
                 // 宿主在这之后再刷一轮自己的响应，会把涨跌家数顶回单策略的值（真机实测 16/1），
                 // 所以补两次延迟写回：让它自己的刷新先落地，我们最后覆盖。
                 for (delayMs in HEADER_RETRY_DELAYS) {
@@ -2310,7 +2976,7 @@ class StrategyMergeFeature : Feature {
                         StrategyMergeTargets.write(stg, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM, downSum)
                         // 别调宿主 showStg：它会把列表按宿主自己的 m_stkList 重画一遍（回落来源），
                         // 头部这两行文本自己写就够了。
-                        writeHeaderCounts(act, upSum, downSum)
+                        writeHeaderCounts(act, upSum, downSum, state)
                     }, delayMs)
                 }
                 // ⑤ 「策略个股 N 只」宿主不会按 data 重算，自己写成交互只数
@@ -2337,6 +3003,7 @@ class StrategyMergeFeature : Feature {
                 }
 
                 state.mergedRef = WeakReference<Any>(merged)
+                state.mergedStrong = merged
                 state.mergedSize = merged.size
                 state.finishedAt = System.currentTimeMillis()
                 StrategyMergeBridge.publish(
@@ -2382,6 +3049,7 @@ class StrategyMergeFeature : Feature {
         private fun abort(why: String, tr: Throwable? = null) {
             if (cancelled) return
             cancelled = true
+            MainThreadStallWatchdog.stop("中止：$why")
             cleanupTemps()
             if (!isAlive()) {
                 GLog.i("$LOG 中止（$why）：页面已销毁，只清记账")
@@ -2396,7 +3064,10 @@ class StrategyMergeFeature : Feature {
         /** 所有延迟动作都走这里：主线程 + 取消检查 + 异常兜底 */
         private fun post(tick: () -> Unit) {
             mainHandler.postDelayed({
-                if (cancelled) return@postDelayed
+                if (cancelled) {
+                    GLog.w("$LOG 延迟任务本轮已取消，跳过")
+                    return@postDelayed
+                }
                 try {
                     tick()
                 } catch (t: Throwable) {

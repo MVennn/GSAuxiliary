@@ -73,7 +73,7 @@
     <string name="feature_stg_filter_switch_summary">In the strategy detail top-right "more" menu</string>
     <string name="feature_stg_filter_entry">Filter saving settings</string>
     <string name="feature_stg_merge_switch">Merge my strategies</string>
-    <string name="feature_stg_merge_switch_summary">Merge strategies in the same group on the strategy detail page</string>
+    <string name="feature_stg_merge_switch_summary">All strategies of a merge group on the detail page</string>
     <string name="feature_stg_merge_entry">Merge group settings</string>
 
     <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
@@ -330,10 +330,11 @@
     <string name="stg_merge_group_state_off">Disabled</string>
     <string name="stg_merge_group_state_pending">Inactive, needs at least %1$d strategies</string>
     <string name="detail_stg_merge_edit_title">Edit merge group</string>
-    <string name="stg_merge_group_rename_title">Rename group</string>
+    <string name="stg_merge_group_rename_title">Rename merge group</string>
     <string name="stg_merge_group_rename_message">Shown on this device only, the host strategies are untouched</string>
-    <string name="stg_merge_group_enable_title">Enable this group</string>
-    <string name="stg_merge_group_enable_summary">When off, the detail page shows the host strategy as is, nothing in the host changes</string>
+    <string name="stg_merge_group_enable_title">Include in merge</string>
+    <string name="stg_merge_group_enable_summary_on">Detail page shows every strategy in this group</string>
+    <string name="stg_merge_group_enable_summary_off">Detail page shows one strategy only</string>
     <string name="stg_merge_menu_rename">Rename</string>
     <string name="stg_merge_menu_move_up">Move up</string>
     <string name="stg_merge_menu_move_down">Move down</string>
@@ -341,6 +342,16 @@
     <string name="stg_merge_menu_disable">Disable</string>
     <string name="stg_merge_menu_duplicate">Duplicate</string>
     <string name="stg_merge_section_members">Member strategies</string>
+    <string name="stg_merge_member_combo">New combo</string>
+    <string name="stg_merge_cond_title">Combo dimensions</string>
+    <string name="stg_merge_cond_dim_summary">%1$s · %2$d</string>
+    <string name="stg_merge_cond_add">Add dimension</string>
+    <string name="stg_merge_cond_total_title">Expanded</string>
+    <string name="stg_merge_cond_total">%1$d combos</string>
+    <string name="stg_merge_cond_done">Done</string>
+    <string name="stg_merge_cond_remove_dim">Remove dimension</string>
+    <string name="stg_merge_section_cond_import">Import combo member</string>
+    <string name="stg_merge_cond_import_taken">Already in this group</string>
     <string name="stg_merge_member_add">Add member</string>
     <string name="stg_merge_member_label_detail">Strategy label · %1$s</string>
     <string name="stg_merge_member_label_pending">Strategy label · %1$s · tap this row to pick a band</string>
@@ -348,7 +359,7 @@
     <string name="stg_merge_section_host">Import from Guosen</string>
     <string name="stg_merge_host_sync_title">Strategy list</string>
     <string name="stg_merge_host_sync">Synced %1$s · %2$d total</string>
-    <string name="stg_merge_host_empty_title">No Guosen strategies yet</string>
+    <string name="stg_merge_host_empty_title">No Guosen strategies synced yet</string>
     <string name="stg_merge_host_empty_summary">Open the Guosen “My strategies” list once, then come back</string>
     <string name="stg_merge_host_item_added">Already in this group</string>
     <string name="stg_merge_host_item_no_tag">No tags</string>

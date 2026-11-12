@@ -443,7 +443,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 策略页 | 增加 全选 按钮 | `stg_select_all` | 无 |
 | 策略页 | 增加 截图并添加 按钮 | `stg_snap_add` | 无 |
 | 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 筛选条件保存设置（`StgFilterSettingsScreen`；筛选开关本身仍在目标 App 自己的面板里） |
-| 智能选股 | 我的策略整合 | `stg_merge` | 聚合组设置（`StrategyMergeScreen`；入口副标题的组数按配置现算，见 `FeatureTab`） |
+| 智能选股 | 我的策略聚合 | `stg_merge` | 聚合组设置（`StrategyMergeScreen`；入口副标题的组数按配置现算，见 `FeatureTab`） |
 | 股票详情页 | 增加 智能盯盘 入口 | `stock_bar_entry` | 无 |
 | 智能盯盘 | 增加 配置 按钮 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
 | 智能盯盘 | 优化确定逻辑 | `aistare_empty_save` | 无 |

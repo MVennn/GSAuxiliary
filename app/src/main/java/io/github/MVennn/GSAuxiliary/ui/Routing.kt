@@ -37,6 +37,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 const val ROUTE_STRATEGY_MERGE = "aistare_strategy_merge"
 
+/** 直达四级页「组合维度」的 route 值，同样用冒号接组 id（验收 / 调试用） */
+const val ROUTE_STRATEGY_MERGE_COND = "aistare_strategy_merge_cond"
+
 /** 极简路由：一级首页 + 若干二级页 + 若干三级页（三级页的父页由 editParent 定） */
 internal sealed interface Route {
     data object Home : Route
@@ -60,6 +63,13 @@ internal sealed interface Route {
     data object StrategyMerge : Route
     /** 单个聚合组的编辑页（三级）：带组 id（组被删时页面自己回落空态） */
     data class StrategyMergeEdit(val groupId: String) : Route
+    /**
+     * 组合维度页（四级）：压在该组的三级编辑页之上，带同一个组 id。
+     *
+     * [memberKey] 指明这次是**编辑哪一条**组合成员（`cond:...` 这种成员名）；
+     * 空串 = 新建一条（页面里没有草稿可读，从空维度表开始）。
+     */
+    data class StrategyMergeCond(val groupId: String, val memberKey: String = "") : Route
     /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
     data object Disclaimer : Route
@@ -87,6 +97,8 @@ private object RouteSaver : Saver<Route, String> {
         is Route.ZxCopyRuleEdit -> "zx_copy_rule_edit:" + value.ruleId
         Route.StrategyMerge -> "stg_merge"
         is Route.StrategyMergeEdit -> "stg_merge_edit:" + value.groupId
+        is Route.StrategyMergeCond -> "stg_merge_cond:" + value.groupId +
+            (if (value.memberKey.isEmpty()) "" else "#" + value.memberKey)
         Route.AiStareSaveBehavior -> "aistare_save_behavior"
         Route.WatchlistDetail -> "watchlist_detail"
         Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
@@ -107,6 +119,10 @@ private object RouteSaver : Saver<Route, String> {
         value == "stg_merge" -> Route.StrategyMerge
         value.startsWith("stg_merge_edit:") ->
             Route.StrategyMergeEdit(value.removePrefix("stg_merge_edit:"))
+        value.startsWith("stg_merge_cond:") ->
+            value.removePrefix("stg_merge_cond:").let { body ->
+                Route.StrategyMergeCond(body.substringBefore('#'), body.substringAfter('#', ""))
+            }
         value == "aistare_save_behavior" -> Route.AiStareSaveBehavior
         value == "watchlist_detail" -> Route.WatchlistDetail
         value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
@@ -118,16 +134,41 @@ private object RouteSaver : Saver<Route, String> {
 }
 
 /**
- * 三级页 → 它压在下面的那个二级页；不是三级页返回 null。
+ * 页面在第几层：首页 1、二级页 2、三级页 3、组合维度 4。
  *
- * 现在有三个三级页（方案编辑 / 复制规则编辑 / 聚合组编辑），返回目标、二级层画哪一页、
+ * 层级决定「返回时退到谁」和「哪一条滑动进度在动」，别按页面名字硬编码。
+ * 新增一个页面时**必须**在这里登记，否则会被当成二级页（返回直接回首页）。
+ */
+private fun routeLevel(route: Route): Int = when (route) {
+    Route.Home -> 1
+    is Route.QuickConfigEdit, is Route.ZxCopyRuleEdit, is Route.StrategyMergeEdit -> 3
+    is Route.StrategyMergeCond -> 4
+    else -> 2
+}
+
+/**
+ * 返回目标：它压在下面的那一页；首页返回 null（交回系统）。
+ *
+ * 现在有四个层级（首页 / 二级页 / 三级页 / 组合维度），返回目标、每层画哪一页、
  * 可预测返回推哪一层，都从这里取，别再写死 `Route.QuickConfig`。
  */
-private fun editParent(route: Route): Route? = when (route) {
+private fun parentOf(route: Route): Route? = when (route) {
+    Route.Home -> null
     is Route.QuickConfigEdit -> Route.QuickConfig
     is Route.ZxCopyRuleEdit -> Route.ZxCopyRules
     is Route.StrategyMergeEdit -> Route.StrategyMerge
-    else -> null
+    is Route.StrategyMergeCond -> Route.StrategyMergeEdit(route.groupId)
+    else -> Route.Home
+}
+
+/** 沿父链往上找：第 [level] 层此刻该画哪一页（找不到返回 null） */
+private fun routeAtLevel(route: Route, level: Int): Route? {
+    var cur: Route? = route
+    while (cur != null) {
+        if (routeLevel(cur) == level) return cur
+        cur = parentOf(cur)
+    }
+    return null
 }
 
 /**
@@ -185,26 +226,35 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
     //  - 退出动画期间 `route` 已经不是它了，但那一层还得继续画完 —— 靠这两个变量记住。
     //
     // （组合期写 state 会让这一帧多跑一遍组合，值是确定的，最多两遍就收敛。）
-    val editRouteNow: Route? = route.takeIf { editParent(it) != null }
-    val subRouteNow = editParent(route) ?: route
-    var shownSub by remember { mutableStateOf(subRouteNow) }
-    var shownEdit by remember { mutableStateOf(editRouteNow) }
-    if (subRouteNow != Route.Home && subRouteNow != shownSub) shownSub = subRouteNow
-    if (editRouteNow != null && editRouteNow != shownEdit) shownEdit = editRouteNow
+    // 第 2/3/4 层各自该画哪一页（沿父链取，`StrategyMergeCond` 时第 3 层仍然画它自己的编辑页）
+    val level2Now = routeAtLevel(route, 2)
+    val level3Now = routeAtLevel(route, 3)
+    val level4Now = routeAtLevel(route, 4)
+    var shownSub by remember { mutableStateOf(level2Now ?: Route.Home) }
+    var shownEdit by remember { mutableStateOf(level3Now) }
+    var shownCond by remember { mutableStateOf(level4Now) }
+    if (level2Now != null && level2Now != shownSub) shownSub = level2Now
+    if (level3Now != null && level3Now != shownEdit) shownEdit = level3Now
+    if (level4Now != null && level4Now != shownCond) shownCond = level4Now
 
     val predictiveBack = rememberPredictiveBack()
-    // 二级 / 三级各自的滑动进度：0 = 完全滑出屏幕右侧，1 = 完全盖住下面那层
-    val subProgress = remember { Animatable(if (route == Route.Home) 0f else 1f) }
-    val editProgress = remember { Animatable(if (editParent(route) != null) 1f else 0f) }
+    // 二 / 三 / 四层各自的滑动进度：0 = 完全滑出屏幕右侧，1 = 完全盖住下面那层
+    val subProgress = remember { Animatable(if (routeLevel(route) >= 2) 1f else 0f) }
+    val editProgress = remember { Animatable(if (routeLevel(route) >= 3) 1f else 0f) }
+    val condProgress = remember { Animatable(if (routeLevel(route) >= 4) 1f else 0f) }
 
-    // 返回目标：三级页回它自己的二级页，其余二级页回首页
-    fun backTarget(): Route = editParent(route) ?: Route.Home
+    // 返回目标：回它自己压在下面的那一层（四级 → 三级 → 二级 → 首页）
+    fun backTarget(): Route = parentOf(route) ?: Route.Home
 
     // 常规前进 / 返回：把对应层的进度动画到目标值
     LaunchedEffect(route) {
         when (route) {
             Route.Home -> {
-                // 三级页（若在）先滑走，再滑走二级页
+                // 四、三级页（若在）先滑走，再滑走二级页
+                if (shownCond != null) {
+                    condProgress.animateTo(0f, tween(RouteAnimMillis))
+                    shownCond = null
+                }
                 if (shownEdit != null) {
                     editProgress.animateTo(0f, tween(RouteAnimMillis))
                     shownEdit = null
@@ -212,7 +262,18 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                 subProgress.animateTo(0f, tween(RouteAnimMillis))
             }
 
+            is Route.StrategyMergeCond -> {
+                subProgress.animateTo(1f, tween(RouteAnimMillis))
+                editProgress.animateTo(1f, tween(RouteAnimMillis))
+                condProgress.animateTo(1f, tween(RouteAnimMillis))
+            }
+
             is Route.QuickConfigEdit, is Route.ZxCopyRuleEdit, is Route.StrategyMergeEdit -> {
+                // 从四级页回到它自己的三级页：只动第四层，三层留在原地
+                if (shownCond != null) {
+                    condProgress.animateTo(0f, tween(RouteAnimMillis))
+                    shownCond = null
+                }
                 subProgress.animateTo(1f, tween(RouteAnimMillis))
                 editProgress.animateTo(1f, tween(RouteAnimMillis))
             }
@@ -223,6 +284,10 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                 // 判据是「三级层还在不在」，**不是**「进度 > 0」—— 3.1.1 修的就是这个：
                 // 入场动画刚起步（甚至还没开始跑）时按返回，进度还是 0，原来会直接把
                 // 那一层销毁掉，表现就是「按返回时入场动画凭空消失（页面瞬没）」。
+                if (shownCond != null) {
+                    condProgress.animateTo(0f, tween(RouteAnimMillis))
+                    shownCond = null
+                }
                 if (shownEdit != null) {
                     editProgress.animateTo(0f, tween(RouteAnimMillis))
                     shownEdit = null
@@ -234,14 +299,18 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
 
     if (predictiveBack) {
         PredictiveBackHandler(enabled = route != Route.Home) { flow ->
-            // 手势只推动最上面那一层：三级页返回时底下是它自己的二级页，不是首页
-            val onEdit = editParent(route) != null
+            // 手势只推动**最上面那一层**：四级页滑走露出三级页，三级页滑走露出二级页
+            val top = when (routeLevel(route)) {
+                4 -> condProgress
+                3 -> editProgress
+                else -> subProgress
+            }
             try {
-                flow.collect { (if (onEdit) editProgress else subProgress).snapTo(1f - it.progress) }
+                flow.collect { top.snapTo(1f - it.progress) }
                 route = backTarget()
             } catch (e: CancellationException) {
                 // 手势取消：滑回去
-                scope.launch { (if (onEdit) editProgress else subProgress).animateTo(1f, tween(200)) }
+                scope.launch { top.animateTo(1f, tween(200)) }
                 throw e
             }
         }
@@ -251,6 +320,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
 
     val p = subProgress.value
     val pe = editProgress.value
+    val pc = condProgress.value
     // 页面底色 = `colorScheme.surface`，**不是** `background`。
     //
     // Miuix 的取值很反直觉（0.9.3 实测）：
@@ -319,7 +389,7 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
         }
 
         // ---- 第 2 层：二级页（右滑进出）----
-        if (route != Route.Home || p > 0.001f) {
+        if (routeLevel(route) >= 2 || p > 0.001f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -434,6 +504,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                         is Route.QuickConfigEdit -> Unit
                         is Route.ZxCopyRuleEdit -> Unit
                         is Route.StrategyMergeEdit -> Unit
+                        // 四级页压在三级页之上，二级层只负责给它当底衬
+                        is Route.StrategyMergeCond -> Unit
                         Route.Home -> Unit
                     }
                 }
@@ -444,7 +516,15 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .graphicsLayer { translationX = size.width * (1f - pe) }
+                            .graphicsLayer {
+                                translationX = size.width * (1f - pe)
+                                // 四级页压上来时这一层也缩一点，交叠感与二 / 三层之间一致
+                                if (pc > 0.001f) {
+                                    val s = 1f - 0.06f * pc
+                                    scaleX = s
+                                    scaleY = s
+                                }
+                            }
                             .background(background),
                     ) {
                         when (editRoute) {
@@ -477,6 +557,40 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                                 StrategyMergeEditScreen(
                                     groupId = editRoute.groupId,
                                     onDeleted = { route = Route.StrategyMerge },
+                                    // 组合成员改维度不再挤在三级页里换内容：
+                                    // 那是第四层，返回键要能退回这一页
+                                    onOpenCond = { memberKey ->
+                                        route = Route.StrategyMergeCond(editRoute.groupId, memberKey)
+                                    },
+                                )
+                            }
+
+                            else -> Unit
+                        }
+                    }
+                }
+
+                // ---- 第 4 层：组合维度（叠在三级页之上，只自己滑）----
+                val condRoute = shownCond
+                if (condRoute != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { translationX = size.width * (1f - pc) }
+                            .background(background),
+                    ) {
+                        when (condRoute) {
+                            is Route.StrategyMergeCond -> SubScreen(
+                                title = stringResource(R.string.stg_merge_cond_title),
+                                // 返回 / 左滑都退回这一组的三级编辑页，不跳回二级列表
+                                onBack = { route = Route.StrategyMergeEdit(condRoute.groupId) },
+                            ) {
+                                StrategyMergeEditScreen(
+                                    groupId = condRoute.groupId,
+                                    onDeleted = { route = Route.StrategyMerge },
+                                    condOnly = true,
+                                    condMemberKey = condRoute.memberKey,
+                                    onDone = { route = Route.StrategyMergeEdit(condRoute.groupId) },
                                 )
                             }
 

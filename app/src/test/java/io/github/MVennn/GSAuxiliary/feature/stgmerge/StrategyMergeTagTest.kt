@@ -81,20 +81,22 @@ class StrategyMergeTagTest {
     // ---- 入口卡名字 ----
 
     @Test
-    fun `入口名是前缀加组名加条数`() {
-        assertEquals("聚合 · 创新高20日（4 条）", entryLabelOf("创新高20日", 4))
-        assertEquals("聚合 · 组名（1 条）", entryLabelOf("组名", 1))
+    fun `入口名是前缀加组名且不带条数`() {
+        // 2026-11-12 用户要求：卡名后面的「（N 条）」去掉，条数是实现细节、过期就难看
+        assertEquals("聚合 · 创新高20日", entryLabelOf("创新高20日", 4))
+        assertEquals("聚合 · 组名", entryLabelOf("组名", 1))
+        assertEquals(entryLabelBare("创新高20日"), entryLabelOf("创新高20日", 4))
     }
 
     @Test
     fun `组名自带聚合前缀时不再叠加`() {
-        assertEquals("聚合测试（2 条）", entryLabelOf("聚合测试", 2))
+        assertEquals("聚合测试", entryLabelOf("聚合测试", 2))
     }
 
     @Test
     fun `组名空时回落到聚合策略`() {
         // 回落名「聚合策略」自己就以「聚合」开头，所以不再叠「聚合 · 」
-        assertEquals("聚合策略（3 条）", entryLabelOf("  ", 3))
+        assertEquals("聚合策略", entryLabelOf("  ", 3))
     }
 
     @Test
@@ -118,9 +120,11 @@ class StrategyMergeTagTest {
     }
 
     @Test
-    fun `无条数入口名与带条数入口名指向同一个组`() {
+    fun `入口名与裸名一致且旧带条数写法仍能认出同一组`() {
         assertEquals(entryLabelBare("创新高20日"), "聚合 · 创新高20日")
-        assertEquals(entryLabelOf("创新高20日", 4), entryLabelBare("创新高20日") + "（4 条）")
+        assertEquals(entryLabelOf("创新高20日", 4), entryLabelBare("创新高20日"))
+        // 升级前写进宿主的旧卡名带条数，巡检仍要认得出是同一组，否则会再叠一张卡
+        assertTrue(entryLabelGroupNames("聚合 · 创新高20日（4 条）").contains("创新高20日"))
     }
 
     // ---- mergeTagsJson ----

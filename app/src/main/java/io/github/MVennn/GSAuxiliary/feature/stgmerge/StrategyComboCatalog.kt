@@ -104,16 +104,89 @@ object StrategyComboCatalog {
     )
 
     /**
-     * 用户自己拼的一个条件：任意若干市值档 × 任意若干量比档。
+     * 一个维度：宿主标签表里的一个标签。
      *
-     * 与四个固定口径（[BUCKETS]）的关系：口径只是常用预设，条件才是本体。
-     * 设置页现在让用户直接挑档位，不用再背「中盘 1.5-4」这种名字 —— 名字是给日志和列表卡用的，
-     * 不是给用户输入用的（手打错一个字目标进程就认不出，这是之前真机上「加了成员没反应」的一半原因）。
+     * 有档位的标签（「流通市值」7 档、「量比」8 档、「创新高」7 档）就是维度，用户勾几档、
+     * 这一维就展开成几行；没有档位的标签（「放量」「T字型」）自成维度、只有一档。
+     * 组合数 = 各维档位数相乘，也就是要现建多少条临时策略。
+     *
+     * @param id 维度标识：有档位时是父标签 labelId，无档位标签就是它自己的 labelId
+     * @param tagPrefix 宿主标签写法里的前缀：「流通市值」；无档位标签为空（标签名本身就是全名）
+     * @param title 界面显示：有档位写父标签名「流通市值」，无档位写标签名「放量」
      */
-    data class Condition(val markets: List<Tier>, val ratios: List<Tier>) {
-        /** 展开后要取几次数（宿主同一标签多档是 AND，跨档只能拆成多个组合） */
-        val comboCount: Int get() = markets.size * ratios.size
+    data class Dim(
+        val id: String,
+        val tagPrefix: String,
+        val title: String,
+        val tiers: List<Tier>,
+    ) {
+        val count: Int get() = tiers.size
+
+        /** 这一维在标签条上要出的每一条：宿主写法 = 前缀 + 档位名 */
+        fun tags(): List<String> = tiers.map { tagPrefix + it.name }
+
+        /** 这一维的一行说明，跨档写成首尾区间（与宿主合并标签的写法一致） */
+        fun summary(): String? = spanTag(tagPrefix, tiers)
+
+        /** 档位摘要：全选写「全部 N 档」，只选部分就把档位名列出来 */
+        fun bandText(allCount: Int): String =
+            if (tiers.size >= allCount) "全部 " + allCount + " 档" else tiers.joinToString("、") { it.name }
     }
+
+    /**
+     * 用户自己拼的条件：任意若干维度，每维任意若干档。
+     *
+     * 与四个固定口径（[BUCKETS]）的关系：口径只是「市值 × 量比」的常用预设，条件才是本体。
+     * 用户想「市值 × 创新高」就换成那几个维度，代码不需要再认第二种组合方式。
+     */
+    data class Condition(val dims: List<Dim>) {
+
+        /** 兼容老写法：只给市值档与量比档，就等于两维条件 */
+        constructor(markets: List<Tier>, ratios: List<Tier>) : this(
+            buildList {
+                if (markets.isNotEmpty()) add(Dim(MARKET_PARENT_ID, MARKET_TAG_PREFIX, MARKET_TAG_PREFIX, markets))
+                if (ratios.isNotEmpty()) add(Dim(RATIO_PARENT_ID, RATIO_TAG_PREFIX, RATIO_TAG_PREFIX, ratios))
+            },
+        )
+
+        /** 展开后要取几次数（宿主同一标签多档是 AND，跨档只能拆成多个组合） */
+        val comboCount: Int get() = dims.fold(1) { acc, d -> acc * d.count }
+
+        /** 市值那一维的档位（老代码与测试按两维写法读） */
+        val markets: List<Tier> get() = dims.firstOrNull { it.id == MARKET_PARENT_ID }?.tiers ?: emptyList()
+
+        /** 量比那一维的档位 */
+        val ratios: List<Tier> get() = dims.firstOrNull { it.id == RATIO_PARENT_ID }?.tiers ?: emptyList()
+    }
+
+    /** 宿主「流通市值」父标签的 labelId（表体里每一档的 parentId） */
+    const val MARKET_PARENT_ID = "332920492044320768"
+
+    /** 宿主「量比」父标签的 labelId */
+    const val RATIO_PARENT_ID = "1363923810041987072"
+
+    /** 宿主标签表里的一个节点 → 一个维度（档位全部预选，用户再取消不要的） */
+    internal fun dimOf(node: StrategyLabelTable.LabelNode): Dim {
+        val tiers = if (node.hasBands) {
+            node.bands.map { Tier(it.labelName, it.labelId) }
+        } else {
+            listOf(Tier(node.name, node.labelId))
+        }
+        return Dim(
+            id = node.labelId,
+            tagPrefix = if (node.hasBands) node.name else "",
+            title = node.name,
+            tiers = tiers,
+        )
+    }
+
+    /** 固定口径 → 两维条件（市值 × 量比）：口径与自选条件走同一套展开逻辑 */
+    fun bucketCondition(bucket: Bucket): Condition = Condition(
+        listOf(
+            Dim(MARKET_PARENT_ID, MARKET_TAG_PREFIX, MARKET_TAG_PREFIX, bucket.markets),
+            Dim(RATIO_PARENT_ID, RATIO_TAG_PREFIX, RATIO_TAG_PREFIX, bucket.ratios),
+        ),
+    )
 
     /** 条件成员在配置里的名字前缀（与 [COMBO_PREFIX] 一样带冒号，不会和宿主 stId 撞） */
     const val COND_PREFIX = "cond:"
@@ -122,19 +195,59 @@ object StrategyComboCatalog {
 
     fun ratioTier(name: String): Tier? = ALL_RATIOS.firstOrNull { it.name == name.trim() }
 
-    /** 条件成员的识别名：`cond:50-70亿,70-100亿|1.5-2.0,2.0-2.5` */
-    fun condKey(markets: List<Tier>, ratios: List<Tier>): String =
-        COND_PREFIX + markets.joinToString(",") { it.name } + "|" + ratios.joinToString(",") { it.name }
+    /** 条件成员的识别名：`cond:` + 各维档位的 labelId，维内与维间都用逗号隔开（全数字，稳定） */
+    fun condKey(c: Condition): String =
+        COND_PREFIX + c.dims.flatMap { it.tiers }.joinToString(",") { it.labelId }
 
-    /** 把识别名还原成条件；档位表改过、名字对不上就返回 null（那一条成员会被跳过，不炸整页） */
+    /** 兼容两维写法：`condKey(市值档, 量比档)` */
+    fun condKey(markets: List<Tier>, ratios: List<Tier>): String = condKey(Condition(markets, ratios))
+
+    /**
+     * 把识别名还原成条件；档位表改过、对不上就返回 null（那一条成员会被跳过，不炸整页）。
+     *
+     * 两种写法都认：
+     *  - 新写法 `cond:332921024326664192,1363924975269969920` —— 纯 labelId，查标签表即得维度；
+     *  - 老写法 `cond:50-70亿,70-100亿|1.5-2.0` —— 纯名字，只在市值 × 量比两维里找（历史配置）。
+     */
     fun conditionOfKey(key: String): Condition? {
         if (!key.startsWith(COND_PREFIX)) return null
-        val parts = key.removePrefix(COND_PREFIX).split('|')
+        val body = key.removePrefix(COND_PREFIX).trim()
+        if (body.isEmpty()) return null
+        val toks = body.split('|', ',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (toks.isEmpty()) return null
+        if (toks.all { t -> t.all { it in '0'..'9' } }) return conditionOfIds(toks)
+        return legacyCondition(body)
+    }
+
+    /** 老写法的名字式条件：两段 市值|量比 */
+    private fun legacyCondition(body: String): Condition? {
+        val parts = body.split('|')
         if (parts.size != 2) return null
         val ms = parts[0].split(',').mapNotNull { marketTier(it) }
         val rs = parts[1].split(',').mapNotNull { ratioTier(it) }
         if (ms.isEmpty() || rs.isEmpty()) return null
         return Condition(ms, rs)
+    }
+
+    /** 一串 labelId → 条件：同父标签的档位并成一维，维序按首次出现排 */
+    private fun conditionOfIds(ids: List<String>): Condition? {
+        val dims = ArrayList<Dim>()
+        val at = HashMap<String, Int>()
+        for (id in ids) {
+            val e = StrategyLabelTable.entryOf(id) ?: return null
+            val prefix = e.parentName
+            val dimId = if (prefix.isEmpty()) e.labelId else e.parentId
+            val tier = Tier(e.labelName, e.labelId)
+            val i = at[dimId]
+            if (i == null) {
+                at[dimId] = dims.size
+                dims.add(Dim(dimId, prefix, if (prefix.isEmpty()) e.labelName else prefix, listOf(tier)))
+            } else {
+                val d = dims[i]
+                dims[i] = d.copy(tiers = d.tiers + tier)
+            }
+        }
+        return if (dims.isEmpty()) null else Condition(dims)
     }
 
     /** 一个成员是不是「自定义条件」；填了 stId 就按普通策略走（同 [bucketOfMember] 的判据） */
@@ -145,33 +258,32 @@ object StrategyComboCatalog {
     }
 
     /** 条件在标签条上要显示的档位（每个档位各一条，供并集合并用） */
-    fun tagNamesOf(c: Condition): List<String> {
-        val out = ArrayList<String>(c.markets.size + c.ratios.size)
-        for (t in c.markets) out.add(MARKET_TAG_PREFIX + t.name)
-        for (t in c.ratios) out.add(RATIO_TAG_PREFIX + t.name)
-        return out
-    }
+    fun tagNamesOf(c: Condition): List<String> = c.dims.flatMap { it.tags() }
 
-    /** 条件的一行说明：「流通市值50-500亿 · 量比1.5-4」 */
-    fun summaryText(c: Condition): String {
-        val out = ArrayList<String>(2)
-        spanTag(MARKET_TAG_PREFIX, c.markets.sortedBy { ALL_MARKETS.indexOf(it) })?.let { out.add(it) }
-        spanTag(RATIO_TAG_PREFIX, c.ratios.sortedBy { ALL_RATIOS.indexOf(it) })?.let { out.add(it) }
-        return out.joinToString(" · ")
-    }
+    /** 条件的一行说明：「流通市值50-500亿 · 量比1.5-4」；每维各出一段，顺序即维度顺序 */
+    fun summaryText(c: Condition): String =
+        c.dims.mapNotNull { it.summary() }.joinToString(" · ")
 
-    /** 条件展开成取数请求；key 用两段 `档位|档位`，与口径的三段 key 靠段数区分 */
+    /**
+     * 条件展开成取数请求：各维档位做笛卡尔积，一条 = 一个 labelId 列表。
+     *
+     * key 是逗号连的 labelId（不带 [COMBO_PREFIX]）—— 调用方统一再加前缀当队列 key，
+     * 与口径成员的三段式 key 靠「全数字」这条判据区分，见 [idsOf]。
+     */
     fun combosOf(c: Condition): List<StrategyComboClient.Combo> {
-        val out = ArrayList<StrategyComboClient.Combo>(c.comboCount)
-        for (m in c.markets) {
-            for (r in c.ratios) {
-                out.add(
-                    StrategyComboClient.Combo(
-                        key = m.name + "|" + r.name,
-                        labelIds = listOf(m.labelId, r.labelId),
-                    ),
-                )
+        var partial = listOf(Pair(emptyList<String>(), emptyList<String>()))
+        for (d in c.dims) {
+            val next = ArrayList<Pair<List<String>, List<String>>>(partial.size * d.count)
+            for (p in partial) {
+                for (t in d.tiers) {
+                    next.add(Pair(p.first + t.name, p.second + t.labelId))
+                }
             }
+            partial = next
+        }
+        val out = ArrayList<StrategyComboClient.Combo>(partial.size)
+        for (p in partial) {
+            out.add(StrategyComboClient.Combo(key = p.second.joinToString(","), labelIds = p.second))
         }
         return out
     }
@@ -197,12 +309,7 @@ object StrategyComboCatalog {
      * 这样 mergeTagNames 的区间并集才认得出它们，合并出的「流通市值50-500亿」也跟宿主同一套格式 ——
      * 否则列表卡与详情页的标签条会缺掉整个市值维度（真机症状：中盘组只显示一条「量比4.0以上」）。
      */
-    fun tagNamesOf(bucket: Bucket): List<String> {
-        val out = ArrayList<String>(bucket.markets.size + bucket.ratios.size)
-        for (t in bucket.markets) out.add(MARKET_TAG_PREFIX + t.name)
-        for (t in bucket.ratios) out.add(RATIO_TAG_PREFIX + t.name)
-        return out
-    }
+    fun tagNamesOf(bucket: Bucket): List<String> = tagNamesOf(bucketCondition(bucket))
 
     /**
      * 口径条件合成一行展示文本：「流通市值50-500亿 · 量比1.5-4」。
@@ -211,12 +318,7 @@ object StrategyComboCatalog {
      * 这个只给设置页副标题与添加成员面板用 —— 跨档写成首尾区间，一行看得完。
      * 单档口径（大盘 4+）原样输出，不加连字符。
      */
-    fun summaryText(bucket: Bucket): String {
-        val out = ArrayList<String>(2)
-        spanTag(MARKET_TAG_PREFIX, bucket.markets)?.let { out.add(it) }
-        spanTag(RATIO_TAG_PREFIX, bucket.ratios)?.let { out.add(it) }
-        return out.joinToString(" · ")
-    }
+    fun summaryText(bucket: Bucket): String = summaryText(bucketCondition(bucket))
 
     /** 跨档写成「首档起点-末档终点」：50-70亿 / 70-100亿 / 100-500亿 → 流通市值50-500亿 */
     private fun spanTag(prefix: String, tiers: List<Tier>): String? {
@@ -235,6 +337,7 @@ object StrategyComboCatalog {
     /** 组合占位 key（`combo:mid-15-4|50-70亿|2.0-2.5@）→ 这个组合自己那两条条件 */
     fun tagNamesOfKey(key: String): List<String> {
         labelIdOf(key)?.let { return listOf(StrategyLabelTable.displayOf(it)) }
+        idsOf(key)?.let { ids -> return ids.map { StrategyLabelTable.displayOf(it) } }
         val p = key.removePrefix(COMBO_PREFIX).split('|')
         if (p.size == 2) {
             if (marketTier(p[0]) == null || ratioTier(p[1]) == null) return emptyList()
@@ -242,6 +345,24 @@ object StrategyComboCatalog {
         }
         if (p.size != 3 || bucketOf(p[0]) == null) return emptyList()
         return listOf(MARKET_TAG_PREFIX + p[1], RATIO_TAG_PREFIX + p[2])
+    }
+
+    /**
+     * 组合 key 里那串 labelId：`combo:` 前缀可选，逗号分隔、全数字、每一档都得在标签表里。
+     *
+     * 这是「自选维度组合」与「固定口径三段 key」的分界：三段 key 里带 `|` 与口径 ASCII key，
+     * 过不了「全数字 + 查表命中」这两道判据，所以两种 key 不会互相误认。
+     */
+    fun idsOf(key: String): List<String>? {
+        var k = key.trim()
+        if (k.startsWith(COMBO_PREFIX)) k = k.removePrefix(COMBO_PREFIX).trim()
+        if (k.isEmpty() || k.startsWith(LABEL_PREFIX)) return null
+        val toks = k.split(',').map { it.trim() }
+        for (t in toks) {
+            if (t.isEmpty() || !t.all { it in '0'..'9' }) return null
+            if (StrategyLabelTable.entryOf(t) == null) return null
+        }
+        return toks
     }
 
     /** 宿主原生标签的写法：「流通市值」+ 档位名 */
@@ -308,9 +429,16 @@ object StrategyComboCatalog {
      */
     const val LABEL_PREFIX = "label:"
 
-    /** `label:xxx` → 那段 labelId；不是这类成员返回 null */
+    /**
+     * `label:xxx` → 那段 labelId；不是这类成员返回 null
+     *
+     * 也认 `combo:label:xxx`：标签成员进聚合队列时统一包了一层 [COMBO_PREFIX]（占位 key 与口径成员同构），
+     * 只认裸 `label:` 会让队列里的那一条既显示不出标签、也拼不出 tagNames（真机症状：
+     * 「聚合组2」全用标签成员选的，列表卡标签却还留着借来那张卡的「流通市值500亿及以上 / 创新高20交易日」）。
+     */
     fun labelIdOf(key: String): String? {
-        val k = key.trim()
+        var k = key.trim()
+        if (k.startsWith(COMBO_PREFIX)) k = k.removePrefix(COMBO_PREFIX).trim()
         if (!k.startsWith(LABEL_PREFIX)) return null
         return k.removePrefix(LABEL_PREFIX).trim().ifEmpty { null }
     }
@@ -318,8 +446,9 @@ object StrategyComboCatalog {
     /** 一个组合的展示名：`中盘 1.5-4 · 50-70亿 × 2.0-2.5` */
     fun displayName(key: String): String {
         labelIdOf(key)?.let { return StrategyLabelTable.displayOf(it) }
+        idsOf(key)?.let { ids -> return ids.joinToString(" × ") { StrategyLabelTable.displayOf(it) } }
         val p = key.split('|')
-        // 两段 = 用户自选条件生成的组合（`50-70亿|2.0-2.5`），三段 = 固定口径生成的组合
+        // 两段 = 老的自选条件组合（`50-70亿|2.0-2.5`），三段 = 固定口径生成的组合
         if (p.size == 2) return p[0] + " × " + p[1]
         if (p.size != 3) return key
         val b = bucketOf(p[0]) ?: return key
@@ -329,6 +458,8 @@ object StrategyComboCatalog {
     /** 把队列里的占位 key 还原成可取数的组合；解析不出来返回 null（配置被改过、档位表换过） */
     fun comboOfKey(key: String): StrategyComboClient.Combo? {
         labelIdOf(key)?.let { return StrategyComboClient.Combo(key, listOf(it)) }
+        // 自选维度组合：key 就是一串 labelId，原样当取数条件
+        idsOf(key)?.let { return StrategyComboClient.Combo(key, it) }
         val p = key.split('|')
         if (p.size == 2) {
             // 用户自选条件生成的组合：档位直接查全局档位表，不挂在某个口径下

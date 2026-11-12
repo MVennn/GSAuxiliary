@@ -142,12 +142,12 @@ object StrategyStgIndex {
     data class Entry(val stId: String, val name: String, val tags: List<String>)
 
     /**
-     * 整表快照，按名称升序。
+     * 整表快照（历史累积，按名称升序）。
      *
-     * 「从金太阳导入」拿它铺列表：名称给人认、stId 写进成员配置。
-     * 只收名称与 stId 都非空的条目 —— 缺一半的条目写进配置也用不了。
-     * 名称排序是为了界面顺序稳定：HashMap 的遍历顺序每次进程重启都可能变，
-     * 用户会以为「导入列表自己在跳」。
+     * **不要拿它铺「从金太阳导入」的列表**：索引只增不删，删掉的策略、早前用接口批量建的策略
+     * 会一直留在里面（真机症状：清单里冒出宿主列表根本没有的 T4 / TPMP50）。清单只由
+     * [StrategyStgCatalog.publish] 按「列表页这一轮实际存在的条目」发送。
+     * 这里保留全量是为了另一个用途：成员只填名称时按历史名解析 stId。
      */
     @Synchronized
     fun entries(): List<Entry> =

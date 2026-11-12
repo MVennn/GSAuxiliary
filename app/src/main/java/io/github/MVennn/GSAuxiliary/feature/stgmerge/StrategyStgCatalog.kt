@@ -13,8 +13,10 @@ import org.json.JSONObject
  *
  * ## 什么时候发
  *
- * 「我的策略」列表页每 800ms 巡检一轮，[StrategyStgIndex] 就在那一轮把整页策略登记进来；
- * 详情页打开时也会补一条。两个地方都调 [publish]，实际发送被两道节流拦住：
+ * 只在「我的策略」列表页发，而且发的是**这一轮适配器里实际存在的条目**（[publish] 的 entries 参数），
+ * 不是 [StrategyStgIndex] 的全量历史：索引只增不删，用户删掉的策略、早前用接口批量建的策略
+ * 会一直留在索引里（真机症状：导入清单里冒出宿主列表根本没有的 T4 / TPMP50）。
+ * 列表页每 800ms 巡检一轮，实际发送被两道节流拦住：
  *
  *  - 距上次发送不足 [MIN_INTERVAL_MS] 直接返回（巡检很密，不能每轮都发）；
  *  - 内容和上次一样且还没到 [RESEND_INTERVAL_MS]，也返回（清单基本不动）。
@@ -46,12 +48,19 @@ object StrategyStgCatalog {
     /**
      * 广播一次策略清单（宿主进程调用）。
      *
-     * 索引为空时不发：发一份空清单会把模块 App 里已有的缓存清掉，用户看到的是
+     * [entries] 必须是**这一轮列表页适配器里的条目**：[StrategyStgIndex] 只负责「名称 → stId」
+     * 的历史解析，拿它当清单源会把已删除 / 接口建过又没了的策略一起导出去。
+     *
+     * 条目为空时不发：发一份空清单会把模块 App 里已有的缓存清掉，用户看到的是
      * 「打开一次宿主列表」这种提示 —— 而他明明刚打开过（首轮采集还没跑完）。
      */
-    fun publish(ctx: Context?) {
+    fun publish(
+        ctx: Context?,
+        entries: List<StrategyStgIndex.Entry>,
+        entryLabels: Set<String> = emptySet(),
+    ) {
         if (ctx == null) return
-        val payload = build() ?: return
+        val payload = build(entries, entryLabels) ?: return
         val now = SystemClock.elapsedRealtime()
         val changed: Boolean
         synchronized(lock) {
@@ -93,17 +102,18 @@ object StrategyStgCatalog {
     /** 一份待发载荷：key 用于判「内容变了没有」，count 是实际发出去的条目数 */
     private class Payload(val key: String, val json: String, val count: Int)
 
-    /** 组 payload；索引为空或编码失败返回 null（调用方按「这轮不发」处理） */
-    private fun build(): Payload? {
-        val entries = StrategyStgIndex.entries()
-        if (entries.isEmpty()) return null
+    /** 组 payload；条目为空或编码失败返回 null（调用方按「这轮不发」处理） */
+    private fun build(live: List<StrategyStgIndex.Entry>, entryLabels: Set<String>): Payload? {
+        if (live.isEmpty()) return null
         return runCatching {
             val arr = JSONArray()
             var count = 0
-            for (e in entries) {
+            for (e in live) {
                 // 我们自己改过名的入口卡不能进清单：它在宿主里叫「聚合 · 中盘 1.5-4（13 条）」，
                 // 底下借的是别的策略的 stId，导进来既不是真策略、名字还会误导人。
-                if (looksLikeEntryLabel(e.name)) continue
+                // 卡名去掉「（N 条）」以后，组名自己就以「聚合」开头的组（如「聚合组2」）
+                // 卡名是裸组名，靠前缀/后缀正则认不出来，所以再按**配置里的组名**精确排除一次。
+                if (looksLikeEntryLabel(e.name) || e.name.trim() in entryLabels) continue
                 val item = JSONObject()
                 item.put("id", e.stId)
                 item.put("name", e.name)

@@ -150,6 +150,7 @@
 |---|---|
 | `category_login` | 登录 |
 | `category_strategy` | 策略页 |
+| `category_stg_merge` | 智能选股 |
 | `category_stock_detail` | 股票详情页 |
 | `category_aistare` | 智能盯盘 |
 | `category_dock` | 底栏 |
@@ -172,6 +173,7 @@
 | `stg_select_all` | 策略页 | 增加 全选 按钮 | 新增 | 策略详情多选栏取消按钮左边 |
 | `stg_snap_add` | 策略页 | 增加 截图并添加 按钮 | 新增 | 策略详情多选态底部，确认添加左边 |
 | `stg_stock_filter` | 策略页 | 增加 筛选股票 菜单项 | 新增 | 策略详情右上角三点菜单里 |
+| `stg_merge` | 智能选股 | 我的策略聚合 | 增强 | 策略详情页显示聚合组全部股票 |
 | `stock_bar_entry` | 股票详情页 | 增加 智能盯盘 入口 | 新增 | 详情页底栏自选与更多之间 |
 | `aistare_quick_config` | 智能盯盘 | 增加 配置 按钮 | 新增 | 盯盘价格页保存按钮右侧 |
 | `aistare_empty_save` | 智能盯盘 | 优化确定逻辑 | 增强 | 涨到跌到都空着也能保存 |

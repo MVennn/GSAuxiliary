@@ -92,6 +92,15 @@ object StrategyMergeTargets {
     /** 列表适配器类；`ListView.setAdapter` 后置钩子靠它认「这一页的列表」 */
     const val CLS_PAGE_ADAPTER = "com.guosen.quotation.adapter.aistk.AIStkAdapter"
 
+    /**
+     * 空列表占位适配器。
+     *
+     * 宿主那条策略当前没有股票时会把 ListView 换成它；它的 data 是 String 提示语
+     * （`AIStkEmptyAdapter.convert` 第一行就强转 String），**绝不能往里塞 StockInfo**，
+     * 但我们可以把并集那个 `AIStkAdapter` 再装回列表（见 `reattachIfSwapped`）。
+     */
+    const val CLS_EMPTY_ADAPTER = "com.guosen.quotation.adapter.aistk.AIStkEmptyAdapter"
+
     // ------------------------------------------------------------------ 模型字段
 
     const val MODEL_FIELD_STG = "m_stg"
@@ -314,6 +323,45 @@ object StrategyMergeTargets {
         if (item == null) return null
         val v = Reflect.readField(item, *STOCK_CAM_FIELDS) as? String
         return if (v.isNullOrBlank()) null else v
+    }
+
+    /**
+     * 股票数据项的涨跌幅字段候选。
+     *
+     * 宿主 `StockInfo` 上叫哪个名字没有定论（口径成员的响应里 `upNum`/`downNum` 恒为 -1，
+     * 只能自己按行数），所以按候选名挨个试，读到第一个非空即可。
+     */
+    private val STOCK_PCT_FIELDS = arrayOf(
+        "zdf", "m_zdf", "zf", "m_zf", "pct", "m_pct",
+        "changePercent", "m_changePercent", "zdfRate", "m_zdfRate", "zfRate",
+    )
+
+    /** 读一只股票的涨跌幅（百分数，如 `10.05`）；读不到返回 null */
+    fun pctOf(item: Any?): Double? {
+        if (item == null) return null
+        return when (val v = Reflect.readField(item, *STOCK_PCT_FIELDS)) {
+            is Number -> v.toDouble()
+            is String -> v.trim().toDoubleOrNull()
+            else -> null
+        }
+    }
+
+    /**
+     * 数一份列表里的涨 / 跌只数。
+     *
+     * 一条涨跌幅都读不到返回 null —— 调用方据此判断「字段名又变了」，别把 0/0 当真。
+     */
+    fun countUpDown(list: List<*>?): Pair<Int, Int>? {
+        if (list.isNullOrEmpty()) return null
+        var up = 0
+        var down = 0
+        var got = 0
+        for (e in list) {
+            val p = pctOf(e) ?: continue
+            got++
+            if (p > 0.0) up++ else if (p < 0.0) down++
+        }
+        return if (got == 0) null else up to down
     }
 
     /**

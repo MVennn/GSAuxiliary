@@ -14,7 +14,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
  * |---|---|---|
  * | **登录** `category_login` | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么，与具体页面无关 | 隐藏新股申购提醒弹窗 … |
  * | **策略页** `category_strategy` | **改变「策略页」的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、策略列表长按菜单 … |
- * | **智能选股** `category_stg_merge` | **只改「智能选股 → 策略详情」上显示哪些股票** —— 显示内容与聚合关系，不动菜单与跳转 | 我的策略整合：同组多个原生策略的股票并集显示 … |
+ * | **智能选股** `category_stg_merge` | **只改「智能选股 → 策略详情」上显示哪些股票** —— 显示内容与聚合关系，不动菜单与跳转 | 我的策略聚合：同组多个原生策略的股票并集显示 … |
  * | **股票详情页** `category_stock_detail` | **改变「个股 / 指数详情页」的交互行为** —— 判据同「策略页」，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
  * | **智能盯盘** `category_aistare` | **改的是「盯盘页面本身」** —— 智能盯盘页（H5）里的交互与内容 | 价格页「一键配置」按钮、盯盘页结构 … |
  * | **底栏** `category_dock` | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
@@ -191,7 +191,7 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         id = "stg_merge",
         categoryRes = R.string.category_stg_merge,
         switchTitleRes = R.string.feature_stg_merge_switch,
-        // 副标题说清合并发生在哪一页、合并的是谁：标题只说「整合」，位置得补
+        // 副标题说清聚合发生在哪一页、聚合的是谁：标题只说「聚合」，位置得补
         switchSummaryRes = R.string.feature_stg_merge_switch_summary,
         enableKey = ConfigKeys.STG_MERGE,
         defaultEnabled = ConfigKeys.DEFAULT_STG_MERGE,

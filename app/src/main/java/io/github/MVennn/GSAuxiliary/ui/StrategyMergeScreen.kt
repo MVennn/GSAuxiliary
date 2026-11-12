@@ -70,7 +70,7 @@ internal const val DefaultMergeGroupsJson = ConfigKeys.DEFAULT_STG_MERGE_GROUPS
 internal const val MergeMinMembers = 2
 
 /**
- * 智能选股 · 我的策略整合 → 聚合组设置（二级页）。
+ * 智能选股 · 我的策略聚合 → 聚合组设置（二级页）。
  *
  * 与「一键配置」的方案列表页**同一套交互**（用户不用为两个功能学两种操作）：
  *

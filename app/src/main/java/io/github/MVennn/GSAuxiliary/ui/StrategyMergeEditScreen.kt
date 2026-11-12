@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.HostStgCatalog
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.MergeGroup
 import io.github.MVennn.GSAuxiliary.core.MergeMember
 import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
@@ -40,7 +42,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 智能选股 · 我的策略整合 → 编辑一个聚合组（三级页）。
+ * 智能选股 · 我的策略聚合 → 聚合组编辑（三级页）。
  *
  * 与「一键配置」的编辑页同构，三块：
  *
@@ -57,9 +59,21 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 数据与二级页共用 ConfigKeys.STG_MERGE_GROUPS 那一条 JSON，每次增删改后立即写回。
  *
  * @param groupId 要编辑的组 id；组被删掉（或配置被外部改没）时回调 [onDeleted] 退回二级页
+ * @param condOnly 只画「组合维度」那一屏（四级页用的就是这个模式），不画组名 / 成员 / 导入段
+ * @param condMemberKey 组合维度页要编辑的那条成员的名字（`cond:...`）；空串 = 新建一条
+ * @param onOpenCond 点「新建组合」或某条组合成员时往第四层推进（带成员名，空串=新建）；
+ *   为空则退回页内子视图（老行为，留作兜底）
+ * @param onDone 四级页点「完成」或按返回时收掉自己（回三级页）
  */
 @Composable
-internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
+internal fun StrategyMergeEditScreen(
+    groupId: String,
+    onDeleted: () -> Unit,
+    condOnly: Boolean = false,
+    condMemberKey: String = "",
+    onOpenCond: ((String) -> Unit)? = null,
+    onDone: (() -> Unit)? = null,
+) {
     val scrollState = rememberScrollState()
 
     val json by rememberStringPref(ConfigKeys.STG_MERGE_GROUPS, DefaultMergeGroupsJson)
@@ -179,6 +193,208 @@ internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
         )
     }
 
+    /** 组里所有「组合成员」：一条 = 若干标签维度 × 各维若干档 */
+    fun comboMembersOf(
+        current: MergeGroup,
+    ): List<Pair<MergeMember, StrategyComboCatalog.Condition>> =
+        current.members.mapNotNull { m ->
+            StrategyComboCatalog.conditionOfMember(m.name, m.stId)?.let { m to it }
+        }
+
+    /**
+     * 组合维度页这一次要编辑的那条成员：按 [condMemberKey]（成员名）认，空串 = 新建。
+     *
+     * 一个组里可以有多条组合成员（「新建组合」就是再加一条），所以不能再拿「组里第一条」顶替，
+     * 否则第二组、第三条都会被改到同一条上。
+     */
+    fun editingCondOf(current: MergeGroup): MergeMember? =
+        if (condMemberKey.isEmpty()) {
+            null
+        } else {
+            current.members.firstOrNull { it.name == condMemberKey }
+        }
+
+    /**
+     * 组合维度草稿：进页面时把 [condMemberKey] 那条成员读出来，之后所有勾选只改这里。
+     *
+     * **不再边勾边写配置**（2026-11-12 用户报的「点一下组合成员就多出一条成员，还直接进了
+     * 那条的编辑页」）：新建时点进来是空表，按「完成」才落一条；编辑时按「完成」才改，
+     * 直接返回就是放弃。
+     */
+    var condDims by remember(groupId, condMemberKey) {
+        mutableStateOf(
+            editingCondOf(group)
+                ?.let { StrategyComboCatalog.conditionOfMember(it.name, it.stId) }
+                ?.dims
+                .orEmpty(),
+        )
+    }
+
+    /**
+     * 是否在画「组合维度」那一屏。
+     *
+     * 正常编辑页永远是 false（组合成员是第四层路由，见 [onOpenCond]）；
+     * 只有四级页把它初始化为 true，直接渲染那一屏。
+     */
+    var condEditing by remember(groupId) { mutableStateOf(condOnly) }
+
+    /**
+     * 某一维在宿主标签表里的**全部**档位 —— 选档菜单要列出全部，勾选态才表示这一维保留哪些。
+     *
+     * 没有档位的标签（「放量」）自成维度只有一档，这里返回它自己那一档。
+     */
+    fun allTiersOf(dim: StrategyComboCatalog.Dim): List<StrategyComboCatalog.Tier> {
+        val bands = StrategyLabelTable.bandsOf(dim.id)
+        if (bands.isEmpty()) return listOf(StrategyComboCatalog.Tier(dim.title, dim.id))
+        return bands.map { StrategyComboCatalog.Tier(it.labelName, it.labelId) }
+    }
+
+    /**
+     * 「完成」：把草稿落成一条成员（整张维度表 = 一条成员，展开成各维档位的笛卡尔积）。
+     *
+     * - 空表：编辑时删掉这条成员，新建时什么都不加；
+     * - 与本组已有的组合成员同名：并成一条（保留原位置），不产生两条一模一样的 `cond:`；
+     * - 新建且已到成员上限：配置不动（界面上限已经先拦过一次）。
+     */
+    fun commitCond(dims: List<StrategyComboCatalog.Dim>) {
+        val key = if (dims.isEmpty()) {
+            ""
+        } else {
+            StrategyComboCatalog.condKey(StrategyComboCatalog.Condition(dims))
+        }
+        GLog.i(
+            "组合成员：完成 → " + (if (key.isEmpty()) "空表，删掉这条成员" else key) +
+                "（" + (if (condMemberKey.isEmpty()) "新建" else "编辑 " + condMemberKey) + "）",
+        )
+        update { current ->
+            val at = if (condMemberKey.isEmpty()) {
+                -1
+            } else {
+                current.members.indexOfFirst { it.name == condMemberKey }
+            }
+            if (key.isEmpty()) {
+                return@update if (at < 0) {
+                    current
+                } else {
+                    current.copy(members = current.members.filterIndexed { i, _ -> i != at })
+                }
+            }
+            val others = current.members.filterIndexed { i, _ -> i != at }
+            when {
+                others.any { it.name == key && it.stId.isBlank() } ->
+                    if (at < 0) current else current.copy(members = others)
+                at >= 0 -> {
+                    val list = others.toMutableList()
+                    list.add(minOf(at, list.size), MergeMember(stId = "", name = key))
+                    current.copy(members = list)
+                }
+                others.size >= StrategyMergeStore.MAX_MEMBERS -> current
+                else -> current.copy(members = others + MergeMember(stId = "", name = key))
+            }
+        }
+    }
+
+    /** 加一维：先只勾第一档，用户再在菜单里加档（默认全勾会一下子展开成几十条组合） */
+    fun addDim(node: StrategyLabelTable.LabelNode) {
+        val dims = condDims
+        if (dims.any { it.id == node.labelId }) return
+        val full = StrategyComboCatalog.dimOf(node)
+        val dim = full.copy(tiers = full.tiers.take(1))
+        GLog.i("组合成员：加维度「" + node.name + "」，共 " + full.count + " 档，先勾第一档")
+        condDims = dims + dim
+    }
+
+    /** 删一维：只剩一维时不给删（空表展开不出组合，会变成一条点了没反应的死成员） */
+    fun removeDim(dimIndex: Int) {
+        val dims = condDims
+        if (dims.size <= 1) {
+            GLog.i("组合成员：只剩一个维度，不给删")
+            return
+        }
+        val gone = dims.getOrNull(dimIndex) ?: return
+        GLog.i("组合成员：删维度「" + gone.title + "」")
+        condDims = dims.filterIndexed { i, _ -> i != dimIndex }
+    }
+
+    /** 勾 / 取消某一维的一档；最后一档不给取消（要整维去掉用维度行的 ⋮） */
+    fun toggleDimTier(dimIndex: Int, tier: StrategyComboCatalog.Tier) {
+        val dims = condDims.toMutableList()
+        val dim = dims.getOrNull(dimIndex) ?: return
+        val all = allTiersOf(dim)
+        val on = dim.tiers.any { it.labelId == tier.labelId }
+        val kept = if (on) {
+            dim.tiers.filterNot { it.labelId == tier.labelId }
+        } else {
+            val merged = dim.tiers + tier
+            // 按宿主档位顺序排，勾出来的顺序才不会跟着点击顺序乱跳
+            all.mapNotNull { t -> merged.firstOrNull { it.labelId == t.labelId } }
+        }
+        if (kept.isEmpty()) {
+            GLog.i("组合成员：维度「" + dim.title + "」只剩最后一档，不取消")
+            return
+        }
+        GLog.i(
+            "组合成员：维度「" + dim.title + "」" + (if (on) "取消" else "勾上") +
+                "「" + tier.name + "」，剩 " + kept.size + " 档",
+        )
+        dims[dimIndex] = dim.copy(tiers = kept)
+        condDims = dims
+    }
+
+    /** 选档菜单：只铺这一维的全部档位，点一行即勾 / 取消，没有确定按钮 */
+    fun dimPickerSpec(dimIndex: Int, anchor: Rect?): MultiChoiceDialogSpec {
+        val dim = condDims.getOrNull(dimIndex)
+        val all = if (dim == null) emptyList() else allTiersOf(dim)
+        val kept = dim?.tiers?.map { it.labelId }?.toSet() ?: emptySet()
+        val section = MultiChoiceSection(
+            title = dim?.title ?: "",
+            items = all.map { it.name },
+            selected = all.mapIndexedNotNull { i, t -> if (t.labelId in kept) i else null }.toSet(),
+        )
+        return MultiChoiceDialogSpec(
+            sections = listOf(section),
+            onToggle = { _, ii ->
+                all.getOrNull(ii)?.let { toggleDimTier(dimIndex, it) }
+                // 勾完立刻重建菜单：对勾跟着刚改的草稿走，菜单不关（一维要连着点几档）。
+                // 重建只是换 spec 内容，弹层编号（DialogController.openSeq）不变，不会再闪一下。
+                dialogs?.showMultiChoice(dimPickerSpec(dimIndex, anchor))
+            },
+            anchor = anchor,
+        )
+    }
+
+    /** 维度选择菜单：宿主标签全表按五个分组切段，点一个标签就加一维 */
+    fun openDimPicker(controller: DialogController, anchor: Rect?) {
+        val have = condDims.mapTo(HashSet()) { it.id }
+        val items = ArrayList<String>()
+        val headers = HashMap<Int, String>()
+        val nodes = ArrayList<StrategyLabelTable.LabelNode>()
+        for ((groupName, labels) in StrategyLabelTable.tree) {
+            if (labels.isEmpty()) continue
+            headers[items.size] = groupName
+            for (node in labels) {
+                nodes.add(node)
+                items.add(
+                    when {
+                        node.labelId in have -> node.name + "  ✓"
+                        node.hasBands -> node.name + "（" + node.bands.size + " 档）"
+                        else -> node.name
+                    },
+                )
+            }
+        }
+        controller.showChoice(
+            ChoiceDialogSpec(
+                items = items,
+                selectedIndex = -1,
+                onSelect = { i -> nodes.getOrNull(i)?.let { addDim(it) } },
+                anchor = anchor,
+                groupHeaders = headers,
+            ),
+        )
+    }
+
+
     /**
      * 把另一个聚合组的成员一次并进来（下面「从聚合组导入」那一段）。
      *
@@ -235,6 +451,110 @@ internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
         }
     }
 
+    // ---- 组合成员编辑：页内子视图 ----
+    //
+    // 为什么不放弹层（用户 2026-11-12 两次纠正）：多维要能反复加维、勾档，贴边菜单装不下；
+    // 「方案设置」那种「一行一项、点一下立刻生效」的形态，在子页里才铺得开。
+    if (condEditing) {
+        val dims = condDims
+        val total = if (dims.isEmpty()) 0 else StrategyComboCatalog.Condition(dims).comboCount
+        val anchors = remember { HashMap<Int, Rect>() }
+        var addDimAnchor by remember { mutableStateOf<Rect?>(null) }
+        // 文案在组合期取好：点击回调里不是 @Composable 上下文，取不了资源
+        val removeDimText = stringResource(R.string.stg_merge_cond_remove_dim)
+        // 这一屏是独立的第四层：按返回键退回三级编辑页（不是回二级列表）。
+        // 四级页由路由压栈时 onDone 负责出栈；万一没人接（老调用），就退回页内子视图。
+        // 四级页（condOnly）只出栈、不改自己的渲染模式：退出动画期间这一屏还要继续画完，
+        // 一旦把 condEditing 打回 false 就会闪一下组编辑页。
+        // 返回 = 放弃：勾选只改草稿，只有下面「完成」才落成成员。
+        BackHandler(enabled = true) {
+            if (condOnly) onDone?.invoke() else condEditing = false
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Spacer(Modifier.height(8.dp))
+            SmallTitle(stringResource(R.string.stg_merge_cond_title))
+            Card(modifier = Modifier.cardPadding()) {
+                dims.forEachIndexed { i, d ->
+                    val all = allTiersOf(d)
+                    BasicComponent(
+                        title = d.title,
+                        summary = stringResource(
+                            R.string.stg_merge_cond_dim_summary,
+                            d.bandText(all.size),
+                            d.count,
+                        ),
+                        modifier = Modifier.onGloballyPositioned { anchors[i] = it.boundsInWindow() },
+                        endActions = {
+                            Row(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        val texts = arrayListOf(removeDimText)
+                                        val disabled = if (dims.size <= 1) setOf(0) else emptySet()
+                                        dialogs?.showChoice(
+                                            ChoiceDialogSpec(
+                                                items = texts,
+                                                selectedIndex = -1,
+                                                onSelect = { removeDim(i) },
+                                                anchor = anchors[i],
+                                                disabledIndices = disabled,
+                                            ),
+                                        )
+                                    },
+                                ) {
+                                    TintedIcon(
+                                        imageVector = AppIcons.MoreVert,
+                                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                                    )
+                                }
+                            }
+                        },
+                        // 点这一行选档位：只铺这一维的档位，勾几档就展开成几档
+                        onClick = { dialogs?.showMultiChoice(dimPickerSpec(i, anchors[i])) },
+                    )
+                }
+                BasicComponent(
+                    title = stringResource(R.string.stg_merge_cond_add),
+                    titleColor = BasicComponentDefaults.titleColor(
+                        color = MiuixTheme.colorScheme.primary,
+                    ),
+                    startAction = {
+                        TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
+                    },
+                    modifier = Modifier.onGloballyPositioned { addDimAnchor = it.boundsInWindow() },
+                    onClick = { dialogs?.let { openDimPicker(it, addDimAnchor) } },
+                )
+            }
+
+            SmallTitle(stringResource(R.string.stg_merge_cond_total_title))
+            Card(modifier = Modifier.cardPadding()) {
+                BasicComponent(
+                    title = stringResource(R.string.stg_merge_cond_total, total),
+                    onClick = null,
+                )
+                BasicComponent(
+                    title = stringResource(R.string.stg_merge_cond_done),
+                    titleColor = BasicComponentDefaults.titleColor(
+                        color = MiuixTheme.colorScheme.primary,
+                    ),
+                    onClick = {
+                        commitCond(dims)
+                        if (condOnly) onDone?.invoke() else condEditing = false
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(24.dp + LocalNavBarInset.current))
+        }
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -262,7 +582,12 @@ internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
                 checked = group.enabled,
                 onCheckedChange = { on -> update { it.copy(enabled = on) } },
                 title = stringResource(R.string.stg_merge_group_enable_title),
-                summary = stringResource(R.string.stg_merge_group_enable_summary),
+                // 副标题按状态取串（DESIGN-SYSTEM 3.1 / 7.6）：开关行说的是「此刻在哪一档」，
+                // 不是「关掉会怎样」——后者属于机制与后果，第 7.3 节已划为禁区。
+                summary = stringResource(
+                    if (group.enabled) R.string.stg_merge_group_enable_summary_on
+                    else R.string.stg_merge_group_enable_summary_off,
+                ),
             )
         }
 
@@ -273,10 +598,18 @@ internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
             group.members.forEachIndexed { index, member ->
                 // key 用「名称 + stId」：stId 可以留空，两个只填名称的成员不能共用一个 key
                 key(member.name + "|" + member.stId) {
+                    // 组合成员（`cond:`）是可以在本页点开再改的：点这一行 = 编辑这条组合，
+                    // 而页面底部那行「新建组合」永远是新建（用户 2026-11-12 明确的分工）。
+                    val condOfRow = StrategyComboCatalog.conditionOfMember(member.name, member.stId)
                     MergeMemberRow(
                         member = member,
                         index = index,
                         count = group.members.size,
+                        onEditCond = if (condOfRow != null && onOpenCond != null) {
+                            ({ onOpenCond(member.name) })
+                        } else {
+                            null
+                        },
                         onMove = { delta -> moveMember(member, delta) },
                         onDelete = {
                             update { current ->
@@ -323,6 +656,83 @@ internal fun StrategyMergeEditScreen(groupId: String, onDeleted: () -> Unit) {
                 // 直接进标签全表：不再先弹一层「加哪一类」，点标签就是加一条成员
                 onClick = { if (canAdd) dialogs?.let { openLabelGroups(it) } },
             )
+
+            // 新建组合：一条成员 = 若干标签维度的笛卡尔积（市值 × 量比、市值 × 创新高、任意几维）。
+            // 宿主标签是交集语义，跨档范围只能拆成多条策略再由聚合并集 —— 这一行就是那条拆解入口。
+            //
+            // 这里是**新建**，不再兼作「编辑已有的那条」：编辑走成员行（点那一行进同一个页面，
+            // 带的是那条成员的名字）。早先两者共用一个入口，于是点一下就凭空多出一条成员、
+            // 还直接进了那条的编辑页（用户 2026-11-12 报的）。
+            BasicComponent(
+                title = stringResource(R.string.stg_merge_member_combo),
+                // 到上限时副标题只留「为什么点不动」的状态说明；正常情况下不写，
+                // 主标题「新建组合」加号图标已经说清点进去做什么（NAMING 规则四）。
+                summary = if (canAdd) null else limitText,
+                titleColor = BasicComponentDefaults.titleColor(
+                    color = MiuixTheme.colorScheme.primary,
+                ),
+                startAction = {
+                    TintedIcon(imageVector = AppIcons.Add, tint = MiuixTheme.colorScheme.primary)
+                },
+                onClick = {
+                    if (canAdd) {
+                        // 新建永远从空维度表开始（草稿按 condMemberKey 初始化，空串即空表）
+                        if (onOpenCond != null) onOpenCond("") else condEditing = true
+                    }
+                },
+            )
+        }
+
+        // ---- 从组合成员导入：别的组里那条笛卡尔积条件，点一行搬进本组 ----
+        //
+        // 与「从聚合组导入」分开：那里搬的是成员清单，这里只搬那一条组合条件本身，
+        // 用途是「同一个 市值 × 创新高 组合，在这组和那组各用一次」。
+        // 一个组可能有多条组合成员，所以这里是「别的组里每一条组合成员各一行」，
+        // 不再只取每组的第一条（取第一条时第二条永远搬不过来）。
+        val condSources = config.groups.filter { it.id != groupId }.flatMap { other ->
+            comboMembersOf(other).map { pair -> Triple(other, pair.first, pair.second) }
+        }
+        if (condSources.isNotEmpty()) {
+            SmallTitle(stringResource(R.string.stg_merge_section_cond_import))
+            Card(modifier = Modifier.cardPadding()) {
+                val condAtLimit = group.members.size >= StrategyMergeStore.MAX_MEMBERS
+                condSources.forEach { pair ->
+                    val other = pair.first
+                    val member = pair.second
+                    val c = pair.third
+                    // 同一条组合（成员名逐字相同）搬过来才有意义：按名字判重，不按组
+                    val taken = group.members.any { it.name == member.name && it.stId.isBlank() }
+                    BasicComponent(
+                        title = other.name,
+                        summary = when {
+                            taken -> stringResource(R.string.stg_merge_cond_import_taken)
+                            condAtLimit -> limitText
+                            else -> stringResource(
+                                R.string.stg_merge_member_combo_detail,
+                                StrategyComboCatalog.summaryText(c),
+                                c.comboCount,
+                            )
+                        },
+                        startAction = {
+                            TintedIcon(
+                                imageVector = AppIcons.Add,
+                                tint = MiuixTheme.colorScheme.primary,
+                            )
+                        },
+                        onClick = {
+                            if (!taken && !condAtLimit) {
+                                update { current ->
+                                    if (current.members.any { it.name == member.name }) {
+                                        current
+                                    } else {
+                                        current.copy(members = current.members + member)
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         }
 
         // ---- 从金太阳导入：宿主「我的策略」里已经有的策略，点一行就加成成员 ----
@@ -449,7 +859,10 @@ private fun hostSyncClock(at: Long): String {
  *  - 普通成员：有 stId 显示 stId，空的写「打开一次宿主后自动识别编号」。
  *
  * 带档位的成员（父标签、或已选档的标签）整行可点，点了直接弹档位菜单；
+ * 组合成员（`cond:`）整行可点，点了进第四层的组合维度页改这条组合；
  * 其余成员（口径 / 手写 / 普通策略）没有可编辑字段，只有 ⋮ 里的上移、下移、删除。
+ *
+ * @param onEditCond 组合成员点行时的动作（进组合维度页，带这条成员的名字）；null = 不能点
  */
 @Composable
 private fun MergeMemberRow(
@@ -459,6 +872,7 @@ private fun MergeMemberRow(
     onMove: (Int) -> Unit,
     onDelete: () -> Unit,
     onRetarget: (String) -> Unit,
+    onEditCond: (() -> Unit)? = null,
 ) {
     var anchor by remember { mutableStateOf<Rect?>(null) }
     val dialogs = LocalDialogController.current
@@ -537,7 +951,11 @@ private fun MergeMemberRow(
     }
 
     BasicComponent(
-        onClick = if (bands.isEmpty()) null else ({ pickBand() }),
+        onClick = when {
+            bands.isNotEmpty() -> ({ pickBand() })
+            onEditCond != null -> onEditCond
+            else -> null
+        },
         title = title,
         summary = summary,
         endActions = {

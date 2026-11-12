@@ -1,4 +1,4 @@
-# 智能选股·我的策略整合（聚合组）踩点报告与实现记录
+# 智能选股·我的策略聚合（聚合组）踩点报告与实现记录
 
 > **一句话**：用原生 `AIStkStgDetailAct` 页面加一层「聚合结果代理」，把多条原生策略的股票并成一张看起来完全原生的列表；设置放模块设置页，落地前先补一轮「我的策略列表页」运行时探针。
 
@@ -414,7 +414,7 @@ v53  == v53 真实适配器=com.guosen.quotation.adapter.aistk.AIStkAdapter data
 
 ## 11. 本轮结论
 
-「智能选股·我的策略整合」已经不是在纸面上通得过的路，而是**在真机上跑通过的机制**：模块改 `model.m_stg.id` → 主线程让宿主自己按新 `stId` 重取（鉴权、签名、协议全用宿主的）→ 按 `codeAndMarket` 做保序并集 → 写回原生 `AIStkAdapter.data` + `notifyDataSetChanged()` → 原生 `ListView` 把两段市值策略的 64 只股票渲染成一张表，头部名称与涨跌家数同时生效。三条硬结论：取数不用自己组包，渲染不用换适配器，页面看起来就是原生页——因为它就是原生页在画。
+「智能选股·我的策略聚合」已经不是在纸面上通得过的路，而是**在真机上跑通过的机制**：模块改 `model.m_stg.id` → 主线程让宿主自己按新 `stId` 重取（鉴权、签名、协议全用宿主的）→ 按 `codeAndMarket` 做保序并集 → 写回原生 `AIStkAdapter.data` + `notifyDataSetChanged()` → 原生 `ListView` 把两段市值策略的 64 只股票渲染成一张表，头部名称与涨跌家数同时生效。三条硬结论：取数不用自己组包，渲染不用换适配器，页面看起来就是原生页——因为它就是原生页在画。
 
 剩下的都是产品化工作，不是可行性工作：`StrategyMergeStore` 一个 JSON 键存组与成员、设置页照 `QuickConfigScreen` 三层模板、`tv_stg_res_num` 计数文案由模块按聚合结果回填、宿主刷新时重放一次合并、任一环早退即还原现场。跨分段「50e–500e」本质上就是「多个 `stId` 成员的并集」，而「一个聚合大类」就是模块设置页里的一行组配置。唯一的可选增强是「从『我的策略』列表页勾选导入成员」——它只缺 `AIStkStgListAct` 的适配器与 `stId` 字段（§6 五问），不挡主闭环；先按设置页手工登记 `stId` 即可打通，探针补齐后再补导入入口，全程可回滚。
 
@@ -1095,3 +1095,351 @@ app-debug.apk → 12,281,602 字节（2026-11-12 10:56:52），已 install -r �
 ```
 
 
+
+## 22 从金太阳导入：宿主主动广播清单，模块只认「页面上真实存在的策略」（2026-11-12）
+
+> 一句话：模块 App 与宿主是两个 UID，读不到彼此的私有数据；清单只能由宿主在「我的策略」页采集后广播过来，
+> 而且**只发这一页真实存在的条目**，不能发索引全量 —— 索引只增不删，早前用接口批量建过又没了的策略会一直躺在里面。
+
+### 22.1 为什么必须走广播
+
+| 方案 | 结论 | 原因 |
+| --- | --- | --- |
+| 读宿主私有 prefs | 不行 | `/data/data/com.guosen.android/shared_prefs/gsaux_stg_index.xml` 跨 UID 读不到 |
+| 目标进程写 remote preferences | 不行 | `XposedInterface.getRemotePreferences` 返回只读 SharedPreferences（见 `core/ConfigSource.kt` 的说明） |
+| 共享文件 + `MANAGE_EXTERNAL_STORAGE` | 不选 | 为一个展示清单要一个高危权限 |
+| 模块 App 主动拉一次 | 未做 | 需要宿主动态注册接收器并常驻，代价大于收益 |
+| **宿主 `sendBroadcast` + 模块静态接收器** | **采用** | 不需要任何权限；模块侧收到就落自己的 prefs，页面每 2 秒重读 |
+
+实现落在三个文件：
+
+- `core/StgCatalogBroadcast.kt`：action / 包名 / extra 键 / 签名常量 / 载荷版本 `VERSION = 1`
+- `feature/stgmerge/StrategyStgCatalog.kt`：宿主侧组包 + 两道节流（最短 3 秒一次；内容没变最多 30 秒补发一次）
+- `app/HostStgCatalog.kt` + `app/HostStgCatalogReceiver.kt`：模块侧解析、落 `gsaux_host_catalog` prefs
+
+载荷：
+
+```json
+{"v":1,"at":1794457185711,"items":[{"id":"1630342554861965312","name":"量500","tags":["流通市值500亿及以上","量比2.5-3.0"]}]}
+```
+
+`at` 是宿主组包时间（毫秒），模块页首行显示成 `上次同步 12:20 · 共 8 条`，用户能看出清单新不新。
+`v` 不等于当前版本整份丢弃；`id` 或 `name` 缺一半的条目直接丢（写进成员配置也用不了）。
+
+### 22.2 只发「页面实测条目」+ 组内成员
+
+第一版拿 `StrategyStgIndex.entries()` 当数据源，真机上「从金太阳导入」冒出了 `T4`、`TPMP50` 两条 —— 宿主「我的策略」
+里根本没有它们。根因是索引**只 remember 不淘汰**：
+
+| 环节 | 行为 | 后果 |
+| --- | --- | --- |
+| 列表页每轮巡检 | `StrategyStgIndex.remember(名称, stId)` 只写不删 | 删掉的策略留在索引里 |
+| 早前用 OpenAPI 批量建的策略 | 同样进过索引 | `T4`（量比4.0以上）、`TPMP50`（流通市值50-70亿）永远在 |
+| `entries()` | 把整份历史原样给出 | 全部导进清单 |
+
+现在的口径：**广播的清单 = 这一轮列表页适配器里真实存在的条目 ∪ 启用组的成员**。
+
+- 页面条目在 `StrategyMergeFeature.decorateListNow` 的采集循环里现算（名称 / stId / 标签本来就是同一趟拿的）；
+- 启用组的成员卡会被 ③ 从 adapter 数据里摘掉（避免同一批股票重复出现），下一轮就看不见了 —— 它们是**真策略**，
+  按配置补回来（`withGroupMembers`），否则把「量500」「量70」加进组后，导入清单会从 8 条掉到 6 条；
+- 条件 / 组合 / 标签成员（`cond:` / `combo:` / `label:` 前缀）不是宿主策略，跳过；
+- 我们自己改名的入口卡（`聚合 · X（N 条）`）继续用 `looksLikeEntryLabel` 拦掉。
+
+索引本身仍然保留全量：成员只填名称时，靠它把名字解析回 stId。
+
+### 22.3 界面：区块顺序与点击行为
+
+编辑页自上而下：`聚合组`（名称 + 启用开关）→ `成员策略`（成员行 + 「添加成员」）→ `从金太阳导入` → `从聚合组导入`。
+
+- 首行是清单头：`策略清单` / `上次同步 12:20 · 共 8 条`，只展示、不可点；
+- 每条策略一行：标题是策略名，副标题依次取 `已在当前组里` / 成员上限提示 / `无标签` / 宿主标签拼接；
+- 点一行 = 直接加成成员（`MergeMember(stId, name)`），去重同时看 stId 与名称，改过名再加一次也不会重复；
+- 还没收到广播时显示 `还没有同步到金太阳的策略` + `打开一次金太阳的「我的策略」列表，再回到这里`。
+
+### 22.4 「0 个成员」但下面明明有一行
+
+症状：刚点进来的父标签成员（例如 `30分钟MACD`，还没选档位）在成员区占一行，组摘要却写 `0 个成员`。
+根因：摘要用 `expandedCount`（口径 / 标签成员展开后的条数），待选档位的父标签展不出条数、算 0。
+
+改法（`ui/StrategyMergeScreen.kt`）：
+
+```kotlin
+val expanded = StrategyComboCatalog.expandedCount(group.members)
+return if (expanded > group.members.size) expanded else group.members.size   // 显示数
+// 生效门槛仍然只认 expanded：待选档位的成员取不出股票，不能让它把组撑成「生效」
+```
+
+### 22.5 与 §21.4 的关系
+
+§21.4 的四步向导（市值起 / 市值止 / 量比起 / 量比止）已经撤掉：现在「添加成员」直接进宿主标签全表，
+点一级标签即成成员、点成员行再细分档位。`cond:` 成员的数据结构不变，历史配置照旧可用。
+
+### 22.6 真机验收（emulator-5556 / com.guosen.android / 720x1280）
+
+```text
+宿主「我的策略」日志：策略清单：已广播宿主策略清单 8 条
+模块接收日志：宿主策略清单：已收到 8 条
+模块编辑页：策略清单 / 上次同步 12:20 · 共 8 条
+  量500 流通市值500亿及以上 · 量比2.5-3.0
+  量70  流通市值70-100亿 · 量比2.5-3.0
+  500e / 量100 / 50e / 100e / 70e / 量50 …
+点「量500」「量70」→ 组摘要 2 个成员 · 生效，两行副标题变「已在当前组里」
+模块 prefs（run-as 读 gsaux_host_catalog.xml）：items 正好 8 条，无 T4 / TPMP50
+```
+
+`T4` / `TPMP50` 仍留在索引里（成员按名称解析还要用），只是不再进广播。
+
+### 22.7 门禁
+
+```text
+gradlew :app:testDebugUnitTest :app:assembleDebug → BUILD SUCCESSFUL
+  28 个测试 XML / 288 tests / 0 failures
+  HostStgCatalogTest tests=8（载荷解析 / 版本不符 / 缺字段 / 空白裁剪）
+  StrategyStgCatalogTest tests=4（入口卡名拦截）
+app-debug.apk → 12,296,740 字节，已 install -r 到 emulator-5556
+```
+
+## 23 标签成员也算标签、入口卡原名要补回清单（2026-11-12）
+
+> 现象：聚合组 2 的成员是两条**策略标签**（量比1.5-2.0 + 流通市值50-70亿），可卡片上挂的是借来的那张
+> 原生策略的标签「流通市值500亿及以上 / 创新高20交易日」；详情页标签条同样是错的。
+
+### 23.1 两条链路各丢一次
+
+| 位置 | 漏在哪 | 表现 |
+| --- | --- | --- |
+| `StrategyMergeFeature.groupTagNames`（列表卡 chips） | 只反推了口径成员（`bucketOfMember`）和条件成员（`conditionOfMember`），没有 `label:` 分支 | 标签成员 `sid` 为空、`idOf(name)` 找不到卡 → `continue`，pool 为空 → `mergeTagNames` 为空 → `writeCardTags(empty)` 直接返回 false → 卡片保留借来那张的原生标签 |
+| 详情页标签汇总 | 只判 `sid.startsWith(COMBO_PREFIX)`，而标签成员入队时 key 已被包成 `combo:label:<id>` | `labelIdOf` 只认裸 `label:` → 详情页标签也丢 |
+
+### 23.2 改法
+
+1. `StrategyComboCatalog.labelIdOf` 先剥一层 `COMBO_PREFIX` 再判 `LABEL_PREFIX`，于是 `displayName` /
+   `comboOfKey` / `tagNamesOfKey` 全部顺带支持队列 key（`combo:label:136392…`）。
+2. `groupTagNames` 里在条件成员之后补一条 `labelIdOf(m.name)?.let { pool.addAll(tagNamesOfKey(m.name)) }`。
+   档位表（`StrategyLabelTable` 的 1119 条）本来就带 `labelId → labelName`，标签成员的 chips 直接反查即得。
+3. 广播清单补两类在页面上读不到的条目（见 23.3）。
+
+### 23.3 改名会把自己的身份改没
+
+入口卡被改写成「聚合 · X（N 条）」以后，列表页再怎么扫也扫不出它是哪条策略；成员卡又被 ③ 段从
+adapter 里摘掉。于是「从金太阳导入」的清单在组启用期间会莫名少几条（真机：组一启用，`500e` 消失）。
+
+发送点因此从 ①.b 挪到 ③ 之后，三份来源合并后再广播：
+
+| 来源 | 覆盖 |
+| --- | --- |
+| `live` | 这一轮适配器里真实存在的条目 |
+| `withGroupMembers(merge, …)` | 被收起 / 被借走的成员卡，按配置里的 stId 或名称反查补回 |
+| `entryOriginals`（组名 → 入口卡原身份） | 改名之前记下的那张卡，含原生标签；只在 `done == null`（首次改名）时记录一次 |
+
+### 23.4 真机验收（emulator-5556 / com.guosen.android / Android 12）
+
+- 宿主列表卡：`聚合组2（2 条）` chips = 「量比1.5-2」「流通市值50-70亿」（修复前是 500e 的原生两条）。
+- 详情页：策略名 `聚合组2（2 条）`，标签条同样两条，列表 207 只、涨 213 / 跌 1。
+- 模块 prefs `shared_prefs/gsaux_host_catalog.xml`：`at=12:28:40`，`count=8`，
+  内容为 量100 / 50e / 100e / 70e / 量50 / 量500 / 500e / 量70 —— 成员（量500、量70）与入口卡原名（500e）都回来了，
+  历史策略 T4 / TPMP50 不再出现。
+
+### 23.5 已知残留
+
+- 列表卡上**新造／改写**出来的 chip 仍是灰色带 ⓘ（详情页正常）：宿主按 tagId 校验，我们复制的是同前缀原元素的 tagId，
+  与改写后的 `labelName` 对不上。不影响筛选与并集，只是样式。
+- 组成员卡被收起期间，它在列表页上不可见（点不进去），只能从聚合入口卡进；组停用即恢复。
+
+### 23.6 门禁
+
+- `gradlew :app:testDebugUnitTest :app:assembleDebug` → BUILD SUCCESSFUL，28 个 XML / 291 tests / 0 failures（新增 3 个标签成员用例）。
+- APK `app/build/outputs/apk/debug/app-debug.apk` 12,296,741 B。
+
+## 24 单槽轮转：一条临时策略复用整轮（2026-11-12 13:35）
+
+### 24.1 为什么不再「每格建一条」
+
+账号级的策略数上限是 **10 条**（服务器返回 `code 4100 策略数不能超过10个`）。用户已经有 8 条真实策略，
+24 个口径成员一起 create 会直接撞上限 —— 真机表现是「临时策略一条都建不出来 → 成员全部取不到数 → 聚合 0 只」。
+所以取数改成**一条临时策略整轮复用**：建一次，之后每个成员只是把它身上的标签改成这一格要的条件。
+
+### 24.2 靠 `updateStrategy` 换条件，服务器按标签现算
+
+| 接口 | 业务参数 | 结论 |
+| --- | --- | --- |
+| `POST /gsnews/strategy/updateStrategy/1.0` | `stId`、`labelId`（逗号分隔）、`stName`（可选） | 改完**立即**生效，~60 ms |
+| `POST /gsnews/strategy/queryStrategyQuoteDetail/1.0` | `stId` | 结果由**当前标签**决定，不按 stId 缓存 |
+| `POST /gsnews/strategy/queryStrategy/1.0` | `pageNo`、`pageSize` | 策略清单（所有策略塞在 `data[0].member` 这个字符串化数组里） |
+
+同一个临时策略连查 24 次，各档只数分别是 100 / 56 / 45 / 25 / 17 / 12 / 8 / 4 / 2 / 0，**证明不是缓存的同一份**。
+
+### 24.3 实现（`feature/stgmerge/StrategyComboClient.kt`）
+
+| 成员 | 作用 |
+| --- | --- |
+| `const val TEMP_PREFIX = "GSZtmp"` | 临时策略名前缀，收尾靠它认领自己的垃圾 |
+| `createOrFreeSlot(name, labelIds)` | 撞 4100 时先 `purgeLeftovers()` 清自己漏删的，清到了再重试一次 |
+| `fun update(stId, labelIds)` | 只改标签 |
+| `fun purgeLeftovers(): Int` | 名字以 `TEMP_PREFIX` 开头（或早期 `Z` + 8 位数字）就删 |
+| `class TempSlot { ensure / apply / release }` | `apply` 里标签没变就不发请求；`release` 删掉并清空记账 |
+
+`MergeRun` 侧：`openCombo` 走 `comboExecutor` 拿到 id 后交给 `takeMember`；`tempIds` 里的成员**不再重试**
+（临时策略整轮复用，这一格失败就是服务器没给数）；`cleanupTemps` 统一 `comboSlot.release()`；
+借入口卡的判据补了一条：名字以 `TEMP_PREFIX` 开头的卡不许借（它收尾就删，借了入口卡会消失）。
+
+### 24.4 真机时序（emulator-5556 / 聚合组2 / 24 个口径成员）
+
+- 24 格全部复用同一个临时策略 `1638327634200891392`，每格 121~140 ms，整轮约 **3.4 秒**（旧实现是 24 次建删）。
+- 累计并集 756~764 只（盘中随时段变化），收尾日志 `收尾清掉 1 条临时策略`。
+
+### 24.5 两个数据坑（写死在客户端里）
+
+- **请求头必须带 charset**：`Content-Type: application/x-www-form-urlencoded; charset=UTF-8`。不带时中文策略名解码错乱 ——
+  实测把「量50」改成了「é50」，发现后立刻改回。
+- **探测接口别拿真实策略 id 当参数**：一次 `updateStrategy` 试跑把用户的「量50」标签改成了 `流通市值50-70亿 + 量比4.0以上`，
+  已用同一接口复原（标签 `332921024326664192,1363925245672554496`，名字「量50」）。
+
+## 25 主线程死锁：两个功能互相还原适配器（2026-11-12）
+
+### 25.1 现象
+
+24 个成员取到最后一个之后，流水线**静默停住**：不再有「到位」日志、界面停在半截；21 秒后宿主 ANR
+（`ANR in com.guosen.android (…AIStkStgDetailAct) Reason: Input dispatching timed out`）。
+本轮新加的主线程看门狗把它逮了个正着：
+
+```
+主线程已 3006ms 没动（聚合 stId=1630342554861965312 成员 24 个）栈：
+    at io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature.applyFilter(StgStockFilterFeature.kt:807)
+    at io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature.onAdapterSet(StgStockFilterFeature.kt:555)
+    at io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature.hookListViewSetAdapter$lambda$0(StgStockFilterFeature.kt:529)
+    at android.hardware.BriernieHeamoompZeelash.setAdapter(BriernieHeamoompZeelash.java)
+    at io.github.MVennn.GSAuxiliary.feature.stgfilter.StgStockFilterFeature.applyFilter(StgStockFilterFeature.kt:807)
+    …（同四帧无限重复）
+```
+
+### 25.2 根因
+
+`StgStockFilterFeature.kt:807` 的还原那句 `runCatching { lv.adapter = base }` 会**同步**回到自己的
+`ListView.setAdapter` 后置钩子（`:529` → `onAdapterSet` `:555` → `applyFilter`），而 `applyFilter` 里
+判断「列表上还挂着过滤代理」的记账（`st.proxy` / `proxiedLists`）原来写在赋值**之后** ——
+每一层递归看到的都还是「挂着代理」，于是再还原一次，无限套下去，主线程永远回不来。
+
+`stgmerge` 这侧也有份：`ListView.setAdapter` 后置钩子里会「重套并集 / 起一轮取数」，这两件事都可能再次
+`lv.adapter = …`，和上面对上就成了一条无底链。
+
+### 25.3 改法：两处重入闸 + 还原顺序
+
+| 位置 | 改动 |
+| --- | --- |
+| `feature/stgfilter/StgStockFilterFeature.kt:463` | 新增 `private val filtering = ThreadLocal<Boolean>()`；`applyFilter` 变成薄壳（同线程第二次进直接返回），本体改名 `applyFilter0` |
+| 同文件「还原全量」段 | 先清记账（`st.proxy` / `st.snap` / `proxiedLists` / `StgFilterBridge.publish(null)`）**再**赋值 `lv.adapter = base`，嵌套层不会再把列表判成「挂着代理」 |
+| `feature/stgmerge/StrategyMergeFeature.kt:299` | 新增 `private val setAdapterBusy = ThreadLocal<Boolean>()`；setAdapter 后置钩子只放**第一层**进来，嵌套层原样 `return result` |
+
+两道闸都要：stgfilter 那侧断的是**同一条调用链里的自我递归**，stgmerge 那侧断的是**两个功能互相触发**
+（还原 → 我们的钩子重套 → 再还原）。只拦一侧，另一侧仍能把主线程拖住。
+
+### 25.4 真机验收
+
+| 项目 | 修复前 | 修复后 |
+| --- | --- | --- |
+| 24 格跑完 | 静默 21 s，宿主 ANR（13:25 / 13:38 两次） | `收尾清掉 1 条临时策略` → `已渲染 756 只（成员 24 个，涨 382 / 跌 385）` |
+| 看门狗 `没动（` 条数 | 6 条/轮，逐轮复现 | **0 条** |
+| 宿主 `ANR in com.guosen.android` | 每轮一次 | **0 条** |
+| 详情页计数 | 停在半截 / 0 只 | `策略个股756只(11-12 13:44:04)` |
+
+筛选联动没被这次改动破坏（§19 的路径照旧）：
+
+- 勾「涨家股票」+ 确定 → `策略个股 230/756(11-12 13:44:04)`，日志 `筛选股票：全量 756 → 保留 230（涨 230 / …）`；
+- 点「重置」+ 确定 → 回到 `策略个股756只`，日志 `筛选股票：筛选未生效，已还原全量`。
+
+### 25.5 顺带清掉的测试残留
+
+宿主 prefs `shared_prefs/gsaux_stg_filter.xml` 里留着我在 §19 验收时勾的 `filter_up=true`（还有一份 `filter_up@grp:group2`），
+它会让聚合页一直显示 `N/总数`。已把该文件删掉（备份在设备 `/sdcard/gsf_backup.xml`），重启宿主后恢复 `策略个股756只`。
+
+### 25.6 门禁
+
+- `gradlew :app:testDebugUnitTest :app:assembleDebug` → BUILD SUCCESSFUL；28 个 XML / 293 tests / 0 failures（`StrategyComboCatalogTest` 24 个）。
+- `python tools/ci/check_links.py` → exit 0（67 篇 Markdown / 356 条链接 / 0 失效 / 0 孤儿）；`python tools/hygiene.py` → exit 0。
+- APK `app/build/outputs/apk/debug/app-debug.apk` 12,324,378 B（2026-11-12 13:42:27）。
+## 26 一步到位：进页面就是完整并集，家数跟着并集走（2026-11-12）
+
+目标（用户原话）：「这个刷新可以并行吗……可以做到一步到位吗，就是我打开就是聚合股票」。
+上一轮已经能秒显并集，但屏幕会先闪宿主那一格，且收尾后头部涨跌家数变成 0/0。本轮把这两处一起修掉。
+
+### 26.1 三个根因
+
+| # | 现象 | 根因 |
+| --- | --- | --- |
+| 1 | 温进页面时并集闪回宿主单成员帧（1 只 / 100 只） | `mergedRef` 是弱引用，取数窗口里被 GC 收走 → `holdUnionWhileRunning` 直接 return，退回「逐格长大」 |
+| 2 | 顶住并集后屏幕上仍只有一行 | 从首页进来的列表挂的是 stgfilter 的 `FilteredAdapter`，它在 `notifyDataSetChanged` **之前**就用当时只有 1 行的 base 算好了 `indices: IntArray`；我们写 data 晚了一步，代理照旧只显示 1 行 |
+| 3 | 收尾后 `已渲染 N 只（涨 0 / 跌 0）` | 取数窗口每帧都把自己的聚合家数写回 `model` 的 upNum/downNum，`poll` 里 `addStat` 现读这两个字段，读到的是自己写的数，被去重闸整段跳过，宿主真值一次都没累加 |
+
+### 26.2 改法一览（全部在 feature/stgmerge/StrategyMergeFeature.kt）
+
+| 位置 | 改法 |
+| --- | --- |
+| `PageState.mergedStrong` | 新增强引用副本，`applySnapshot` / `finish` 赋值，`captureOrigin` / `clearState` 清空；所有读 `mergedRef` 的地方换读它 |
+| `holdUnionWhileRunning` | 判宿主这一帧 `size >= 并集` 早退 → 写 `data`（失败打日志并 return）→ `holdHeaderCounts()` → `writeHeaderCounts` → `notifyAdapter`（让代理按新全量重算下标）→ **最后** `writeMergedResNum` |
+| `captureHostPayload` | 抄帧的同一时刻调 `state.run.captureHostStats()`，把宿主这一帧的 upNum/downNum 存进 `hostUp/hostDown` |
+| `addStat` | 累加源改成 `hostUp/hostDown`（不再现读 `model`）；保留 `u == wroteUp && d == wroteDown` 这条闸，用于识别「宿主这一帧没重写家数」 |
+
+顺序不能换的两条：**抄帧抄家数必须在写回之前**（晚一步抄到的就是自己的聚合值）；**计数必须写在 notifyAdapter 之后**（`策略个股 X/总数` 的 X 是从代理现算的可见行数读的，写在 notify 之前读到的是上一格）。
+
+### 26.3 真机验收（emulator-5556 / com.guosen.android / 聚合组2 24 成员）
+
+| 时刻 | 计数栏 | 头部 | 列表 |
+| --- | --- | --- | --- |
+| 温进 ~1 s | `策略个股 284/624(11-12 15:00:32)` | 291 / 333（沿用上一轮聚合值） | 完整并集，按涨幅排序（蓝色光标 +10.97% / 澳洋健康 +10.08% / 龙江交通 +10.02% …） |
+| ~4 s | 284/634 | 291 / 333 | 同上，不缩不闪 |
+| ~9 s（收尾后） | 284/634 | **291 / 333**（上一版这里是 0 / 0） | 同上 |
+
+日志：`先用上次的 624 只（缓存 18467ms 前）` → `取数期间顶住上一轮并集 624 只（宿主这一帧 1 只，不缩）` → 24 个成员逐个 ~120 ms → `已渲染 634 只（成员 24 个，涨 291 / 跌 333）`。
+
+### 26.4 已知残留
+
+- `策略个股` 的分子（284）与头部涨家数（291）差 7 只：分子是筛选代理按自己的谓词数出来的可见行，头部是宿主按服务端字段数的。两者口径本来就不同（缺少行情快照的票在代理里被排除），不是本轮回归。
+- 头部「日涨跌幅」恒为 `--`：这一格由宿主自己按成员策略算，模块里没有对应字段可写。
+
+### 26.5 门禁
+
+- `gradlew :app:testDebugUnitTest :app:assembleDebug` → BUILD SUCCESSFUL（EXIT=0），29 个 XML / 308 tests / 0 failures。
+- `python tools/ci/check_links.py` → exit 0；`python tools/hygiene.py` → exit 0。
+- APK `app/build/outputs/apk/debug/app-debug.apk` 已 install -r 装机复验。
+
+## 27 入口卡不再带条数 + 全选/反选提速 4 倍（2026-11-12）
+
+两件事一批做的：用户说「我们聚合的那个策略 后面的那个（xx条）可以去掉了吧」，顺手把详情页批量勾选的顿感收掉。
+
+### 27.1 去掉「（N 条）」牵动的四张网
+
+卡名以前是 `聚合 · 组名（N 条）`，条数尾巴同时是**识别标记**：详情页靠它认组、克隆借卡靠它排除、清单广播靠它拦下入口卡。去掉尾巴后，尾巴和「聚合 · 」前缀都不在了，四处判据都得补一条「与组名精确相等」的路。
+
+| 位置 | 改法 | 不改的症状 |
+| --- | --- | --- |
+| 详情页认组 ③（`StrategyMergeFeature.kt` 约 :1628） | 判据从 `labelNames.contains(gn)` 扩成 `labelNames.contains(gn) || pageName == gn || pageName == entryLabelOf(gn, g.members.size)` | 组名自己就以「聚合」开头时（如「聚合组2」），卡名就是裸组名、不带前缀，`entryLabelGroupNames` 认不出 → 点入口卡不聚合，日志 `跳过：没有包含当前策略的已启用聚合组` |
+| 克隆借卡候选（约 :1230） | 排除条件加 `n in entryLabels` | 把别组的入口卡克隆一份当自己的入口 |
+| `entryOriginals` 记录条件（约 :1296） | 加 `&& origName !in entryLabels` | 入口卡被当成真实策略记进原卡表 |
+| 清单广播（`StrategyStgCatalog.kt`） | `publish(ctx, entries, entryLabels)` 新增可选集合，`build` 里 `looksLikeEntryLabel(e.name) || e.name.trim() in entryLabels` 跳过 | 「从金太阳导入」里多出一条名叫「聚合组2」的假策略，底下是某个成员的 stId |
+
+`entryLabelOf(groupName, memberCount)` 保留两参签名，实现直接转 `entryLabelBare(groupName)`，`@Suppress("UNUSED_PARAMETER")` 标注原因；调用点一处没改。
+
+### 27.2 全选/反选：一次批量只扫一遍行对象
+
+根因是 `syncHostModel` 里每点一行就重做一遍**全表**校正（`O(N)` 读 adapter 每行的代码 / 原始代码 / 价格 / 连板数），285 行就是 285 × O(285)。
+
+改法：clickAll 期间建一张 `RowCodes(adapter, total)` 缓存表，四个字段各按 total 开数组；`cachedRowCode` / `rowRawCodeAt` / `rowPriceAt` / `rowTwinAt` 先查表，非批量态原样回退老实现（不改变非批量路径的任何行为）。缓存值仍走 `StgSelectAllPlan.isCodeLike` 校验并 `noteRowCodeMiss`，读不到的行照样能被容错计数抓到。
+
+### 27.3 实测（同一 285 行筛选态、并集 630，emulator-5556）
+
+| 指标 | 优化前 | 优化后 |
+| --- | --- | --- |
+| 一次全选总耗时 | 1763 ms | **429 ms** |
+| 其中「校正模型」 | 1234 ms | **22 ms** |
+| 反选总耗时 | 同量级 | **346 ms**（校正模型 10 ms） |
+| gfxinfo 99th | 1750 ms | **300 ms** |
+| Janky frames | 0% | 0%（legacy 5.36%） |
+
+日志（本轮终版）：`一次性点击 285 行完成（耗时 429ms，失败 0，宿主计数 0 → 285） [分段：造View 1ms/276 行、宿主点击 33ms、校正模型 22ms]` → `反选 … 346ms … 宿主计数 285 → 0`。
+
+### 27.4 门禁
+
+- `gradlew :app:testDebugUnitTest :app:assembleDebug` → BUILD SUCCESSFUL（EXIT=0），29 个 XML / 308 tests / 0 failures。
+- `python tools/ci/check_links.py` → exit 0；`python tools/hygiene.py` → exit 0。
+- APK 已 install -r 装机：入口卡名「聚合组2」、点进去聚合出 285/630（涨 285 / 跌 329）。

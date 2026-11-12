@@ -44,6 +44,8 @@ object StrategyComboClient {
     private const val PATH_CREATE = "/gsnews/strategy/createStrategy/1.0"
     private const val PATH_QUERY = "/gsnews/strategy/queryStrategyQuoteDetail/1.0"
     private const val PATH_DELETE = "/gsnews/strategy/deleteStrategy/1.0"
+    private const val PATH_UPDATE = "/gsnews/strategy/updateStrategy/1.0"
+    private const val PATH_LIST = "/gsnews/strategy/queryStrategy/1.0"
 
     private const val CONNECT_TIMEOUT_MS = 8000
     private const val READ_TIMEOUT_MS = 15000
@@ -62,6 +64,14 @@ object StrategyComboClient {
         /** 最新价 */
         val price: String,
     )
+
+    /**
+     * 临时策略名字前缀。
+     *
+     * 名额满（code 4100）时要认出「哪些是自己上一轮漏删的」并清掉，只能靠名字：
+     * 用户自己的策略叫「量50」「50e」这类，不会撞这个前缀。
+     */
+    const val TEMP_PREFIX = "GSZtmp"
 
     private val seq = AtomicLong(0L)
 
@@ -107,8 +117,8 @@ object StrategyComboClient {
             throw IOException("还没有截到宿主会话（先在宿主里点一次「我的策略」，让它发一次请求）")
         }
         // 名字只当去重键用，11 字符上限也不管：接口侧没有长度校验，实测纯 ASCII 短名全部通过
-        val tmpName = "Z" + System.currentTimeMillis().toString().takeLast(8)
-        return create(tmpName, combo.bizLabelId)
+        val tmpName = TEMP_PREFIX + System.currentTimeMillis().toString().takeLast(6)
+        return createOrFreeSlot(tmpName, combo.bizLabelId)
     }
 
     /** 删掉临时策略（吞掉异常：删不掉只是少一个名额，不该打断聚合） */
@@ -174,6 +184,140 @@ object StrategyComboClient {
         runCatching { ensureOk(JSONObject(text), "删临时策略") }
     }
 
+    /**
+     * 把一条已有策略的标签整体换成 [labelIds]（等价于宿主「修改策略标签」点「完成」）。
+     *
+     * 名字不动：临时策略名字保持恒定，宿主列表里那张卡不会跟着每格换名字跳来跳去。
+     */
+    fun update(stId: String, labelIds: String) {
+        val text = post(PATH_UPDATE, "stId=" + enc(stId) + "&labelId=" + enc(labelIds))
+        ensureOk(JSONObject(text), "改策略标签")
+    }
+
+    /** 账号下的一条策略（列表接口只给 stId / 名字 / 标签） */
+    data class StrategyRef(val stId: String, val name: String, val labelIds: String)
+
+    /**
+     * 列出账号下全部策略。
+     *
+     * 服务端把「所有策略」塞在 `data[0].member` 这个字符串化 JSON 里（没有分页语义，
+     * `pageNo/pageSize` 传什么都一样），所以这里逐层摊平。
+     */
+    fun listStrategies(): List<StrategyRef> {
+        val text = post(PATH_LIST, "pageNo=1&pageSize=50")
+        val root = JSONObject(text)
+        ensureOk(root, "查策略列表")
+        val out = ArrayList<StrategyRef>()
+        val data = root.optJSONArray("data") ?: return out
+        val addOne = { id: String, name: String, ids: String ->
+            if (id.isNotEmpty()) out.add(StrategyRef(id, name, ids))
+        }
+        for (i in 0 until data.length()) {
+            val d = data.optJSONObject(i) ?: continue
+            val member = d.optString("member")
+            if (member.isEmpty()) {
+                addOne(d.optString("stId"), d.optString("stName"), "")
+                continue
+            }
+            val arr = runCatching { org.json.JSONArray(member) }.getOrNull() ?: continue
+            for (j in 0 until arr.length()) {
+                val e = arr.optJSONObject(j) ?: continue
+                val labels = e.optJSONArray("labels")
+                val ids = ArrayList<String>()
+                if (labels != null) {
+                    for (k in 0 until labels.length()) {
+                        val l = labels.optJSONObject(k)?.optString("labelId").orEmpty()
+                        if (l.isNotEmpty()) ids.add(l)
+                    }
+                }
+                addOne(e.optString("stId"), e.optString("stName"), ids.joinToString(","))
+            }
+        }
+        return out
+    }
+
+    /**
+     * 清掉自己漏删的临时策略（名字带 [TEMP_PREFIX]，或早期版本留下的 `Z` + 8 位数字）。
+     *
+     * @return 删掉的条数
+     */
+    fun purgeLeftovers(): Int {
+        val list = runCatching { listStrategies() }.getOrElse {
+            GLog.w("组合取数：列策略失败，没法清理遗留临时策略", it)
+            return 0
+        }
+        var n = 0
+        for (s in list) {
+            val legacy = s.name.length == 9 && s.name[0] == 'Z' && s.name.drop(1).all { it.isDigit() }
+            if (!s.name.startsWith(TEMP_PREFIX) && !legacy) continue
+            if (runCatching { delete(s.stId) }.isSuccess) {
+                n++
+                GLog.i("组合取数：清掉漏删的临时策略 " + s.name + "（" + s.stId + "）")
+            }
+        }
+        return n
+    }
+
+    /**
+     * 建一条策略；名额满（code 4100）时先清掉自己漏删的临时策略再重试一次。
+     *
+     * 宿主账号最多 10 条策略，用户自己就能占满 —— 真机上出现过 24 个成员全部
+     * 「建策略被拒（code 4100）：策略数不能超过10个」，聚合页只剩本页那一只。
+     */
+    private fun createOrFreeSlot(name: String, labelIds: String): String {
+        try {
+            return create(name, labelIds)
+        } catch (e: Exception) {
+            if (e.message?.contains("4100") != true) throw e
+            GLog.w("组合取数：策略名额满了（" + msgOf(e) + "），先清自己漏删的临时策略")
+            val freed = purgeLeftovers()
+            if (freed <= 0) throw e
+            GLog.i("组合取数：清掉 " + freed + " 条，重试建临时策略")
+            return create(name, labelIds)
+        }
+    }
+
+    /**
+     * 一整轮聚合复用同一条临时策略：建一次、每格只换标签、结束删掉。
+     *
+     * 以前是「每个成员建一条 → 取数 → 删一条」，24 个成员就是 24 次建删；
+     * 名额一紧（用户自己占了 10 条）就整轮全废。现在任何时刻只占 1 个名额，
+     * 而且省掉 23 次建删的网络往返。
+     */
+    class TempSlot {
+        private var id = ""
+        private var lastLabels = ""
+
+        val stId: String get() = id
+
+        /** 第一次调用时建出来，之后原样返回；[combo] 只用来给新策略填初始标签 */
+        fun ensure(combo: Combo): String {
+            if (id.isNotEmpty()) return id
+            val name = TEMP_PREFIX + System.currentTimeMillis().toString().takeLast(6)
+            id = createOrFreeSlot(name, combo.bizLabelId)
+            lastLabels = combo.bizLabelId
+            GLog.i("组合取数：建了一条整轮复用的临时策略 " + name + "（" + id + "）")
+            return id
+        }
+
+        /** 把临时策略的标签换成 [combo] 的；标签没变就不发请求 */
+        fun apply(combo: Combo) {
+            if (id.isEmpty()) throw IOException("临时策略还没建出来")
+            if (combo.bizLabelId == lastLabels) return
+            update(id, combo.bizLabelId)
+            lastLabels = combo.bizLabelId
+        }
+
+        /** 删掉临时策略；可以重复调 */
+        fun release() {
+            val dead = id
+            id = ""
+            lastLabels = ""
+            if (dead.isEmpty()) return
+            runCatching { delete(dead) }.onFailure { GLog.w("组合取数：删临时策略失败 " + dead, it) }
+        }
+    }
+
     // ---- 传输 ----
 
     private fun post(path: String, biz: String): String {
@@ -186,7 +330,8 @@ object StrategyComboClient {
             conn.connectTimeout = CONNECT_TIMEOUT_MS
             conn.readTimeout = READ_TIMEOUT_MS
             conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            // 必须带 charset：不带时服务端按别的编码解 body，中文策略名会变成乱码（实测「量50」→「é50」）
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
             conn.setFixedLengthStreamingMode(bytes.size)
             conn.outputStream.use { it.write(bytes) }
             val code = conn.responseCode

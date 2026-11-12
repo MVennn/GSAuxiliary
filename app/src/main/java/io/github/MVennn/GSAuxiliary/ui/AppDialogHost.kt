@@ -242,9 +242,12 @@ internal fun DialogHost(
         ) && anchor == null
 
     // 进度：0 = 收起（初始态）、1 = 完全展开。
-    // `remember(spec)` 让每换一个弹窗都重新从 0 开始 —— 于是「入场」天然成立，
-    // 不会先按旧值画一帧再跳回去。
-    val progress = remember(spec) { Animatable(0f) }
+    //
+    // key 是 `controller.openSeq`（「第几次打开弹窗」），**不是 spec 对象**。
+    // 用 spec 当 key 时，多选菜单每点一次勾选都会重新下发一份新 spec（勾选状态变了），
+    // 于是缩放 + 渐显整段从 0 重播，用户看到的就是「点一下勾选就闪一下」。
+    // 换成一个只在「从关闭态打开」时自增的序号：刷新同一弹窗的内容不再重播入场。
+    val progress = remember(controller.openSeq) { Animatable(0f) }
 
     // 透明度进度：**独立于 progress 的第二条动画**（2.9.4）。
     //
@@ -254,21 +257,21 @@ internal fun DialogHost(
     // 但谁也不会把对方拽慢、打断或改写。
     // 贴底确认弹窗（重置）不走渐隐，起始值直接取 1，行为与 2.9.3 一致。
     val isMenu = spec is ChoiceDialogSpec || spec is MultiChoiceDialogSpec
-    val fade = remember(spec) { Animatable(if (isMenu) 0f else 1f) }
+    val fade = remember(controller.openSeq) { Animatable(if (isMenu) 0f else 1f) }
 
     // 锚定菜单的缩放原点：布局期按「卡片落在箭头上方还是下方」裁决
     // （resolveAnchorPlacement）写进来，绘制期读同一份值 —— 同一帧里布局先于绘制，
     // 首帧画出来的就是与位置配套的原点，不会闪错展开方向。
-    var menuOrigin by remember(spec) { mutableStateOf(TransformOrigin(1f, 0f)) }
+    var menuOrigin by remember(controller.openSeq) { mutableStateOf(TransformOrigin(1f, 0f)) }
 
-    LaunchedEffect(spec) {
+    LaunchedEffect(controller.openSeq) {
         // 入场曲线按形态分：锚定菜单走缩放（区间小，过冲可以给足），
         // 贴底弹窗走位移（区间是整卡高度，过冲必须压小）—— 见两条曲线的 KDoc。
         val enterEasing = if (isMenu) AppleMenuEnterEasing else AppleSheetEnterEasing
         progress.animateTo(1f, tween(DialogMillis, easing = enterEasing))
     }
     // 渐显：自己的一条协程，独立于上面的缩放动画
-    LaunchedEffect(spec) {
+    LaunchedEffect(controller.openSeq) {
         if (isMenu) fade.animateTo(1f, tween(DialogFadeMillis, easing = LinearOutSlowInEasing))
     }
     // 出场：缩放 1 → 0（锚定菜单缩回右缘中点 / 贴底弹窗向下滑走）+ 透明 1 → 0（仅锚定菜单），
