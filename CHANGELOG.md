@@ -5,6 +5,48 @@
 
 ---
 
+## [3.8.1] — 2026-11-12
+
+> 本版为补丁版本（3.8.0 → 3.8.1）：**没有新增功能**，修的是 3.8.0 上线后暴露的
+> 四个聚合 bug（吃本页策略 / 入口卡外显 / 标签叹号 / 表头与日涨跌幅）与三处稳态问题
+> （进位依据见 `docs/VERSIONING.md` §1）。
+
+### 修复 聚合组吃掉本页策略、入口卡外显、标签、表头（2026-11-12）
+
+- 修复 并集混入本页策略 —— `MergeRun.start()` 调 `absorbSeed(seed)` 时没有校验本页
+  `pageStId` 是否属于该组，点入口卡（stId 继承自被借用的策略卡）就把那条策略的 100 只
+  并进并集；targets 排除 `pageStId` 只影响取数、不阻止种子吸收。改为先判
+  `seedIsMember`，不是成员就打「本页不是组成员（stId=… name=…），不吃本页列表，直接按成员取」。
+  铁证：旧进程 18:02「起点 stId=1638385366824128512：本页 100 只（去重后 100，新增 100）」，
+  新进程同 stId 全为「不是组成员」、无「起点 stId」行。
+- 修复 入口卡外显等于被借用的策略 —— `cloneCard` 浅拷全部字段、只改 `name`，涨跌幅 / 龙头股 /
+  标签全是来源卡的。现在只写 id / name / tags，行情位留空（宿主渲染成 `--`）。
+- 修复 标签挂感叹号 —— `mergeTagsJson` 合成的元素只写 `labelName`、缺 `labelId`，宿主按无效标签
+  渲染。现在 `StrategyLabelTable.entryForDisplay` 反查档位补 `labelId`，跨档合成文本走 `spanEntry`
+  按区间相交选档。
+- 修复 页面上没有自建策略时聚合组不显示 —— 入口卡只能挂在现成策略卡上。新增
+  `decorateEmptyList`：宿主把列表收成「未发现内容」时自建一张入口卡（`ENTRY_FAKE_ID_BASE = "90"`），
+  并把 `rv` 恢复可见、`mTvNoData` 收起（两者同属 `mSrcollView` 子节点，藏滚动区会连列表一起藏）。
+- 修复 定格后「名称 / 最新价 / 涨跌幅」消失 —— 宿主换 `AIStkEmptyAdapter` 时把 ListView header 里的
+  `ll_top` 收成 GONE，并集装回后不自愈；新增 `restoreColTitle`（列表 0 只时不动），
+  `colTitleId` 用 `-1` 未查 / `-2`（`COL_TITLE_ABSENT`）这页没有 / 正数为真实 id 三态。
+- 修复 详情页「日涨跌幅」变 `--` —— 宿主算不出组合涨跌幅；新增 `mergedZdfText`（并集等权平均，
+  `%+.2f%%`）+ `writeMergedZdf`，红绿从涨 / 跌家数的 `textColors` 抄。
+- 调整 并集排序 —— `sortByPct` 按 `StrategyMergeTargets.pctOf` 降序（稳定排序），修「看着像各段拼接」。
+- 调整 标签区间合并 —— `mergeTagNames` 重写为「前缀 + 量纲」分组、相接才并；解析器支持
+  区间 / 单侧开区间 / 比较词 / 离散词四类写法，分隔符 `- — － ~ ～ 至`，金额跨量级同轴
+  （`TAG_UNIT_SCALE`），比较词只在没被别的档位接上时保留（`cmpSpans`）。
+- 修复 标签巡检每 800 毫秒重写 —— `writeCardTags` 拿 `want` 与卡上实际标签比，档位表查不到的
+  条目永远不等；改为按「实际写进 JSON 的名单」判等。
+- 修复 全跳过时把卡片标签写成空数组 —— `mergeTagsJson` 改为返回 `null`，调用方保持原样；
+  只有两处自造入口卡（`clearWhenEmpty = true`）才写 `[]`。
+- 修复 退出页面后延迟补写还在跑 —— `HEADER_RETRY_DELAYS` 三个 `postDelayed` 记进
+  `PageState.headerRetries`，`clearState` 里 `removeCallbacks`，回调首行判 `applied` 与 `run`。
+- 修复 找不到「日涨跌幅」节点时每跳扫树 —— `PageState.zdfNodeAbsent` 负缓存。
+- 测试 —— 326 条（新增跨档合成、区间相接、单位不同不并、比较词保留、空数组入口卡等），
+  常态断言「真实档位表每个维度的合成结果都能反查到档位」（parents=83 / shrunk=45 / cannotResolve=0）。
+- 文档 —— `docs/FEATURE-STRATEGY-MERGE.md` 新增 §29.7 / §29.8 / §30 / §30.4。
+
 ## [3.8.0] — 2026-11-12
 
 > 本版为次版本（3.7.0 → 3.8.0）：**有功能更新** —— 新增「我的策略聚合」，把几条自建策略
