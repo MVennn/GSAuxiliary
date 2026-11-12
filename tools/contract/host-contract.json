@@ -1491,6 +1491,12 @@
     {
       "kind": "class",
       "owner": "StrategyMergeTargets.kt",
+      "symbol": "CLS_EMPTY_ADAPTER",
+      "value": "com.guosen.quotation.adapter.aistk.AIStkEmptyAdapter"
+    },
+    {
+      "kind": "class",
+      "owner": "StrategyMergeTargets.kt",
       "symbol": "CLS_ENGINE_MODEL",
       "value": "com.guosen.engine.process.EngineModel"
     },
@@ -1631,6 +1637,72 @@
       "owner": "StrategyMergeTargets.kt",
       "symbol": "STOCK_CAM_FIELDS",
       "value": "m_codeAndMarket"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "changePercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "m_changePercent"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "m_pct"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "m_zdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "m_zdfRate"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "m_zf"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "pct"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "zdf"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "zdfRate"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "zf"
+    },
+    {
+      "kind": "id",
+      "owner": "StrategyMergeTargets.kt",
+      "symbol": "STOCK_PCT_FIELDS",
+      "value": "zfRate"
     },
     {
       "kind": "id",

@@ -80,6 +80,68 @@ class HostNetProbeFeature : Feature {
             GLog.i("网络探针：已挂 URL.openConnection ×" + k)
         }
         hookOutputStreamWrite(env, bag)
+        enableWebViewDebug(env)
+        hookWebViewLoadUrl(env, bag)
+    }
+
+    /**
+     * 打开 WebView 远程调试：宿主「标签选股」是服务端下发的 H5，选股请求由页面 JS 发出，
+     * 不走 java.net / HttpURLConnection，本地探针抓不到。把 devtools 通道打开后，
+     * PC 侧 `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` + CDP 的 Network 域
+     * 就能看到页面到底调了哪个接口 —— 这是「按标签直接查股票」的唯一取证途径。
+     *
+     * 只在诊断期打开；上线版本应删掉这一句（debug 通道会暴露页面的全部请求与 Cookie）。
+     */
+    private fun enableWebViewDebug(env: FeatureEnv) {
+        val r = runCatching {
+            val cls = env.classLoader.loadClass("android.webkit.WebView")
+            cls.getMethod("setWebContentsDebuggingEnabled", Boolean::class.javaPrimitiveType)
+                .invoke(null, true)
+        }
+        if (r.isSuccess) {
+            GLog.i("网络探针：WebView 调试已打开（devtools 通道可用）")
+        } else {
+            val e = r.exceptionOrNull()
+            GLog.w("网络探针：WebView 调试打开失败 → " + (e?.javaClass?.name ?: "?") + ": " + (e?.message ?: ""))
+        }
+    }
+
+    /**
+     * 抓 WebView 打开的 H5 地址。
+     *
+     * 宿主「标签选股」整页是服务端下发的 H5，页面 JS 发出的选股请求既不走 okhttp3
+     * 也不走 java.net（WebView 的 XHR 在 native 层），本地钩不到请求体。
+     * 但只要拿到页面地址，就能在 PC 上把它和它的 JS 包整份拉下来，
+     * 直接从 JS 里读出「按标签查股票」的真实 path 与参数名 —— 比 CDP 稳。
+     *
+     * 同一个地址只记一次，避免页面重载刷屏。
+     */
+    private fun hookWebViewLoadUrl(env: FeatureEnv, bag: HookBag) {
+        val cls = runCatching { Class.forName("android.webkit.WebView") }.getOrNull()
+        if (cls == null) {
+            GLog.w("网络探针：拿不到 android.webkit.WebView，跳过 loadUrl 钩子")
+            return
+        }
+        val seen = HashSet<String>()
+        var n = 0
+        for (m in Reflect.methodsNamed(cls, "loadUrl")) {
+            val ps = m.parameterTypes
+            if (ps.isEmpty() || ps[0] != String::class.java) continue
+            bag.add(
+                env.xposed.hook(m)
+                    .setId("hostnet:loadUrl:" + ps.size)
+                    .intercept { chain ->
+                        runCatching {
+                            val raw = chain.getArg(0) as? String ?: return@runCatching
+                            val hit = synchronized(seen) { seen.size < 40 && seen.add(raw) }
+                            if (hit) GLog.i("网络探针 WEBVIEW → " + raw)
+                        }
+                        chain.proceed()
+                    }
+            )
+            n++
+        }
+        GLog.i("网络探针：已挂 WebView.loadUrl ×" + n)
     }
 
     /**

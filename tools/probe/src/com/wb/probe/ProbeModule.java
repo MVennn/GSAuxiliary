@@ -57,7 +57,7 @@ import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
  *          自建命令要在哪一级截断」；
  *        - 钩 WebView#loadUrl —— 回答「价格页是否整页导航」。
  *
- *   v36  **我的策略（策略列表页）侦察**，服务新功能「智能选股 · 我的策略整合」：
+ *   v36  **我的策略（策略列表页）侦察**，服务新功能「智能选股 · 我的策略聚合」：
  *        - `AIStkStgListAct.onResume` 后 dump 页内实例字段、`#rv_ai_stg` 的
  *          adapter 全限定名与条目数；进页同时开 TCP 抓包窗口，拿「策略列表」接口；
  *        - 深挖 adapter 里所有集合字段 → 元素类全限定名 + 字段表（找策略 id / 条件标签）；
