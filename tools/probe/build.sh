@@ -52,7 +52,11 @@ fi
 
 PLATFORM="$(ls -d "$SDK"/platforms/android-* 2>/dev/null | sort -V | tail -1 || true)"
 [ -n "$PLATFORM" ] || { echo "[X] 找不到 platforms/android-*"; exit 1; }
-ANDROID_JAR="$PLATFORM/android.jar"
+# javac / d8 / aapt2 / apksigner 都是原生程序：/f/... 这种 MSYS 路径它们认不出
+# （症状是 "package android.app does not exist"），classpath 与工具目录必须先转 Windows 形式。
+BT="$(winpath "$BT")"
+ANDROID_JAR="$(winpath "$PLATFORM")/android.jar"
+PYTHON="$(winpath "$PYTHON")"
 
 [ -n "${JAVA_HOME:-}" ] || { echo "[X] 请设置 JAVA_HOME"; exit 1; }
 JAVA_BIN="$(winpath "$JAVA_HOME")/bin"

@@ -27,7 +27,7 @@ import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam;
 import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
 
 /**
- * GSProbe v33 —— 页面 / 点击链 / Intent 契约 / 明文 HTTP / WebView 桥侦察（现代 libxposed API 102 版）
+ * GSProbe v36 —— 页面 / 点击链 / Intent 契约 / 明文 HTTP / WebView 桥侦察 / 策略列表页数据源（现代 libxposed API 102 版）
  *
  * 历史:
  *   v18  自选判定 API 交叉验证（ZXManager dump + 20 只真值打分）
@@ -56,6 +56,13 @@ import io.github.libxposed.api.XposedModuleInterface.PackageReadyParam;
  *          AIStareWebView#parserMsg，打印命令原文 —— 回答「保存动作发什么命令、
  *          自建命令要在哪一级截断」；
  *        - 钩 WebView#loadUrl —— 回答「价格页是否整页导航」。
+ *
+ *   v36  **我的策略（策略列表页）侦察**，服务新功能「智能选股 · 我的策略整合」：
+ *        - `AIStkStgListAct.onResume` 后 dump 页内实例字段、`#rv_ai_stg` 的
+ *          adapter 全限定名与条目数；进页同时开 TCP 抓包窗口，拿「策略列表」接口；
+ *        - 深挖 adapter 里所有集合字段 → 元素类全限定名 + 字段表（找策略 id / 条件标签）；
+ *        - 打印 RecyclerView 前 3 个子 View 的 tag 与文本（item 模型常挂在 tag 上）；
+ *        - 策略详情页额外把页内 com.guosen 类型的成员对象再 dump 一层（找 presenter）。
  *
  * v19 新增钩子（全部是**框架类**，不需要预先知道任何业务类名）:
  *   1. Activity.startActivity / startActivityForResult
@@ -180,6 +187,7 @@ public class ProbeModule extends XposedModule {
         hookPageCreate();
         hookHttp();
         hookSocketIo();
+        hookStgAdapterData();
         hookLoginState();
         hookPrefsWrites();
         // 构造个股详情 Intent 需要自己 new 出这些数据类，先把可用构造器/字段摸清
@@ -191,6 +199,10 @@ public class ProbeModule extends XposedModule {
         // 策略详情页的列表适配器：要「真正移除被筛掉的股票」必须知道它的数据 API
         dumpClassMembers("com.guosen.commonui.adapter.BaseQuickAdapter");
         dumpClassMembers("com.guosen.quotation.adapter.aistk.AIStkAdapter");
+        // v40：详情页的取数层是 EngineModel 的子类，找它就能拿到「按 stId 取一页股票」的方法
+        dumpClassMembers("com.guosen.quotation.ui.aistk.AIStkStgDetailModel");
+        try { dumpAllMethods(Class.forName("com.guosen.quotation.ui.aistk.AIStkStgDetailModel", false, sCL)); } catch (Throwable t) { log("dumpAllMethods model 失败 " + t); }
+        dumpClassMembers("com.guosen.engine.process.EngineModel");
         // 列表数据项：判断「涨幅 / 跌幅」要读它的涨跌幅字段，字段名不能猜
         dumpClassMembers("com.guosen.android.quotes.data.StockInfo");
         // 通用弹窗：登出提示 / 各类提醒都走它，签名是写反净化钩子的前提
@@ -265,6 +277,305 @@ public class ProbeModule extends XposedModule {
             }
         } catch (Throwable t) {
             log("dumpClassMembers(" + name + ") 失败: " + t);
+        }
+    }
+
+    /** v39：列出一个类的**全部**声明方法（不按 get/set 过滤）—— 找「页内自己取数」的方法名 */
+    private void dumpAllMethods(Class<?> c) {
+        log("");
+        log("========== METHODS " + c.getName() + " ==========");
+        try {
+            Method[] ms = c.getDeclaredMethods();
+            for (Method m : ms) {
+                log("  M " + Modifier.toString(m.getModifiers()) + " "
+                        + m.getReturnType().getSimpleName() + " " + m.getName()
+                        + "(" + sig(m.getParameterTypes()) + ")");
+            }
+            log("  （共 " + ms.length + " 个）");
+        } catch (Throwable t) {
+            log("dumpAllMethods 失败 " + t);
+        }
+    }
+
+    /** v41：页内取数层（EngineModel 子类）—— 这时 m_model 已建，按运行时类挖「按 stId 取一页股票」的方法 */
+    private void dumpModelNow(Activity act) {
+        try {
+            Object model = getField(act, "m_model");
+            log("");
+            log("--- v41 MODEL 运行时类: " + (model == null ? "null" : model.getClass().getName()) + " ---");
+            if (model == null) return;
+            dumpFields("MODEL 实例字段", model);
+            dumpClassMembers(model.getClass().getName());
+            dumpAllMethodsDeep(model.getClass(), 4);
+            // v42：模型是**命令驱动**的 —— m_methodMap 的 key 就是全部可执行命令名，value 是具体方法
+            Object mm = getField(model, "m_methodMap");
+            if (mm instanceof java.util.Map) {
+                java.util.Map<?, ?> map = (java.util.Map<?, ?>) mm;
+                log("--- v42 METHOD-MAP 共 " + map.size() + " 条 ---");
+                for (java.util.Map.Entry<?, ?> e : map.entrySet()) {
+                    log("  CMD " + e.getKey() + " -> " + String.valueOf(e.getValue()));
+                }
+            }
+            runStgSwapExperiment(act);
+            Object biz = getField(model, "m_biz");
+            if (biz != null) {
+                log("--- v47 BIZ 运行时类: " + biz.getClass().getName() + " ---");
+                dumpFields("BIZ 实例字段", biz);
+                dumpClassMembers(biz.getClass().getName());
+                dumpAllMethodsDeep(biz.getClass(), 4);
+            }
+            Object stgObj = getField(model, "m_stg");
+            if (stgObj != null) {
+                log("--- v54 STRATEGY 实例字段: " + stgObj.getClass().getName() + " ---");
+                dumpFields("STRATEGY", stgObj);
+            }
+            Object ad = getField(act, "m_stkAdapter");
+            if (ad != null) {
+                log("--- v48 ADAPTER 运行时类: " + ad.getClass().getName() + " ---");
+                dumpFields("ADAPTER 实例字段", ad);
+                dumpClassMembers(ad.getClass().getName());
+            }
+            Object stkList = getField(model, "m_stkList");
+            if (stkList instanceof java.util.List && !((java.util.List<?>) stkList).isEmpty()) {
+                Object s0 = ((java.util.List<?>) stkList).get(0);
+                log("--- v47 STOCKINFO 元素类: " + s0.getClass().getName() + " ---");
+                dumpFields("STOCKINFO[0]", s0);
+            }
+        } catch (Throwable t) { log("  v41 model dump 失败 " + t); }
+    }
+
+    /** v44 实验：把 model.m_stg.id 换成另一条策略的 id，再走原生 biz 命令重取一次，看列表会不会整个换掉 */
+    private void runStgSwapExperiment(final Activity act) {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    Thread.sleep(2500);
+                    final Object model = getField(act, "m_model");
+                    if (model == null) { log("== v44 EXPORT model=null =="); return; }
+                    final Object stg = getField(model, "m_stg");
+                    if (stg == null) { log("== v44 EXPORT stg=null =="); return; }
+                    final String oldId = String.valueOf(getField(stg, "id"));
+                    final Object list1 = getField(model, "m_stkList");
+                    final java.util.ArrayList<Object> firstPage = new java.util.ArrayList<>();
+                    Object ad0 = getField(act, "m_stkAdapter");
+                    Object adData0 = ad0 == null ? null : getField(ad0, "data");
+                    if (adData0 instanceof java.util.List) for (Object o : (java.util.List<?>) adData0) firstPage.add(o);
+                    final int up1 = intOf(getField(model, "upNum"));
+                    final int dn1 = intOf(getField(model, "downNum"));
+                    final java.util.Map<Object, Object> pm1 = new java.util.LinkedHashMap<>();
+                    Object pmap0 = ad0 == null ? null : getField(ad0, "priceMap");
+                    if (pmap0 instanceof java.util.Map) pm1.putAll((java.util.Map<?, ?>) pmap0);
+                    log("== v44 EXPORT 起始 stId=" + oldId + " 列表=" + firstPage.size() + " ==");
+                    boolean ok = setField(stg, "id", "1569198903482388480");   // 50e：流通市值50-70亿 + 创新高20交易日
+                    log("== v44 EXPORT 改 id -> 1569198903482388480 ok=" + ok + " 现在 stId=" + getField(stg, "id") + " ==");
+                    Class<?> em = Class.forName("com.guosen.engine.process.EngineModel", false, sCL);
+                    final java.lang.reflect.Method cmd = em.getMethod("setBizCommand", String.class);
+                    final Object biz = getField(model, "m_biz");
+                    final java.lang.reflect.Method getStg = biz == null ? null : biz.getClass().getMethod("getStg");
+                    final java.lang.reflect.Method auto = biz == null ? null : biz.getClass().getMethod("autoRefresh");
+                    act.runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            try { cmd.invoke(model, "biz_type_for_cmd_biz_get_stg_data"); log("== v45 主线程 命令已发 =="); }
+                            catch (Throwable t) { log("== v45 命令失败 " + t + " =="); }
+                            try { if (getStg != null) { getStg.invoke(biz); log("== v45 主线程 biz.getStg() 已调 =="); } }
+                            catch (Throwable t) { log("== v45 getStg 失败 " + t + " =="); }
+                            try { if (auto != null) { Thread.sleep(600); auto.invoke(biz); log("== v45 主线程 biz.autoRefresh() 已调 =="); } }
+                            catch (Throwable t) { log("== v45 autoRefresh 失败 " + t + " =="); }
+                        }
+                    });
+                    Thread.sleep(3000);
+                    Object list = getField(model, "m_stkList");
+                    log("== v44 EXPORT 二次取数后 列表=" + sizeOf(list) + " upNum=" + getField(model, "upNum")
+                            + " downNum=" + getField(model, "downNum") + " stgName=" + getField(stg, "name") + " ==");
+                    if (list instanceof java.util.List && ((java.util.List<?>) list).size() > 0) {
+                        Object first = ((java.util.List<?>) list).get(0);
+                        log("== v44 EXPORT 首行 " + str(getField(first, "m_name")) + " " + str(getField(first, "m_code")) + " ==");
+                    }
+                    // v46：把两页并集写回 model.m_stkList，再走原生 showStg() 渲染 —— 验证「客户端聚合 + 原生渲染」这条路
+                    Object ad = getField(act, "m_stkAdapter");
+                    Object adData2 = ad == null ? null : getField(ad, "data");
+                    Object list2 = adData2 != null ? adData2 : getField(model, "m_stkList");
+                    java.util.LinkedHashMap<String, Object> uniq = new java.util.LinkedHashMap<>();
+                    for (Object o : firstPage) uniq.putIfAbsent(stockKey(o), o);
+                    int before = uniq.size();
+                    for (Object o : (java.util.List<?>) list2) uniq.putIfAbsent(stockKey(o), o);
+                    java.util.ArrayList<Object> merged = new java.util.ArrayList<>(uniq.values());
+                    log("== v46 并集 第一页=" + firstPage.size() + " 第二页=" + ((java.util.List<?>) list2).size()
+                            + " 去重后=" + merged.size() + "（第二页新增 " + (merged.size() - before) + "）==");
+                    setField(model, "m_stkList", merged);
+                    setField(model, "upNum", Integer.valueOf(up1 + intOf(getField(model, "upNum"))));
+                    setField(model, "downNum", Integer.valueOf(dn1 + intOf(getField(model, "downNum"))));
+                    setField(stg, "name", "聚合测试");
+                    final java.util.ArrayList<Object> mergedF = merged;
+                    act.runOnUiThread(new Runnable() {
+                        @Override public void run() {
+                            try {
+                                Object ad2 = getField(act, "m_stkAdapter");
+                                android.view.View lvView = findListWithHeader(act.getWindow().getDecorView());
+                                Object realAd = null;
+                                if (lvView != null) {
+                                    try {
+                                        Object hd = lvView.getClass().getMethod("getAdapter").invoke(lvView);
+                                        realAd = hd.getClass().getMethod("getWrappedAdapter").invoke(hd);
+                                        setField(realAd, "data", mergedF);
+                                        Object pmap2 = getField(realAd, "priceMap");
+                                        if (pmap2 instanceof java.util.Map) {
+                                            java.util.Map<Object, Object> pm = new java.util.LinkedHashMap<>((java.util.Map<?, ?>) pmap2);
+                                            pm.putAll(pm1);
+                                            setField(realAd, "priceMap", pm);
+                                        }
+                                        realAd.getClass().getMethod("notifyDataSetChanged").invoke(realAd);
+                                        log("== v53 真实适配器=" + realAd.getClass().getName() + " data=" + sizeOf(getField(realAd, "data"))
+                                                + " 与页面字段同对象=" + (realAd == ad2)
+                                                + " ListView n=" + ((Integer) lvView.getClass().getMethod("getCount").invoke(lvView)).intValue() + " ==");
+                                    } catch (Throwable t) { log("== v53 写回失败 " + t + " =="); }
+                                } else {
+                                    log("== v53 未找到带 Header 的 ListView ==");
+                                }
+                                android.view.View rv = findRvByAdapter(act.getWindow().getDecorView(), ad2);
+                                if (rv == null) rv = findRv(act.getWindow().getDecorView());
+                                Object rvAd = null; int rvItems = -1;
+                                if (rv != null) {
+                                    try { rvAd = rv.getClass().getMethod("getAdapter").invoke(rv); } catch (Throwable t) {}
+                                    if (rvAd != null) { try { rvItems = ((Integer) rvAd.getClass().getMethod("getItemCount").invoke(rvAd)).intValue(); } catch (Throwable t) {} }
+                                }
+                                log("== v50 RV=" + (rv == null ? "null" : rv.getClass().getName() + "@" + rv.getId() + " adapter=" + (rvAd == null ? "null" : rvAd.getClass().getName())
+                                        + " items=" + rvItems + " sameAsPageAdapter=" + (rvAd != null && rvAd == ad2)) + " ==");
+                                if (ad2 != null) {
+                                    setField(ad2, "data", mergedF);
+                                    Object pmap2 = getField(ad2, "priceMap");
+                                    if (pmap2 instanceof java.util.Map) {
+                                        java.util.Map<Object, Object> pm = new java.util.LinkedHashMap<>((java.util.Map<?, ?>) pmap2);
+                                        pm.putAll(pm1);
+                                        setField(ad2, "priceMap", pm);
+                                    }
+                                    log("== v51 写回前 adapter.data=" + sizeOf(getField(ad2, "data")) + " ==");
+                                    try {
+                                        ad2.getClass().getMethod("notifyDataSetChanged").invoke(ad2);
+                                        Object rvAd2 = rv == null ? null : rv.getClass().getMethod("getAdapter").invoke(rv);
+                                        log("== v50 notify ok items=" + (rvAd2 == null ? -1 : ((Integer) rvAd2.getClass().getMethod("getItemCount").invoke(rvAd2)).intValue()) + " ==");
+                                    } catch (Throwable t) { log("== v50 notify 失败 " + t + " =="); }
+                                }
+                                try { act.getClass().getMethod("showStg").invoke(act); log("== v50 showStg 已调 =="); }
+                                catch (Throwable t) { log("== v50 showStg 失败 " + t + " =="); }
+                            } catch (Throwable t) { log("== v50 UI 写回失败 " + t + " =="); }
+                        }
+                    });
+                    setField(stg, "id", oldId);
+                    log("== v44 EXPORT 已还原 stId=" + getField(stg, "id") + " ==");
+                } catch (Throwable t) { log("== v44 EXPORT 失败 " + t + " =="); }
+            }
+        }).start();
+    }
+
+    /** v51：在视图树里按类名找 RecyclerView（android.jar 里没有 androidx，只能反射） */
+    private android.view.View findRv(android.view.View v) {
+        String cn = v.getClass().getName();
+        if (cn.endsWith("RecyclerView")) return v;
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.view.View r = findRv(g.getChildAt(i));
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    /** v53：找 adapter 为 HeaderViewListAdapter 的 ListView */
+    private android.view.View findListWithHeader(android.view.View v) {
+        if (v.getClass().getName().endsWith("ListView")) {
+            try {
+                Object a = v.getClass().getMethod("getAdapter").invoke(v);
+                if (a != null && a.getClass().getName().endsWith("HeaderViewListAdapter")) return v;
+            } catch (Throwable t) { }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.view.View r = findListWithHeader(g.getChildAt(i));
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    /** v52：列出视图树里所有滚动列表及其 adapter 身份 */
+    private void dumpListViews(android.view.View v, int[] depth) {
+        String cn = v.getClass().getName();
+        String simple = cn.substring(cn.lastIndexOf('.') + 1);
+        boolean isList = cn.endsWith("RecyclerView") || cn.endsWith("ListView") || cn.endsWith("GridView") || cn.endsWith("ScrollView");
+        if (isList) {
+            Object ad = null; int n = -1;
+            try { ad = v.getClass().getMethod("getAdapter").invoke(v); } catch (Throwable t) { }
+            if (ad != null) {
+                try { n = ((Integer) ad.getClass().getMethod("getItemCount").invoke(ad)).intValue(); }
+                catch (Throwable t) { try { n = ((Integer) ad.getClass().getMethod("getCount").invoke(ad)).intValue(); } catch (Throwable t2) { } }
+            }
+            log("== v52 LIST " + simple + "@" + v.getId() + " adapter=" + (ad == null ? "null" : ad.getClass().getName()) + " n=" + n + " ==");
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) dumpListViews(g.getChildAt(i), depth);
+        }
+    }
+
+    /** v51：找 RecyclerView 且其 adapter 就是目标对象 */
+    private android.view.View findRvByAdapter(android.view.View v, Object target) {
+        if (v.getClass().getName().endsWith("RecyclerView")) {
+            try {
+                Object a = v.getClass().getMethod("getAdapter").invoke(v);
+                if (a != null && a == target) return v;
+            } catch (Throwable t) { }
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) {
+                android.view.View r = findRvByAdapter(g.getChildAt(i), target);
+                if (r != null) return r;
+            }
+        }
+        return null;
+    }
+
+    /** v46：股票的稳定去重键 —— 代码 + 市场 */
+    private static int intOf(Object o) { return o instanceof Integer ? (Integer) o : 0; }
+
+    private String stockKey(Object s) {
+        Object cam = getField(s, "codeAndMarket");
+        if (cam != null) return String.valueOf(cam);
+        String code = null;
+        for (String n : new String[]{"m_code", "code", "mCode", "m_stkCode", "mStkCode"}) {
+            Object v = getField(s, n);
+            if (v != null) { code = String.valueOf(v); break; }
+        }
+        String mkt = null;
+        for (String n : new String[]{"m_market", "mMarket", "mStkMarket", "m_stkMarket", "market"}) {
+            Object v = getField(s, n);
+            if (v != null) { mkt = String.valueOf(v); break; }
+        }
+        return code + "." + mkt;
+    }
+
+    /** v44：写实例字段 */
+    private boolean setField(Object obj, String name, Object value) {
+        try {
+            Field f = findField(obj.getClass(), name);
+            if (f == null) return false;
+            f.setAccessible(true);
+            f.set(obj, value);
+            return true;
+        } catch (Throwable t) { log("setField(" + name + ") 失败 " + t); return false; }
+    }
+
+    /** v41：沿父类链列全部方法（不按 get/set 过滤）—— 取数层类名不是 Engine 开头，简版过滤会漏 */
+    private void dumpAllMethodsDeep(Class<?> c, int depth) {
+        Class<?> t = c;
+        int i = 0;
+        while (t != null && t != Object.class && i < depth) {
+            dumpAllMethods(t);
+            t = t.getSuperclass();
+            i++;
         }
     }
 
@@ -611,6 +922,11 @@ public class ProbeModule extends XposedModule {
                                     scheduleSnap("MAIN", 16000);
                                 } else if (cn.endsWith(".AIStkStgDetailAct")) {
                                     scheduleSnap("STG", 2500);
+                                } else if (cn.endsWith(".AIStkStgListAct") && self instanceof Activity) {
+                                    // v36: 我的策略（策略列表页）。进页立刻开抓包窗口 ——
+                                    // 「策略列表」这条请求就在 onResume 之后马上发出。
+                                    openNetCapture("策略列表页");
+                                    scheduleStgList((Activity) self, 1800);
                                 }
                             } catch (Throwable t) {
                                 log("ACT hook err " + t);
@@ -635,6 +951,169 @@ public class ProbeModule extends XposedModule {
         }).start();
     }
 
+    // ============================================================ v36: 我的策略（策略列表页）
+
+    /** 打开 TCP 明文抓包窗口（v36 从详情页内联代码里抽出来，列表页复用） */
+    private void openNetCapture(String why) {
+        captureUntil = System.currentTimeMillis() + NET_CAPTURE_MS;
+        netChunks.set(0);
+        log("");
+        log("== NET CAPTURE 开窗 " + (NET_CAPTURE_MS / 1000) + "s（" + why + "）==");
+    }
+
+    /** 等列表渲染完再 dump（item 要等回包） */
+    private void scheduleStgList(final Activity act, final long delay) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try { Thread.sleep(delay); } catch (Throwable ignored) {}
+                try { dumpStgList(act); } catch (Throwable t) { log("stglist err " + t); }
+            }
+        }).start();
+    }
+
+    /**
+     * 我的策略（策略列表页）数据源侦察。
+     *
+     * 要回答三件事：
+     *   1. 列表控件 / 适配器的真实类名（换页面复用时要按类名认）；
+     *   2. 策略条目对象的字段表 —— 有没有能当「策略 id」用的字段（stId / strategyId …）；
+     *   3. 条目的条件标签文本从哪个字段来（「流通市值50-70亿」「创新高20交易日」）。
+     */
+    private void dumpStgList(Activity act) {
+        log("");
+        log("========== STG-LIST (v36) ==========");
+        try { dumpFields("AIStkStgListAct 实例字段", act); } catch (Throwable t) { log("  dumpFields 失败 " + t); }
+
+        View rv = viewById(act, "rv_ai_stg");
+        if (rv instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) rv;
+            log("  RV 类: " + rv.getClass().getName() + "  childCount=" + g.getChildCount());
+            Object ad = invoke0(rv, "getAdapter");
+            log("  ADAPTER 类: " + typeOf(ad) + "  条目数=" + countOf(ad));
+            if (ad != null) {
+                dumpClassMembers(ad.getClass().getName());
+                dumpCollectionFields("STG-LIST", ad);
+            }
+            dumpItemTags(g);
+        } else if (rv != null) {
+            log("  #rv_ai_stg 不是 ViewGroup: " + rv.getClass().getName());
+        }
+
+        // 兜底：id 改名时也能从「页里所有 RecyclerView」认出适配器
+        dumpPages(act, "STGLIST");
+    }
+
+    private View viewById(Activity act, String entry) {
+        try {
+            int id = act.getResources().getIdentifier(entry, "id", act.getPackageName());
+            if (id == 0) { log("  #" + entry + " 查不到 id（资源名不存在）"); return null; }
+            View v = act.findViewById(id);
+            log("  #" + entry + " -> " + typeOf(v) + " " + boundsOf(v));
+            return v;
+        } catch (Throwable t) {
+            log("  #" + entry + " 查找失败 " + t);
+            return null;
+        }
+    }
+
+    private static String boundsOf(View v) {
+        if (v == null) return "";
+        return "[" + v.getLeft() + "," + v.getTop() + "][" + v.getRight() + "," + v.getBottom()
+                + "] vis=" + v.getVisibility();
+    }
+
+    /** 打出对象（含父类）里所有集合字段的第一个元素：类名 + 字段表 + 成员签名 */
+    private void dumpCollectionFields(String label, Object obj) {
+        if (obj == null) return;
+        Class<?> c = obj.getClass();
+        int n = 0;
+        while (c != null && c != Object.class && n < 6) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(obj);
+                    if (!(v instanceof Collection)) continue;
+                    Collection<?> col = (Collection<?>) v;
+                    n++;
+                    log("  --- " + label + " 集合字段 " + f.getName() + " (" + typeOf(v)
+                            + ") size=" + col.size() + " ---");
+                    Object first = null;
+                    for (Object o : col) { first = o; break; }
+                    if (first == null) { log("    (空集合)"); continue; }
+                    log("    元素类: " + first.getClass().getName());
+                    dumpFields("元素[0] " + first.getClass().getSimpleName(), first);
+                    dumpClassMembers(first.getClass().getName());
+                } catch (Throwable t) {
+                    log("    集合字段 " + f.getName() + " 失败 " + t);
+                }
+            }
+            c = c.getSuperclass();
+        }
+        if (n == 0) log("  (" + label + " 没有集合字段)");
+    }
+
+    /** item 模型常挂在子 View 的 tag 上；顺带打可见文本，对照条件标签 */
+    private void dumpItemTags(ViewGroup rv) {
+        int n = Math.min(rv.getChildCount(), 3);
+        for (int i = 0; i < n; i++) {
+            View ch = rv.getChildAt(i);
+            log("  --- RV 子 View[" + i + "] " + ch.getClass().getName() + " " + boundsOf(ch) + " ---");
+            Object tag = ch.getTag();
+            if (tag == null) {
+                log("    tag: null");
+            } else {
+                log("    tag: " + tag.getClass().getName() + " = " + cut(summarizeValue(tag), 200));
+                if (tag.getClass().getName().startsWith("com.guosen")) {
+                    dumpFields("tag " + tag.getClass().getSimpleName(), tag);
+                    dumpClassMembers(tag.getClass().getName());
+                }
+            }
+            dumpTexts(ch, 0, new int[]{12});
+        }
+    }
+
+    private void dumpTexts(View v, int depth, int[] budget) {
+        if (v == null || depth > 6 || budget[0] <= 0) return;
+        if (v instanceof TextView) {
+            CharSequence t = ((TextView) v).getText();
+            budget[0]--;
+            log("    TXT #" + idName(v.getContext(), v.getId()) + " = "
+                    + cut(t == null ? "" : t.toString(), 40));
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount() && budget[0] > 0; i++) {
+                dumpTexts(g.getChildAt(i), depth + 1, budget);
+            }
+        }
+    }
+
+    /** 把对象里 com.guosen 类型的成员对象（非集合 / 非 Bundle）再 dump 一层 */
+    private void dumpHostSubObjects(String label, Object obj) {
+        if (obj == null) return;
+        int n = 0;
+        Class<?> c = obj.getClass();
+        while (c != null && c != Object.class && n < 8) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(obj);
+                    if (v == null) continue;
+                    String vc = v.getClass().getName();
+                    if (!vc.startsWith("com.guosen")) continue;
+                    if (v instanceof Collection || v instanceof Map || v instanceof Bundle) continue;
+                    n++;
+                    log("  --- " + label + " 子对象 " + f.getName() + " : " + vc + " ---");
+                    dumpFields(f.getName(), v);
+                } catch (Throwable ignored) {}
+            }
+            c = c.getSuperclass();
+        }
+        if (n == 0) log("  (" + label + " 没有 com.guosen 成员对象)");
+    }
     // ============================================================ v19: 页面跳转 / Intent 契约
 
     /**
@@ -773,12 +1252,16 @@ public class ProbeModule extends XposedModule {
             log("  dumpFields 失败 " + t);
         }
 
+        // v36: 详情页的 presenter / 数据源都在页内成员对象上，再深挖一层
+        if (!isQuote) {
+            try { dumpHostSubObjects("STG-DETAIL", act); } catch (Throwable t) { log("  dumpHostSubObjects 失败 " + t); }
+            try { dumpAllMethods(act.getClass()); } catch (Throwable t) { log("  dumpAllMethods 失败 " + t); }
+            // v41：m_model 在 onCreate 时还是 null，稍后再取（见 scheduleViewDump 里的 dumpModelNow）
+        }
+
         // 等界面渲染完再 dump 视图树
         if (isStg) {
-            captureUntil = System.currentTimeMillis() + NET_CAPTURE_MS;
-            netChunks.set(0);
-            log("");
-            log("== NET CAPTURE 开窗 " + (NET_CAPTURE_MS / 1000) + "s（策略详情页）==");
+            openNetCapture("策略详情页");
         }
         scheduleViewDump(act, isQuote ? "QUOTE" : "STG", 1200);
         scheduleViewDump(act, isQuote ? "QUOTE" : "STG", 3500);
@@ -794,6 +1277,7 @@ public class ProbeModule extends XposedModule {
                     log("---------- VIEW[" + tag + "] +" + delay + "ms ----------");
                     dumpPages(act, tag);
                     dumpClickableViews("VW", act.getWindow().getDecorView(), act);
+                    if ("STG".equals(tag) && delay >= 3000) dumpModelNow(act);
                 } catch (Throwable t) {
                     log("view dump err " + t);
                 }
@@ -1189,9 +1673,58 @@ public class ProbeModule extends XposedModule {
     private volatile long captureUntil = 0L;
 
     private final Set<String> hookedStreams = new HashSet<>();
+    /** v37：每个接口只打一次调用栈，用来找「发请求的那一层」方法签名 */
+    private final Set<String> netStacks = new HashSet<>();
     private final Set<String> seenPeers = new HashSet<>();
     private final java.util.concurrent.atomic.AtomicInteger netChunks =
             new java.util.concurrent.atomic.AtomicInteger();
+
+    /** v39：抓「服务端结果装进适配器」的那一层 —— 参数就是解析好的股票列表，调用栈就是取数方法 */
+    private void hookStgAdapterData() {
+        try {
+            Class<?> bq = Class.forName("com.guosen.commonui.adapter.BaseQuickAdapter", false, sCL);
+            int n = 0;
+            for (final Method m : bq.getDeclaredMethods()) {
+                if (!m.getName().equals("setNewData")) continue;
+                Class<?>[] ps = m.getParameterTypes();
+                if (ps.length != 1 || !java.util.List.class.isAssignableFrom(ps[0])) continue;
+                m.setAccessible(true);
+                hook(m).setId("probe:adapter:setNewData").intercept(new XposedInterface.Hooker() {
+                    @Override
+                    public Object intercept(XposedInterface.Chain chain) throws Throwable {
+                        try {
+                            Object self = chain.getThisObject();
+                            String cn = self == null ? "?" : self.getClass().getName();
+                            if (cn.contains("AIStkAdapter")) {
+                                Object arg = chain.getArg(0);
+                                int sz = (arg instanceof java.util.List) ? ((java.util.List<?>) arg).size() : -1;
+                                log("");
+                                log("== ADAPTER-DATA setNewData size=" + sz + " @" + cn + " ==");
+                                if (arg instanceof java.util.List && !((java.util.List<?>) arg).isEmpty()) {
+                                    dumpFields("ADAPTER-DATA 元素[0]", ((java.util.List<?>) arg).get(0));
+                                }
+                                StackTraceElement[] st = Thread.currentThread().getStackTrace();
+                                int shown = 0;
+                                for (int i = 2; i < st.length && shown < 14; i++) {
+                                    String c2 = st[i].getClassName();
+                                    if (c2.startsWith("com.wb.probe") || c2.startsWith("java.lang.Thread")) continue;
+                                    log("    at " + c2 + "#" + st[i].getMethodName() + ":" + st[i].getLineNumber());
+                                    shown++;
+                                }
+                            }
+                        } catch (Throwable t) {
+                            log("ADAPTER-DATA 回调异常 " + t);
+                        }
+                        return chain.proceed();
+                    }
+                });
+                n++;
+            }
+            log("已挂 AIStkAdapter 装数据点 ×" + n);
+        } catch (Throwable t) {
+            log("hookStgAdapterData 失败 " + t);
+        }
+    }
 
     private void hookSocketIo() {
         try {
@@ -1314,6 +1847,16 @@ public class ProbeModule extends XposedModule {
                                             dumpChunk(false, (byte[]) a[0],
                                                     (Integer) a[1], (Integer) a[2]);
                                         }
+                                        // v38：合并实验 —— 把详情请求的 stId 改写成「原 id,第二个 id」，
+                                        // 看服务端认不认多 id（这是「原生页直接吃聚合结果」能否成立的关键一问）
+                                        Object[] a2 = chain.getArgs().toArray();
+                                        byte[] patched = maybePatchDetail(a2);
+                                        if (patched != null) {
+                                            a2[0] = patched;
+                                            a2[1] = 0;
+                                            a2[2] = patched.length;
+                                            return chain.proceed(a2);
+                                        }
                                     } catch (Throwable ignored) {
                                     }
                                     return chain.proceed();
@@ -1356,10 +1899,84 @@ public class ProbeModule extends XposedModule {
             hex.append(String.format("%02x", b));
             asc.append(b >= 32 && b < 127 ? (char) b : '.');
         }
+        if (!read) {
+            String a0 = asc.toString();
+            if (a0.contains("queryStrategyQuoteDetail/1.0")) logNetStack("DETAIL", a0);
+            else if (a0.contains("queryStrategyQuote/1.0")) logNetStack("LIST", a0);
+        }
         log((read ? "NET-R " : "NET-W ") + "len=" + len
                 + (len > n ? "(截断到" + n + ")" : ""));
         log("  " + hex);
         log("  " + asc);
+    }
+
+    /** v38 合并实验用：要追加的第二个策略 id（50e，流通市值50-70亿 + 创新高20交易日） */
+    private static final String MERGE_EXTRA_ID = "";   // v39 起默认关闭：留空 = 不改写
+
+    /**
+     * v38：把「策略详情取数」请求体里的 stId 改成「原 id,第二个 id」。
+     *
+     * 为什么要动这一层：详情页只收一个 stId，若服务端其实支持逗号多 id（列表页的
+     * queryStrategyQuote 就是 8 个 id 逗号连写），那聚合功能可以完全不碰业务代码 ——
+     * 只要在发出去之前把参数拼成一组 id，原生页自己就会把并集渲染出来。
+     * 返回 null 表示这条不是目标请求，原样放行。
+     */
+    private byte[] maybePatchDetail(Object[] args) {
+        if (args == null || args.length < 3 || !(args[0] instanceof byte[])) return null;
+        byte[] buf = (byte[]) args[0];
+        int off = (Integer) args[1];
+        int len = (Integer) args[2];
+        if (len < 40) return null;
+        String s = new String(buf, off, len, java.nio.charset.StandardCharsets.ISO_8859_1);
+        if (!s.startsWith("POST ") || !s.contains("queryStrategyQuoteDetail/1.0")) return null;
+        int at = s.indexOf("stId=");
+        if (at < 0) return null;
+        int end = s.indexOf('&', at);
+        if (end < 0) return null;
+        String oldId = s.substring(at + 5, end);
+        if (MERGE_EXTRA_ID.isEmpty()) return null;   // 实验开关关着
+        if (oldId.contains(",")) return null;   // 已经改过就别重复改
+        String newId = oldId + "," + MERGE_EXTRA_ID;
+        String patched = s.substring(0, at + 5) + newId + s.substring(end);
+        // Content-Length 同步改：多出来的是「,1569198903482388480」这 20 个字符
+        int clAt = patched.indexOf("Content-Length: ");
+        if (clAt >= 0) {
+            int clEnd = patched.indexOf("\r\n", clAt);
+            String num = patched.substring(clAt + 16, clEnd);
+            try {
+                int nu = Integer.parseInt(num.trim()) + (newId.length() - oldId.length());
+                patched = patched.substring(0, clAt + 16) + nu + patched.substring(clEnd);
+            } catch (Throwable ignored) {
+            }
+        }
+        log("");
+        log("== MERGE-PATCH 详情请求 stId: " + oldId + " → " + newId + " ==");
+        return patched.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+    }
+
+    /** v37：抓「发请求那一层」的调用栈 —— 只为拿到 API 方法签名（闭包/回写 stId 都要它） */
+    private void logNetStack(String tag, String payload) {
+        try {
+            synchronized (netStacks) {
+                if (!netStacks.add(tag)) return;
+            }
+            log("");
+            log("== NET-STACK " + tag + " ==");
+            StackTraceElement[] st = Thread.currentThread().getStackTrace();
+            int shown = 0;
+            for (int i = 2; i < st.length && shown < 26; i++) {
+                String c = st[i].getClassName();
+                if (c.startsWith("com.wb.probe") || c.startsWith("java.lang.Thread")) continue;
+                if (c.startsWith("com.android.org.conscrypt")) continue;
+                log("    at " + c + "#" + st[i].getMethodName() + ":" + st[i].getLineNumber());
+                shown++;
+                if (c.startsWith("com.guosen") && !st[i].getMethodName().startsWith("access$")) {
+                    // 继续往下打几条，业务层通常连着两三层
+                }
+            }
+            log("");
+        } catch (Throwable ignored) {
+        }
     }
 
     // ============================================================ 通用钩子工具
