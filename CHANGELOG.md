@@ -2338,7 +2338,7 @@ DOC-RULES.md（文档规则）、MAINTENANCE.md（大扫除流程）与 UI-HISTO
 1. **`window.navigationBarColor` = 取到的颜色** —— 那一块是 `DecorView` 按它填的；
 2. **关掉 `navigationBarContrastEnforced`**（API 29+）—— 系统为保证横杠看得见会在
    透明导航条上叠一层半透明遮罩，「观感生硬」的一半来自这里
-   （模块自己的设置界面在 2.5.0 踩过同一个坑，见 `docs/UI.md` §11.1）；
+   （模块自己的设置界面在 2.5.0 踩过同一个坑，见 `docs/UI-HISTORY.md` §11.1）；
 3. **按填进去的颜色设 `appearanceLightNavigationBars`** —— 关掉遮罩后横杠画深色还是
    浅色全由它决定，不设就会出现「白横杠压在白底上」。判据是**填进去的颜色**的亮度，
    不是系统深色开关（App 内强制深色的组合下这两者会不一致）。
@@ -4176,7 +4176,7 @@ LinearLayout #ll_main_tab [0,2100][1080,2205]
   `SystemBarStyle.auto(...)` 其 `nightMode` 是 `MODE_NIGHT_AUTO`，androidx 的
   `EdgeToEdgeApi29.setUp` 遇到这个值会执行
   `window.navigationBarContrastEnforced = true`，系统随即在透明的导航栏上叠一层
-  半透明遮罩。已在主题层与代码层双重关掉（详见 `docs/UI.md` §11）。
+  半透明遮罩。已在主题层与代码层双重关掉（详见 `docs/UI-HISTORY.md` §11 与 `docs/FEATURE-NAV-BAR.md` §2）。
 - **切换深色 / 浅色是硬切，没有过渡**：Miuix 的 `Colors` 有 53 个字段且 setter 是
   `internal`，外部无法逐字段插值。改为「旧配色整屏盖一层 → 320ms 淡出」。
 - **Dock 形态切换是生硬跳变**：两种底栏之间加 `AnimatedContent` 交叉淡变；
