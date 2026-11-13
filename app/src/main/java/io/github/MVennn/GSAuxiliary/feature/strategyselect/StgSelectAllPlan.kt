@@ -142,14 +142,21 @@ internal object StgSelectAllPlan {
      *
      * 所以判据只能是「屏幕勾着的就是用户要的」：
      *  - [selected] 为空：不动（用户一只都没选，改写没有意义）；
-     *  - [hostCodes] 为 null：要改（宿主没带票，聚合态就是这样）；
-     *  - 长度不同：要改（按位置配对已经错了）；
+     *  - [hostCodes] 为 null / 空：要改（宿主没带票，聚合态就是这样）；
+     *  - 长度不同：**只有 [screenWins] 时**才改 —— 见下；
      *  - 逐项归一化后全部相同：不改（宿主本来就对，别动它的原始格式，比如带市场后缀）。
+     *
+     * [screenWins] 是 2026-11-13 加的第二道闸（回归修复）：长度不等**不能无条件覆盖**。
+     * 普通详情页上宿主读的是它自己那份**全量** model，屏外还勾着票时，长度天然比屏幕
+     * 子集长；一律按屏幕覆盖会把屏外那批票悄悄丢掉（3.5.2 修的只是「同长度取错票」，
+     * 从来没说过要裁长度）。只有这两种页面「屏幕 = 权威」：
+     *  - 聚合生效（[screenWins] 由 StrategyMergeBridge 判定）：宿主 m_stkList 是空的；
+     *  - 筛选生效（[screenWins] 由过滤代理判定）：宿主按全量下标取票，位置已被压缩。
      */
-    fun needsGroupFix(hostCodes: Array<String>?, selected: Array<String>): Boolean {
+    fun needsGroupFix(hostCodes: Array<String>?, selected: Array<String>, screenWins: Boolean): Boolean {
         if (selected.isEmpty()) return false
-        if (hostCodes == null) return true
-        if (hostCodes.size != selected.size) return true
+        if (hostCodes == null || hostCodes.isEmpty()) return true
+        if (hostCodes.size != selected.size) return screenWins
         for (i in selected.indices) {
             if (normalizeCode(hostCodes[i]) != normalizeCode(selected[i])) return true
         }

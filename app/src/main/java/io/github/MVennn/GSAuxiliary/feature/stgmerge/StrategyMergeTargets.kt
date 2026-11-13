@@ -447,6 +447,34 @@ object StrategyMergeTargets {
         return if (got == 0) null else up to down
     }
 
+    /** 家数采用「按并集重数」 */
+    const val TIER_COUNT = 0
+
+    /** 家数采用「沿上次缓存」 */
+    const val TIER_CACHE = 1
+
+    /** 家数采用「成员累加」（兜底，重叠时会偏大） */
+    const val TIER_SUM = 2
+
+    /** 重数可信比例：并集里能读出涨跌幅的行占比到这条线才认重数 */
+    private const val COUNT_TRUST_RATIO = 0.8
+
+    /**
+     * 家数该采用哪一档 —— **重数优先**（2026-11-13 真机核对后定）。
+     *
+     * 并集每一行都自带涨跌幅，重数天然与屏幕上这 N 只对得上；成员之间有重叠时
+     * 累加值一定偏大（真机抓到并集 778 只、头部写「涨 581 / 跌 259」，就是 24 个成员
+     * 各自服务端家数相加）。所以只在「一行涨跌幅都读不出」时才退回缓存与累加。
+     */
+    fun countTier(mergedSize: Int, counted: Pair<Int, Int>?, sameAsCached: Boolean): Int {
+        if (counted != null && mergedSize > 0 &&
+            counted.first + counted.second >= mergedSize * COUNT_TRUST_RATIO
+        ) {
+            return TIER_COUNT
+        }
+        return if (sameAsCached) TIER_CACHE else TIER_SUM
+    }
+
     /**
      * 宿主 model 上的标签文本（`m_tagList` 里每个 Tag 的 tagName）。
      *

@@ -148,6 +148,17 @@ internal object SnapSelection {
         val raw = runCatching { field.get(activity) as? List<*> }.getOrNull() ?: return null
         val codes = raw.mapNotNull { e -> e?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
         if (codes.isEmpty()) return null
+        // 模型和底部「已选 N」对不上 = 这份 List 是上一批的残值 / 还没删完（聚合页尤其常见：
+        // 聚合换 data 之后宿主那份 checkCodes 不会跟着变）。拿残值判勾选会把「没勾」判成「已勾」，
+        // 截出来的就是用户没选的票 —— 那比读不到更坏，所以直接退回 checked states。
+        val hostCount = readBottomCount(activity)
+        if (!StgSelectAllPlan.modelTrusted(codes, hostCount)) {
+            GLog.w(
+                "截图并添加：宿主模型 ${StgSelectAllTargets.MODEL_FIELD}=${codes.size} 项与底部计数=$hostCount 对不上，" +
+                    "按 checked states 判",
+            )
+            return null
+        }
         val rowCodes = ArrayList<String?>(total)
         for (i in 0 until total) {
             val item = runCatching { adapter.getItem(i) }.getOrNull()

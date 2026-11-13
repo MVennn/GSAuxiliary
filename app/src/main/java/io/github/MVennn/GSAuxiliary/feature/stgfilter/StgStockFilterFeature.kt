@@ -26,6 +26,8 @@ import io.github.MVennn.GSAuxiliary.feature.filter.PercentTimeline
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowChecked
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowSelection
 import io.github.MVennn.GSAuxiliary.feature.watchlist.ZxWatchlist
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.reflect.Field
@@ -848,6 +850,62 @@ class StgStockFilterFeature : Feature {
         return true
     }
 
+    // ── 勾选态按代码迁移（2026-11-13）──────────────────────────────────────
+    //
+    // 背景：`AbsListView.mCheckStates` 是按**适配器位置**存的，而代理只换 `indices`
+    // （子集 ↔ 全量），行数一变位置 i 上就是另一只票。不迁移的话「先筛一下再勾几只」
+    // 的勾选会落在别的行 —— 用户看到的就是「筛选不准 / 确认添加加错票」。
+    // 聚合页每轮把并集写回 data 再 notify（StrategyMergeFeature.reapplyIfNeeded 里那句
+    // 「再喊一次 notify」），行集合变化比平时更勤，这条被放大的就是这个时差。
+    //
+    // 口径：**按代码迁移，不按位置**；任何一行读不出代码就整体放弃 —— 迁移错的勾选
+    // 比不迁移更坏（会真的把错票加进分组）。
+
+    /**
+     * 多选态下把「勾着哪几只」按代码读出来；读不全 / 非多选态返回 null（= 不要迁移）。
+     *
+     * 读写循环在 [StgRowChecked]（三边功能共用同一份，口径见那里的注释）——
+     * 这里只负责「子集下标 → 第几行是哪只票」，因为字段解析与缓存是筛选自家的。
+     */
+    private fun checkedKeysOf(
+        lv: ListView,
+        adapter: android.widget.ListAdapter,
+        base: Any,
+        rows: IntArray?,
+    ): Set<String>? = StgRowChecked.keysOf(lv, adapter.count) { i -> camOfRow(base, rows, i) }
+
+    /** 按代码把勾选态对齐到新坐标；返回改动行数（口径见 [StgRowChecked.applyChecked]）。 */
+    private fun restoreCheckedKeys(
+        lv: ListView,
+        base: Any,
+        rows: IntArray,
+        keys: Set<String>,
+    ): Int = StgRowChecked.applyChecked(lv, rows.size, keys) { i -> camOfRow(base, rows, i) }
+
+    /**
+     * 第 [position] 行（**子集坐标**）的「代码.市场」；读不出返回 null（调用方据此放弃迁移）。
+     *
+     * ## 为什么不能直接问代理
+     *
+     * 迁移挂在 `notifyDataSetChanged` 的前置钩子上，而那个时刻很可能正处在
+     * [StgFilterBridge.runWithRemapBypassed] 的旁路帧里（行点击 wrapper 靠它让宿主的
+     * `onItemClick` 拿到全量坐标）。旁路帧里的 [FilteredAdapter.getItem] 会把 position
+     * 当**全量**下标解释，而我们这里的 position 是**子集**下标 —— 直接问代理就会读到
+     * 全量同下标的另一只票，迁移一跑就把勾选写到错行（2026-11-13 实测的「聚合页上
+     * 点一下行勾就跳票」，见 docs/FEATURE-STG-FILTER.md 那一节）。
+     *
+     * 所以有 [rows] 表时一律 `base.getItem(rows[position])`：base 是宿主原适配器，
+     * 它的下标就是全量下标，与 [rows] 同一套坐标，绕开代理这层解释歧义。
+     *
+     * @param rows 子集下标表；null = 当前坐标就是全量（首次筛 / 代理被顶掉）
+     */
+    private fun camOfRow(base: Any?, rows: IntArray?, position: Int): String? {
+        if (base == null) return null
+        val index = if (rows != null) rows.getOrNull(position) ?: return null else position
+        val item = itemAt(base, index) ?: return null
+        return codeAndMarket(item, fieldsOf(item.javaClass))
+    }
+
     private fun applyFilter(env: FeatureEnv, adapter: Any, notify: Boolean) {
         if (filtering.get() == true) {
             // 见 [filtering]：这一层是我们自己 setAdapter 触发的嵌套调用，放行
@@ -1009,6 +1067,13 @@ class StgStockFilterFeature : Feature {
         // 下标表与结果一起替换（点击回映射读的是这一份，不能出现「新结果 + 旧下标」）
         st.snap = Snapshot(keep, rows)
 
+        // 换/更新代理之前先把「勾着哪几只」按代码记下来（见 [checkedKeysOf]）。
+        // 读的是**现在挂在列表上**的那个适配器：是代理就配它那一份旧下标表，
+        // 不是代理（首次筛 / 被宿主顶掉）时列表上是全量，位置就是全量下标。
+        val liveOld = (unwrapHeaderAdapter(lv.adapter) as? android.widget.ListAdapter) ?: base
+        val oldRows = if (proxy != null && liveOld === proxy) snap?.keptIndices else null
+        val checkedBefore = checkedKeysOf(lv, liveOld, base, oldRows)
+
         if (proxy == null) {
             val p = FilteredAdapter(base, rows)
             st.proxy = p
@@ -1030,6 +1095,26 @@ class StgStockFilterFeature : Feature {
                 }.onFailure { GLog.w("筛选股票：重装过滤代理失败", it) }
             }
         }
+
+        // 装完按**代码**把勾选态搬回新坐标（2026-11-13：行集合变过就没法按位置对）。
+        // 只在多选态、且旧勾选读得全的时候做；一行读不出就整趟不动。
+        if (checkedBefore != null && checkedBefore.isNotEmpty()) {
+            val liveNew = unwrapHeaderAdapter(lv.adapter)
+            if (liveNew != null && liveNew === st.proxy) {
+                val moved = runCatching { restoreCheckedKeys(lv, base, rows, checkedBefore) }.getOrDefault(0)
+                if (moved > 0) {
+                    GLog.i("筛选股票：勾选态按代码迁移 $moved 行（勾着 ${checkedBefore.size} 只，筛后 ${keep.size} 行）")
+                }
+            } else {
+                // 没有下标表就没法把「子集第 i 行」翻译回全量项，硬搬只会搬错
+                GLog.w("筛选股票：勾选态未迁移 —— 列表上挂的不是我们的代理（缺下标表）")
+            }
+        }
+        // 迁移完把结论发到跨功能通道：聚合的写回、截图并添加、确认添加都靠它对齐
+        // （勾着 0 只时这一步会把旧快照撤回，别让下游拿上一轮的结论当真）。
+        StgRowSelection.publish(lv, checkedBefore)
+        // 行集合换了 = 批量循环里记下的下标全部作废，见 StgRowSelection.rowEpoch
+        StgRowSelection.bumpRowEpoch()
 
         // 只有过滤代理**确实挂在列表上**时才发布下标表。
         // 发布了下标表却没有代理时，列表上还是全量数据，而「全选」会按这张表

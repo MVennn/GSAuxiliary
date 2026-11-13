@@ -20,6 +20,8 @@ import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
+import io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeBridge
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowSelection
 import io.github.MVennn.GSAuxiliary.util.Density
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.ref.WeakReference
@@ -470,7 +472,24 @@ class StgSelectAllFeature : Feature {
         val markets = intent.getStringArrayExtra(GROUP_EXTRA_MARKETS)
         // codes 对得上也要看 markets：宿主按位置配对，长度不符时市场会串位。
         val marketsBroken = markets != null && markets.size != s.codes.size
-        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes) && !marketsBroken) return
+        // 这一页的坐标谁是权威（2026-11-13 回归修复）：长度不等时**不能无条件按屏幕裁**。
+        //  - 聚合页：宿主那份 m_stkList 是空的，它按位置根本组不出票 → 屏幕必赢；
+        //  - 筛选态：宿主按全量下标取票，位置已被压缩 → 屏幕必赢；
+        //  - 普通详情页：宿主读的是它自己那份全量 model，屏外可能还勾着票 → 不能裁。
+        val filteredPage = isFilterProxy(unwrapHeaderAdapter(lv.adapter))
+        val mergedPage = findActivity(lv)?.let { StrategyMergeBridge.isFor(it) } == true
+        val screenWins = mergedPage || filteredPage
+        val pageKind = when {
+            mergedPage && filteredPage -> "聚合页+筛选态"
+            mergedPage -> "聚合页"
+            filteredPage -> "筛选态"
+            else -> "全量页"
+        }
+        GLog.i(
+            "策略全选：提交包核对（" + pageKind + "，宿主 " + (codes?.size ?: 0) + " 只 / 屏幕 " +
+                s.codes.size + " 只）",
+        )
+        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes, screenWins) && !marketsBroken) return
         GLog.i(
             "策略全选：确认添加的提交代码已按屏幕勾选校正（" + s.codes.size + " 只，" +
                 (if (codes == null) "宿主包里没有 codes" else "原 " + codes.size + " 只") + "）",
@@ -1068,6 +1087,15 @@ class StgSelectAllFeature : Feature {
         /** 本轮开始时宿主选中模型（`checkCodes`）的快照；读不到 = null */
         var hostCodes: List<String>? = null
 
+        /**
+         * 本轮开始时的行集合版本号（见 [StgRowSelection.rowEpoch]）。
+         *
+         * 与 [full] 互补：筛选态靠下标表就能发现「第 i 行换了票」；**没有下标表**
+         * （全量页 / 聚合页）时上面那条校验是空的，而聚合每轮把并集写回 data、
+         * 行顺序可能整体变了 —— 这时必须重开一轮，否则接着点下去点的是另一批票。
+         */
+        var rowEpoch = 0
+
         /** 本轮 / 累计的点击失败次数（异常或没被接住），只用于日志与显示刷新的保守判断 */
         var failedThisRound = 0
         var failedTotal = 0
@@ -1083,6 +1111,7 @@ class StgSelectAllFeature : Feature {
             cursor = 0
             hostCount = shot.hostCount
             hostCodes = shot.hostCodes
+            rowEpoch = StgRowSelection.rowEpoch()
             failedThisRound = 0
             round++
         }
@@ -1502,6 +1531,15 @@ class StgSelectAllFeature : Feature {
                 scheduleNextRound(env, run, 0)
                 return RowOutcome.Restart
             }
+        } else if (StgRowSelection.rowEpoch() != run.rowEpoch) {
+            // 没有下标表就上面那条管不着：聚合把并集写回 data（行顺序整体变）时
+            // 「第 i 行」已经换成别的票，接着点就是给错票打勾。
+            GLog.i(
+                "策略全选：行集合在运行中变了（rowEpoch ${run.rowEpoch} → ${StgRowSelection.rowEpoch()}），" +
+                    "重新快照（已完成 ${run.cursor}/${run.click.size}）",
+            )
+            scheduleNextRound(env, run, 0)
+            return RowOutcome.Restart
         }
 
         // 2026-10-27：宿主 8.7.0 起 `checkCodes` 不再承载选中状态（实测永远为空），

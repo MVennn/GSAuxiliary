@@ -338,6 +338,7 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = null,
                 selected = arrayOf("600000", "002368"),
+                screenWins = true,
             ),
         )
     }
@@ -349,6 +350,7 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = arrayOf("600000"),
                 selected = arrayOf("600000", "002368"),
+                screenWins = true,
             ),
         )
     }
@@ -360,6 +362,7 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = arrayOf("300006", "301529"),
                 selected = arrayOf("605333", "002683"),
+                screenWins = true,
             ),
         )
     }
@@ -371,6 +374,7 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = arrayOf("600000", "002368"),
                 selected = arrayOf("600000", "002368"),
+                screenWins = false,
             ),
         )
     }
@@ -382,6 +386,7 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = arrayOf("600000.1", "002368.0"),
                 selected = arrayOf("600000", "002368"),
+                screenWins = false,
             ),
         )
     }
@@ -392,6 +397,46 @@ class StgSelectAllPlanTest {
             StgSelectAllPlan.needsGroupFix(
                 hostCodes = arrayOf("600000"),
                 selected = emptyArray(),
+                screenWins = true,
+            ),
+        )
+    }
+
+    // ------------------------------ 长度不等时的第二道闸（2026-11-13 回归修复）
+
+    @Test
+    fun `普通详情页宿主长度比屏幕长时不按屏幕裁`() {
+        // 屏外还勾着票时，宿主那份全量 model 天然比屏幕子集长。一律按屏幕覆盖 = 悄悄丢掉屏外勾选，
+        // 分组里就少几只 —— 用户报的「筛选/聚合一叠加就不准」里有一半是这条。
+        assertFalse(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000", "002368", "300006"),
+                selected = arrayOf("600000", "002368"),
+                screenWins = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `聚合页或筛选态长度不等时按屏幕覆盖`() {
+        assertTrue(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000", "002368", "300006"),
+                selected = arrayOf("002368"),
+                screenWins = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `宿主包里是空数组时按屏幕补上`() {
+        // 空数组等价于「宿主一只都没构造出来」，与 null 同样处理；
+        // 不覆盖的话分组页会把空集判成「已在该组合」（2026-11-13 那个 BUG 的形态之一）。
+        assertTrue(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = emptyArray(),
+                selected = arrayOf("600000"),
+                screenWins = false,
             ),
         )
     }

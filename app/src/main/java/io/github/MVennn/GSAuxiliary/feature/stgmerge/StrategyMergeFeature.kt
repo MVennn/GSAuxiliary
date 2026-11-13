@@ -18,6 +18,9 @@ import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilterScopes
+import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowChecked
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowSelection
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.ref.WeakReference
 import java.util.Collections
@@ -1612,12 +1615,31 @@ class StrategyMergeFeature : Feature {
                 return true
             }
         }
+        // 勾选态是宿主按**适配器位置**存的（AbsListView.mCheckStates），而下面换的是 data 的
+        // 内容与顺序 —— 不跟着搬，屏幕上勾着的 A/B/C 会原封不动落到新顺序的第 1/2/3 行上，
+        // 用户再点「确认添加」加进去的就是别的票（聚合页的典型现场，见
+        // docs/FEATURE-SELECT-ALL.md §2.3.4）。读写循环走三边共用的 StgRowChecked。
+        val checkLv = currentListView(act)
+        val checkedBefore = if (checkLv != null && cur != null) readCheckedKeys(checkLv, cur) else null
         if (!StrategyMergeTargets.writeListInPlace(target, StrategyMergeTargets.ADAPTER_FIELD_DATA, merged)) {
             // 写失败不记账：下一次 notify 必须还能打，不能被这 500ms 窗口挡掉
             return false
         }
         synchronized(state) { state.lastReapplyAt = System.currentTimeMillis() }
         StrategyMergeTargets.notifyAdapter(target)
+        // 新顺序已经生效，按代码把勾选搬过去。读不全就整趟不动 —— 迁移错的勾选比不迁移更坏。
+        if (checkLv != null && !checkedBefore.isNullOrEmpty()) {
+            val moved = runCatching { writeCheckedKeys(checkLv, merged, checkedBefore) }.getOrDefault(0)
+            if (moved > 0) {
+                GLog.i(
+                    "$LOG 勾选态按代码对齐 $moved 行（勾着 ${checkedBefore.size} 只，写回 ${merged.size} 只）",
+                )
+            }
+            // 结论发到跨功能通道：截图并添加 / 确认添加都按它对齐，别让下游拿上一轮的
+            StgRowSelection.publish(checkLv, checkedBefore)
+        }
+        // 行集合换过一轮 = 批量循环里记下的下标作废（「全选」按 rowEpoch 判要不要重开一轮）
+        StgRowSelection.bumpRowEpoch()
         val after = StrategyMergeTargets.listField(target, StrategyMergeTargets.ADAPTER_FIELD_DATA)?.size ?: -1
         GLog.i(
             "$LOG 宿主刷新后已把并集重新套回（${merged.size} 只，适配器 " +
@@ -1625,6 +1647,30 @@ class StrategyMergeFeature : Feature {
         )
         return true
     }
+
+    /**
+     * 列表上当前勾着哪几只（键 = `代码@市场`）；读不全 / 非多选态 / 挂着过滤代理 → null。
+     *
+     * **挂过滤代理时不接手**：那套「子集坐标 ↔ 全量坐标」由筛选自己维护，代理的
+     * `notifyDataSetChanged` 前置钩子会做同一件事；两边都搬就搬两次（结论一样，
+     * 但日志、顺序、以及「谁最后说了算」都乱）。这一支只覆盖**没有筛选**的聚合页，
+     * 也正是最容易出问题的那一种 —— 没有代理时列表坐标就是 data 下标。
+     *
+     * @param data 当前 `adapter.data`（行的顺序就是它）
+     */
+    private fun readCheckedKeys(lv: ListView, data: List<*>): Set<String>? {
+        val adapter = StrategyMergeTargets.unwrapListAdapter(lv.adapter) ?: return null
+        if (StgFilterBridge.isFor(adapter)) return null
+        return StgRowChecked.keysOf(lv, data.size) { i ->
+            StrategyMergeTargets.camOf(data.getOrNull(i))
+        }
+    }
+
+    /** 按代码把勾选对齐到刚写回的并集；返回改动行数（读不全整趟不动，见 [StgRowChecked]） */
+    private fun writeCheckedKeys(lv: ListView, data: List<*>, keys: Set<String>): Int =
+        StgRowChecked.applyChecked(lv, data.size, keys) { i ->
+            StrategyMergeTargets.camOf(data.getOrNull(i))
+        }
 
     /**
      * 头部「涨家数 / 跌家数」还是不是我们写的聚合值。
@@ -3930,27 +3976,35 @@ class StrategyMergeFeature : Feature {
                     releaseRollback(act, state)
                     return
                 }
-                // 结果与上次完全一致 → 家数也沿用上次那份。
-                // 本轮自己累加出来的家数可能少一份「本页策略」的统计：宿主换 id 取数的过程中会把
-                // model 上的 upNum/downNum 清掉，absorbSeed 读到 0（真机：首轮 174/36，
-                // 再进就变 134/29，缺的正是本页 47 只的 40/7）。并集一模一样，家数就不该变。
-                if (sameAsCached) {
-                    if (upSum != cached.up || downSum != cached.down) {
-                        GLog.i("$LOG 本轮家数 ${upSum}/${downSum} 少了本页那份，沿上次的 ${cached.up}/${cached.down}")
+                // 家数三档口径，**重数优先**（2026-11-13 真机核对后改）：
+                // ① 并集每一行都自带涨跌幅 → 直接数一遍，必然与屏幕上这 N 只对得上；
+                // ② 成员累加只在「一个都数不出来」时兜底：成员之间重叠时累加一定偏大
+                //    （真机 2026-11-13 11:32 抓到并集 778 只、头部却写「涨 581 / 跌 259」，
+                //    那是 24 个成员各自服务端家数相加，重复计入；535+211+8=754 才是对的）；
+                // ③ 缓存沿用放在最后：缓存本身可能就是上面那个偏大的累加值，不能让它盖住重数。
+                // 另：口径成员的响应里 upNum/downNum 恒为 -1（宿主只给真实策略算家数），
+                // 24 组合组收尾时累加只能拿到 0/0 —— 这也是必须走重数的原因。
+                val counted = StrategyMergeTargets.countUpDown(merged)
+                when (StrategyMergeTargets.countTier(merged.size, counted, sameAsCached)) {
+                    StrategyMergeTargets.TIER_COUNT -> {
+                        val c = counted ?: (upSum to downSum)
+                        // 每次都打：这是「数据对不对」的唯一现场证据，缺了就只能靠猜
+                        GLog.i(
+                            "$LOG 家数按并集重数：${c.first}/${c.second}" +
+                                "（成员累加 $upSum/$downSum，并集 ${merged.size} 只）",
+                        )
+                        upSum = c.first
+                        downSum = c.second
                     }
-                    upSum = cached.up
-                    downSum = cached.down
-                }
-                // 口径成员的响应里 upNum/downNum 恒为 -1（宿主只给真实策略算家数），累加出来只能是
-                // 0/0 —— 真机 24 组合组收尾时头部就是「涨 0 / 跌 0」。并集每一行都自带涨跌幅，
-                // 直接数一遍：至少和屏幕上这 N 只对得上，比 0/0 强。
-                if (upSum + downSum < merged.size) {
-                    val counted = StrategyMergeTargets.countUpDown(merged)
-                    if (counted != null && counted.first + counted.second >= merged.size * 0.8) {
-                        GLog.i("$LOG 家数按并集重数：${counted.first}/${counted.second}（累加只拿到 $upSum/$downSum）")
-                        upSum = counted.first
-                        downSum = counted.second
-                    } else {
+                    StrategyMergeTargets.TIER_CACHE -> {
+                        val c = cached?.let { it.up to it.down } ?: (upSum to downSum)
+                        if (upSum != c.first || downSum != c.second) {
+                            GLog.i("$LOG 本轮家数 ${upSum}/${downSum} 少一份本页那份，沿上次的 ${c.first}/${c.second}")
+                        }
+                        upSum = c.first
+                        downSum = c.second
+                    }
+                    else -> {
                         dumpRowFieldsOnce(merged)
                         GLog.w("$LOG 并集里读不到涨跌幅字段，家数仍是 $upSum/$downSum")
                     }
