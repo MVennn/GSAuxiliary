@@ -56,7 +56,7 @@
 | 成员 | 说明 |
 |---|---|
 | `FRESH_MS = 8_000` | 快照新鲜期。超过就当没有（用户随时可能手点改勾选） |
-| `keyOf(code, market)` | 归一键：`600000@1`；市场号空则退化成纯代码 |
+| `keyOf(code, market)` | 归一键：`600000@1`；市场号空时按 `StockTypes.marketOf(code)` 推导（推不出才退化成纯代码） |
 | `keyOfCam(cam)` | `600000.1` → `600000@1`（走 `CodeMarketParts.split`） |
 | `publish(owner, keys)` | 发布。`owner` / `keys` 有 null 或 `keys` 为空 → **撤回**（空集合等于「不知道」） |
 | `freshOf(owner)` | 同一个 owner 且未过期才给，否则 null |
@@ -87,7 +87,11 @@ fun applyChecked(lv: ListView, count: Int, keys: Set<String>, rowCam: (Int) -> S
    `StgStockFilterFeature.camOfRow(base, rows, position)` 就是这件事。
 2. **先整趟读全，再写。** 读到一半读不出就 `return` 是**部分迁移**：屏幕上一半新坐标、
    一半旧坐标，比不迁移更难查。
-3. **键必须 `代码@市场`。** 只取代码的话，同代码不同市场会互相认领，搬勾选搬到另一只票上。
+3. **键必须 `代码@市场`，且市场号要在键里补齐。** 只取代码的话，同代码不同市场会互相认领，
+   搬勾选搬到另一只票上。而市场号又**未必拿得到** —— 宿主的 `StockInfo.codeAndMarket` 是构造后
+   填充的，有「只有代码」的中间态：若那一刻退化成纯代码键，同一只票在补齐前后会算成两个键，
+   迁移时勾选丢一次（2026-11-13 修）。所以 `keyOf` 在市场号为空时按代码前缀推导
+   （`StockTypes.marketOf`），推不出才退化成纯代码。
 4. **换行集合的功能必须发信号。** 筛选 `applyFilter0` 与聚合 `reapplyIfNeeded` 写完之后
    无条件 `StgRowSelection.publish(lv, keys)` + `bumpRowEpoch()`；
    批量点行的循环在每行前比对 epoch，不等就重新快照（见 [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md) §2.5）。

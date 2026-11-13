@@ -469,8 +469,171 @@ else               childHeightSpec = makeMeasureSpec(0, UNSPECIFIED);   // ← 0
   宿主真刷新数据（新对象、字段值变了）→ 字段时间戳更新 → 立刻回到字段，跌转涨的能回补。
 - 换数据之后被筛掉的行压根不在列表里，挂 `TextWatcher` 也放不回来 —— 所以这里**不挂 watcher**，
   也**不 Hook `TextView.setText`**（全 App 最热路径，见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md)）。
-- **自选**：复用 `ZXWorkflow.isBelongByStock(code, market)`
-  （20/20 交叉验证过的那个判定 API，与「自选高亮」同源）。
+- **自选**：先用 `ZxWatchlist.snapshotCodes()` 取一张**自选代码集合**（直接读 `ZXManager.m_stkGrpMap`
+  的键、取点前的代码，一趟筛选只读一次），命中即自选；读不出（没绑定 / 反射失败 / 表为空）
+  才回落逐只问 `ZXWorkflow.isBelongByStock(code, market)`（20/20 交叉验证过的那个判定 API）。
+  为什么不只走逐只判定，见下面「#### ⚠️ 自选判定必须按代码集合」。
+
+#### ⚠️ 屏幕文案必须按行视图标记采集，不能按位置反推（2026-11-13 · 3.8.10 定稿）
+
+**现象**（用户两次报，同一件事的两种表现）：
+
+- 勾「涨家」不勾「自选」，进页面自动应用之后，列表里**多出不该在的票**（自选票、跌幅票）；
+- 手动打开面板再点一次「确定」，有时多出一只、有时又变成筛得太狠（`策略个股 1/138`）。
+
+两次的措辞不同，根子是同一个：**采集行内涨跌幅时，把「屏幕第几行」当成「全量第几行」**。
+
+**机制** —— 节拍器（`TICK_MS = 500ms`）每拍扫一遍可见行，旧写法靠 `keptIndices` 把屏幕位置翻译成全量下标：
+
+```kotlin
+val idx = if (rows == null) dataPos else rows[dataPos]   // 旧 sweepVisiblePercents
+val cam = itemAt(adapter, idx)?.let { codeAndMarket(it) }
+percentTrack.observeText(cam, pct, now)                 // 按「代码.市场」记样本
+```
+
+这套翻译只在「`ListView` 的布局」与「`keptIndices`」出自**同一次**时才成立。换行集合的路径是：
+
+1. `applyFilter` 重算 → `proxy.update(rows)` 换掉下标表；
+2. `ListView` 要等下一轮 measure-layout 才按新集合重新 bind；
+3. 节拍器很可能在**第 2 步之前**就醒了 —— `firstVisiblePosition` / `childCount` 还是旧布局，
+   `rows` 已经是新表 → 屏幕第 i 行的文案被记到**另一只股票**名下。
+
+错样本进了 `PercentTimeline` 就再也分不清是谁的：判成「涨」的票多留在列表里，判成「跌」的票被误杀。
+
+**3.8.9 试过的错修法**：给这套翻译加一道时间闸门（`StgSweepGate`，行集合变更后静默 1200ms 再采）。
+结果更糟 —— 闸门把「节拍器下一拍自我纠正」这条唯一兜底也一起掐掉了：首屏若本来就采错，
+后面再也不会有正确样本覆盖它。真机表现是「筛出 1/138，手动再点一次还是不恢复」（2026-11-13 MuMu）。
+闸门已删除。
+
+**3.8.10 定稿的修法**：让每行自己带着「我绑的是哪只票」，采集时只认这个标记，**不做任何位置换算**。
+
+```kotlin
+// 宿主 getView 时顺手记下（position 是全量下标，天然正确）
+private fun recordRowPercent(adapter: Any, position: Int, row: View) {
+    val cam = codeAndMarket(itemAt(adapter, position) ?: return) ?: return
+    rowCams[row] = cam                       // WeakHashMap<View, String>
+    percentTrack.observeText(cam, parsePercent(percentView(row)?.text?.toString()) ?: return, now)
+}
+
+// 节拍器扫屏幕：没有任何下标运算
+private fun sweepVisiblePercents(lv: ListView, adapter: Any): Boolean {
+    for (i in 0 until lv.childCount) {
+        val row = lv.getChildAt(i) ?: continue
+        val cam = rowCams[row] ?: continue    // 没记过 = 还没 bind 过，跳过
+        val pct = parsePercent(percentView(row)?.text?.toString()) ?: continue
+        if (percentTrack.observeText(cam, pct, now)) changed = true
+    }
+}
+```
+
+三条口径：
+
+| 规则 | 为什么
+| --- | --- |
+| 采集只认 `rowCams[row]`，绝不按 `firstVisiblePosition + i - header` 反推 | 反推依赖「布局与下标表同一次」，换行集合那几帧必然不同次 |
+| 同一个 view 复用来显示别的票时，标记当场覆盖 | 标记永远等于「这行此刻显示的那只票」，与位置、下标表、筛没筛都无关 |
+| 没标记就跳过，不猜 | 首屏第一帧还没 bind 过等于没有样本，猜一个比不采更坏 |
+
+`rowCams` 是弱引用表：行视图归宿主的 `ListView` 管，我们不拖住它们。
+
+**验证**：真机勾「涨家」后点「确定」，看这两行应成对出现且计数一致 ——
+
+```
+筛选股票：左上角计数 → 策略个股 121/138
+筛选股票：全量 138 → 保留 121（涨 1 / 跌 2 / 自选 135 / 平盘 0 …；自选表 232 只）
+```
+
+反复开关面板点「确定」三次，计数不应漂移（旧写法第三、四次开始出现偏差）。
+
+#### ⚠️ 节拍器必须在 onResume 就当起，不能被 liveAdapter 判空带掉（2026-11-13 · 3.8.11）
+
+**现象**：进策略详情页，首屏就筛错 —— 自选票、跌幅票都还在列表里；手点一次「确定」立刻正确。
+日志里**从来没有** `筛选股票：动态重算已启动` 这一行。
+
+**机制**：宿主行情是「原地刷行内文案」推的，不发 `notifyDataSetChanged` ——
+所以「字段晚就绪导致的首屏错筛」唯一的纠正路径就是那个 500ms 节拍器（文案变了就重算，
+外加每 10 拍无条件全量重算一次）。
+
+而它原先排在判空之后：
+
+```kotlin
+// 3.8.10 及以前（三处同款）
+val a = liveAdapter(activity) ?: return   // 进页面这一瞬宿主还没 setAdapter → null
+startPercentTicker(env, activity)          // ← 永远走不到
+```
+
+进页面那一瞬 `lvStks` 往往还没 `setAdapter`，`liveAdapter` 返回 `null`，
+`return` 把 `startPercentTicker` 一起带走了 —— 节拍器一次都没起来，
+首屏那次错筛之后再没有任何一拍去纠正它，只有手点「确定」（走 `onFilterApplied`）才正常。
+
+**修法**：三处（`onActivityResumed` / `onFilterApplied` / `onConfigChanged`）
+都先把节拍器拉起来，再管这次对齐能不能做：
+
+```kotlin
+startPercentTicker(env, activity)          // 无条件先起
+val a = liveAdapter(activity)
+if (a == null) {
+    GLog.i("筛选股票：onResume 时列表还没就绪（节拍器已启动，列表到位后自动对齐）")
+} else {
+    runCatching { applyFilter(env, a, notify = true) }
+}
+```
+
+列表晚到不影响：`tickOnce` 每拍都用 `trackedList.get()?.get() ?: findListView(act)` 重新找，
+找到之前那一拍静默跳过，不会算错。
+
+**第二道坎（同一轮里查出来的）**：`startPercentTicker` 自己开头还写着
+`if (!env.config.stgStockFilter || !filtersBy(env, act).active) return`。
+`onActivityResumed` 在它前面刚调过 `StockFilterScopes.forgetStrategyId`，
+那一刻 scope 可能还没认回来、`active` 是 `false` —— 于是即使位置对了，节拍器照样不启动。
+现在改成只判功能开关；「这一拍要不要干活」交给 `tickOnce`，条件没就绪就空转一拍、**不停表**：
+
+```kotlin
+private fun startPercentTicker(env: FeatureEnv, act: Activity) {
+    if (!env.config.stgStockFilter) return   // 不再判 active
+    ...
+}
+
+private fun tickOnce(env: FeatureEnv, act: Activity) {
+    if (!env.config.stgStockFilter) { stopPercentTicker("功能已关闭"); return }
+    if (!filtersBy(env, act).active) return  // 空转，不停表
+    ...
+}
+```
+
+**第三道坎**：`startPercentTicker` 里还有 `val h = act.window?.decorView?.handler ?: return`。
+`onResume` 那一瞬 `decorView` 常常还没挂（真机实测就是这么死的），于是照样一次不启动。
+现在退回主线程 Looper 的 Handler —— 节拍器只要求主线程，不要求视图已就绪：
+
+```kotlin
+val h = act.window?.decorView?.handler
+    ?: android.os.Handler(android.os.Looper.getMainLooper())
+```
+
+停表只在三种情况：功能关闭、页面结束、页面切走（`onPause`）。「条件没就绪」不在其中 ——
+停掉以后没有任何路径会把它再拉起来。
+
+三条口径：
+
+| 规则 | 为什么
+| --- | --- |
+| 节拍器启动与「这次能不能对齐」解耦 | 它们是两件事：对齐要求列表已在，节拍器只要求页面在
+| 节拍器启动与「筛选条件是否就绪」解耦 | `onResume` 那一刻 scope 刚被清掉，`active` 恒为 false；拿它当启动条件等于永不启动
+| 任何 `liveAdapter(activity) ?: return` 之后都不许再放「必须要跑」的副作用 | 进页面那几帧 liveAdapter 恒为 null，等于把副作用静默删掉
+| 列表晚到靠每拍重找，不靠一次性绑定 | `trackedList` 只是快路径，`findListView` 才是兜底
+| 「条件没就绪」只能空转，不能停表 | 停表后没有任何路径会重新拉起它
+
+**验证**（MuMu 真机 2026-11-13 13:59，金太阳 8.7.1，聚合组1）：
+装包冷启动进页面，三行必须依次出现 ——
+
+```
+筛选股票：onResume 命中策略详情页（筛选生效=true）
+筛选股票：动态重算已启动（每 500ms 采集一次可见行涨跌幅）
+筛选股票：屏幕采集已就绪（3 行带标记，不依赖列表位置）
+```
+
+首屏即 `策略个股 3/140`，静置 13 s 后仍是 `3/140`（行情在动、节拍器在跑，结果不漂移）。
+首屏若仍先错，最多 10 拍（≈5 s）后慢拍全量重算会自己纠正，不需要手点「确定」。
 
 ### 方向那三个开关的组合规则（**互斥类别**）
 
@@ -513,6 +676,55 @@ else               childHeightSpec = makeMeasureSpec(0, UNSPECIFIED);   // ← 0
 ⚠️ **平盘股（`zdf == 0` / 读不到）不属于任何类别**，所以只要开了筛选就看不到它 ——
 这是"未勾选的类别不显示"的直接推论（面板上并没有"平盘"这个开关）。
 若希望"三个全勾时平盘也显示"，需要再加一条规则（当前**没有**这么做）。
+
+#### ⚠️ 自选判定必须按代码集合（2026-11-13 修「勾涨家不勾自选仍残留自选股」）
+
+**现象**：聚合组（754 只、成员 24 个）上勾「涨家股票」、不勾「自选股票」，列表里仍残留 2 只自选票；
+手动再点一次「筛选股票 → 确定」就干净了。用户侧的说法是「筛选还是有问题 / 重新筛选以后就正常了」。
+
+**机制**：宿主的 `StockInfo.codeAndMarket` 是**构造后填充**的，存在「只有代码、没有市场号」的中间态
+（`feature/filter/CodeMarketParts.kt` 的类注释里记过这个形态）。而逐只判定这一侧两处相遇：
+
+- `ZxWatchlist.isInWatchlist(code, market)` 第一行 `if (code.isNullOrEmpty() || market.isNullOrEmpty()) return false`；
+- 筛选主循环从 `cam` 切出来的 `market` 在没有点时是 `null`。
+
+于是那一刻这只自选票被判成「非自选」，勾「涨家」不勾「自选」时按 `Category.UP` 被保留 →
+页面里多出几只自选票；第二趟筛选时宿主已经补齐市场号 → 又恢复正常。这就是「要手动再筛一次」。
+
+**修法**（`applyFilter` 主循环前取一次，循环内查集合）：
+
+```kotlin
+val zxCodes = ZxWatchlist.snapshotCodes()          // null = 这一刻读不出来
+...
+val inZx = if (zxCodes != null) code != null && zxCodes.contains(code)
+           else isInWatchlist(code, market ?: StockTypes.marketOf(code))
+```
+
+**口径四条**：
+
+1. **一趟只读一次** `ZXManager.m_stkGrpMap`。原来每行一次 `ZXWorkflow.isBelongByStock` 跨类反射，
+   754 只就是 754 次；现在是 1 次。
+2. **空表返回 null，不当「没有自选」**。宿主还没把自选加载进来时把整页判成非自选，比慢一拍严重得多；
+   `null` 一律回落逐只判定（即引入本方法之前的行为）。
+3. **回落那一路也补市场号**：`StockTypes.marketOf(code)`（6 开头或 9 非 92 → `2` 沪；0/2/3 → `1` 深；
+   4/8/92 → `5` 北交所），所以「缺市场号」这一态即使走逐只判定也不会再漏。
+4. **摘要日志带路标**：`；自选表 N 只` / `自选表读不出（逐只判定）`，排查时一眼看出这趟走的哪条路。
+
+同一个「缺市场号」也影响勾选态迁移：`StgRowSelection.keyOf(code, market)` 原先在市场号为空时退化成纯代码，
+同一只票在「补齐前 / 补齐后」会算成两个键，迁移时勾选丢一次。现在改为
+`market?.trim().orEmpty().ifEmpty { StockTypes.marketOf(c).orEmpty() }`，键恒定（见
+[FEATURE-ROW-SELECTION](FEATURE-ROW-SELECTION.md) §三）。
+
+**真机证据**（MuMu，金太阳 8.7.1(274)，720×1280，2026-11-13 13:11，条件 = `up=true / down=false / zx=false`）：
+
+```
+筛选股票：全量 738 → 保留 270（涨 270 / 跌 251 / 自选 205 / 平盘 12 / 创业板 124 / … ；自选表 223 只）
+策略聚合： 已渲染 738 只（成员 24 个，涨 452 / 跌 272）
+筛选股票：左上角计数 → 策略个股 270/738
+```
+
+270 恰等于涨家数、205 只自选全部被排除，且这是**进页面自动应用**（没点「确定」）的结果 ——
+`gsaux_stg_filter.xml` 里 `filter_zx@grp:group2=false`，与面板状态一致。
 
 ### 左上角计数：宿主只认全量，得由模块改写
 

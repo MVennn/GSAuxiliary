@@ -5,6 +5,153 @@
 
 ---
 
+## [3.8.12] — 2026-11-13
+
+> 补丁版本。修「手机上随机提示已在该组合」：全选提交链上有三处静默放弃。
+
+### 修：手机随机「已在该组合」，模拟器正常（提交包校正链三处放弃）
+
+- 现象：全选后点「确认添加」，分组页对每个分组都显示「已在该组合」，实际一只都没加进去；
+  同一个 APK 在模拟器上正常，手机上随机失败，全选里含自选股时更容易撞上。
+- 根因：`fixGroupIntentCodes` 这一条链上有三处「读不到就走开」，任何一处命中都让宿主自己构造的
+  空集 / 错批原样进分组页（`ChooseGroupAct` 把「空集 ⊆ 每个分组」判成「都已经在组里」）：
+  ① `resolveConfirmList()` 为 null 就 return —— 手机上宿主常先 `finish` 详情页再起分组页，列表已摘挂；
+  ② 捕获超过 8 s 就 return —— 「确认添加」自带触摸监听时我们不抢，捕获只能来自全选途中的旧时点；
+  ③ 某一行 `market` 为空就整组作废 —— 宿主 `StockInfo.codeAndMarket` 是构造后才填的，自选票常见
+   「只有代码、没有市场号」的中间态，一行没有就把 527 只全部放弃。
+- 修法：
+  - 「按下确认添加」那一刻的捕获**页面摘挂也照用**，只有非触摸来源才要求列表还在；
+  - 没有捕获就现场按屏幕重捕一次，两条都不成立才放弃，并把「过期 N ms / 列表已摘挂」写进日志；
+  - 市场号缺失按代码前缀推（`StgSelectAllPlan.splitCodeMarket`，与筛选 / 勾选态通道同一口径）；
+  - 坐标权威（`screenWins`）与页面类型（`pageKind`）改在捕获那一刻定死，不再回头问已经摘挂的列表；
+  - 去掉「用过即焚」——Activity 重建再进一次 `onCreate` 时旧代码已无捕获可用，而改写本身幂等。
+- 验证：单测 32 类 366 例全绿（新增 4 例覆盖市场号推导）；check_links / hygiene / check-secrets / verify_apk 均 exit 0。
+- MuMu 真机（聚合组1 筛选态 121/139）：全选 121 只 → `捕获屏幕勾选 121 只（聚合页+筛选态，按下确认添加）`
+  → `提交包核对（聚合页+筛选态，宿主 6 只 / 屏幕 121 只）` → `已按屏幕勾选校正（121 只，原 6 只）`；
+  选空分组 t527 后宿主真发 `POST /securities-group/add-securities/2.0` 并关闭分组页；同一流程再走一遍，
+  该分组显示「已在该组合」= 文案如实。宿主自己的提交包只有 6 只（`m_stkList` 残值），这就是不校正时的错批来源。
+## [3.8.11] — 2026-11-13
+
+> 补丁版本。修「进页面首屏筛错、手点一次确定才对」：动态重算的节拍器从来没启动过。
+
+### 修：节拍器被 `liveAdapter` 判空一起跳过（首屏错筛再也翻不了案）
+
+- 现象：进策略详情页，首屏列表里既有自选票又有跌幅票（筛选条件明明生效）；手点一次面板「确定」立刻正确。
+  logcat 里从来没有 `筛选股票：动态重算已启动` 这一行。
+- 根因：`onActivityResumed` / `onFilterApplied` / `onConfigChanged` 三处都写成
+  `val a = liveAdapter(activity) ?: return` 之后才 `startPercentTicker(env, activity)`。
+  进页面那一瞬宿主还没 `setAdapter`，`liveAdapter` 返回 `null` → `return` 把节拍器一起带走。
+  宿主行情是原地刷行内文案、不发通知，所以「首屏在字段就绪前跑出的错筛」唯一的纠正路径（500ms 节拍器 +
+  每 10 拍无条件全量重算）一次都没生效。
+- 修法：三处都先 `startPercentTicker` 再判 `liveAdapter`；列表晚到由 `tickOnce` 每拍
+  `trackedList.get()?.get() ?: findListView(act)` 重新找，找到之前那一拍静默跳过。
+  同时在 `liveAdapter` 为 null 时打一行 `筛选股票：onResume 时列表还没就绪（节拍器已启动，列表到位后自动对齐）`，
+  以后一眼能看出是「列表没到」还是「钩子没装」。
+- 第二道坎（同一轮查出来的）：`startPercentTicker` 自己开头还判 `filtersBy(env, act).active`，
+  而 `onActivityResumed` 刚调过 `StockFilterScopes.forgetStrategyId` —— 那一刻 scope 还没认回来、`active` 是 false，
+  位置改对了照样不启动。现在只判功能开关；`tickOnce` 里「条件没就绪」改成**空转一拍、不停表**
+  （停表后没有任何路径会把它再拉起来）。停表只剩三种：功能关闭 / 页面结束 / 页面切走。
+- 第三道坎：`startPercentTicker` 里 `val h = act.window?.decorView?.handler ?: return` ——
+  onResume 那一瞬 decorView 常常还没挂，照样一次不启动。现在退回 `android.os.Handler(Looper.getMainLooper())`。
+- 新增诊断日志 `筛选股票：onResume 命中策略详情页（筛选生效=true|false）`，用来区分
+  「onResume 钩子没触发」与「触发了但条件不满足」。
+
+### 验证
+
+- `gradlew.bat :app:assembleRelease --offline` → BUILD SUCCESSFUL；app-release.apk 1,716,044 B。
+- MuMu 真机（金太阳 8.7.1，聚合组1，13:59）：进页面依次出现
+  `onResume 命中策略详情页（筛选生效=true）` → `动态重算已启动（每 500ms 采集一次可见行涨跌幅）` →
+  `屏幕采集已就绪（3 行带标记，不依赖列表位置）`；首屏 `策略个股 3/140`，静置 13 s 不漂移。
+
+---
+
+## [3.8.10] — 2026-11-13
+
+> 补丁版本。撤掉 3.8.9 的时间闸门（它把「节拍器自我纠正」这条兜底一起掐了，首屏筛错反而更严重），
+> 改成「屏幕文案按行视图标记采集」：每行自己记着绑的是哪只票，采集不做任何位置换算。
+
+### 修：采集行内涨跌幅不再按位置反推（回滚 3.8.9 的闸门）
+
+- 现象（用户报，两次同源）：勾「涨家」不勾「自选」，首屏自动应用后列表里多出自选票 / 跌幅票；
+  手动点一次「确定」有时多一只、有时又筛得太狠（真机复现到 `策略个股 1/138`）。
+- 根因：`sweepVisiblePercents` 用 `firstVisiblePosition + i - header` 经 `keptIndices` 反推全量下标再取
+  `codeAndMarket`。换行集合那几帧里「屏幕布局」与「下标表」不是同一次，反推必然把 A 股的文案记到 B 股名下。
+  3.8.9 加了一道 1200ms 的静默闸门去遮它 —— 闸门同时挡住了节拍器下一拍的自我纠正，首屏一旦采错就再也翻不了案。
+- 修法：宿主 `getView` 时把这行绑的票记进 `rowCams`（`WeakHashMap<View, String>`，键是「代码.市场」）；
+  节拍器扫屏幕只读这个标记，`firstVisiblePosition` / `keptIndices` / `headerViewsCount` 全部不再参与运算。
+  同一个 view 复用来显示别的票时标记当场覆盖，所以标记永远等于「这行此刻显示的那只票」。
+  没标记就跳过（首屏第一帧还没 bind 过），不猜。
+- 删除 `feature/stgfilter/StgSweepGate.kt` 与 `StgSweepGateTest.kt`，连同 `rowsChangedAt` / `sweepPaused` 两个字段。
+
+### 验证
+
+- `gradlew.bat :app:testReleaseUnitTest :app:assembleRelease --offline` → BUILD SUCCESSFUL；
+  32 个测试类 **362 例 / 0 failures / 0 errors**（删除 `StgSweepGateTest` 7 例）。
+- MuMu 真机（金太阳 8.7.1，720×1280，13:43）：聚合组1（138 只）勾「涨家 + 自选」→ `策略个股 121/138`，
+  连点三次「确定」计数**不漂移**；取消「自选」→ `策略个股 1/138`，再连点两次仍不漂移。
+  日志只有一条重算记录（其余走早退），说明结果稳定、没有回头改判。
+- 文档：`docs/FEATURE-STG-FILTER.md` 原「行集合变更后必须停采屏幕文案」一节重写为
+  「屏幕文案必须按行视图标记采集，不能按位置反推」。
+
+---
+
+## [3.8.9] — 2026-11-13（已被 3.8.10 取代）
+
+> 补丁版本。修「手动点一次筛选确定，列表反而多/少一只」：行集合变更后节拍器仍在采旧布局的
+> 屏幕文案，把一只票的涨跌幅记到另一只票名下。现在换行集合后静默两拍再采集。
+
+### 修：行集合变更后停采屏幕文案，避免涨跌幅样本记到别的股票上
+
+- 现象（用户报）：勾「涨家」不勾「自选」，进页面自动应用是对的；手动点开面板再点一次「确定」，
+  列表里会多出一只不该在的票，过几次行情刷新又自己消失。
+- 根因：节拍器用 `snap.keptIndices` 把「屏幕第 i 行」翻译成全量下标再取 `codeAndMarket`；
+  但 `proxy.update(rows)` 换掉行集合之后，`ListView` 要等下一轮 measure-layout 才重新 bind，
+  而节拍器 500ms 就醒 —— 这段窗口里 `firstVisiblePosition` / `childCount` 还是旧布局、`rows` 已是新表，
+  屏幕第 i 行的文案被记到**另一只股票**名下。`PercentTimeline` 按「代码.市场」存样本，分不清是谁的，
+  下一拍 `resolve` 就按错样本判涨跌，于是多留一只。与判定规则无关，纯粹是采样时序。
+- 修法：新增 `feature/stgfilter/StgSweepGate.kt`（纯逻辑），行集合变更后静默 `SETTLE_MS = 1200ms`
+  （覆盖 500ms / 1000ms 两拍）再恢复采集。两个写入点：① `applyFilter0` 读完 `full` 时 `!sameList(prevFull, full)`
+  （data 整份换过）；② 换下标表前 `snap == null || !rows.contentEquals(snap.keptIndices)`（含首次装代理）。
+  停采只跳过这段新样本，已采样本仍按代码存着，不影响「跌转涨能回补」。
+- 日志：`筛选股票：行集合刚换过，暂停采集屏幕文案 1200ms（等列表重新布局）` / `筛选股票：恢复采集屏幕文案`。
+
+### 验证
+
+- `gradlew.bat :app:testReleaseUnitTest :app:assembleRelease --offline` → BUILD SUCCESSFUL；
+  33 个测试类 **369 例 / 0 failures / 0 errors**（新增 `StgSweepGateTest` 7 例）。
+- 文档：`docs/FEATURE-STG-FILTER.md` 新增「#### ⚠️ 行集合变更后必须停采屏幕文案」一节。
+- 真机待验：点「确定」后日志应出现「暂停 → 恢复」成对两行。
+
+---
+
+## [3.8.8] — 2026-11-13
+
+> 补丁版本。修「勾涨家、不勾自选」时列表仍残留自选股（要手动再筛一次才干净）：自选判定改为按代码集合，
+> 不再依赖宿主尚未补齐的市场号。
+
+### 修：筛选的自选判定改为「自选代码集合」，缺市场号不再漏判
+
+- 现象（用户报）：聚合组详情页勾「涨家股票」、不勾「自选股票」，列表里仍残留 2 只自选票；
+  手动再点一次「筛选股票 → 确定」就正常了。
+- 根因：宿主 `StockInfo.codeAndMarket` 是**构造后填充**的，存在「只有代码、没有市场号」的中间态；
+  而 `ZxWatchlist.isInWatchlist(code, market)` 第一行就 `if (code.isNullOrEmpty() || market.isNullOrEmpty()) return false`，
+  那一刻自选票被判成「非自选」，按 `Category.UP` 保留 → 页面残留。第二趟筛选时市场号已补齐，于是「再筛一次就好」。
+- 修法：新增 `ZxWatchlist.snapshotCodes()` —— 直接读 `ZXManager.m_stkGrpMap` 的键、取点前的代码，
+  一趟筛选只读一次（原来每行一次跨类反射，754 只 = 754 次）；命中即自选。表为空 / 反射失败返回 `null`，
+  调用方回落逐只判定，且回落那一路补了 `StockTypes.marketOf(code)` 推导市场号，两条路都不再漏。
+- 连带修：`StgRowSelection.keyOf(code, market)` 在市场号为空时按代码前缀推导，避免同一只票在「补齐前 / 补齐后」
+  算成两个键、迁移时把勾选丢掉。
+- 摘要日志新增路标：`；自选表 N 只` / `自选表读不出（逐只判定）`。
+- 单测：`ZxWatchlistKeyTest`（5 例，键解析）+ `StgRowSelectionTest` 补齐「缺市场号按代码补」「推不出才退化」两组；
+  合计 32 个测试类 362 例全绿。纪要见 `docs/FEATURE-STG-FILTER.md`「#### ⚠️ 自选判定必须按代码集合」与
+  `docs/FEATURE-ROW-SELECTION.md` §三 / §四之 3。
+- 真机（MuMu / 金太阳 8.7.1(274) / 2026-11-13 13:11，条件 `up=true / down=false / zx=false`）：
+  「筛选股票：全量 738 → 保留 270（涨 270 / 跌 251 / 自选 205 / 平盘 12 / …；自选表 223 只）」、
+  「左上角计数 → 策略个股 270/738」—— 270 恰等于涨家数，205 只自选全部被排除，且为进页面自动应用（未手动点确定）。
+- 未验：用户本人手机上的复现路径（模拟器该路径未能复现原 bug，只能证明修法与判定口径成立）。
+
+---
+
 ## [3.8.7] — 2026-11-13
 
 > 补丁版本。数据准确度真机核对（535 行逐只 0 偏差），并顺带修掉头部涨跌家数取「成员累加值」的口径错误。
