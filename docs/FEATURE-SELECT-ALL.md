@@ -302,7 +302,7 @@ toggleAll()
 |---|---|---|
 | 捕获不再只认筛选页 | `StgSelectAllFeature#captureSelection` | 原来 `fullIndices(...) == null` 就 `confirmSelection = null; return`。聚合页没有过滤代理，必然命中这条早退 → 捕获恒空 → 提交包校正整个失效。现在无筛 / 聚合态也逐行读屏幕勾选（`isItemChecked` + `rowRawCodeAt`）。无筛时两套坐标本来就一致，捕获结果与宿主原包逐字相同，普通路径零影响。 |
 | 判据放宽 | `StgSelectAllFeature#fixGroupIntentCodes` + `StgSelectAllPlan#needsGroupFix` | 旧判据「`codes` 非空、长度相等、内容不同」才改；聚合态 `codes` 为 `null` / 长度不等，全被挡掉。现在以屏幕勾选为准：`codes` 为 `null`、长度不等、内容不同都覆盖；逐项**归一化**比较（`600000.1` 与 `600000` 视为同一只），一致时不动宿主原始格式。 |
-| `markets` 必写 | 同上 | 宿主原本没带 `markets` 也补上（它与 `codes` 按位置配对，缺一个就错位）。 |
+| `markets` 必写 | 同上 | 宿主原本没带 `markets` 也补上（它与 `codes` 按位置配对，缺一个就错位）；`codes` 已经逐项一致、但 `markets` 存在且长度不符时也照样重写 —— 否则市场按位置串位。 |
 | `prices` 防越界 | 同上 | 读不到价而宿主那份长度与新的 `codes` 对不上 → 直接 `removeExtra`，不让宿主拿旧数组按下标取。 |
 | 兜底找回列表 | `StgSelectAllFeature#resolveConfirmList` | 聚合态宿主的「确认添加」若自带触摸监听（`installConfirmTouchSync` 的契约是不抢），`captureSelection` 一次都没跑过、`confirmList` 为空。改为从最近 resume 的策略详情页按同一控件 id 找回 `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改。 |
 

@@ -448,7 +448,11 @@ class StgSelectAllFeature : Feature {
         }
         @Suppress("DEPRECATION")
         val codes = intent.getStringArrayExtra(GROUP_EXTRA_CODES)
-        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes)) return
+        @Suppress("DEPRECATION")
+        val markets = intent.getStringArrayExtra(GROUP_EXTRA_MARKETS)
+        // codes 对得上也要看 markets：宿主按位置配对，长度不符时市场会串位。
+        val marketsBroken = markets != null && markets.size != s.codes.size
+        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes) && !marketsBroken) return
         GLog.i(
             "策略全选：确认添加的提交代码已按屏幕勾选校正（" + s.codes.size + " 只，" +
                 (if (codes == null) "宿主包里没有 codes" else "原 " + codes.size + " 只") + "）",
