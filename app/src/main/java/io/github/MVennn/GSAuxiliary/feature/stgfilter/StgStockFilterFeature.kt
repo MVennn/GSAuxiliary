@@ -239,6 +239,24 @@ class StgStockFilterFeature : Feature {
      */
     private val percentTrack = PercentTimeline()
 
+    /**
+     * 「这一行视图当前绑的是哪只票」—— `代码.市场`，由 [recordRowPercent] 在宿主 getView 时写下。
+     *
+     * 屏幕文案采集**只认这个标记**，不再按「列表位置 → 下标表 → 全量下标 → 数据项」反推：
+     * 那条链在行集合刚换、ListView 还没重新布局的那几帧里会把 A 股的涨跌幅记到 B 股名下
+     * （3.8.9 用一个时间闸门去遮它，结果把「节拍器自我纠正」这条兜底也一起掐了，
+     * 首屏筛错反而更严重 —— 2026-11-13 真机）。
+     *
+     * 弱引用：行视图属于宿主的 ListView，回收时机由它决定，这里不能拖住它们。
+     */
+    private val rowCams = Collections.synchronizedMap(WeakHashMap<View, String>())
+
+    /** 采集自检日志只打一次（热路径，别刷屏）：第一次扫到带标记的行时确认链路通着 */
+    @Volatile private var sweepMarkedLogged = false
+
+    /** 采集到变化的次数（每 [SWEEP_LOG_EVERY] 次打一条，确认文案真的在动） */
+    @Volatile private var sweepChangedHits = 0
+
     // ------------------------------------------------------------------ 反射缓存（规则 2.1）
 
     /**
@@ -994,6 +1012,10 @@ class StgStockFilterFeature : Feature {
         }
 
         val f = filtersBy(env, ctx)
+        // 自选表**一整趟只读一次**：逐只问宿主既慢（754 只就是 754 次跨类反射），
+        // 又会把「codeAndMarket 缺市场号」的票误判成非自选（见 ZxWatchlist.snapshotCodes）。
+        // 读不出来（自选还没加载 / 反射失败）时才为 null，循环内回落逐只判定。
+        val zxCodes = ZxWatchlist.snapshotCodes()
         val keep = ArrayList<Any>(full.size)
         val keptIdx = ArrayList<Int>(full.size)
         var up = 0
@@ -1009,7 +1031,7 @@ class StgStockFilterFeature : Feature {
             //
             // ⚠️ **纯重构，判定一字未变**：把每项要算 3 次的 fieldsOf 合成 1 次、
             // 「代码.市场」只切一次（原来自选判定切一遍、类型判定又切一遍）、
-            // 类型行的下标用预计算的序号（原���每项 5 次 `indexOf` 线性查找）。
+            // 类型行的下标用预计算的序号（原来每项 5 次 `indexOf` 线性查找）。
             val fields = fieldsOf(item.javaClass)
             val cam = codeAndMarket(item, fields)
             // ⚠️ 切分走 [CodeMarketParts]（生产代码与单测**共用**）——
@@ -1020,7 +1042,15 @@ class StgStockFilterFeature : Feature {
             //     宿主 `codeAndMarket` 出现「只有代码没市场号」的中间态时就会踩到
             //     （`StockInfo` 是构造后填充的，部分填充是真实存在的形态）。
             val (code, market) = CodeMarketParts.split(cam)
-            val inZx = isInWatchlist(code, market)
+            // ⚠️ 自选判定**优先按代码集合**：`codeAndMarket` 是构造后填充的，存在
+            // 「只有代码没有市场号」的中间态，而 isInWatchlist 缺市场号就直接判「非自选」
+            // → 勾「涨家」不勾「自选」时自选涨票漏进列表（2026-11-13 真机漏 2 只，
+            // 用户手动再筛一次才恢复）。读不出自选表才回落逐只判定，并按代码补一次市场号推导。
+            val inZx = if (zxCodes != null) {
+                code != null && zxCodes.contains(code)
+            } else {
+                isInWatchlist(code, market ?: StockTypes.marketOf(code))
+            }
             val pct = percentOf(item, cam, fields, now)
             when (StockFilters.categoryOf(inZx, pct)) {
                 Category.ZX -> zx++
@@ -1063,6 +1093,7 @@ class StgStockFilterFeature : Feature {
             StgFilterBridge.publish(keep, rows, full, proxy)
             return
         }
+
 
         // 下标表与结果一起替换（点击回映射读的是这一份，不能出现「新结果 + 旧下标」）
         st.snap = Snapshot(keep, rows)
@@ -1141,6 +1172,8 @@ class StgStockFilterFeature : Feature {
             for (row in FilterRow.TYPE_ROWS) {
                 append(" / ").append(row.label).append(' ').append(typeHits[row.typeIndex])
             }
+            // 自选判定的来源进日志：漏自选时先看这里——「读不出」和「数不对」是两种故障。
+            append("；").append(if (zxCodes != null) "自选表 ${zxCodes.size} 只" else "自选表读不出（逐只判定）")
             append("）")
         }
         if (summary != lastSummary) {
@@ -1699,6 +1732,8 @@ class StgStockFilterFeature : Feature {
         runCatching {
             val item = itemAt(adapter, position) ?: return@runCatching
             val cam = codeAndMarket(item) ?: return@runCatching
+            // 先记「这行绑的是哪只票」：采文案失败也不要紧，下一拍还能凭它重新读（见 [rowCams]）
+            rowCams[row] = cam
             val pct = parsePercent(percentView(row)?.text?.toString()) ?: return@runCatching
             percentTrack.observeText(cam, pct, SystemClock.uptimeMillis())
         }.onFailure {
@@ -1795,13 +1830,22 @@ class StgStockFilterFeature : Feature {
         trackedActivityRef.set(java.lang.ref.WeakReference(activity))
         StockFilterStore.invalidate()              // 回到本页重新读一次筛选状态
         StockFilterScopes.forgetStrategyId(activity)  // 这一页可能换成了另一个策略，旧 id 不能复用
+        GLog.i("筛选股票：onResume 命中策略详情页（筛选生效=" + filtersBy(env, activity).active + "）")
         ensureClickRemap()
-        // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
-        val a = liveAdapter(activity) ?: return
-        runCatching { applyFilter(env, a, notify = true) }
-            .onFailure { GLog.w("筛选股票：onResume 对齐失败", it) }
-        // 行情是「原地刷行内文案」推的、不发通知 —— 回到本页就把动态重算的节拍器拉起来
+        // 行情是「原地刷行内文案」推的、不发通知 —— 回到本页就把动态重算的节拍器拉起来。
+        // ⚠️ **必须排在 liveAdapter 判空之前**：进页面这一瞬宿主多半还没 setAdapter，
+        // 早先这里写的是 `val a = liveAdapter(activity) ?: return`，那个 return 把节拍器
+        // 一起跳过了 —— 首屏那次筛选跑在字段就绪之前是错的，之后没有任何一拍去纠正它，
+        // 表现就是「首屏筛错、手点一次确定才对」（2026-11-13 · 3.8.11）。
         startPercentTicker(env, activity)
+        // 只对齐「当前列表在用的那个适配器」，别去碰 states 里的历史实例
+        val a = liveAdapter(activity)
+        if (a == null) {
+            GLog.i("筛选股票：onResume 时列表还没就绪（节拍器已启动，列表到位后自动对齐）")
+        } else {
+            runCatching { applyFilter(env, a, notify = true) }
+                .onFailure { GLog.w("筛选股票：onResume 对齐失败", it) }
+        }
 
         // 从个股页返回时，宿主通常还在重新拉数据：上面这次对齐拿到的多半是空列表
         // （于是什么代理都没装上）。数据到位后如果没走 notifyDataSetChanged
@@ -1846,10 +1890,13 @@ class StgStockFilterFeature : Feature {
     }
 
     private fun tickOnce(env: FeatureEnv, act: Activity) {
-        if (!env.config.stgStockFilter || !filtersBy(env, act).active) {
-            stopPercentTicker("没有生效的筛选条件")
+        if (!env.config.stgStockFilter) {
+            stopPercentTicker("功能已关闭")
             return
         }
+        // 筛选条件还没就绪（策略 id 未认回来 / 面板还没打开）→ 这一拍空转，**不停表**：
+        // 停表以后没人再拉起它，条件到齐了也不会重算。
+        if (!filtersBy(env, act).active) return
         val lv = trackedList.get()?.get() ?: findListView(act) ?: return
         val adapter = liveAdapter(act) ?: return
         val textChanged = sweepVisiblePercents(act, lv, adapter)
@@ -1868,42 +1915,56 @@ class StgStockFilterFeature : Feature {
     /**
      * 采集「屏幕上真正显示着的行」的涨跌幅文案。
      *
-     * 下标回映射与「自选高亮」同一口径：列表位置减去表头行数，筛选生效时再经
-     * [AdapterState.snap] 的 keptIndices 换回全量下标 —— 不换就会拿别的股票的文案去判这一行。
+     * **只认行视图上的标记**（[rowCams]）：宿主 getView 绑哪只票，这个标记就是哪只票。
+     * 不再按 `firstVisiblePosition + i - header` 反推全量下标再取 item —— 行集合刚换、
+     * ListView 还没重新布局的那几帧里，屏幕上是旧集合、下标表是新集合，反推必然错位
+     * （3.8.9 用时间闸门去遮这个错位，把节拍器的自我纠正也一起遮掉了，首屏反而更错）。
+     *
+     * 同一个 view 复用来显示别的票时，标记由 [recordRowPercent] 当场覆盖，所以标记永远
+     * 是「这行此刻显示的那只票」，与列表位置、下标表、筛选状态全都无关。
      *
      * @return 有没有哪一行的文案与上一次采集不同（变了才值得整份重算）
      */
     private fun sweepVisiblePercents(act: Activity, lv: ListView, adapter: Any): Boolean {
-        val first = lv.firstVisiblePosition
-        if (first < 0) return false
-        val headerCount = lv.headerViewsCount
-        val rows = stateOf(adapter, act).snap?.keptIndices
+        // 参数保留：调用点统一，且这层以后要按适配器做去重（现在只读行视图标记）
         val now = SystemClock.uptimeMillis()
         var changed = false
+        var marked = 0
         val n = lv.childCount
         for (i in 0 until n) {
-            val pos = first + i
-            if (pos < headerCount) continue
-            val dataPos = pos - headerCount
-            val idx: Int
-            if (rows == null) {
-                idx = dataPos
-            } else {
-                if (dataPos >= rows.size) continue
-                idx = rows[dataPos]
-            }
             val row = lv.getChildAt(i) ?: continue
+            val cam = rowCams[row] ?: continue
+            marked++
             val pct = parsePercent(percentView(row)?.text?.toString()) ?: continue
-            val cam = itemAt(adapter, idx)?.let { codeAndMarket(it) } ?: continue
             if (percentTrack.observeText(cam, pct, now)) changed = true
+        }
+        if (!sweepMarkedLogged && marked > 0) {
+            sweepMarkedLogged = true
+            GLog.i("筛选股票：屏幕采集已就绪（$marked 行带标记，不依赖列表位置）")
+        }
+        if (changed) {
+            sweepChangedHits++
+            if (sweepChangedHits % SWEEP_LOG_EVERY == 0) {
+                GLog.i("筛选股票：采集到行内文案变化（累计 ${sweepChangedHits} 拍），触发重算")
+            }
         }
         return changed
     }
 
     /** 拉起节拍器（幂等）。只有「功能开着 + 至少勾了一项」才值得跑。 */
     private fun startPercentTicker(env: FeatureEnv, act: Activity) {
-        if (!env.config.stgStockFilter || !filtersBy(env, act).active) return
-        val h = act.window?.decorView?.handler ?: return
+        // ⚠️ 这里**不能**再判 `filtersBy(env, act).active`：onResume 那一刻
+        // `StockFilterScopes.forgetStrategyId` 刚把策略 id 清掉，scope 可能还没认回来，
+        // active 会是 false —— 于是节拍器一次都不启动，首屏错筛永远没人纠正。
+        // 只要功能开着、页面在，就把表跑起来；「这一拍要不要干活」交给 tickOnce 判。
+        if (!env.config.stgStockFilter) {
+            GLog.i("筛选股票：节拍器不启动（功能开关已关闭）")
+            return
+        }
+        // decorView 还没挂时退回主线程 Handler：节拍器只需要主线程，不需要视图已就绪
+        // （早先写 `?: return`，onResume 那一刻 decorView 偶尔还没挂，节拍器同样一次不启动）
+        val h = act.window?.decorView?.handler
+            ?: android.os.Handler(android.os.Looper.getMainLooper())
         tickerEnv = env
         // 同一个 Handler 且已经在跳 → 什么都不用做。
         // 换了 Handler（页面重建 / 视图重挂）就必须在新 Handler 上**重新排一拍**：
@@ -1944,10 +2005,11 @@ class StgStockFilterFeature : Feature {
         GLog.i(
             "筛选股票：筛选条件已生效（${applied.describe()}｜记忆 ${StockFilterScopes.describe(scopeOf(env, activity))}）",
         )
+        // 节拍器先拉起来：列表晚到也不影响，tickLoop 每拍都会重新找列表
+        startPercentTicker(env, activity)
         val a = liveAdapter(activity) ?: return noteApplySkip("拿不到当前列表在用的适配器")
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：应用筛选失败", it) }
-        startPercentTicker(env, activity)
     }
 
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
@@ -1959,10 +2021,10 @@ class StgStockFilterFeature : Feature {
         if (!cfg.stgStockFilter) {
             findListView(act)?.let { unwrapRowClick(it) }
         }
+        if (cfg.stgStockFilter) startPercentTicker(env, act)
         val a = liveAdapter(act) ?: return
         runCatching { applyFilter(env, a, notify = true) }
             .onFailure { GLog.w("筛选股票：配置变化后重算失败", it) }
-        if (cfg.stgStockFilter) startPercentTicker(env, act)
     }
 
     /**
@@ -2191,6 +2253,9 @@ class StgStockFilterFeature : Feature {
          * 结果没变时 [applyFilter0] 自己会早退（不发 notify、不重建代理），所以这一拍不打断滚动。
          */
         const val SLOW_TICKS = 10
+
+        /** 采集到文案变化时每多少拍打一条日志（只做链路自检，别刷屏） */
+        const val SWEEP_LOG_EVERY = 20
 
         /** `+9.99%` / `-1.45%` / `0.00%` / `--` */
         fun parsePercent(s: String?): Double? {

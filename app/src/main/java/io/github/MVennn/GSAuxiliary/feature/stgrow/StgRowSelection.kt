@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.stgrow
 
 import io.github.MVennn.GSAuxiliary.feature.filter.CodeMarketParts
+import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 import java.lang.ref.WeakReference
 
 /**
@@ -74,12 +75,16 @@ object StgRowSelection {
     /**
      * 归一成 `代码@市场`。
      *
-     * 市场号缺失时退化成纯代码 —— 宁可少一层区分，也不要造一个永远匹配不上的键。
+     * 市场号缺失时**先按代码前缀推导一次**（[StockTypes.marketOf]），推不出来才退化成纯代码。
+     * 这一步不是优化，是正确性：宿主 `StockInfo.codeAndMarket` 是构造后填充的，存在
+     * 「只有代码没有市场号」的中间态；那一刻若记成纯代码键，等宿主补齐市场号，
+     * 同一条键就再也匹配不上，勾选态迁移会把它当新行、勾直接丢（2026-11-13 发现，
+     * 与「自选漏判」同源：都是缺市场号导致的短命形态）。
      */
     fun keyOf(code: String?, market: String?): String? {
         val c = code?.trim().orEmpty()
         if (c.isEmpty()) return null
-        val m = market?.trim().orEmpty()
+        val m = market?.trim().orEmpty().ifEmpty { StockTypes.marketOf(c).orEmpty() }
         return if (m.isEmpty()) c else c + "@" + m
     }
 

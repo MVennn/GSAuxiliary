@@ -31,7 +31,7 @@ internal object CodeMarketParts {
      *
      * 口径与 [StockTypes.byCodeAndMarket] 的 2 参重载**逐字等价**：
      *
-     *  - 有���（`dot > 0`）→ code = 点前、market = 点后；
+     *  - 有点（`dot > 0`）→ code = 点前、market = 点后；
      *  - **无点** → code = **整串**、market = null
      *    （不是 code = null —— 那样代码前缀判定会整段失效）。
      *

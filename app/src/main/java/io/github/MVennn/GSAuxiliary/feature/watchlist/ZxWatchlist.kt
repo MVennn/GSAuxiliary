@@ -62,6 +62,51 @@ object ZxWatchlist {
         return byStkGrpMap("$code.$market")
     }
 
+    /**
+     * 自选代码集合（**忽略市场号**）；`null` = 这一刻读不出来。
+     *
+     * ## 为什么需要它
+     *
+     * [isInWatchlist] 要求 `market` 非空 —— 而宿主的 `StockInfo.codeAndMarket` 是
+     * **构造后填充**的，存在「只有代码、没有市场号」的中间态（见
+     * `feature/filter/CodeMarketParts.kt` 的类注释）。那一刻自选票会被判成「非自选」，
+     * 勾「涨家」不勾「自选」时它按普通涨票留在列表里（2026-11-13 真机：754 只的
+     * 聚合组里漏出 2 只自选，用户手动再筛一次才恢复正常）。
+     *
+     * 这里直接按 `m_stkGrpMap` 的键取点前的代码部分，**一整趟只读一次**：
+     * 既躲开「缺市场号」这种中间态，也把每行一次跨类反射调用降为整屏一次。
+     *
+     * ## 为什么空表返回 null
+     *
+     * 空表可能是「真的没有自选」，也可能是「宿主还没把自选加载进来」。
+     * 后者若当成「没有自选」，整页都会被判成非自选 —— 那个错误比「慢一点」严重得多。
+     * 所以空表一律返回 `null`，让调用方回落逐只判定（与引入本方法前的行为一致）。
+     *
+     * @return 自选代码集合；`null` = 没绑定 / 反射失败 / 表为空 / 键里一个代码都没解析出来
+     */
+    fun snapshotCodes(): Set<String>? {
+        val map = stkGrpMapOrNull() ?: return null
+        if (map.isEmpty()) return null
+        val out = HashSet<String>(map.size * 2)
+        for (k in map.keys) {
+            codeOfWatchlistKey(k as? String)?.let { out.add(it) }
+        }
+        return if (out.isEmpty()) null else out
+    }
+
+    /**
+     * 自选表的键（形如 `300006.1`，也见过只填一半的 `300006`）→ 6 位代码。
+     *
+     * 与筛选侧同一个切分口径（`CodeMarketParts`：`dot > 0` 才切，否则整串当代码），
+     * 抽出来是为了能被纯 JVM 单测钉死 —— [snapshotCodes] 本身要碰宿主类，测不了。
+     */
+    internal fun codeOfWatchlistKey(key: String?): String? {
+        val s = key?.trim().orEmpty()
+        if (s.isEmpty()) return null
+        val dot = s.indexOf('.')
+        return if (dot > 0) s.substring(0, dot) else s
+    }
+
     /** 首选：调用国信自己的门面方法 */
     private fun byWorkflow(code: String, market: String): Boolean? {
         if (isBelongFailed) return null
@@ -91,35 +136,46 @@ object ZxWatchlist {
 
     /** 兜底：直接查 `ZXManager.m_stkGrpMap`（key 形如 `"300006.1"`） */
     private fun byStkGrpMap(codeAndMarket: String): Boolean {
-        if (mapFailed) return false
-        val cl = classLoader ?: return false
+        val map = stkGrpMapOrNull() ?: return false
+        return map.containsKey(codeAndMarket)
+    }
+
+    /**
+     * 解析 `ZXManager` 实例与它的 `m_stkGrpMap` 字段，返回那张表（`code.market` → 分组）。
+     *
+     * 解析结果与失败标记都留在本对象上：一趟筛选会问它几百次，不能每次都走
+     * `Class.forName` + 继承链搜索；真正的失败（宿主改了类名/字段名）也只该记一次。
+     */
+    private fun stkGrpMapOrNull(): Map<*, *>? {
+        if (mapFailed) return null
+        val cl = classLoader ?: return null
         try {
             var mgr = manager
             if (mgr == null) {
                 val c = Reflect.loadClass(CLS_MANAGER, cl) ?: run {
                     mapFailed = true
-                    return false
+                    return null
                 }
                 val inst = Reflect.findMethod(c, "instance") ?: run {
                     mapFailed = true
-                    return false
+                    return null
                 }
                 mgr = inst.invoke(null) ?: run {
                     mapFailed = true
-                    return false
+                    return null
                 }
                 manager = mgr
                 stkGrpMap = Reflect.findField(mgr.javaClass, "m_stkGrpMap") ?: run {
                     mapFailed = true
-                    return false
+                    return null
                 }
             }
-            val map = stkGrpMap?.get(mgr)
-            return map is Map<*, *> && map.containsKey(codeAndMarket)
+            val f = stkGrpMap ?: return null
+            return f.get(mgr) as? Map<*, *>
         } catch (t: Throwable) {
             mapFailed = true
-            GLog.w("m_stkGrpMap 兜底也不可用", t)
-            return false
+            GLog.w("m_stkGrpMap 读取失败，自选判定退化为逐只询问", t)
+            return null
         }
     }
 }

@@ -38,9 +38,23 @@ class StgRowSelectionTest {
     }
 
     @Test
-    fun `没有市场号时退化成纯代码`() {
-        assertEquals("600000", StgRowSelection.keyOf("600000", null))
-        assertEquals("600000", StgRowSelection.keyOf("600000", ""))
+    fun `没有市场号时按代码补市场号`() {
+        // 2026-11-13 改：缺市场号不再退化成纯代码键。宿主 StockInfo.codeAndMarket 是
+        // 构造后填充的，那一刻记成纯代码键，等市场号补齐后同一条键再也匹配不上，
+        // 勾选态迁移会把它当新行、把勾丢掉。
+        assertEquals("600000@2", StgRowSelection.keyOf("600000", null))
+        assertEquals("600000@2", StgRowSelection.keyOf("600000", ""))
+        assertEquals("000001@1", StgRowSelection.keyOf("000001", null))
+        assertEquals("830799@5", StgRowSelection.keyOf("830799", null))
+        assertEquals("920575@5", StgRowSelection.keyOf("920575", null))
+    }
+
+    @Test
+    fun `推不出市场号才退化成纯代码`() {
+        // 5 开头（场内基金）不在 StockTypes.marketOf 的股票口径里，推不出就保留纯代码
+        assertEquals("510300", StgRowSelection.keyOf("510300", null))
+        // 不足 6 位也推不出
+        assertEquals("6000", StgRowSelection.keyOf("6000", null))
     }
 
     @Test
@@ -61,9 +75,11 @@ class StgRowSelectionTest {
     }
 
     @Test
-    fun `cam 没有点时整串当代码`() {
-        // 宿主 StockInfo 是构造后填充的，「只有代码没有市场」是真实存在的中间态
-        assertEquals("600000", StgRowSelection.keyOfCam("600000"))
+    fun `cam 没有点时按代码补市场号`() {
+        // 宿主 StockInfo 是构造后填充的，「只有代码没有市场」是真实存在的中间态；
+        // 这时键必须与「宿主补齐市场号之后」完全一致，否则迁移会认成新行。
+        assertEquals("600000@2", StgRowSelection.keyOfCam("600000"))
+        assertEquals("600000@2", StgRowSelection.keyOfCam("600000.2"))
     }
 
     @Test
