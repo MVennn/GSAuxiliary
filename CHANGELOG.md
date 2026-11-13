@@ -34,11 +34,15 @@
     捕获结果与宿主原包逐字相同，普通路径零影响；
   - `fixGroupIntentCodes` 判据放宽：`codes` 为 `null` / 长度不等 / 内容不同都按屏幕勾选覆盖，
     逐项**归一化**比较（`600000.1` 与 `600000` 视为同一只），一致时不动宿主原始格式；
-  - `markets` 改为无条件跟着 `codes` 一起写（缺一个宿主按位置配对就错位）；
+  - `markets` 改为无条件跟着 `codes` 一起写（缺一个宿主按位置配对就错位），
+    `codes` 已逐项一致但 `markets` 存在且长度不符时也照样重写；
   - `prices` 读不到而宿主那份长度对不上时直接 `removeExtra`，不让宿主拿旧数组按下标取；
   - 新增 `resolveConfirmList()`：聚合态宿主的「确认添加」若自带触摸监听（不抢是旧契约），
     捕获从未跑过、`confirmList` 为空 —— 改从最近 resume 的策略详情页按同一控件 id 找回
-    `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改。
+    `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改；
+  - 捕获只认当次：`captureSelection` 先作废旧捕获（读不全都整组作废）并记下时刻，超过 8 s 的捕获
+    不认、消费后立刻清空（用过即焚）—— 免得「点了一下又取消」或隔一会儿从自选页打开同名分组页时，
+    被上一个页面的票张冠李戴。
 - 判据抽成纯函数 `StgSelectAllPlan.needsGroupFix(hostCodes, selected)`，补 6 例单测。
 - 验证：`gradlew :app:testReleaseUnitTest :app:assembleRelease` BUILD SUCCESSFUL；`StgSelectAllPlanTest`
   38 例 0 失败；`tools/ci/check_links.py` 0 断链、`tools/hygiene.py` exit 0。**真机待验**。

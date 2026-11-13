@@ -305,6 +305,7 @@ toggleAll()
 | `markets` 必写 | 同上 | 宿主原本没带 `markets` 也补上（它与 `codes` 按位置配对，缺一个就错位）；`codes` 已经逐项一致、但 `markets` 存在且长度不符时也照样重写 —— 否则市场按位置串位。 |
 | `prices` 防越界 | 同上 | 读不到价而宿主那份长度与新的 `codes` 对不上 → 直接 `removeExtra`，不让宿主拿旧数组按下标取。 |
 | 兜底找回列表 | `StgSelectAllFeature#resolveConfirmList` | 聚合态宿主的「确认添加」若自带触摸监听（`installConfirmTouchSync` 的契约是不抢），`captureSelection` 一次都没跑过、`confirmList` 为空。改为从最近 resume 的策略详情页按同一控件 id 找回 `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改。 |
+| 捕获只认当次 | `StgSelectAllFeature#captureSelection` / `#fixGroupIntentCodes` | 捕获先作废旧值（读不全都整组作废），并记下时刻：超过 8 s 的捕获不认、消费后立刻清空（用过即焚）。否则「点了一下又取消」或隔一会儿从自选 / 个股页打开同名分组页，会被上一个页面的票张冠李戴。 |
 
 **日志关键字**（`设置 → 日志`，debug 级）：
 

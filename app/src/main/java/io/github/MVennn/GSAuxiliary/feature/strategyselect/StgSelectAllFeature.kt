@@ -288,8 +288,14 @@ class StgSelectAllFeature : Feature {
     private val confirmTouchSynced =
         Collections.synchronizedMap(WeakHashMap<View, Boolean>())
 
-    /** 「确认添加」提交前捕获的真实选择（只在筛选下非空） */
+    /** 「确认添加」提交前捕获的真实选择（筛选 / 聚合态非空；普通页与宿主原包逐字相同） */
     @Volatile private var confirmSelection: Selection? = null
+
+    /** 捕获时刻（elapsedRealtime）。只认「刚刚点下确认添加」的那一份，过期不认 */
+    @Volatile private var confirmCapturedAt = 0L
+
+    /** 捕获新鲜度上限：点确认添加 → 分组页 onCreate 通常不到 1 s */
+    private val captureFreshMs = 8_000L
 
     /** 捕获选择时所在的那个列表：改写提交包前用它确认页面还在（没换页 / 没销毁） */
     private var confirmList: WeakReference<ListView>? = null
@@ -380,6 +386,8 @@ class StgSelectAllFeature : Feature {
      * 任何一行读不全就整组作废（宁可不改，也不能把错误的包换成另一个错误的包）。
      */
     private fun captureSelection(lv: ListView) {
+        // 先作废旧捕获：任何一行读不全都整组作废，不能留着上一轮的票去改这一次的提交包。
+        confirmSelection = null
         val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
         val total = adapter.count
         if (total <= 0) return
@@ -401,11 +409,13 @@ class StgSelectAllFeature : Feature {
             if (price == null) pricesOk = false else prices.add(price)
         }
         confirmList = WeakReference(lv)
-        confirmSelection = if (codes.isEmpty()) null else Selection(
+        val captured = if (codes.isEmpty()) null else Selection(
             codes.toTypedArray(),
             markets.toTypedArray(),
             if (pricesOk && prices.size == codes.size) prices.toTypedArray() else null,
         )
+        confirmSelection = captured
+        if (captured != null) confirmCapturedAt = android.os.SystemClock.elapsedRealtime()
         if (GLog.isDebug) {
             GLog.d(
                 "策略全选：捕获屏幕勾选 " + codes.size + " 只" +
@@ -444,6 +454,14 @@ class StgSelectAllFeature : Feature {
             confirmSelection
         } ?: run {
             GLog.w("策略全选：屏幕勾选读不全，提交代码保持原样")
+            return
+        }
+        // 这份捕获只服务紧随其后的这一次分组页：用过即焚 + 过期不认 —— 免得「点了一下又
+        // 取消」，或隔一会儿从自选 / 个股页打开同名分组页时，被上一个页面的票张冠李戴。
+        confirmSelection = null
+        val capturedAge = android.os.SystemClock.elapsedRealtime() - confirmCapturedAt
+        if (capturedAge > captureFreshMs) {
+            GLog.i("策略全选：上次捕获已过期（" + capturedAge + " ms），提交代码保持原样")
             return
         }
         @Suppress("DEPRECATION")
