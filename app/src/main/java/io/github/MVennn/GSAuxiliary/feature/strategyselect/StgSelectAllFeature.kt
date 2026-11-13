@@ -290,11 +290,23 @@ class StgSelectAllFeature : Feature {
     private val confirmTouchSynced =
         Collections.synchronizedMap(WeakHashMap<View, Boolean>())
 
+    /** 已经提示过「宿主自带触摸监听」的按钮（弱引用键，只提示一次） */
+    private val confirmTouchNoteLog =
+        Collections.synchronizedMap(WeakHashMap<View, Boolean>())
+
     /** 「确认添加」提交前捕获的真实选择（筛选 / 聚合态非空；普通页与宿主原包逐字相同） */
     @Volatile private var confirmSelection: Selection? = null
 
     /** 捕获时刻（elapsedRealtime）。只认「刚刚点下确认添加」的那一份，过期不认 */
     @Volatile private var confirmCapturedAt = 0L
+
+    /**
+     * 这份捕获是不是「按下确认添加」那一刻做的。
+     *
+     * 是 → 它就是这一次提交的输入，页面被摘挂（宿主先 finish 详情页）也照用；
+     * 否 → 只是全选 / 校正模型途中的顺手记录，页面不在了就不敢认（可能是别的页面）。
+     */
+    @Volatile private var confirmFromTouch = false
 
     /** 捕获新鲜度上限：点确认添加 → 分组页 onCreate 通常不到 1 s */
     private val captureFreshMs = 8_000L
@@ -364,11 +376,19 @@ class StgSelectAllFeature : Feature {
         }
     }
 
-    /** 「确认添加」按下 / 选择变化时捕获的真实选择 */
+    /**
+     * 「确认添加」按下 / 选择变化时捕获的真实选择。
+     *
+     * [screenWins] / [pageKind] 在捕获那一刻就定下来：改提交包时页面很可能已经摘挂
+     * （手机上点完「确认添加」，宿主会先 finish 详情页再起分组页），那时再回头问
+     * 「列表上是不是筛选代理 / 是不是聚合页」已经问不出来了。
+     */
     private class Selection(
         val codes: Array<String>,
         val markets: Array<String>,
         val prices: Array<String>?,
+        val screenWins: Boolean,
+        val pageKind: String,
     )
 
     /**
@@ -385,44 +405,72 @@ class StgSelectAllFeature : Feature {
      * 没有筛选时两套坐标本来就是同一套，捕获结果与宿主原包逐字相同 →
      * [fixGroupIntentCodes] 里会原样早退，对普通（无筛、无聚合）路径零影响。
      *
-     * 任何一行读不全就整组作废（宁可不改，也不能把错误的包换成另一个错误的包）。
+     * **市场号缺失不算读不全**：宿主的 `codeAndMarket` 是构造后才填的，自选票尤其常见
+     * 「只有代码」的中间态 —— 按代码前缀推市场号（与筛选 / 勾选态通道同一套口径），
+     * 推不出来才算读不全。
+     *
+     * 任何一行真读不全就整组作废（宁可不改，也不能把错误的包换成另一个错误的包）。
      */
-    private fun captureSelection(lv: ListView) {
+    private fun captureSelection(lv: ListView, fromConfirmTouch: Boolean = false) {
         // 先作废旧捕获：任何一行读不全都整组作废，不能留着上一轮的票去改这一次的提交包。
         confirmSelection = null
+        confirmFromTouch = false
         val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
         val total = adapter.count
         if (total <= 0) return
         val filtered = fullIndices(adapter, total) != null
+        val merged = findActivity(lv)?.let { StrategyMergeBridge.isFor(it) } == true
         val header = lv.headerViewsCount
         val codes = ArrayList<String>(total)
         val markets = ArrayList<String>(total)
         val prices = ArrayList<String>(total)
         var pricesOk = true
+        var derived = 0
         for (i in 0 until total) {
             if (!lv.isItemChecked(header + i)) continue
             val raw = rowRawCodeAt(adapter, total, i) ?: return
-            val code = raw.substringBefore('.').trim()
-            val market = raw.substringAfter('.', "").trim()
-            if (code.isEmpty() || market.isEmpty()) return
-            codes.add(code)
-            markets.add(market)
+            // 市场号缺失是常态、不是异常：宿主的 codeAndMarket 是构造后才填的，自选票尤其
+            // 常见「只有代码」的中间态。按代码前缀推（与筛选 / 勾选态通道同一套口径），
+            // 推不出来才作废整组 —— 一行推不出就把 500 多只票全放弃，是「随机失败」的来源。
+            val parts = StgSelectAllPlan.splitCodeMarket(raw)
+            if (parts == null) {
+                GLog.w(
+                    "策略全选：第 " + i + " 行读不出代码或市场号（" + maskCode(raw) +
+                        "），整组作废，提交代码保持原样",
+                )
+                return
+            }
+            if (raw.indexOf('.') < 0) derived++
+            codes.add(parts.first)
+            markets.add(parts.second)
             val price = rowPriceAt(adapter, total, i)
             if (price == null) pricesOk = false else prices.add(price)
         }
         confirmList = WeakReference(lv)
+        val pageKind = when {
+            merged && filtered -> "聚合页+筛选态"
+            merged -> "聚合页"
+            filtered -> "筛选态"
+            else -> "全量页"
+        }
         val captured = if (codes.isEmpty()) null else Selection(
             codes.toTypedArray(),
             markets.toTypedArray(),
             if (pricesOk && prices.size == codes.size) prices.toTypedArray() else null,
+            screenWins = merged || filtered,
+            pageKind = pageKind,
         )
         confirmSelection = captured
-        if (captured != null) confirmCapturedAt = android.os.SystemClock.elapsedRealtime()
-        if (GLog.isDebug) {
-            GLog.d(
-                "策略全选：捕获屏幕勾选 " + codes.size + " 只" +
-                    (if (filtered) "（筛选）" else "（无筛/聚合）") +
-                    codes.joinToString(prefix = " [", postfix = "]") { LogMask.code(it) },
+        if (captured != null) {
+            confirmCapturedAt = android.os.SystemClock.elapsedRealtime()
+            confirmFromTouch = fromConfirmTouch
+        }
+        if (captured != null && (fromConfirmTouch || GLog.isDebug)) {
+            GLog.i(
+                "策略全选：捕获屏幕勾选 " + codes.size + " 只（" + pageKind +
+                    (if (fromConfirmTouch) "，按下确认添加" else "，非确认添加触发") +
+                    (if (derived > 0) "，" + derived + " 只市场号按代码推" else "") + "）" +
+                    if (GLog.isDebug) codes.joinToString(prefix = " [", postfix = "]") { LogMask.code(it) } else "",
             )
         }
     }
@@ -442,28 +490,31 @@ class StgSelectAllFeature : Feature {
      * prices 读不到而宿主那份长度对不上时直接摘掉，避免宿主拿旧数组按下标越界。
      */
     private fun fixGroupIntentCodes(intent: android.content.Intent) {
-        // 只在「捕获选择的那张列表还在窗口上」时改写：同名的选择分组页也可能从
-        // 自选 / 个股页打开，那时这份捕获已经过期，改写会张冠李戴。
+        // 判定只有两条（2026-11-13 修「手机上随机提示已在该组合」）：
+        //  ① 刚按下「确认添加」捕到的那份 → 它就是这一次提交的输入，**页面摘挂也照用**
+        //     （手机上点完确认添加，宿主经常先 finish 详情页再起分组页，旧代码在这里
+        //      因为「列表已找不到」直接放弃，于是提交包原样进分组页 → 全判「已在该组合」）；
+        //  ② 没有就现场按屏幕重捕一次（「截图并添加」走 performClick，没有 ACTION_DOWN）。
+        // 两条都不成立才放弃，并把两种原因一起写进日志。
+        val now = android.os.SystemClock.elapsedRealtime()
+        val cached = confirmSelection
+        val cachedAge = if (cached != null) now - confirmCapturedAt else -1L
         val lv = resolveConfirmList()
-        if (lv == null) {
-            GLog.w("策略全选：选择分组页不是从策略详情进来的，跳过提交代码校正")
-            return
+        val s = when {
+            cached != null && cachedAge in 0..captureFreshMs && (confirmFromTouch || lv != null) ->
+                cached
+            lv != null -> {
+                captureSelection(lv)
+                confirmSelection
+            }
+            else -> null
         }
-        val s = confirmSelection ?: run {
-            // 兜底：确认添加不一定是手点出来的（「截图并添加」走 performClick，没有
-            // ACTION_DOWN）。现场按屏幕勾选再捕一次，捕到就用。
-            captureSelection(lv)
-            confirmSelection
-        } ?: run {
-            GLog.w("策略全选：屏幕勾选读不全，提交代码保持原样")
-            return
-        }
-        // 这份捕获只服务紧随其后的这一次分组页：用过即焚 + 过期不认 —— 免得「点了一下又
-        // 取消」，或隔一会儿从自选 / 个股页打开同名分组页时，被上一个页面的票张冠李戴。
-        confirmSelection = null
-        val capturedAge = android.os.SystemClock.elapsedRealtime() - confirmCapturedAt
-        if (capturedAge > captureFreshMs) {
-            GLog.i("策略全选：上次捕获已过期（" + capturedAge + " ms），提交代码保持原样")
+        if (s == null) {
+            GLog.w(
+                "策略全选：提交代码保持原样（捕获" +
+                    (if (cached == null) "无" else "过期 " + cachedAge + " ms") +
+                    "，本页列表" + (if (lv == null) "已摘挂" else "在") + "）",
+            )
             return
         }
         @Suppress("DEPRECATION")
@@ -472,24 +523,14 @@ class StgSelectAllFeature : Feature {
         val markets = intent.getStringArrayExtra(GROUP_EXTRA_MARKETS)
         // codes 对得上也要看 markets：宿主按位置配对，长度不符时市场会串位。
         val marketsBroken = markets != null && markets.size != s.codes.size
-        // 这一页的坐标谁是权威（2026-11-13 回归修复）：长度不等时**不能无条件按屏幕裁**。
-        //  - 聚合页：宿主那份 m_stkList 是空的，它按位置根本组不出票 → 屏幕必赢；
-        //  - 筛选态：宿主按全量下标取票，位置已被压缩 → 屏幕必赢；
-        //  - 普通详情页：宿主读的是它自己那份全量 model，屏外可能还勾着票 → 不能裁。
-        val filteredPage = isFilterProxy(unwrapHeaderAdapter(lv.adapter))
-        val mergedPage = findActivity(lv)?.let { StrategyMergeBridge.isFor(it) } == true
-        val screenWins = mergedPage || filteredPage
-        val pageKind = when {
-            mergedPage && filteredPage -> "聚合页+筛选态"
-            mergedPage -> "聚合页"
-            filteredPage -> "筛选态"
-            else -> "全量页"
-        }
+        // 坐标权威（谁说了算）与页面类型都在捕获那一刻定好了，这里不再回问列表：
+        //  - 聚合页 / 筛选态：宿主按全量下标或它自己那份空 model 取票 → 屏幕必赢；
+        //  - 普通详情页：宿主读的是它自己那份全量 model，屏外可能还勾着票 → 不裁。
         GLog.i(
-            "策略全选：提交包核对（" + pageKind + "，宿主 " + (codes?.size ?: 0) + " 只 / 屏幕 " +
+            "策略全选：提交包核对（" + s.pageKind + "，宿主 " + (codes?.size ?: 0) + " 只 / 屏幕 " +
                 s.codes.size + " 只）",
         )
-        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes, screenWins) && !marketsBroken) return
+        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes, s.screenWins) && !marketsBroken) return
         GLog.i(
             "策略全选：确认添加的提交代码已按屏幕勾选校正（" + s.codes.size + " 只，" +
                 (if (codes == null) "宿主包里没有 codes" else "原 " + codes.size + " 只") + "）",
@@ -949,12 +990,17 @@ class StgSelectAllFeature : Feature {
             android.view.View::class.java.getMethod("hasOnTouchListener")
                 .invoke(btn) as? Boolean ?: false
         }.getOrDefault(false)
-        if (hasTouch) return
+        if (hasTouch) {
+            if (confirmTouchNoteLog.put(btn, true) == null) {
+                GLog.i("策略全选：确认添加自带触摸监听，不抢；提交前按屏幕勾选兜底捕获")
+            }
+            return
+        }
         if (confirmTouchSynced.put(btn, true) != null) return
         btn.setOnTouchListener { _, e ->
             if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
                 runCatching { syncHostModel(lv) }
-                runCatching { captureSelection(lv) }
+                runCatching { captureSelection(lv, fromConfirmTouch = true) }
             }
             false
         }

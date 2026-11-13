@@ -440,4 +440,35 @@ class StgSelectAllPlanTest {
             ),
         )
     }
+
+    // ------------------------------ 市场号推导（2026-11-13 手机随机失败）
+
+    @Test
+    fun `带市场后缀时原样拆开`() {
+        assertEquals("600000" to "2", StgSelectAllPlan.splitCodeMarket("600000.2"))
+        assertEquals("000001" to "1", StgSelectAllPlan.splitCodeMarket("000001.1"))
+    }
+
+    @Test
+    fun `裸代码按前缀推市场号`() {
+        // 宿主 codeAndMarket 是构造后才填的，自选票常见「只有代码」的中间态；
+        // 推不出来才该作废整组 —— 一行作废会把 500 多只票全放弃。
+        assertEquals("600000" to "2", StgSelectAllPlan.splitCodeMarket("600000"))
+        assertEquals("300750" to "1", StgSelectAllPlan.splitCodeMarket("300750"))
+        assertEquals("830799" to "5", StgSelectAllPlan.splitCodeMarket("830799"))
+        assertEquals("920575" to "5", StgSelectAllPlan.splitCodeMarket("920575"))
+    }
+
+    @Test
+    fun `推不出市场号或读不出代码时返回空`() {
+        assertNull(StgSelectAllPlan.splitCodeMarket("6000"))
+        assertNull(StgSelectAllPlan.splitCodeMarket(""))
+        assertNull(StgSelectAllPlan.splitCodeMarket("  "))
+    }
+
+    @Test
+    fun `带后缀时不去猜市场号`() {
+        // 宿主明说了市场号就信它（同一个 6 位代码在不同市场都可能有）。
+        assertEquals("920575" to "9", StgSelectAllPlan.splitCodeMarket("920575.9"))
+    }
 }

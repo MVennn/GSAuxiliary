@@ -1,5 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.strategyselect
 
+import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
+
 /**
  * 「全选 / 反选」的方向判定与待点击行 —— 纯逻辑，便于单测。
  *
@@ -165,6 +167,22 @@ internal object StgSelectAllPlan {
 
     /** 代码归一化：去掉市场后缀（`600000.1` → `600000`）与空白 */
     fun normalizeCode(code: String): String = code.substringBefore('.').trim()
+
+    /**
+     * 「代码.市场」或裸代码 → (代码, 市场号)；市场号缺失时按代码前缀推，推不出返回 null。
+     *
+     * 宿主的 `StockInfo.codeAndMarket` 是构造后才填的，自选票尤其常见「只有代码、
+     * 没有市场号」的中间态。这里与筛选 / 勾选态通道用同一个口径（[StockTypes.marketOf]），
+     * 不在第三处再推一套 —— 推不出来才算读不全。
+     */
+    fun splitCodeMarket(raw: String): Pair<String, String>? {
+        val code = raw.substringBefore('.').trim()
+        if (code.isEmpty()) return null
+        val given = raw.substringAfter('.', "").trim()
+        if (given.isNotEmpty()) return code to given
+        val derived = StockTypes.marketOf(code) ?: return null
+        return code to derived
+    }
 
     /** 是不是「股票代码」形态（A 股 6 位 / 港股 5 位）；用来识别宿主模型结构没变 */
     fun isCodeLike(code: String): Boolean = CODE_RE.matches(normalizeCode(code))
