@@ -5,6 +5,164 @@
 
 ---
 
+## [3.8.7] — 2026-11-13
+
+> 补丁版本。数据准确度真机核对（535 行逐只 0 偏差），并顺带修掉头部涨跌家数取「成员累加值」的口径错误。
+
+### 数据准确度核对：行级行情是纯透传，535 行逐只 0 偏差
+
+- 样本：聚合组2（24 个成员、并集 754 只），筛选勾「涨家 + 自选（须涨）」，屏幕保留 535 行。
+- 结果：代码 / 名称 / 最新价 / 涨跌幅 535 行**逐只**对腾讯 `qt.gtimg.cn`，`missing=0 bad_price=0 bad_zdf=0`，名称差异 0。
+- 计数文案「策略个股 535/754」与日志「全量 754 → 保留 535」一致；535 = 334 普通涨 + 201 自选里涨，
+  筛掉 219 = 201 普通跌 + 10 自选里跌 + 8 平盘，算术闭合 —— 不是丢数据。
+- 头部日涨跌幅 +1.00% 是**整份并集 754 只的等权平均**（`writeMergedZdf`），不是 535 只平均（+2.573%），差 1.57 个百分点属口径差。
+- 新增 `tools/audit/compare_quotes.py` 把这次比对固化下来（腾讯批量 60 只、价容差 0.011 元、涨跌幅容差 0.02 个百分点）。
+- 未验：盘中刷新及时性（本次在午休冻结时段抓，只证「值对不对」）。纪要见 `docs/FEATURE-STRATEGY-MERGE.md` §32。
+
+### 修：头部涨跌家数改为「并集重数优先」
+
+- 现象：并集 778 只，头部写「涨 581 / 跌 259」，581 + 259 = 840 > 778（真机 11:32 抓到）。
+- 根因：原逻辑只在「累加值 < 并集只数」时才重数，成员之间有重叠时累加值必然偏大，于是一直沿用偏大值；
+  且缓存里的偏大值会被「并集没变就沿上次的」继续沿用。
+- 修法：`StrategyMergeTargets.countTier()` 三档 —— 重数（覆盖 ≥80%）优先，缓存次之，成员累加兜底。
+- 单测 `StrategyMergeCountsTest` 7 例；日志「家数按并集重数：X/Y（成员累加 A/B，并集 N 只）」，每轮都打。纪要见 §33。
+- 真机（2026-11-13 12:36，MuMu / 金太阳 8.7.1 / 聚合组2）：「家数按并集重数：535/211（成员累加 535/211，并集 754 只）」，535 + 211 ≤ 754 差 8 只平盘，口径闭合。
+
+## [3.8.6] — 2026-11-13
+
+> 补丁版本。只动开发期工具，不进 APK：新增一键登录脚本，并修掉 `tools/env.sh` 的 python 探测踩坑。
+
+### 新增 tools/login.sh —— 一键登录金太阳
+
+- 目的：真机验收每次都要手点账号密码，太慢。凭据只留本机：`tools/login.local.env`（已 gitignore）
+  或环境变量 `GS_USER` / `GS_PASS`；日志里只打账号与密码位数。
+- 输入通路是实测出来的：`input text` 与 AdbIME 的 `ADB_INPUT_TEXT` **都进不去**（App 屏蔽 commitText）。
+  手机号走 `input keyevent`（数字键码 0→7 … 9→16）；密码只能点国信安全键盘
+  `gs_keyboard`（`etPwd` 是自绘 View，text 恒空）。
+- 配套 `tools/uixml.py`：`--center` / `--value` / `--checked` / `--map` / `--has` / `--texts`。
+- 弹窗矩阵：`运行环境存在风险`、`登录信息已失效` 点 `btn_dialog_right`；隐私协议是双按钮，点 `btn_dialog_left`。
+- 已验证：`bash tools/login.sh` 用真凭据端到端跑通 —— `typed=7/7`、`登录成功，已进入 com.guosen.app.goldsun.ui.MainAct`。
+
+### 新增 tools/gskeys.py —— 密码改为 python 逐字符键入
+
+- 现象：真凭据跑完脚本显示「密码已填（7 位）」，点登录后 30 秒仍在 `LoginNewAct`；手工再点登录两次，
+  界面**毫无变化**，无错误提示、无 toast。
+- 根因：原 `press_char()` 用 bash + awk 比较安全键盘的中文 content-desc（`切换数字键盘` / `大小写切换`），
+  实测匹配不上 → 字符被**静默丢弃** → 密码不完整；而 App 对空密码或短密码既不提示也不提交，
+  所以表现为「点登录没反应」。
+- 修法：新建 `tools/gskeys.py`（python 内解析 `uiautomator` XML，全程 UTF-8）—— 先点 `ivClearPwd` 清空、
+  再点 `etPwd`、逐字符点键（数字切数字页、字母切 `ABC` / `大小写切换`）；`login.sh` 里删掉整块 `press_char()`。
+  退出码 0 全中 / 1 有字符没敲进去 / 2 环境问题 / 3 键盘不支持的字符。
+- 顺带修：登录态判据从 `*MainAct*` 放宽到 `*MainAct*|*com.guosen.quotation.*` —— `force-stop` 后重开，
+  栈顶常是 `StockFragAct`，原判据会误报「等不到登录页」。
+- 实测键位（720×1280）：数字页只有 11 个可点键（0-9 + `ABC`），字母页 29 个；**两页都没有「退格」「完成」的 desc**。
+- 输入探针：登录页 `ivClearPwd` 只在密码框有内容时出现在控件树里，不靠截图就能判定输入是否生效
+  （本机模拟器 `screencap` 恒出 0 字节）。
+
+### 修复 tools/env.sh 选到 Microsoft Store 的 python stub
+
+- 现象：`PYTHON` 落到 `WindowsApps/python3`，执行只 return 49 并提示去商店安装 —— `uiautomator` 控件树读不出来，
+  上层脚本表现为「等不到登录页（栈顶: 空）」。
+- 修法：候选路径排除 `*/WindowsApps/*`，并实跑 `-c 'import sys'` 验证可用才采用。
+
+### 文档
+
+- `tools/README.md` 新增「login.sh + uixml.py」一节（输入通路对照表、键盘操作、退出码、弹窗矩阵）。
+
+### 新增 凭据不得入库的硬守护（本仓是 PUBLIC）
+
+- `tools/check-secrets.py` 增加一条铁律：`tools/login.local.env` 只要出现在 git 索引里就判失败。
+  `.gitignore` 只能拦未跟踪文件，`git add -f` 能绕过，这条堵的就是那个口子。
+- 新增 `docs/SECRETS.md`：凭据清单、三道防线、误推后的处置与自查命令。
+
+---
+
+## [3.8.5] — 2026-11-13
+
+> 本版为补丁版本（3.8.4 → 3.8.5）：修的是 3.8.4 那条修复**本身**的两处硬伤，
+> 并把「策略详情页上是谁在改勾选」收敛成一条跨功能通道（正本
+> `docs/FEATURE-ROW-SELECTION.md`）。没有新增用户可见功能。
+
+### 修复 勾选迁移读到全量同下标的另一只票（聚合页点一行连错两趟）
+
+- 现象：3.8.4 之后聚合组里**手工逐只勾选**仍会错 —— 勾 A 结算成 B；筛完再确认添加，
+  分组里加进去的不是屏幕上那几只。全选路径因为有自己的逐个校验，反而看不出问题。
+- 根因：迁移时用 `liveOld.getItem(position)` 问「这一行是哪只票」，而旁路帧
+  （`runWithRemapBypassed`）里的 `FilteredAdapter.getItem` 会把 `position` 当**全量**下标解释 ——
+  读到的是全量列表同下标的**另一只票**。聚合页点一行会连跑两趟迁移（宿主回填单策略 data + 聚合
+  写回并集，各触发一次），每趟都读错、都写错。
+- 修法：一律「用旧 `keptIndices` 换回全量下标，再问 base 适配器」（`camOfRow(base, rows, position)`）；
+  `restoreCheckedCodes` 的「读到一半读不出就 return」改为**先整趟读全再写**，不再留半截迁移；
+  对齐键从纯代码改为 **`代码@市场`**（同代码不同市场不再互相认领）。
+
+### 新增 跨功能勾选通道 `feature/stgrow/`
+
+- `StgRowSelection`：进程级「刚算出来的勾选结论」通道 —— `keyOf` / `keyOfCam` / `publish` /
+  `freshOf`（8 s 新鲜期）/ `rowEpoch` / `bumpRowEpoch`。空集合等于撤回。
+- `StgRowChecked`：**按代码读写勾选的唯一实现**（`keysOf` / `applyChecked`），
+  筛选、聚合两处共用，坐标一律 `header + i`。
+- 四处接入：
+  1. 筛选 `applyFilter0`：换代理前读、换之后按新下标表对齐，随后 `publish` + `bumpRowEpoch`；
+  2. 聚合 `reapplyIfNeeded`：`writeListInPlace` 前按代码读、`notifyAdapter` 后写回；
+     **挂过滤代理时不接手**（交给筛选，避免两趟互相覆盖）；读不出来就不写；
+  3. 全选 `clickOneRow`：每行前比 `rowEpoch`，变了就重开一轮（补 `run.full == null` 时的零校验盲区）；
+  4. 截图并添加 `readFromHostModel`：读宿主 `checkCodes` 前加 `modelTrusted(codes, 底部计数)`，
+     对不上就是残值，回落按 checked states 判。
+- 3.8.4 里那三个函数 `checkedCodesOf` / `restoreCheckedCodes` / `codeOfRow` 已由上面两个类取代
+  （3.8.4 段落里的名字是当时的事实，保留不改）。
+
+### 文档
+
+- 新增 `docs/FEATURE-ROW-SELECTION.md`（跨功能勾选态**唯一正本**：三个坐标谁写谁读、
+  通道 API、四条硬规矩、时序图、四个接入点、真机验收）；`docs/DOC-RULES.md` 正本映射表与
+  `docs/README.md` 索引同步登记；
+- `docs/FEATURE-STG-FILTER.md` 的「勾选态必须按代码迁移」一节按新实现改写（含旁路帧读错行的坑）；
+  `docs/FEATURE-SELECT-ALL.md` 新增 §2.3.6（`rowEpoch` 重开一轮）；
+  `docs/FEATURE-STRATEGY-MERGE.md` 新增 §31；`docs/FEATURE-SNAP-ADD.md` 新增 §2.4。
+
+### 验证
+
+- `:app:testReleaseUnitTest :app:assembleRelease --offline` → BUILD SUCCESSFUL；
+  30 个测试类 **349 例** / 0 failures / 0 errors（新增 `StgRowSelectionTest` 14 例）；
+- `tools/ci/check_links.py` / `tools/hygiene.py` / `tools/ci/verify_apk.py --reject-debug-cert` 全过；
+- 产物 `app/build/outputs/apk/release/app-release.apk` **1,716,044 B**。
+- **真机待验**：三步见 `docs/FEATURE-ROW-SELECTION.md` §七。
+
+## [3.8.4] — 2026-11-13
+
+> 本版为补丁版本（3.8.3 → 3.8.4）：**没有新增功能**，修的是 3.8.3 那条修复带出来的回归 ——
+> 「我的策略聚合」与「筛选股票」叠加时勾选漂移、确认添加加错票（进位依据见 `docs/VERSIONING.md` §1）。
+
+### 修复 聚合 × 筛选叠加时的勾选漂移与「筛选不准」（2026-11-13）
+
+- 现象：聚合组策略详情页里筛完股票，勾选会**飘到别的行**上；接着「全选 / 确认添加」，
+  分组里少的 / 错的正是屏上勾的那几只。它往往**自己会好** —— 下一轮筛选重算把列表刷回去，
+  所以看着像「一闪而过的不准」。
+- 根因有两条，叠在一起：
+  1. `AbsListView.mCheckStates` 是按**适配器位置**存的，而过滤代理只换 `indices`（子集 ↔ 全量）。
+     `proxy.update(newRows)` 换了行集合却没动 checked states → 位置 i 上坐的已经是另一只票，
+     「勾着 A，结算成 B」；`lv.adapter = 新代理` 同理（`hasStableIds()` 恒 false，没有 id 表可反查）。
+     聚合页每轮把并集写回 data 再 notify，行集合变化比平时勤，把这条放大成常态。
+  2. 3.8.3 把「确认添加」的判据放宽成「长度不等就按屏幕覆盖」，在**普通详情页**上过了头：
+     宿主组提交包时读的是它自己那份**全量** model，屏外还勾着票时长度天然比屏幕子集长 ——
+     一律裁成屏幕勾选就把屏外那批票丢掉了。
+- 修法：
+  - `StgStockFilterFeature.applyFilter`：换 / 更新代理前后各做一次**按代码**的勾选态对齐
+    （新增 `checkedCodesOf` / `restoreCheckedCodes` / `codeOfRow`）。只在多选态做；**任一行读不出
+    代码就整体放弃**（迁移错比不迁移更坏）；写回是全量对齐（勾着的留下、没勾的去掉），不是只追加拿；
+    日志 `筛选股票：勾选态按代码迁移 N 行`；
+  - `StgSelectAllPlan.needsGroupFix` 加第三参 `screenWins`：长度不等时**只有聚合页或筛选态**才按
+    屏幕覆盖，普通全量页保留宿主那份；`hostCodes` 为 `null` / 空数组仍然一律补上（那是「宿主一只都
+    没构造出来」，不补就是 3.8.3 那个「已在该组合」）；
+  - `fixGroupIntentCodes` 判定前打一行 `策略全选：提交包核对（聚合页 / 筛选态 / 聚合页+筛选态 /
+    全量页，宿主 N 只 / 屏幕 M 只）`，便于贴日志定位走的是哪一支。
+- 单测：`StgSelectAllPlanTest` 补 3 例（普通页长度不等不裁 / 聚合或筛选态长度不等覆盖 / 空数组补上），
+  共 41 例。
+- 验证：`gradlew :app:testReleaseUnitTest :app:assembleRelease` BUILD SUCCESSFUL；全部 332+3 = 335 例
+  0 失败；`tools/ci/check_links.py` 0 断链、`tools/hygiene.py` exit 0、`tools/ci/verify_apk.py
+  --reject-debug-cert` 通过。**真机待验**（验收步骤见 `docs/FEATURE-STG-FILTER.md` 新节与
+  `docs/FEATURE-SELECT-ALL.md` §2.3.5）。
+
 ## [3.8.1] — 2026-11-12
 
 > 本版为补丁版本（3.8.0 → 3.8.1）：**没有新增功能**，修的是 3.8.0 上线后暴露的
@@ -45,7 +203,12 @@
     被上一个页面的票张冠李戴。
 - 判据抽成纯函数 `StgSelectAllPlan.needsGroupFix(hostCodes, selected)`，补 6 例单测。
 - 验证：`gradlew :app:testReleaseUnitTest :app:assembleRelease` BUILD SUCCESSFUL；`StgSelectAllPlanTest`
-  38 例 0 失败；`tools/ci/check_links.py` 0 断链、`tools/hygiene.py` exit 0。**真机待验**。
+  38 例 0 失败；`tools/ci/check_links.py` 0 断链、`tools/hygiene.py` exit 0。
+- **真机已验证（2026-11-13，MuMu 6.8.8.0 / Android 12 / 金太阳 8.7.1(274) / 模块 3.8.2(61)）**：
+  聚合组全选 527 只后，提交包由「宿主 0 只」被校正为「屏幕 527 只」，分组页不再出现「已在该组合」；
+  5 只小样本点分组后正常入组（宿主发出 `add-securities/2.0`，自选页可见这 5 只）。
+  同一页一次提交 527 只时宿主仍拒收（APK 内提示串「分组中股票数量超过限制,添加失败」），
+  属宿主服务端容量限制，与提交包无关。逐条记录见 `docs/FEATURE-SELECT-ALL.md` §4.9。
 - 文档：`docs/FEATURE-SELECT-ALL.md` 新增 §2.3.4（原理与修法）与 §4.9（真机验收三步），
   验收标准追加第 19 条。
 

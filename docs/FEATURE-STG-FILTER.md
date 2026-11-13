@@ -370,6 +370,61 @@ existing?.onItemClick(parent, view, mapped, id)      // 再转发给宿主原监
   再用 `keptIndices` 把可见行的子集下标换回全量下标；快照不属于当前代理就整段跳过
   （宁可少染，不能染错）（2026-10-21）。
 
+### ⚠️ 勾选态必须按代码迁移，不能按位置（2026-11-13 修「筛选不准 / 加错票」）
+
+**现象**（用户报，与「我的策略聚合」叠加时最容易看见）：筛完之后勾选「飘」到别的行上；
+接着点「勾选加入自选股 → 确认添加」，分组里少的 / 错的正是屏幕上勾的那几只。
+它往往**自己会好** —— 下一轮筛选重算又把列表刷回去，所以看着像「一闪而过的不准」。
+
+**机制**（两条独立原因，叠在一起）：
+
+1. `AbsListView.mCheckStates` 是按**适配器位置**存的。代理只换 `indices`（子集 ↔ 全量），
+   `proxy.update(newRows)` 换了行集合却没动 checked states → 位置 i 上坐的已经是另一只票，
+   勾选原地留下 = 「勾着 A，结算成 B」。
+2. 代理的 `hasStableIds()` 恒 `false`（见上一节），所以 `lv.adapter = 新代理` 之后
+   `handleDataChanged()` 没有 id 表可用，勾选只能按位置保留或直接失效。
+
+聚合页把这条放大：`StrategyMergeFeature.reapplyIfNeeded` 每轮重新写并集再 notify，
+行集合变化比平时勤得多（那一节注释里「再喊一次 notify」就是这个时差）。
+
+**修法**：`applyFilter` 在换 / 更新代理的**前后**各做一次按代码对齐 ——
+
+```kotlin
+// 换之前：用此刻挂在列表上的适配器，把「勾着哪几只」读成 Set<代码@市场>
+// oldRows = 当前代理的行集合（旧下标表），用来把子集下标换回全量下标再读
+val liveOld = (unwrapHeaderAdapter(lv.adapter) as? android.widget.ListAdapter) ?: base
+val oldRows = if (proxy != null && liveOld === proxy) snap?.keptIndices else null
+val checkedBefore = checkedKeysOf(lv, liveOld, base, oldRows)
+// …装代理 / proxy.update(rows)…
+// 换之后：按新下标表整趟读全、再全量对齐（不是只追加拿）
+val moved = restoreCheckedKeys(lv, base, rows, checkedBefore)
+// 无论有没有迁移，结论都发到跨功能通道（正本见 FEATURE-ROW-SELECTION.md）
+StgRowSelection.publish(lv, checkedBefore)
+StgRowSelection.bumpRowEpoch()
+```
+
+口径要点：
+
+- **读不全就整体放弃**（`StgRowChecked.keysOf` 返回 null）：迁移错的勾选比不迁移更坏，
+  那会真的把错票加进分组。
+- **读行代码不许问代理**：旁路帧里 `FilteredAdapter.getItem(position)` 把 position 当
+  **全量**下标，问到的是全量同下标的**另一只票**（聚合页点一行会连跑两趟迁移，错得最稳）。
+  一律用旧 `keptIndices` 换回全量下标再问 base 适配器 —— 实现就是 `camOfRow(base, rows, position)`。
+- **键必须 `代码@市场`**：只取代码的话，同代码不同市场会互相认领，搬勾选搬到另一只票上。
+- **换完必须发信号**：`StgRowSelection.publish` + `bumpRowEpoch` —— 批量点行的循环靠它发现
+  「行集合被换了」。跨功能口径正本见 [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md)。
+- 只在 `choiceMode == CHOICE_MODE_MULTIPLE` 做：单条模式没有「哪几只」。
+- 写回是**全量对齐**（勾着的留下、没勾的去掉），不是只追加拿 —— 漂移会把原来勾的那行
+  留在勾上，只补不加会让错误累积。
+- 日志关键字 `筛选股票：勾选态按代码迁移 N 行（勾着 M 只，筛后 K 行）`；无迁移时不打。
+
+**验收**：
+
+1. 详情页筛到 5 只以内，勾第 2、4 行 → 改筛选条件让结果换一批 → 勾选应跟着**同一只股票**
+   走（原来的票被滤掉则相应消失），不会出现在别的行上。
+2. 同上，筛完直接点底部「勾选加入自选股」→「确认添加」，分组里应正好是屏幕上勾的那几只。
+3. 聚合组里重复第 1、2 步（并集 20 只以上、筛后剩个位数最明显）—— 修前这一步错得最稳。
+
 ### 走过的弯路：`GONE` 不塌陷、`height=0` 也不塌陷（已废弃，留档）
 
 初版走的是「渲染完把不匹配的行藏起来」，两个坑都实测过：

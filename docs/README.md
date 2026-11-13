@@ -36,6 +36,7 @@
 | [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md) | 隐藏 新股申购 弹窗，含真机校准手册 |
 | [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) | 手势导航条同色 |
 | [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) | 界面精简（底栏 / 首页 / 行情市场，含「隐藏 指数概览」），含真机校准手册 |
+| [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md) | 策略详情页「勾选态」的跨功能通道：筛选 / 全选 / 聚合 / 截图并添加四个功能共用的一份勾选读写口径与行集合版本号（**跨功能状态正本**） |
 | [FEATURE-STRATEGY-MERGE.md](FEATURE-STRATEGY-MERGE.md) | 我的策略聚合（聚合组）：同组多条原生策略的股票并到一张原生结果页；含踩点报告、真机探针记录、筛选联动、从金太阳导入、标签成员、组合维度、入口卡命名与全选提速 |
 
 ## 三、流程与规范
@@ -43,6 +44,7 @@
 | 文档 | 一句话定位 |
 |---|---|
 | [BUILD.md](BUILD.md) | 构建指南：环境、依赖版本为什么钉死、签名、CI 构建与产物自查 |
+| [SECRETS.md](SECRETS.md) | 凭据清单与「什么不能进仓」：本仓是 PUBLIC，三道防线（.gitignore / check-secrets.py 含 `git add -f` 守护 / 脚本日志掩码）与误推处置 |
 | [RELEASE.md](RELEASE.md) | 发布清单：**交付规则正本（§0.1）**、双仓库发版、Release 说明格式、发版前检查 |
 | [VERSIONING.md](VERSIONING.md) | 版本命名规范：三段式进位规则，**版本晋升正本（§1）** |
 | [REVIEW-2026-10.md](REVIEW-2026-10.md) | 2026-10 审查历史快照：修掉的缺陷、**五轮独立复核的经验**、装上的自动化防护（单测数已按「当时」标注；§6.3 跨仓串文已勘误） |

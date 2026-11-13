@@ -166,6 +166,27 @@ Intent(action = "quotes.stockDetail")
 
 ---
 
+### 2.4 读选中先认「宿主模型可信度」（2026-11-13）
+
+多选态下 `SnapSelection.readChecked` 先读宿主模型字段 `checkCodes`（宿主按**代码**记的那份），
+读不到才逐行看 `lv.isItemChecked`。问题在**聚合页**：并集是模块原地写进 `adapter.data` 的，
+宿主那份 `checkCodes` 不跟着变 —— 于是读到的是上一批残值，把没勾的判成已勾、
+把勾着的漏掉，接着就按错的名单去截图。
+
+修法：读到 `codes` 之后先过一道 `StgSelectAllPlan.modelTrusted(codes, hostCount)`
+（`hostCount` = 底部「已选 N」，读不到按 -1 放行）：
+
+```kotlin
+if (!StgSelectAllPlan.modelTrusted(codes, hostCount)) {
+    GLog.w("截图并添加：宿主模型 checkCodes=… 项与底部计数=… 对不上，按 checked states 判")
+    return null      // 回落逐行读 checked states
+}
+```
+
+**不**优先用跨功能通道（`StgRowSelection`）的快照：手动勾选不触发 notify，
+通道快照只在「行集合刚换过」那一瞬最新，手点几下之后它就是旧的；`mCheckStates` 永远实时。
+通道口径正本见 [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md)。
+
 ## 3. 代码位置
 
 | 文件 | 职责 |
