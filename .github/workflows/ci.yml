@@ -14,9 +14,10 @@ name: CI
 #
 # 默认只编 **release**，理由有两条：
 #   1. release 才是要发的包，也是红线校验的对象；
-#   2. debug 包约 11 MB，占产物九成体积 —— 而它从 2.17.1 起已经不再随 Release
-#      发布（见 CHANGELOG），日常没人下载。要拿它装真机排查时，到 Actions 页面
-#      手动触发本工作流、勾上 build_debug 即可。
+#   2. debug 包从 2.17.1 起不再随 Release 发布（见 CHANGELOG），日常没人下载；
+#      2026-11-13 起它的构建口径已与 release 相同（关 debuggable + 开 R8，约 1.7 MB，
+#      见 docs/BUILD.md §2.2），但交付仍只给 release。要拿它装真机排查时，到 Actions
+#      页面手动触发本工作流、勾上 build_debug 即可。
 #
 # 这一套是**零密钥**的：仓库没配任何 Secret 也能跑，release 会退回 debug 签名，
 # 产物只当测试包用（见 docs/BUILD.md §8）。
@@ -31,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       build_debug:
-        description: '连 debug 包一起编（约 11 MB；只有要拿它装真机排查时才勾）'
+        description: '连 debug 包一起编（约 1.7 MB，与 release 同口径；只有要拿它装真机排查时才勾）'
         required: false
         default: false
         type: boolean

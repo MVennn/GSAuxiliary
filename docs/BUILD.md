@@ -609,8 +609,9 @@ GitHub 账号 2026-10-18 被停用、2026-10-21 解封。解封后按风控口�
 > 不依赖本工作流。推送节奏与账号风控的完整口径见 [RELEASE.md](RELEASE.md) §3.1。
 
 > **`ci.yml` 默认只编 release**（不发 debug 包，交付规则见 [RELEASE.md](RELEASE.md) §0.1）：
-> debug 包占产物九成体积（约 11 MB，release 只有 1.5 MB）且日常没人下载，
-> 产物总大小因此从约 14 MB 降到约 2 MB。
+> 交付只给 release，debug 包日常没人下载，产物总大小因此从约 1.9 MB 降到约 1.7 MB。
+> 2026-11-13 起 debug 变体已与 release 同口径（关 debuggable + 开 R8），两者都是约 1.7 MB ——
+> 改前 debug 是 11.9 MB（见 §2.2）。
 > 需要拿 debug 包装真机排查时，到 Actions 页面手动触发这个工作流、勾上 `build_debug`。
 >
 > 两个工作流都钉 `ubuntu-24.04` 而不是 `ubuntu-latest`：后者从 2026-10-19 起
