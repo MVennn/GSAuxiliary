@@ -92,7 +92,7 @@ Make GoldenSun Great Again！
 - [扩展指南](https://github.com/MVennn/GSAuxiliary/blob/main/docs/EXTENDING.md)：加一个新功能要做哪几步、合入前自检什么
 - [构建](https://github.com/MVennn/GSAuxiliary/blob/main/docs/BUILD.md) · [版本规范](https://github.com/MVennn/GSAuxiliary/blob/main/docs/VERSIONING.md) · [发布清单](https://github.com/MVennn/GSAuxiliary/blob/main/docs/RELEASE.md)：从改代码到出 Release
 - [排错手册](https://github.com/MVennn/GSAuxiliary/blob/main/docs/TROUBLESHOOTING.md)：按「现象 → 步骤 → 原因 / 解法」组织；装不上、开关点了没反应、热重载失灵先看它
-- 功能专项 14 篇 `FEATURE-*.md`（见 [docs/](https://github.com/MVennn/GSAuxiliary/blob/main/docs/)）：一个功能一篇，写目标、真机实测的链路契约与实现要点
+- 功能专项 15 篇 `FEATURE-*.md`（见 [docs/](https://github.com/MVennn/GSAuxiliary/blob/main/docs/)）：一个功能一篇，写目标、真机实测的链路契约与实现要点
 - [更新日志](https://github.com/MVennn/GSAuxiliary/blob/main/CHANGELOG.md)：每个版本改了什么、为什么改
 
 ## 免责声明

@@ -1,25 +1,8 @@
-# 策略详情页「多选栏 全选 / 反选」实现说明
+# 策略详情页「全选 / 反选」实现说明
 
-> 目标：在 **智能选股 → 我的策略 → 策略详情**（`AIStkStgDetailAct`）里，点「勾选加入自选股」
-> 进入多选态后，**在「取消」按钮左侧多出一个「全选 / 反选」按钮**，
-> 一键把该页**所有**股票勾上 / 取消勾选。
->
-> 本模块是 LSPosed 模块，**不改目标 App 源码** —— 全部靠运行时视图注入。
-> 本文的控件契约与验证结论**均来自真机实测**（魅族 20 / Android 16 / 金太阳 8.6.0 vc271），
-> 不是推断。
+> **一句话**：在策略详情页的多选态里、于「取消」左侧注入一颗「全选 / 反选」，用合成行点击把整页（含屏外行）一次勾完，并让屏幕显示、宿主计数与「确认添加」的提交包三者始终一致。
 
----
-
-## 0. 结论先行
-
-| 问题 | 答案 |
-|---|---|
-| 按钮注入到哪 | 「取消」按钮（`#tv_stg_add_zxg`）的**同一个父 `LinearLayout`** 里，插在它的索引位置 —— 于是自然落在「取消」**左侧**。 |
-| 「取消」按钮怎么认 | 它**不是**独立的取消按钮：「正常态 = 文案『勾选加入自选股』，多选态 = 文案『取消』」，是**同一颗 TextView** 换文案。所以「进入多选态」的判定 = 观察它文案变没变成「取消」。 |
-| 怎么"点一行" | 多选态下**点击整行**即切换该行勾选框（`#ct_item`，`CheckedTextView`），并同步底部「已选 N 只股票」。所以全选 = 对每一行触发一次行点击；2026-11-04 起首轮在**同一帧内批量**触发，屏幕上一次性全勾。 |
-| 怎么避免知道宿主选中模型 | 走 `ListView.performItemClick(...)`，触发宿主**自己的** `OnItemClickListener` —— 与用户手动点行**完全同一条**代码路径，宿主模型与底部计数自然同步。 |
-| 屏外行怎么办 | 屏外行没有已绑定的子 View，用 `Adapter.getView(pos, null, lv)` **现造一个探针 View**（按宿主模型绑定勾选态）后传入 `performItemClick`。**不能只遍历 `ListView` 的可见子 View**。 |
-| 为什么必须分帧 | 宿主每次切换勾选后会刷新列表（`notifyDataSetChanged`），同一帧里继续复用旧子 View 会失效 —— 真机实测表现为「反选只清掉第一行」。 |
+场景：**智能选股 → 我的策略 → 策略详情**（`AIStkStgDetailAct`）→ 点「勾选加入自选股」进入多选态。本模块是 LSPosed 模块，**不改目标 App 源码**，全部靠运行时视图注入；控件契约与结论均来自真机实测（魅族 20 / Android 16 / 金太阳 8.6.0 vc271 起，宿主版本差异在正文标注），不是推断。
 
 ---
 
@@ -36,12 +19,11 @@ ListView #lvStks [0,230][1080,2205]
             └─ TextView #tv_stg_add_zxg  "取消"  [927,664][1041,732]   ← 锚点按钮
   └─ (row) FrameLayout [0,820][1080,958]  ← 每只股票一行（行高 138px）
        ├─ ImageView #iv_item_show_choose
-       ├─ LinearLayout └─ TextView #tv_item_stk_name / #tv_item_stk_code
+       ├─ TextView #tv_item_stk_name / #tv_item_stk_code
        ├─ TextView #tv_item_stk_price / #tv_item_stk_percent
        └─ CheckedTextView #ct_item  ← 勾选框（多选态可见）
 
-底部条 LinearLayout #ll_bottom
-  └─ LinearLayout #ll_add_zxg_bottom
+底部条 LinearLayout #ll_bottom └─ LinearLayout #ll_add_zxg_bottom
        ├─ "已选 " / TextView #tv_bottom_zxg_num / " 只股票"
        └─ TextView #tv_bottom_add_zxg "确认添加"
 ```
@@ -54,15 +36,13 @@ ListView #lvStks [0,230][1080,2205]
 | 底部已选计数（裸数字） | `tv_bottom_zxg_num` | `TextView` |
 | 底部确认按钮 | `tv_bottom_add_zxg` | `TextView` |
 
-> 列表区 `[0,820][1080,2205]` + 行高 138px ⇒ **一屏约 10 行**。
-> 所以「策略个股 32 只」这类长策略天然就有 20+ 行在屏外，是检验"是否只选了可见行"的现成样本。
+> 列表区 `[0,820][1080,2205]` + 行高 138px ⇒ **一屏约 10 行**。「策略个股 32 只」这类长策略天然有 20+ 行在屏外，是检验「是否只选了可见行」的现成样本。
 
 ---
 
 ## 2. 实现方式
 
-代码在 `feature/strategyselect/`：常量在 [StgSelectAllTargets.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllTargets.kt)，
-实现在 [StgSelectAllFeature.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllFeature.kt)。
+代码在 `feature/strategyselect/`：常量见 [StgSelectAllTargets.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllTargets.kt)，功能体见 [StgSelectAllFeature.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllFeature.kt)，方向与提交包判据等纯逻辑见 [StgSelectAllPlan.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/strategyselect/StgSelectAllPlan.kt)。
 
 ### 2.1 挂钩点：`Activity.onResume` + 锚点按钮的 `TextWatcher`
 
@@ -74,287 +54,149 @@ Activity.onResume（只对 AIStkStgDetailAct）
             └─ 其它           → removeInjected()   （退出多选态）
 ```
 
-**为什么不直接 Hook `TextView.setText`**：`setText` 是全 App 的**超热路径**
-（行情页实时报价每秒都在刷），全局 Hook 它会给整个 App 带来可感知的卡顿。
-只盯这一颗按钮，零全局开销。
+「取消」不是独立按钮：正常态文案是「勾选加入自选股」、多选态是「取消」，是**同一颗 TextView** 换文案，所以「进入多选态」的判定就是观察文案变没变成「取消」。
+
+**为什么不直接 Hook `TextView.setText`**：`setText` 是全 App 的**超热路径**（行情页实时报价每秒都在刷），全局 Hook 会给整个 App 带来可感知的卡顿。只盯这一颗按钮，零全局开销。
 
 ### 2.2 注入：从「取消」克隆，保证样式一致
 
-`buildSelectAll()` 逐项复制源按钮的**可见样式**与 **LayoutParams**：
-
-- 样式：`background`（含状态 `constantState`）、`backgroundTintList`、`textColors`、`typeface`、
-  `textSize`、`textScaleX`、`letterSpacing`、`padding`、`compoundDrawables`、`gravity`、
-  `includeFontPadding`、`ellipsize`、`maxLines`、`maxWidth`、`minWidth`、`minHeight`、`foreground`。
-- LayoutParams：`LinearLayout.LayoutParams` / `MarginLayoutParams` / `LayoutParams` 三种都按原类型复制。
-
-三处刻意的处理：
+`buildSelectAll()` 逐项复制源按钮的**可见样式**与 **LayoutParams**：`background`（含状态 `constantState`）、`backgroundTintList`、`textColors`、`typeface`、`textSize`、`textScaleX`、`letterSpacing`、`padding`、`compoundDrawables`、`gravity`、`includeFontPadding`、`ellipsize`、`maxLines`、`maxWidth`、`minWidth`、`minHeight`、`foreground`；LayoutParams 按 `LinearLayout.LayoutParams` / `MarginLayoutParams` / `LayoutParams` 三种原类型复制。三处刻意的处理：
 
 | 处理 | 原因 |
 |---|---|
-| **间距只加在自己身上**：`copy.rightMargin = 16dp`，**不动「取消」任何属性** | 用户硬验收是「全选按钮的**显示样式与取消按钮完全一致**」；间距是**两个按钮之间**的距离，不是按钮内边距。改「取消」的 padding 会破坏这条验收。 |
-| **独立 id**：`View.generateViewId()` | 克隆品若沿用源的 `id`，`findViewById` 会歧义，"防重复注入"的幂等判断也会失效。 |
-| **`minWidth` 用 `paint.measureText` 量**，取「全选」「反选」里更宽的那个 | 文案在「全选 ↔ 反选」间切换时宽度不变，按钮不抖、也不会把「取消」挤出屏幕。**不能**取 `src.width` —— 文案切换途中会拿到旧文案（「勾选加入自选股」5 字）的宽度，把按钮撑过头。 |
+| **间距只加在自己身上**：`copy.rightMargin = 16dp`，**不动「取消」任何属性** | 硬验收是「全选按钮的**显示样式与取消按钮完全一致**」；间距是**两个按钮之间**的距离，不是按钮内边距。改「取消」的 padding 会破坏这条验收。 |
+| **独立 id**：`View.generateViewId()` | 克隆品若沿用源的 `id`，`findViewById` 会歧义，「防重复注入」的幂等判断也会失效。 |
+| **`minWidth` 用 `paint.measureText` 量**，取「全选」「反选」里更宽的那个 | 文案在「全选 ↔ 反选」间切换时宽度不变，按钮不抖、也不会把「取消」挤出屏幕。**不能**取 `src.width` —— 切换途中会拿到旧文案（「勾选加入自选股」5 字）的宽度，把按钮撑过头。 |
 
 ### 2.3 全选 / 反选：先确定每行状态 + 只点要改的行 + 分帧 + 点完核对
 
 ```
 toggleAll()
   ├─ takeShot()：读现场（适配器 / 总行数 / 子集→全量映射 / 每行状态）
+  │     ├─ 宿主模型 checkCodes 可信（能读、行代码映射完整、条数与计数相符）→ 按它判
   │     ├─ 宿主计数 == 0        → 全部未选（不建视图；仅首轮）
   │     ├─ checked states 可用  → 读它（O(行数)、不建视图；与「确认添加」同一份表）
   │     │     没有筛选时还要求「表里勾选数 == 宿主计数」，对不上就改用探针
   │     └─ 否则                 → 逐行 adapter.getView(i, null, lv) 现绑探针读 #ct_item
   ├─ wantChecked = StgSelectAllPlan.wantChecked(before)   // 还有没勾上的 → 全选
-  ├─ click = StgSelectAllPlan.rowsToClick(before, wantChecked)
-  │     // 只点「状态与目标不同」的行 —— 行点击是取反的
-  ├─ clickAll(click[0..n])                                // 2026-11-04：同一帧批量点完
-  │     ├─ 运行令牌 / header 数 / 筛选下标快照校验
-  │     │     筛选结果变了 → **重开一轮**；适配器实例换了 → 中止（可能是别的页面）
+  ├─ click = StgSelectAllPlan.rowsToClick(before, wantChecked)  // 只点状态与目标不同的行
+  ├─ clickAll(click[0..n])                                // 同一帧批量点完
+  │     ├─ 运行令牌 / header 数 / 筛选下标快照 / rowEpoch 校验
+  │     │     筛选结果或行集合变了 → **重开一轮**；适配器实例换了 → 中止（可能是别的页面）
   │     ├─ pos = header + full[index]                  // 子集下标 → 全量下标（快照）
   │     ├─ 可见行 → 传已绑定的真实子 View；屏外行 → 再造一个探针 View
-  │     ├─ lv.setItemChecked(pos, !wantChecked)
-  │     │     // 摆成「点击前」，取反后才一定落到目标；它还会维护 checkedItemCount
+  │     ├─ lv.setItemChecked(pos, !wantChecked)         // 摆成「点击前」，取反后落到目标
   │     ├─ lv.performItemClick(row, pos, adapter.getItemId(index))
   │     ├─ 这一行失败 → 只计数（本轮第一条记 WARN），下一轮按表核对
   │     └─ 筛选生效时收尾统一 refreshVisibleChecked()
   ├─ 批量收尾：syncHostModel() → refreshVisibleChecked() → updateLabel() → reassertGate()
-  ├─ 一轮点完 → 隔 120ms 重读 checked states
-  │     ├─ 还有行不对 → clickNext() 再补一轮（逐行 40ms；只点这些行；最多 4 轮点击，重开轮不计）
-  │     └─ 全部到位   → 收尾：refreshVisibleChecked() + 下一帧 pre-draw 再刷一次 + updateLabel()
+  ├─ 一轮点完 → 隔 ROUND_SETTLE_MS（120ms）重读 checked states
+  │     ├─ 还有行不对 → clickNext() 补点（逐行 TOGGLE_STEP_MS=40ms；最多 MAX_ROUNDS=4 轮点击）
+  │     └─ 全部到位   → 收尾刷一次 + 下一帧 pre-draw 再刷一次 + updateLabel()
   └─ 适配器实例在运行中换了 → 中止（不把「全选」施加到另一批股票上）
 ```
 
 要点：
 
-1. **状态来源按优先级选，绝不读屏上那颗勾选框**（2026-10-21；2026-10-23 起宿主模型优先）：
-   合成点击后宿主不会重画部分可见勾选框（§4.1），读屏上那颗会拿到过期状态 ——
-   这正是「重复全选部分选不中」的根因。顺序是
-   **「宿主 `checkCodes`（能读且行代码映射完整）」→「宿主计数 0 → 全部未选」→
-   「checked states」→「逐行探针」**。模型是底部计数 / 确认添加的来源，能看见
-   「宿主静默忽略了一次合成点击」；模型不可用（字段读不到 / 任一行代码读不到 /
-   没有筛选时计数 > 0 但模型空表或一只都对不上）时整趟退回后三级。
-   中间那档最省（不建视图），最后一档只在表不可用或与计数矛盾时才走。
+1. **状态来源按优先级选，绝不读屏上那颗勾选框**：合成点击后宿主不会重画部分可见勾选框（§2.3.2），读屏上那颗会拿到过期状态 —— 这正是「重复全选部分选不中」的根因。顺序是**「宿主 `checkCodes`（能读且行代码映射完整）」→「宿主计数 0 → 全部未选」→「checked states」→「逐行探针」**。模型是底部计数 / 确认添加的来源，能看见「宿主静默忽略了一次合成点击」；模型不可用（字段读不到 / 任一行代码读不到 / 没有筛选时计数 > 0 但模型空表或一只都对不上）时整趟退回后三级。候选字段是 `StgSelectAllTargets.CODE_FIELDS` / `CAM_FIELDS`；若某行恰好取到另一个 6 位值（不是股票代码）会误判该行未勾 —— 出现「模型与表不一致」日志时先核对宿主条目结构，别改判据。
 2. **只点状态与目标不同的行**：行点击是**取反**的，对已勾上的行再点一次就是取消。
-3. **屏外行必须覆盖**：`index` 从 `0` 走到 `total-1`，屏外行靠 `Adapter.getView(pos, null, lv)` 造视图；
-   不看 `ListView.childCount`（那只是可见行数）。
-4. **首轮同帧批量 + 补点轮逐行分帧 + 防重入**（2026-11-04）：首轮 `clickAll()` 在
-   同一帧内把待点行全部点完（主线程循环期间 ListView 不会布局 / 重绑，行视图始终有效；
-   宿主监听仍逐行执行），屏幕只在最后一帧统一画勾。补点轮仍走 `clickNext()` 的
-   40ms 分帧：宿主每切换一行就刷新列表，跨帧复用子 View 会拿到失效视图。
-   一轮没跑完时再点按钮直接忽略（两轮会各自按旧快照点同一批行）。
-5. **`#ct_item` id 解析失败 → 保守放弃**并记日志。若拿不到勾选态，`checked` 会恒为 `false`，
-   于是对**已选行**也发点击 → 「全选」会变成「反选」。宁可不动，也不能点反。
-6. **筛选生效时必须传「全量下标」**（见 §2.3.1），并在每轮开始时把下标表**快照**下来；
-   运行中筛选结果变了就**重开一轮**（重新快照后只补没到位的行），不再中止整次操作 ——
-   中止会把「点了半截」留在界面上（2026-10-22）。**适配器实例**换了则中止：那可能意味着
-   换到了另一个策略页，继续点会把「全选」施加到别的股票上。
-7. **用 `setItemChecked` 预置状态，不直接改 `mCheckStates`**：前者会一并维护
-   `mCheckedItemCount` / `mCheckedIdStates`（宿主可能用它们渲染「已选 N」）。
-   预置本身失败 → 这一行本轮跳过，下一轮再试。**点击抛异常时不回滚**：框架在调宿主监听器
-   之前就已经把表取反写好了，回滚会把「宿主可能已经更新的模型」与表拆开，下一轮再点
-   反而变成反向操作。
-8. **只对普通多选模式生效**：`CHOICE_MODE_SINGLE`（点击会清掉别的行）与
-   `CHOICE_MODE_MULTIPLE_MODAL`（action mode 活跃时框架不把点击派给宿主监听器）
-   都不注入按钮，日志里写明 `choiceMode`。
-9. **点完要核对（2026-10-22）**：一轮点完隔 120ms 重读 checked states，还有行没到位就补点，
-   最多 4 轮**点击**（之后还会再核对一次；适配器 / 筛选 / header 变化导致的「重开轮」
-   不点行，不消耗这个预算）。补点轮以 checked states 为准 —— 宿主计数可能还没跟上，
-   拿它判会把整单选中的行再点一遍（全部取消）。**例外**：没有筛选时若表与宿主计数分叉，
-   说明宿主模型漏了行（真机「宿主吞掉某次点击」），退回探针按模型补。
-   没有 checked states（`CHOICE_MODE_NONE`）时无从核对，只跑一轮。
-10. **补点救不了「宿主监听器静默忽略」**：`performItemClick` 在调到监听器**之前**就写了
-    `mCheckStates`（框架 `AbsListView.java:1231-1232`，且无条件 `handled=true`），
-    下一轮读表只会看到目标态。这类漏选只能靠真机日志与宿主行为去查（§4.3）。
-11. **运行期间锁住宿主「确认添加」**（2026-10-28 真机）：全选首轮虽然同帧完成，
-    后面还有补点轮 / 宿主刷新；点早了宿主只快照到**当时已点过的前缀** —— 72 只实测
-    只进了 18 只，而屏幕稍后会把 72 行全部画上勾，看起来像"全选了却没全加进去"。
-    现在跑第一行前把该按钮置灰禁用（只动 `enabled / clickable / alpha`，
-    **不替换宿主的点击监听**），「已选 N」每变一次重新压一遍闸门，收尾 / 中止 /
-    关开关 / 页面销毁时还原；id 解析失败时退化为旧行为并记一条日志（见 §2.3.3、§4.5）。
+3. **屏外行必须覆盖**：`index` 从 `0` 走到 `total-1`，屏外行靠 `Adapter.getView(pos, null, lv)` 造视图；不看 `ListView.childCount`（那只是可见行数）。
+4. **首轮同帧批量 + 补点轮逐行分帧 + 防重入**：首轮 `clickAll()` 在同一帧内把待点行全部点完（主线程循环期间 ListView 不会布局 / 重绑，行视图始终有效；宿主监听仍逐行执行），屏幕只在最后一帧统一画勾；补点轮仍走 `clickNext()` 的 40ms 分帧（宿主每切一行就刷新列表，跨帧复用子 View 会拿到失效视图）。一轮没跑完时再点按钮直接忽略（两轮会各自按旧快照点同一批行）。回退开关 `StgSelectAllFeature.BATCH_CLICK = false` 即恢复逐行旧路径。
+5. **`#ct_item` id 解析失败 → 保守放弃**并记日志。拿不到勾选态时 `checked` 会恒为 `false`，于是对**已选行**也发点击 → 「全选」变成「反选」。宁可不动，也不能点反。
+6. **筛选生效时必须传「全量下标」**（§2.3.1），并在每轮开始时把下标表**快照**下来；运行中筛选结果变了就**重开一轮**（重新快照后只补没到位的行），不再中止 —— 中止会把「点了半截」留在界面上。**适配器实例**换了则中止：那可能换到了另一个策略页，继续点会把「全选」施加到别的股票上。
+7. **用 `setItemChecked` 预置状态，不直接改 `mCheckStates`**：前者会一并维护 `mCheckedItemCount` / `mCheckedIdStates`（宿主可能用它们渲染「已选 N」）。预置本身失败 → 这一行本轮跳过，下一轮再试。**点击抛异常时不回滚**：框架在调宿主监听器之前就已把表取反写好，回滚会把「宿主可能已更新的模型」与表拆开，下一轮再点反而变成反向操作。
+8. **只对普通多选模式生效**：`CHOICE_MODE_SINGLE`（点击会清掉别的行）与 `CHOICE_MODE_MULTIPLE_MODAL`（action mode 活跃时框架不把点击派给宿主监听器）都不注入按钮，日志里写明 `choiceMode`。
+9. **点完要核对**：一轮点完隔 120ms 重读 checked states，还有行没到位就补点，最多 4 轮**点击**（`MAX_ROUNDS`，之后还会再核对一次；适配器 / 筛选 / header 变化导致的「重开轮」不点行，不消耗预算）。补点轮以 checked states 为准 —— 宿主计数可能还没跟上，拿它判会把整单选中的行再点一遍（全部取消）。**例外**：没有筛选时若表与宿主计数分叉，说明宿主模型漏了行（真机「宿主吞掉某次点击」），退回探针按模型补。没有 checked states（`CHOICE_MODE_NONE`）时无从核对，只跑一轮。
+10. **补点救不了「宿主监听器静默忽略」**：`performItemClick` 在调到监听器**之前**就写了 `mCheckStates`（框架 `AbsListView.java:1231-1232`，且无条件 `handled=true`），下一轮读表只会看到目标态。这类漏选只能靠真机日志与宿主行为去查 —— 本模块从外部观察不到。
+11. **运行期间锁住宿主「确认添加」**：首轮虽同帧完成，后面还有补点轮 / 宿主刷新；点早了宿主只快照到**当时已点过的前缀**（72 只实测只进 18 只），屏幕稍后却把 72 行全画上勾，看起来像「全选了却没全加进去」。现在跑第一行前把该按钮置灰禁用（只动 `enabled / clickable / alpha`，**不替换宿主的点击监听**），「已选 N」每变一次重新压一遍闸门，收尾 / 中止 / 关开关 / 页面销毁时还原；id 解析失败时退化为旧行为并记一条日志（§2.3.3）。
 
-### 2.3.1 与「策略详情页筛选股票」叠加
+#### 2.3.1 与「策略详情页筛选股票」叠加：三套坐标
 
 筛选用一层**过滤代理**挂在 ListView 上：列表里第 N 行对应宿主全量数据的 `keptIndices[N]`。
-三套坐标：
 
 | 坐标 | 谁在用 |
 |---|---|
 | **子集下标**（0..保留数-1） | 过滤代理的 `getView` / `getItem` |
-| **适配器位置**（header + 子集下标） | `AbsListView.mCheckStates`、屏幕上的 `CheckedTextView`、`mCheckedItemCount`、宿主 `getView` |
+| **适配器位置**（header + 子集下标） | `AbsListView.mCheckStates`、屏上 `CheckedTextView`、`mCheckedItemCount`、宿主 `getView` |
 | **全量下标**（宿主 data 的 0..N-1） | 筛选包装器转发给宿主监听器的 position |
 
-> **2026-10-27 起：合成点击与手动点行走同一套坐标（适配器位置）。**
-> 宿主 8.7.0 的 `AIStkStgDetailAct.checkCodes` 字段仍然存在，但**恒为空**（真机实测：
-> 手动点一行、全选 3 只，`checkCodes.size` 都是 0，底部计数正常）—— 选中态只在框架的
-> checked states 里。8.6.0 时代为了让 `checkCodes` 读到，checked states 写在**全量位置**；
-> 8.7.0 上框架 `setupChild` / 宿主 `getView` 都按**适配器位置**读表，两套坐标错位，
-> 筛选下屏幕上一个勾都没有（用户第三次报「全选所有钩子都不勾」）。
-> 现在：
-> 1. **合成点击传适配器位置**（`pos = header + 子集下标`），**不**用
->    `runWithRemapBypassed` —— 筛选包装器自己会把 position 换成全量下标再转给宿主监听器，
->    与用户手动点行完全一致；
-> 2. `tableRowStates` / `probeRowStates` / 显示刷新 / `SnapSelection` 统一读适配器位置；
-> 3. `readHostModel` 把**空表当不可用**（返回 null），不再把「模型为空」当成「一只没选」——
->    否则会和底部计数分叉，把整屏勾抹掉。
-> 宿主模型可用时（8.6.0）仍然优先按它判，坐标无关。
+**现行口径：合成点击与手动点行走同一套坐标（适配器位置）。** 宿主 8.7.0 的 `AIStkStgDetailAct.checkCodes` 字段仍在，但**恒为空**（真机实测：手动点一行、全选 3 只，`checkCodes.size` 都是 0，底部计数正常）—— 选中态只在框架的 checked states 里。于是：
 
-历史背景（8.6.0 真机，保留）：旧实现把子集下标交给 `performItemClick`，而当时宿主的
-多选模型读的是 `mCheckStates`，于是界面勾着 A/B/C、`确认添加` 收到的却是全量前 3 只；
-当时的修法是合成点击传全量下标 + 放行回映射。**那条只适用于 `checkCodes` 还会更新的
-宿主版本**，8.7.0 起已废弃（见上）。
+1. **合成点击传适配器位置**（`pos = header + 子集下标`），**不**用 `runWithRemapBypassed` —— 筛选包装器自己会把 position 换成全量下标再转给宿主监听器，与用户手动点行完全一致；
+2. `tableRowStates` / `probeRowStates` / 显示刷新 / `SnapSelection` 统一读适配器位置；
+3. `readHostModel` 把**空表当不可用**（返回 null），不再把「模型为空」当成「一只没选」—— 否则会和底部计数分叉，把整屏勾抹掉；模型可用时仍然优先按它判，坐标无关。
 
-另外，**可见行必须传真实子 View**：宿主的点击处理会就地把这一行的勾选框打上；
-用脱离列表的探针 View 只会改到探针，屏幕上看不到勾。屏外行仍然用探针 View。
-**读状态则相反**：一律用现绑的探针视图，不读屏上那颗（它可能没被重画，见 §4.1）。
+另外，**可见行必须传真实子 View**：宿主的点击处理会就地把这一行的勾选框打上，用脱离列表的探针 View 只会改到探针，屏幕上看不到勾；屏外行仍然用探针 View。**读状态则相反**：一律用现绑的探针视图，不读屏上那颗（它可能没被重画，见 §2.3.2）。
 
-#### 2.3.2 显示刷新为什么连行根的 `activated` 一起刷（2026-10-22）
+#### 2.3.2 显示刷新：行根 `activated` / 行根 `isChecked` / `#ct_item.isChecked` 三处一起写
 
-`AbsListView.performItemClick` 每次都会调 `updateOnScreenCheckedViews()`，把**行根视图**的
-`activated` 按 `mCheckStates[适配器位置]` 重写。筛选生效时我们的 checked states 用的是
-**全量位置**（宿主模型读这份表），两套坐标错位 → 每次合成点击都会把一部分可见行刷回
-「没勾」。宿主若用 `duplicateParentState` / `state_activated` 画勾，只设 `#ct_item.isChecked`
-修不回来 —— 这正是「确实全选了，但有些股票不显示勾」的来源。
+`AbsListView.performItemClick` 每次都会调 `updateOnScreenCheckedViews()`，把**行根视图**的 `activated`（及 `Checkable` 行根的 `isChecked`）按 `mCheckStates[适配器位置]` 重写，**不碰嵌套的 `#ct_item`**。宿主行根是 `com.guosen.commonui.CheckedFrameLayout`，勾选框的 checkMark 只认 `state_checked` —— 只设 `#ct_item.isChecked` 修不回来，这正是「确实全选了，但有些股票不显示勾」的来源。
 
-`refreshVisibleChecked()` **优先按宿主 `checkCodes` 的「这一行是哪只股票」判**，
-读不到才退回「行 → 全量下标 → 表」；行根 `Checkable.isChecked`、`#ct_item.isChecked`、
-`activated` **三处一起写**（行根是 `CheckedFrameLayout`，框架 `setupChild()` /
-`updateOnScreenCheckedViews()` 刷的就是它），只改显示、不写 checked states / 宿主模型。
-筛选生效时每点一行就刷一次（否则运行中会一部分勾、一部分没勾），收尾再刷一次，
-并在**下一帧 pre-draw**（布局之后、绘制之前）再补一次 —— 宿主的 `notifyDataSetChanged`
-→ 布局可能比收尾晚，`ListView.setupChild()` 会按适配器位置重写行根 `activated`，
-把收尾刷的值盖掉。pre-draw 是「这一帧布局已完成」的确定性时点。
+`refreshVisibleChecked()` **优先按宿主 `checkCodes` 的「这一行是哪只股票」判**，读不到才退回「行 → 适配器位置 → 表」；行根 `Checkable.isChecked`、`#ct_item.isChecked`、`activated` **三处一起写**，只改显示、不写 checked states / 宿主模型。筛选生效时每点一行就刷一次（否则运行中会一部分勾、一部分没勾），收尾再刷一次，并在**下一帧 pre-draw**（布局之后、绘制之前）再补一次 —— 宿主的 `notifyDataSetChanged` → 布局可能比收尾晚，`ListView.setupChild()` 会按适配器位置重写行根 `activated`，把收尾刷的值盖掉。pre-draw 是「这一帧布局已完成」的确定性时点。
 
-> ✅ **2026-10-27 起：多选态期间常驻「绘制前画勾」**（第三次报「有些行不显示勾」）。
-> 前两次修的都是「点完那一刻」——收尾刷一次 + 下一帧 pre-draw 再刷一次；宿主之后
-> 任何一次 `notifyDataSetChanged`（行情推送、筛选重算、从别的页面回来）都会重新绑行，
-> `setupChild()` 按「适配器位置」重写行根，筛选下与全选写的「全量位置」错位，勾又被盖回去。
-> 现在进入多选态时在 `lvStks` 的 `ViewTreeObserver` 上挂一个**常驻** `OnPreDrawListener`
-> （`StgSelectAllFeature.installVisualSync`）：每一帧绘制之前按宿主 `checkCodes`
-> 把可见行重画一遍，退出多选态 / 关开关 / 页面销毁时摘掉。
-> 判据是「这一行是哪只股票」—— 行代码从过滤代理的 `getItem` 取，代理自己把子集下标
-> 映射回全量，所以两套坐标的问题被彻底绕开；未筛选时行代码读不到则退回 checked states
-> （那份表此时就是准的），不再整行跳过。只在显示与目标不一致时才写，
-> 不会每帧 `invalidate`。**仍然只改显示**：不写 checked states、不碰宿主模型
-> （用户验收口径：勾只是给别人看的，计数 / 确认添加由宿主自己维护）。
-> 宿主模型不可用 / 不可信（8.7.0 起 `checkCodes` 恒空，或条数与底部计数对不上）时，
-> 改为**按框架 checked states 画**（`paintVisibleRowsFromTable`）：手动点行时
-> `performItemClick` 只刷行根、不刷嵌套的 `#ct_item`，若不按表补，全选时写下的那个
-> `isChecked=true` 会一直留在视图上 —— 计数 -1 而视觉上的对钩去不掉（2026-11-04）。
+**多选态期间常驻「绘制前画勾」**：进入多选态时在 `lvStks` 的 `ViewTreeObserver` 上挂一个**常驻** `OnPreDrawListener`（`StgSelectAllFeature.installVisualSync`），每帧绘制之前按宿主 `checkCodes` 把可见行重画一遍，退出多选态 / 关开关 / 页面销毁时摘掉。判据是「这一行是哪只股票」—— 行代码从过滤代理的 `getItem` 取，代理自己把子集下标映射回全量，两套坐标的问题被彻底绕开；未筛选时行代码读不到则退回 checked states（那份表此时就是准的），不再整行跳过。只在显示与目标不一致时才写，不会每帧 `invalidate`。**仍然只改显示**：不写 checked states、不碰宿主模型（勾只是给别人看的，计数 / 确认添加由宿主自己维护）。
 
-每次刷之前逐行核对筛选下标表是否还是当前这份，对不上就整趟不刷（绝不拿旧表往新列表上画）。
-**歧义行不画**：手动点行写的是适配器位置、全选写的是全量位置；当某行的全量下标恰好也是
-另一个子集行的下标时，表里那个 key 分不清是谁写的 —— 宁可不画，交给宿主自己渲染。
+宿主模型不可用 / 不可信（8.7.0 起 `checkCodes` 恒空，或条数与底部计数对不上）时，改为**按框架 checked states 画**（`paintVisibleRowsFromTable`）：手动点行时 `performItemClick` 只刷行根、不刷嵌套的 `#ct_item`，若不按表补，全选时写下的 `isChecked=true` 会一直留在视图上 —— 计数 -1 而对钩去不掉。每次刷之前逐行核对筛选下标表是否还是当前这份，对不上就整趟不刷（绝不拿旧表往新列表上画）。**歧义行不画**：手动点行写适配器位置、模型通道写全量位置，当某行的全量下标恰好也是另一个子集行的下标时，表里那个 key 分不清是谁写的 —— 宁可不画，交给宿主自己渲染。
 
-#### 2.3.3 运行期间锁住「确认添加」（2026-10-28）
+#### 2.3.3 运行期间锁住「确认添加」
 
-真机复现（2026-10-28，当时首轮是 `40ms × 72 ≈ 2.9s`）：点「全选」后 **0.7 秒**就点
-「确认添加」，新建分组只进了 **18 只** —— 宿主在点击那一刻就把选中集合快照走了，
-后面 54 行虽然继续勾上、屏幕最终显示"全选完成"，但已经加不进去。用户看到的就是
-「全选了很多股票，但只有一部分进了自选」。
-
-2026-11-04 起首轮改为 `clickAll()` 同帧批量（`40ms × 72` 的窗口消失），但补点轮 /
-宿主刷新仍可能让按钮处于「还没完全落定」的状态，所以闸门继续保留：
+点「全选」后 0.7 秒就点「确认添加」，新建分组只进 18 只（当时首轮是 `40ms × 72 ≈ 2.9s`）—— 宿主在点击那一刻就把选中集合快照走了，后面 54 行虽继续勾上、屏幕最终显示「全选完成」，但已加不进去。首轮改成 `clickAll()` 同帧批量后这个窗口消失，但补点轮 / 宿主刷新仍可能让按钮处于「还没完全落定」的状态，所以闸门保留：
 
 ```
 toggleAll()
   ├─ takeShot() / 算待点行
   ├─ gateConfirm()            ← 跑第一行之前
-  │     ├─ 找到 #tv_bottom_add_zxg
-  │     ├─ 记下原 enabled / clickable / alpha
-  │     └─ enabled=false、clickable=false、alpha=0.45
-  ├─ clickAll(...)            ← 2026-11-04 起：同一帧批量点击
-  │     收尾统一 reassertGate()（批量期间计数 watcher 静默）
+  │     ├─ 找到 #tv_bottom_add_zxg，记下原 enabled / clickable / alpha
+  │     └─ enabled=false、clickable=false、alpha=GATED_ALPHA(0.45)
+  ├─ clickAll(...)            ← 同一帧批量点击；收尾统一 reassertGate()（批量期间计数 watcher 静默）
   ├─ 补点轮 clickNext(...)    ← 仍有缺口时才跑，逐行 40ms
-  └─ endRun()（正常收尾 / 补点上限 / 异常 / 关开关 / 退出多选）
-        └─ ungateConfirm()    ← 按原值还原
+  └─ endRun()（正常收尾 / 补点上限 / 异常 / 关开关 / 退出多选）→ ungateConfirm() 按原值还原
 ```
 
-两个细节：
+- **不替换宿主的点击监听**：`View` 没有 `getOnClickListener()`，换了就还不回去。只动三个可还原属性；`enabled=false` 的可点击 View 会吞掉触摸但**不触发 onClick**。
+- **宿主可能自己重设 `enabled`**（例如「已选 > 0 才可点」）：「已选 N」每次变化都调一次 `reassertGate()` 重新压；若宿主把按钮对象整个换了（重建底栏），先还原旧按钮再按新按钮当前状态重新记账。
+- 页面销毁路径**只丢账、不还原**（还原只属于收尾 / 关开关 / 热重载）。
 
-- **不替换宿主的点击监听**：`View` 没有 `getOnClickListener()`，换了就还不回去。
-  只动三个可还原属性；`enabled=false` 的可点击 View 会吞掉触摸但**不触发 onClick**。
-- **宿主可能自己重设 `enabled`**（例如「已选 > 0 才可点」）：所以「已选 N」每次变化都
-  调一次 `reassertGate()` 重新压；若宿主把按钮对象整个换了（重建底栏），先还原旧按钮
-  再按新按钮当前状态重新记账。
-- 页面销毁路径**只丢账、不还原**（与其它注入保持一致：还原只属于收尾 / 关开关 / 热重载）。
+#### 2.3.4 与「我的策略聚合」叠加：全选后确认添加什么也没加
 
-#### 2.3.4 与「我的策略聚合」叠加：全选后确认添加什么也没加（2026-11-13）
+**现象**：聚合组详情页（列表上是成员策略的并集）点「全选」屏上全勾、底部计数也对，再点「确认添加」——「我的分组」里**每个分组都显示「已在该组合」**，点进去一只都没有。
 
-**现象**：进了聚合组的策略详情页（列表上是成员策略的并集），点「全选」屏上全勾、底部计数
-也对，再点「确认添加」——「我的分组」里**每个分组都显示「已在该组合」**，点进去一只都没有。
-重复点只是重复这句提示。
-
-**根因**：宿主组提交包的假设是「列表第 N 行 == 它自己全量列表的第 N 只」（`m_stkList`）。
-聚合只写**适配器数据**（`adapter.data` = 并集），宿主那份 `m_stkList` 在聚合态是空的 ——
-写它会把宿主搞崩（`AIStkEmptyAdapter.convert` 把其中的项当 `String` 强转，见
-[`StrategyMergeFeature.kt`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgmerge/StrategyMergeFeature.kt)
-第 3970 行的注释）。于是「确认添加」压根构造不出票：提交包里 `codes` 是 `null` / 空数组，
-或只剩上一批残值。分组页拿空集去和每个分组比对 —— 空集是任何集合的子集，于是**每个分组都
-判成「都已在组里」**，实际一只也没写进去。
-
-聚合态下「点一行进详情」那条链已经用 `MergeClickFill` 临时把并集灌进 `m_stkList` 再过一遍
-宿主的 `onItemClick`（2026-11-12 修的是 `IndexOutOfBoundsException: Index: 0, Size: 0`），
-但**「确认添加」这条链当时没有补**，所以只有它出问题。
-
-**修法**（不碰宿主 `m_stkList`，只纠提交包）：
+**根因**：宿主组提交包的假设是「列表第 N 行 == 它自己全量列表的第 N 只」（`m_stkList`）。聚合只写**适配器数据**（`adapter.data` = 并集），宿主的 `m_stkList` 在聚合态是空的 —— 写它会把宿主搞崩（`AIStkEmptyAdapter.convert` 把其中的项当 `String` 强转，见 [StrategyMergeFeature.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/stgmerge/StrategyMergeFeature.kt) 里 `MergeClickFill` 附近的注释）。于是「确认添加」构造不出票：`codes` 是 `null` / 空数组，或只剩上一批残值；分组页拿空集去比对 —— 空集是任何集合的子集，于是**每个分组都判成「都已在组里」**。「点一行进详情」那条链已用 `MergeClickFill` 临时把并集灌进 `m_stkList` 再过宿主的 `onItemClick`，但**「确认添加」这条链当时没补**，所以只有它出问题。修法（不碰宿主 `m_stkList`，只纠提交包）：
 
 | 改动 | 位置 | 说明 |
 |---|---|---|
-| 捕获不再只认筛选页 | `StgSelectAllFeature#captureSelection` | 原来 `fullIndices(...) == null` 就 `confirmSelection = null; return`。聚合页没有过滤代理，必然命中这条早退 → 捕获恒空 → 提交包校正整个失效。现在无筛 / 聚合态也逐行读屏幕勾选（`isItemChecked` + `rowRawCodeAt`）。无筛时两套坐标本来就一致，捕获结果与宿主原包逐字相同，普通路径零影响。 |
-| 判据放宽 | `StgSelectAllFeature#fixGroupIntentCodes` + `StgSelectAllPlan#needsGroupFix` | 旧判据「`codes` 非空、长度相等、内容不同」才改；聚合态 `codes` 为 `null` / 长度不等，全被挡掉。现在以屏幕勾选为准：`codes` 为 `null` / 空数组、内容不同都覆盖；长度不等**只在聚合页或筛选态**覆盖（2026-11-13 回归修复，见 §2.3.5）—— 普通详情页上宿主读的是它自己那份全量 model，屏外还勾着票时长度天然偏长，一律按屏幕裁就是「筛完少几只」；逐项**归一化**比较（`600000.1` 与 `600000` 视为同一只），一致时不动宿主原始格式。 |
-| `markets` 必写 | 同上 | 宿主原本没带 `markets` 也补上（它与 `codes` 按位置配对，缺一个就错位）；`codes` 已经逐项一致、但 `markets` 存在且长度不符时也照样重写 —— 否则市场按位置串位。 |
-| `prices` 防越界 | 同上 | 读不到价而宿主那份长度与新的 `codes` 对不上 → 直接 `removeExtra`，不让宿主拿旧数组按下标取。 |
-| 兜底找回列表 | `StgSelectAllFeature#resolveConfirmList` | 聚合态宿主的「确认添加」若自带触摸监听（`installConfirmTouchSync` 的契约是不抢），`captureSelection` 一次都没跑过、`confirmList` 为空。改为从最近 resume 的策略详情页按同一控件 id 找回 `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改。 |
-| 捕获只认当次 | `StgSelectAllFeature#captureSelection` / `#fixGroupIntentCodes` | 捕获先作废旧值（读不全都整组作废），并记下时刻：超过 8 s 的捕获不认、消费后立刻清空（用过即焚）。否则「点了一下又取消」或隔一会儿从自选 / 个股页打开同名分组页，会被上一个页面的票张冠李戴。 |
+| 捕获不再只认筛选页 | `StgSelectAllFeature#captureSelection` | 原来 `fullIndices(...) == null` 就早退；聚合页没有过滤代理，必然命中 → 捕获恒空 → 校正整个失效。现在无筛 / 聚合态也逐行读屏幕勾选（`isItemChecked` + `rowRawCodeAt`），无筛时两套坐标本就一致，普通路径零影响。 |
+| 判据放宽 | `StgSelectAllFeature#fixGroupIntentCodes` + `StgSelectAllPlan#needsGroupFix` | 旧判据「`codes` 非空、长度相等、内容不同」才改；聚合态 `codes` 为 `null` / 长度不等，全被挡掉。现在 `null` / 空数组 / 内容不同都覆盖，长度不等**只在聚合页或筛选态**覆盖（§2.3.5）；逐项**归一化**比较（`600000.1` 与 `600000` 同一只），一致时不动宿主原始格式。 |
+| `markets` 必写 | 同上 | 宿主原本没带也补上（它与 `codes` 按位置配对，缺一个就错位）；`codes` 逐项一致但 `markets` 长度不符时也照样重写。 |
+| `prices` 防越界 | 同上 | 读不到价而宿主那份长度与新的 `codes` 对不上 → `removeExtra`，不让宿主拿旧数组按下标取。 |
+| 兜底找回列表 | `StgSelectAllFeature#resolveConfirmList` | 宿主「确认添加」自带触摸监听时（`installConfirmTouchSync` 的契约是不抢）`captureSelection` 一次都没跑过、`confirmList` 为空；改为从最近 resume 的策略详情页按同一控件 id 找回 `lvStks` 现场再捕一次，只在本页还挂在窗口上时生效。 |
+| 捕获只认当次 | `StgSelectAllFeature#captureSelection` / `#fixGroupIntentCodes` | 捕获先作废旧值（读不全都整组作废）并记下时刻：超过 `captureFreshMs`（8 s）的捕获不认，避免「点了一下又取消」被上一个页面的票张冠李戴。 |
 
 **日志关键字**（`设置 → 日志`，debug 级）：
 
 ```
-策略全选：捕获屏幕勾选 32 只（无筛/聚合） [60****, 00****, ...]
+策略全选：提交包核对（聚合页，宿主 0 只 / 屏幕 32 只）
 策略全选：确认添加的提交代码已按屏幕勾选校正（32 只，宿主包里没有 codes）
 策略全选：提交代码 <null> → 60****,00****,...
 ```
 
-看到第三条且 `→` 后面就是屏上那些票，即说明聚合态这条链已经接上。若仍是
-「选择分组页不是从策略详情进来的」→ 页面归属判据没命中（`watchActivity` 没记上），
-把该行日志留下。
+看到第三条且 `→` 后面就是屏上那些票，即说明聚合态这条链已经接上；若仍是「选择分组页不是从策略详情进来的」→ 页面归属判据没命中（`watchActivity` 没记上）。
 
-### 2.3.5 与「筛选股票」叠加：勾选漂移把加错票放大（2026-11-13 回归修复）
+#### 2.3.5 与「筛选股票」叠加：勾选漂移与「长度不等」的第二道闸
 
-§2.3.4 那条修法把判据放宽成「长度不等就覆盖」，在**普通详情页**上过了头：宿主组提交包时
-读的是它自己那份**全量** model，屏外还勾着票时长度天然比屏幕子集长 —— 一律裁成屏幕勾选，
-就把屏外那批票悄悄丢掉了。用户看到的是「筛一下再确认添加，分组里少几只 / 加的不是屏上那几只」，
-而且**下一轮筛选重算会把它刷回去**，所以表现为「一闪而过的不准」。
+**勾选漂移**：过滤代理换行集合时 `mCheckStates` 按位置保留，勾选会落到别的票上，直接点确认就加错票。修法是勾选态**按代码迁移**，见 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md)「勾选态必须按代码迁移，不能按位置」一节 —— 这条与下面的提交包判据一起才是完整的「聚合 × 筛选」修复。
 
-两处一起修：
+**判据过头**：§2.3.4 把判据放宽成「长度不等就覆盖」，在**普通详情页**上过了头（宿主读的是它自己那份**全量** model，屏外还勾着票时长度天然比屏幕子集长，一律裁成屏幕勾选就把屏外那批票悄悄丢掉；且下一轮筛选重算会把它刷回去，表现为「一闪而过的不准」）。三处一起修：
 
 | 改动 | 位置 | 说明 |
 |---|---|---|
-| 判据分档 | `StgSelectAllPlan#needsGroupFix(hostCodes, selected, screenWins)` | 新增长度不等的第二道闸：只有 `screenWins`（**聚合生效** 或 **筛选生效**）才按屏幕覆盖；普通全量页保持宿主那份，不裁。`hostCodes` 为 `null` / 空数组仍然一律补上（那是「宿主一只都没构造出来」，不补就是 §2.3.4 那个「已在该组合」）。 |
-| 页面判定 | `StgSelectAllFeature#fixGroupIntentCodes` | `mergedPage = StrategyMergeBridge.isFor(findActivity(lv))`；`filteredPage = isFilterProxy(unwrapHeaderAdapter(lv.adapter))`。两条都不成立才算「全量页」。 |
-| 诊断日志 | 同上 | 判定前打一行 `策略全选：提交包核对（聚合页 / 筛选态 / 聚合页+筛选态 / 全量页，宿主 N 只 / 屏幕 M 只）`，下回贴日志就能一眼看出走的哪一支。 |
+| 判据分档 | `StgSelectAllPlan#needsGroupFix(hostCodes, selected, screenWins)` | 长度不等的第二道闸：只有 `screenWins`（**聚合生效** 或 **筛选生效**）才按屏幕覆盖，普通全量页保持宿主那份；`hostCodes` 为 `null` / 空数组仍一律补上（那是「宿主一只都没构造出来」）。 |
+| 页面判定 | `StgSelectAllFeature#fixGroupIntentCodes` | `mergedPage = StrategyMergeBridge.isFor(...)`、`filteredPage = isFilterProxy(unwrapHeaderAdapter(lv.adapter))`，两条都不成立才算「全量页」；坐标权威在**捕获那一刻**定死（`Selection` 带 `screenWins` / `pageKind`），改提交包时页面可能已摘挂，不再回问列表。 |
+| 诊断日志 | 同上 | 判定前打一行 `策略全选：提交包核对（聚合页 / 筛选态 / 聚合页+筛选态 / 全量页，宿主 N 只 / 屏幕 M 只）`。 |
 
-**另一半在筛选侧**：代理换行集合时 `mCheckStates` 按位置保留，勾选会落到别的票上，
-直接点确认就加错票。修法（勾选态按代码迁移）见 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md)
-「勾选态必须按代码迁移，不能按位置」一节 —— 两条一起才是完整的「聚合 × 筛选」修复。
+#### 2.3.6 批量点行遇上行集合被换：`rowEpoch` 重开一轮
 
-**日志关键字**（`设置 → 日志`）：
-
-```
-策略全选：提交包核对（聚合页，宿主 0 只 / 屏幕 32 只）
-策略全选：确认添加的提交代码已按屏幕勾选校正（32 只，宿主包里没有 codes）
-策略全选：提交包核对（全量页，宿主 34 只 / 屏幕 32 只）   ← 此支不再覆盖，屏外 2 只保留
-筛选股票：勾选态按代码迁移 4 行（勾着 4 只，筛后 18 行）
-```
-
-### 2.3.6 批量点行遇上行集合被换：`rowEpoch` 重开一轮（2026-11-13）
-
-`clickOneRow` 原本只有一道行集合校验：`fullIndices` 存在时比对本轮快照的下标表；
-**没有过滤代理时（`run.full == null`）零校验**。而聚合页点一行会把 `adapter.data` 整体换一遍
-（并集重新写回），位置全变 —— 批量循环接着往下点就会点到别的股票上。
-
-修法：`ToggleRun` 记下开跑那一刻的 `StgRowSelection.rowEpoch()`，每行前比一次，
-不等就 `scheduleNextRound(env, run, 0)` 重开一轮（**已点过的行按代码跳过，不会重点**）。
+`clickOneRow` 原本只有一道行集合校验：`fullIndices` 存在时比对本轮快照的下标表；**没有过滤代理时（`run.full == null`）零校验**。而聚合页点一行会把 `adapter.data` 整体换一遍（并集重新写回），位置全变 —— 批量循环接着往下点就会点到别的股票上。修法：`ToggleRun` 记下开跑那一刻的 `StgRowSelection.rowEpoch()`，每行前比一次，不等就重开一轮（**已点过的行按代码跳过，不会重点**）。
 
 ```kotlin
 } else if (StgRowSelection.rowEpoch() != run.rowEpoch) {
@@ -364,18 +206,11 @@ toggleAll()
 }
 ```
 
-版本号由**换行集合的那一方** bump：筛选在 `applyFilter0` 装完代理之后，
-聚合在 `reapplyIfNeeded` 写完并集并 notify 之后。谁写谁发信号的口径正本见
-[FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md) §四。
+版本号由**换行集合的那一方** bump：筛选在 `applyFilter0` 装完代理之后，聚合在 `reapplyIfNeeded` 写完并集并 notify 之后。谁写谁发信号的口径正本见 [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md) §四。
 
-### 2.3.7 手机上随机提示「已在该组合」：三处静默放弃（2026-11-13 · 3.8.12）
+#### 2.3.7 手机上随机提示「已在该组合」：三处静默放弃
 
-现象（用户报 2026-11-13）：全选后点「确认添加」，分组页对每个分组都显示「已在该组合」，
-实际一只都没加进去。**同一个包在模拟器上正常、手机上随机失败**；全选里含自选股时更容易撞上。
-
-根因是这条链上有**三处「读不到就走开」的静默放弃**，任何一处命中都让提交包原样进分组页：
-聚合页 / 筛选态下宿主自己构造的 submission 是空集或错批，`ChooseGroupAct` 把
-「空集 ⊆ 每个分组」判成「都已经在组里」。
+全选后点「确认添加」，分组页对每个分组都显示「已在该组合」，实际一只都没加进去；**同一个包在模拟器上正常、手机上随机失败**，全选里含自选股时更容易撞上。根因是这条链上有**三处「读不到就走开」的静默放弃**，任何一处命中都让提交包原样进分组页：聚合页 / 筛选态下宿主自己构造的 submission 是空集或错批，`ChooseGroupAct` 把「空集 ⊆ 每个分组」判成「都已经在组里」。
 
 | # | 放弃点 | 触发条件 | 为什么手机更容易命中 |
 | --- | --- | --- | --- |
@@ -383,10 +218,7 @@ toggleAll()
 | ② | 捕获超过 `captureFreshMs`（8 s）就 `return` | 「确认添加」自带触摸监听时我们不抢 → 捕获来自全选途中的旧时点 | 手机点完到分组页起来的间隔更长 |
 | ③ | `captureSelection` 某一行 `market` 为空就整组作废 | 宿主 `StockInfo.codeAndMarket` 是构造后才填的，**自选票尤其**常见「只有代码、没有市场号」的中间态 | 行情 / 自选表加载时序不同，中间态窗口不同 |
 
-第三处正是「含自选股更容易撞上」的原因：我们只需要代码，市场号推得出来 ——
-却因为一行没有市场号把 500 多只票全部放弃。
-
-修法（只删闸门、不加规则）：
+第三处正是「含自选股更容易撞上」的原因：我们只需要代码，市场号推得出来 —— 却因为一行没有市场号把 500 多只票全部放弃。修法（只删闸门、不加规则）：
 
 ```kotlin
 // ① 页面摘挂也照用「按下确认添加」那一刻的捕获；只有非触摸捕获才要求列表还在
@@ -405,50 +237,16 @@ if (s == null) {
 val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 ```
 
-两个配套改动：
+两个配套改动：**去掉「用过即焚」**（同一份提交包若因 Activity 重建再进一次 `onCreate`，旧代码第二次已无捕获可用；改写是幂等的，防张冠李戴改由「8 s 过期 + 触摸来源」两条判）；**市场号推导口径唯一**（`StgSelectAllPlan.splitCodeMarket` → `StockTypes.marketOf`，不在第三处再推一套）。
 
-- **坐标权威在捕获那一刻定死**：`Selection` 多带 `screenWins` / `pageKind`。改提交包时页面
-  可能已经摘挂，再回头问「这是不是聚合页 / 筛选态」问不出来 —— 旧代码 `findActivity(lv)` 在
-  手机上会拿到 null，`screenWins` 退回 false，长度不等就不覆盖了。
-- **去掉「用过即焚」**：同一份提交包若因 Activity 重建再进一次 `onCreate`，旧代码第二次已经没有
-  捕获可用。改写是幂等的，重复应用无副作用；防张冠李戴改由「8 s 过期 + 触摸来源」两条判。
-
-#### 怎么确认手机上到底走了哪条路
-
-过滤 `策略全选：` 就能看到判定全过程，四种日志各对应一条出口：
-
-```
-策略全选：捕获屏幕勾选 527 只（聚合页+筛选态，按下确认添加，3 只市场号按代码推）
-策略全选：确认添加自带触摸监听，不抢；提交前按屏幕勾选兜底捕获
-策略全选：提交包核对（聚合页+筛选态，宿主 0 只 / 屏幕 527 只）
-策略全选：确认添加的提交代码已按屏幕勾选校正（527 只，宿主包里没有 codes）
-```
+回查只看 `策略全选：` 关键字，三种日志各对应一条出口：
 
 | 看到什么 | 说明 |
 | --- | --- |
-| 「提交代码保持原样（捕获过期 N ms，本页列表已摘挂）」 | ① ② 都没兜住 —— 把这条日志和 N 发回来 |
+| 「提交代码保持原样（捕获过期 N ms，本页列表已摘挂）」 | ①② 都没兜住 —— 把这条日志和 N 发回来 |
 | 「第 N 行读不出代码或市场号（…）」 | ③ 的推导还不够，日志里有具体代码，按代码补前缀规则 |
-| 「提交包核对（…，宿主 527 只 / 屏幕 527 只）」后没有「已校正」 | 宿主本来就对，不需要改 |
+| 「提交包核对（…，宿主 N 只 / 屏幕 N 只）」后没有「已校正」 | 宿主本来就对，不需要改 |
 
-#### 验收
-
-1. 聚合组里全选（含自选票）→ 确认添加 → 选一个空分组 → 应真的加进去，不再全显示「已在该组合」。
-2. 连点两次「确认添加」→ 第二次才该提示「已在该组合」（第一次已经加过了）。
-3. 从自选页打开同名分组页 → 不应有任何「策略全选：」的改写日志（不属于本链）。
-#### 真机记录（2026-11-13 · MuMu，金太阳 8.7.1，聚合组1 筛选态 121/139）
-
-| 步骤 | 实测 |
-| --- | --- |
-| 全选 121 只 | `策略全选：一次性点击 121 行完成（耗时 174ms，失败 0，宿主计数 0 → 121）` |
-| 按下「确认添加」 | `策略全选：捕获屏幕勾选 121 只（聚合页+筛选态，按下确认添加）` |
-| 改包前核对 | `策略全选：提交包核对（聚合页+筛选态，宿主 6 只 / 屏幕 121 只）` |
-| 改包结果 | `策略全选：确认添加的提交代码已按屏幕勾选校正（121 只，原 6 只）` |
-| 选空分组 t527 | 宿主发出 `POST /securities-group/add-securities/2.0`，分组页关闭回详情页 = 提交成功 |
-| 同样流程再走一遍 | t527 显示「已在该组合」，自选分组没有 → 文案此时如实反映，不是误报 |
-
-**宿主自己的提交包只有 6 只** —— 那是它那份 `m_stkList` 的残值（聚合时被清空后只回了 6 条）。
-这就是不做校正时的错批来源：手机上只要校正链早退一步，进分组页的就是这 6 只，甚至 0 只；
-0 只时「空集 ⊆ 每个分组」恒真 → 每个分组都显示「已在该组合」，一只也加不进去。
 ### 2.4 文案随状态切换（全选 / 反选）
 
 | 状态 | 文案 | 点击后 |
@@ -456,25 +254,15 @@ val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 | 未全选 | **全选** | 勾选该页全部股票 |
 | 已全选 | **反选** | **取消全部选中** |
 
-重算文案的三个时机：
+重算文案的三个时机：① **进入多选态**（`TextWatcher` 触发 `sync → injectSelectAll → updateLabel`）；② **底部「已选 N」变化** —— 给 `#tv_bottom_zxg_num` 挂 `TextWatcher`（手动点行、宿主自己改选中都会更新它）；③ **点了全选/反选按钮自己**（`toggleAll` 跑完最后一帧时刷新）。判据与动作共用同一份状态（`updateLabel` 也读 checked states / 模型），否则筛选后会出现「文案写着全选、点下去却在取消」。
 
-1. **进入多选态**（`TextWatcher` 触发 `sync → injectSelectAll → updateLabel`）；
-2. **底部「已选 N」变化**：给 `#tv_bottom_zxg_num` 挂 `TextWatcher`（手动点行、
-   宿主自己改选中都会更新它）；
-3. **点了全选/反选按钮自己**（`stepToggle` 跑完最后一帧时刷新）。
+> ⚠️ **不要再包裹 ListView 的 `OnItemClickListener`**：它和筛选层的下标回映射会互相重包，叠成双重映射；而且宿主的选中模型看的是 checked states，不是转发出去的 position 参数。
 
-> ⚠️ **不要再包裹 ListView 的 `OnItemClickListener`**：它和筛选层的下标回映射会互相重包，
-> 叠成双重映射；而且宿主的选中模型看的是 checked states，不是转发出去的 position 参数。
+### 2.5 批量点击的耗时：逐行数据缓存
 
----
+逐行点击时代一次全选 285 行要 **1763 ms**，屏幕明显「一格一格」地勾上去。分段打点（`tProbe / tClick / tSync / nProbe`）摊开后只有一处：**「校正模型」1234 ms**，其余加起来不到 60 ms。根因不在点击，而在点击**之后**：`clickRow` 每点一行就调一次 `syncHostModel`，而 `syncHostModel` 每次都把**整张表**重新反射读一遍（每行的代码 / 原始代码 / 价格 / 连板数），复杂度 `O(N)`；285 行就是 285 × O(285)。
 
-### 2.5 批量点击的耗时：逐行数据缓存（2026-11-12）
-
-以前一次全选 285 行要 **1763 ms**，屏幕明显「一格一格」地勾上去。分段打点（`tProbe / tClick / tSync / nProbe`）把时间摊开后只有一处：**「校正模型」1234 ms**，其余加起来不到 60 ms。
-
-根因不在点击，而在点击**之后**：`clickRow` 每点一行就调一次 `syncHostModel`，而 `syncHostModel` 每次都把 **整张表**重新反射读一遍（每行的代码 / 原始代码 / 价格 / 连板数），复杂度 `O(N)`；285 行就是 285 × O(285)。
-
-改法：批量期间建一张行缓存 `RowCodes(adapter, total)`，四个取值各开一个数组；`rowCode / rowRawCodeAt / rowPriceAt / rowTwinAt` 先查表，**非批量态原样回退老实现**（手动单击的行为一个字节都没变）。缓存值同样过 `StgSelectAllPlan.isCodeLike` 校验并 `noteRowCodeMiss`，所以「某行读不到代码」的容错路径照样会被走到。
+改法：批量期间建一张行缓存 `RowCodes(adapter, total)`，四个取值各开一个数组；`rowCode / rowRawCodeAt / rowPriceAt / rowTwinAt` 先查表，**非批量态原样回退老实现**（手动单击的行为一个字节都没变）。缓存值同样过 `StgSelectAllPlan.isCodeLike` 校验并 `noteRowCodeMiss`，「某行读不到代码」的容错路径照样会被走到。
 
 | 指标（285 行筛选态 / 并集 630） | 优化前 | 优化后 |
 |---|---|---|
@@ -484,14 +272,6 @@ val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 | `gfxinfo` 99th percentile | 1750 ms | **300 ms** |
 | Janky frames | 0% | 0%（legacy 5.36%） |
 
-日志（真机 emulator-5556）：
-
-```
-策略全选：一次性点击 285 行完成（耗时 429ms，失败 0，宿主计数 0 → 285） [分段：造View 1ms/276 行、宿主点击 33ms、校正模型 22ms]
-策略全选：反选 开始（共 285 只，已勾 285，待点 285）
-策略全选：一次性点击 285 行完成（耗时 346ms，失败 0，宿主计数 285 → 0） [分段：造View 1ms/276 行、宿主点击 33ms、校正模型 10ms]
-```
-
 > 剩下的 ~370 ms 落在 `setItemChecked`、屏外探针 View 预置与 `fullIndexAt` 这些没打点的地方；再往下压就要动分帧策略，收益不如风险大，先停在这里。
 
 ---
@@ -500,10 +280,12 @@ val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 
 | 文件 | 作用 |
 |---|---|
-| `feature/strategyselect/StgSelectAllTargets.kt` | 上面那张控件契约表（全部做成候选数组，App 升级只改常量） |
+| `feature/strategyselect/StgSelectAllTargets.kt` | 控件契约（全部做成候选数组，App 升级只改常量） |
 | `feature/strategyselect/StgSelectAllFeature.kt` | 功能本体 |
-| `feature/strategyselect/StgSelectAllPlan.kt` | 方向判定与待点行（纯逻辑，可单测） |
-| `feature/stgfilter/StgFilterBridge.kt` | 筛选生效时的「子集下标 → 全量下标」通道，以及合成点击的放行标记 |
+| `feature/strategyselect/StgSelectAllPlan.kt` | 方向判定、待点行、提交包判据（纯逻辑，可单测） |
+| `feature/stgfilter/StgFilterBridge.kt` | 筛选生效时的「子集下标 → 全量下标」通道 |
+| `feature/stgmerge/StrategyMergeBridge.kt` | 聚合页归属判定（`isFor`），决定 `screenWins` |
+| `feature/stgrow/StgRowSelection.kt` | `rowEpoch` 行集合版本号 |
 | `feature/FeatureManager.kt` | `features` 列表登记 |
 | `core/ConfigKeys.kt` | `STG_SELECT_ALL` 键 + `DEFAULT_*=false` + 进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
 | `core/ConfigSnapshot.kt` | `stgSelectAll` 字段 + 进 `fingerprint` + `DEFAULT` |
@@ -512,365 +294,35 @@ val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 | `res/values/strings.xml` + `values-en/strings.xml` | 功能标题 / 摘要 / 开关文案（中英同步） |
 | `app/DebugConfigProvider.kt` | `stg_select_all` 列，供脚本化开关 |
 
-> **开关是功能总开关，出厂默认 `false`** —— 见 `docs/EXTENDING.md` 第 4 步的硬约定。
-> 要生效需在模块设置「功能」Tab 手动打开，且**打开后要重启目标 App**
-> （配置变化只走 `onConfigChanged`，不会补装钩子）。
+> **开关是功能总开关，出厂默认 `false`** —— 见 `docs/EXTENDING.md` 第 4 步的硬约定。要生效需在模块设置「功能」Tab 手动打开，且**打开后要重启目标 App**（配置变化只走 `onConfigChanged`，不会补装钩子）。
 
 ---
 
-## 4. 真机验证结果
-
-真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 金太阳 8.6.0 (vc271)，
-模块 2.12.1 (vc32)，被测策略为 **`100e`（32 只股票，一屏约 10 行 ⇒ 22 行在屏外）**。
-
-| # | 验证项 | 结果 |
-|---|---|---|
-| 1 | 按钮位置与尺寸 | 注入按钮 `[771,664][885,732]`，与「取消」`[927,664][1041,732]` **同为 114×68**，位于其**左侧**，间距 **42px ≈ 16dp** |
-| 2 | 样式一致（像素级） | 两按钮主色均为 `#E8E8F8`、文字色均为 `#285098`，像素占比接近（6426/685 vs 6329/752） |
-| 3 | 点「全选」 | 底部计数 → **「已选 32 只股票」= 全部行数**；按钮文案 → **「反选」** |
-| 4 | **屏外行覆盖** | 滚到列表**最底部**，可见的 13 个 `#ct_item` **全部 `checked=true`** |
-| 5 | 点「反选」 | 底部计数 → **0**；可见勾选框全部 `checked=false`；文案 → **「全选」** |
-| 6 | 反复进出多选态 ×2 | 退出后按钮数 **0**，重新进入后 **1**（无重复注入） |
-| 7 | 关闭开关 `stg_select_all` | 按钮**即时消失**（0 个）；重新打开并重进多选态 → 恢复 1 个 |
-| 8 | 全程 crash | `logcat -b crash` 中 `ClassCastException` / `FATAL` 计数 **0** |
-
-### 4.1 2026-10-20 追加：与筛选叠加（真机）
-
-设备 / 宿主不变，策略换成 **50e（21 只）**，筛选条件「涨家股票」（保留 3 只）。
-
-| # | 验证项 | 结果 |
-|---|---|---|
-| 9 | 筛选生效时手动点第一行 | `ChooseGroupAct` 收到的股票 = **301330**（屏幕上那只），不是全量第 1 只 |
-| 10 | 筛选生效时点「全选」 | 底部「已选 3 只股票」；确认添加收到的 codes = **[301330, 300815, 002956]**（= 可见的 3 只） |
-| 11 | 同一组合再选一次 | 这 3 只已在自选里 → 宿主显示「已在该组合」（**语义正确**；修复前是选错了股票导致的误报） |
-| 12 | 非连续子集（19/23，排除科创板） | 底部「已选 19 只」；确认页 codes **len=19 且不含 688xxx**；手动点首行 → codes = **[600178]**；「反选」→ 计数 0、文案回「全选」、可见勾选框全部清空 |
-
-> ⚠️ **观感局限（2026-10-22 已按新根因重做，待真机验证）**：合成点击后宿主不会重画**部分**
-> 可见勾选框 —— 50e / 19 只筛选结果实测：底部「已选 19 只股票」、确认页 19 只全对，
-> 但屏幕 9 个可见勾选框只画出 6 个；**手动点行**与**反选**的勾选显示正常。
-> 根因：`performItemClick` 内部的 `updateOnScreenCheckedViews()` 按**适配器位置**重写
-> 行根视图的 `activated`，而筛选生效时 checked states 用的是**全量位置** —— 两套坐标错位，
-> 每点一行都会把一部分可见行刷回「没勾」；宿主若用 `duplicateParentState` / `state_activated`
-> 画勾，只设 `#ct_item.isChecked` 修不回来（2026-10-21 的 `repaintVisible` 只做了这一半）。
-> `invalidateViews()` 与「预置视图位置」两种旧补法无效（后者还会让确认页多出股票）。
-> 现在 `refreshVisibleChecked()` 按「全量下标 → 表」取真实状态，`activated` 与 `isChecked`
-> 一起刷，只改显示、不碰宿主模型；筛选生效时每点一行刷一次，收尾再刷一次（§2.3.2）。
-
-### 4.2 2026-10-21：重复全选「部分选不中」
-
-真机（用户报）：**做过一次全选以后，下次在同一个策略详情页点全选，部分行选不中**。
-
-根因有两层，都在「判据」上：
-
-1. **读错了状态**：旧实现在需要逐行判断时（`cur` 既不等于 0 也不等于总数），
-   对**可见行**读的是屏上那颗 `#ct_item`。而上一轮合成点击后宿主不重画部分勾选框（§4.1），
-   屏上显示「没勾」、宿主模型里其实「已勾」→ 这一轮又对它发了一次点击。
-   行点击是**取反**的 → 已经选中的行被点掉 = 部分选不中。
-2. **取反写 checked states 撞上残值**：`performItemClick` 按 `position` **取反**写
-   `mCheckStates`。上一轮留下的 true 会让「勾上」变成「取消」。
-
-修复：
-
-- **状态来源按优先级选，不读屏上那颗勾选框**（`readRowStates` + `StgSelectAllPlan.stateSource`）：
-  ① 宿主计数为 0 → 全部未选；② 读框架的 checked states（与「确认添加」同一份表，
-  O(行数)、不建视图；没有筛选时还要求「表里勾选数 == 宿主计数」）；
-  ③ 只有它不可用 / 与计数矛盾时才逐行现绑探针（`adapter.getView(i, null, lv)`）。
-- **只点状态与目标不同的行**（`StgSelectAllPlan.rowsToClick`）：
-  已符合目标的再点一次就是取消。
-- **点击前用 `lv.setItemChecked(pos, !wantChecked)` 预置状态**：
-  取反后必然落到 `wantChecked`；用公开 API 而不是直接改 `mCheckStates`，
-  这样 `mCheckedItemCount` / `mCheckedIdStates` 一并维护；点击抛异常时写回旧值。
-- **防重入 + 可取消**：一轮没跑完时忽略新的点击；关开关 / 退出多选态时
-  `cancelRun()` 让正在分帧的链立刻停。
-- **运行中校验快照**：启动时把「子集→全量」下标表快照下来（并要求列表上挂的确实是过滤代理，
-  避免读到上一页留在全局桥里的旧表）；中途筛选下标变了就**重开一轮**，
-  适配器实例换了就中止（可能是别的页面）。
-- **只对普通多选模式生效**：单选 / 多选模态下不注入按钮（`toggleAll` 里也有同一道守卫）。
-- **手动点行的 wrapper 不搬 checked states**：框架写在**适配器位置**（header + 子集下标）
-  上的取反结果就是屏幕 / 计数读的那一格，保持不动；只把 `header + 全量下标` 转给宿主。
-  搬到全量位置会让勾选落到下一行（2026-10-21 真机：点第 3 行勾中第 4 行）。
-- **`performItemClick` 的 id 改用代理的 `getItemId(index)`**：`lv.getItemIdAtPosition(全量位置)`
-  在全量下标小于子集行数时会被代理再映射一次，拿到别的股票的 id。
-- **只在过滤代理确实挂在列表上时才发布下标表**：否则「全选」会把子集下标当全量下标用。
-- **文案与动作共用同一判据**（`updateLabel` 也读 checked states）：
-  否则筛选后会出现「文案写着全选、点下去却在取消」。
-
-单测：`StgSelectAllPlanTest` 13 条（方向判定 / 待点行 / 状态来源优先级）。
-
-> **2026-10-21 真机已验证**：筛选叠加全选 / 反选、33 只重复全选、筛选后手动点行
-> （屏幕勾选与宿主分组页都正确）、筛选后直达行情左右滑动。
-> 装机后按 §5 第 9 条复验；重点看「连续点」与「筛选 + 全选」两种组合。
-
-### 4.3 2026-10-22：显示缺勾 + 概率漏选（代码修复，真机待验）
-
-用户报：**全选确实生效了（计数 / 确认页都对），但中间有些股票不显示勾；而且点全选
-也有概率有一些勾不到。**
-
-代码层查出两个来源，都是「单轮 + 只看一半的显示」造成的：
-
-1. **显示缺勾**：见 §4.1 / §2.3.2 —— `updateOnScreenCheckedViews()` 按适配器位置重写
-   `activated`，筛选期间与全量位置的 checked states 错位。现在 `refreshVisibleChecked()`
-   同时刷 `activated` 与 `isChecked`，筛选生效时每点一行刷一次，收尾 + 下一帧 pre-draw 再刷。
-2. **概率漏选**：单轮点完就收工，任何一次「没走到」的点击（筛选结果在运行中变化、
-   `getView` 造不出探针、宿主事后把表改回去）都会留下「没勾到」的行。现在：
-   - 一轮点完隔 48ms 重读 checked states，只补点仍不对的行，最多 4 轮**点击**（§2.3 第 9 条）；
-   - 运行中筛选映射变了不再中止，直接重开一轮；适配器实例换了才中止（可能是别的页面）；
-   - 没有筛选时若表与宿主计数分叉（宿主模型漏行），补点轮退回探针按模型补；
-   - 每行失败只计数（本轮第一条记 WARN），不会 4×N 条刷屏。
-
-> ⚠️ **补点救不了「宿主监听器静默忽略」**：`performItemClick` 在调到监听器之前就按取反
-> 写了 `mCheckStates`，下一轮读表只会看到目标态。如果真机复现「计数满了但确认页少几只」，
-> 那是宿主自己的点击处理没执行，需要单独抓宿主日志 —— 本模块从外部观察不到。
-
-日志口径（装机后排查看这几条）：
-
-```
-策略全选：全选 开始（共 N 只，已勾 X，待点 Y）
-策略全选：第 1 轮结束（点了 Y 行，失败 0，宿主计数 0 → N）
-策略全选：第 2 轮补点（共 N 只，已勾 Z，待补 W，点击轮 2/4）   ← 只在有缺口时出现
-策略全选：完成（2 轮 / 点击 2 轮，共 N 只，目标 全勾）
-```
-
-若出现「已达补点上限」或「适配器在运行中换了」，把该段日志留下来。
-
-### 4.4 2026-10-23：全选后个别对钩不显示、再点一下计数 +1
-
-用户报：**全选确实生效了（底部计数 / 实际选择都对），但个别行的对钩显示没勾；
-再点一下那一行，对钩出现，底部「已选 N」反而 +1。**
-
-#### 根因（三层，都在「看哪一层状态」上）
-
-1. **显示刷错了层**。宿主行根是 `com.guosen.commonui.CheckedFrameLayout`
-   （`Checkable`），勾选框 `#ct_item` 的 checkMark 是 `drawable/cb_square_bg_15`，
-   选择器只认 `state_checked`。框架的 `AbsListView.setupChild()` /
-   `updateOnScreenCheckedViews()` 刷新的是**行根**的 `setChecked(...)`；
-   原实现只写 `#ct_item.isChecked` 和行根 `activated`，没写行根的 `isChecked` ——
-   下一次布局按行根状态重写，勾就时有时无。
-2. **验证看的是自己刚写过的表**。宿主的多选模型是 `AIStkStgDetailAct.checkCodes`
-   （`List`，探针 `PAGE[STG]` 实例字段实测）。`performItemClick` 在调到宿主监听器
-   **之前**就把 `mCheckStates` 取反写好了（框架 `AbsListView.java:1231`）—— 宿主监听器
-   若静默忽略、或按旧视图状态判了方向，表里仍是目标态，补点轮永远发现不了漏选。
-   用户看到的「再点一下 +1」就是宿主模型里被加了重复项（或漏了一行）。
-3. **太快**。16ms 一行时，宿主每行的 `notifyDataSetChanged()` 还没布局完，
-   下一行拿到的仍是旧绑定的子 View，给「按视图判方向」留了竞态窗口。
-
-#### 修法
-
-| 改动 | 位置 |
-|---|---|
-| 状态判据**优先读宿主 `checkCodes`**；行代码按 `m_stkCode` / `m_codeAndMarket` 候选提取，任何一行读不到就整趟退回 checked states（绝不把「读不到」当「没选」）；字段按**条目类**缓存（失败也缓存） | `readHostModel` / `rowCode` / `resolveCodeFields` / `StgSelectAllPlan.statesFromCodes` |
-| 首轮「宿主计数 0 但模型非空」→ **清掉残值、按「一只没选」处理**（**2026-10-28 更新**，此前是放弃本次操作）：计数是宿主每次点击都会重写的、更可信的一份，为 0 就不拿残值模型判方向（拿它判会把「反选」变成「全选」，反向点击） | `takeShot` / `clearHostModel` |
-| 补点轮按宿主模型核对：模型漏行就再点；模型里有重复代码只记 WARN（**打码**，不直接改宿主 List，避免计数控件不同步） | `takeShot` / `duplicateCodes` |
-| 显示刷新同时写**行根 `Checkable.isChecked`** + `#ct_item.isChecked` + `activated`，有模型时按「这一行是哪只股票」判，绕开筛选的两套下标 | `refreshVisibleChecked` |
-| 合成点击前把**行视图**也摆成「点击前」（行根 + `#ct_item`），不只预置框架表 —— 宿主若按视图判「加/删」，方向才是确定的 | `clickRow` |
-| 逐行间隔 `16 → 40ms`、轮间静置 `48 → 120ms` | `TOGGLE_STEP_MS` / `ROUND_SETTLE_MS` |
-
-> **模型不可用 / 不可信的情况**：① 字段读不到；② 任一行代码读不到；
-> ③ 没有筛选时「计数 > 0 但模型里一只都对不上（或模型空表）」。
-> ①②③ 都整趟退回 checked states / 探针；③ 防的是宿主换了代码格式
-> （如 `市场.代码`）时把已勾行全判成没勾、点一遍反而全取消。
-> ④ 首轮「计数 0 但模型非空」→ **清掉残值、按「一只没选」处理**（**2026-10-28 更新**；
-> 此前直接放弃本次操作。改因：真机上「确认添加」返回后宿主清了底部计数却没清
-> `checkCodes`，残值把整轮卡死 —— 用户看到的就是「全选摁不动」）。仍不拿残值模型判方向
-> （那会把「反选」变成「全选」，反向点击比不点更糟）；补点轮不适用
-> （合成点击比计数刷新快，计数 0 是常态）。
-> 日志里会留下「宿主模型不可用（…）」「宿主模型元素不是股票代码（…）」
-> 「第 N 行取不到股票代码（item=… code=…）」。
->
-> ⚠️ **已知理论风险（复核 2026-10-23）**：如果宿主某行的代码字段恰好取到另一个
-> 6 位值（不是股票代码），模型会把该行判成没勾。候选字段是 `m_stkCode` /
-> `mStkCode` / `code` / `mCode` / `m_codeAndMarket`，正常不会命中这种值；
-> 真出现「模型与表不一致」日志时，先核对宿主条目结构再改候选数组。
->
-> **为什么不直接把重复项从 `checkCodes` 里删掉**：那是宿主自己的 `List`，删完
-> `#tv_bottom_zxg_num` 不会自动重算，界面会显示一个和模型不一致的计数；而「重复」
-> 只在方向判错时产生，堵住方向判错（视图预置）比事后修补更稳。
-
-#### 真机验证状态（2026-10-23）
-
-- 第一轮（只接入 `checkCodes`、尚未补 `CAM_FIELDS`）：100e / 27 只，点「全选」后
-  底部计数 **27**，屏上 9 个可见 `#ct_item` **全部 `checked=true`**；
-  日志出现「已解析宿主选中模型字段 checkCodes」，随后「宿主模型不可用（…），
-  退回 checked states」—— 宿主条目只暴露 `m_codeAndMarket` 组合字段，已补进候选。
-- 补 `CAM_FIELDS` 与复核加固（重复代码打码 / 计数 0 保护 / 按类缓存 / 契约登记）
-  后重装模块，宿主登录态失效（「您的登录信息已失效」），**第二轮未复验**。
-  下次登录后重点看这几条日志：
-
-```
-策略全选：已解析宿主选中模型字段 checkCodes
-策略全选：宿主模型 checkCodes=N 项，列表已勾 X/N
-策略全选：宿主模型与 checked states 不一致（模型 A / 表 B），按模型   ← 只在分叉时出现
-策略全选：宿主模型里有重复代码 60****, 00****（共 N 项）             ← 只在重复时出现，已打码
-策略全选：宿主模型不可用（模型与列表/计数不一致），退回 checked states ← 模型不可信时
-策略全选：宿主计数为 0 但模型残留 N 项（多半是上一批确认添加后宿主没清），按「一只没选」处理   ← 2026-10-28 起替代旧的「放弃本次操作」
-```
-
-若仍出现「行代码映射不全」，日志会带条目类名与取到的 `code` 值 ——
-按它补 `StgSelectAllTargets.CODE_FIELDS` / `CAM_FIELDS` 即可，不用改实现。
-
-### 4.5 2026-10-28：全选后只有一部分进自选（已修复，真机验证）
-
-用户报：策略详情点进一只股票 → 手动加自选 → 再取消自选 → 返回策略详情 →
-全选添加股票，宿主提示「已在该组合」，而且"全选了很多股票，只有大部分进了自选，
-小部分留在外面"。
-
-真机（魅族 20 / Android 16 / 宿主 8.7.0 vc273 / 模块 3.5.1 修改前后对比）：
-
-| # | 场景 | 结果 |
-|---|---|---|
-| 1 | 「测试」策略（100 只），筛选涨家保留 74 只 → 全选，**等计数稳定** → 确认 → 测试分组 | 分组**正好 74 只**，勾选 9/9 可见行，全部正确 |
-| 2 | 同一批 72 只再添加进已有 74 只的「测试」 | 分组**仍是 74 只**（宿主按代码去重，提示「已在该组合」是正常语义） |
-| 3 | **修复前**：72 只全选后 **0.7 秒**点确认 → 新建空分组 | 只进了 **18 只**，剩余 54 行仍在后台勾选 |
-| 4 | **修复后**：79 只全选后 **0.5 秒**点确认 | 不进入「选择分组」（按钮已置灰禁用），计数继续涨到 79/79、文案变「反选」 |
-| 5 | 修复后：跑完再点确认 | 正常进入「选择分组」（`enabled / clickable / alpha` 已还原） |
-
-排查工具（供复现参考）：宿主的自选列表对无障碍隐藏，`uiautomator dump` 抓不到行；
-核验分组数量用「自选管理 → 股票 → 分组 → 全选 → 删除」的确认弹窗
-「确认删除这 N 只股票？」读出，读完点取消（不会真删）。
-
-顺带发现（未在本次修复范围）：
-
-- **分组复制读错页**：8.7.0 上「全部 / 自选 / 测试」三个 tab 复制都报同一份 552 只
-  （toast 里的分组名跟着 tab 变、数据不变），不能用来核验分组。
-- **筛选保留数不可信**：同一策略几分钟内表头在 74 → 12 → 26 → 24 之间跳；
-  涨家数 99 时只保留 24 只；「自选」筛选计数 72 → 73 而分组没有变化。
-  表头 `N/100` 不等于列表实际行数。
-
-### 4.6 2026-11-01：3e30039 首轮点击链护栏（3.5.3 / 54，真机验证）
-
-`3e30039`（3.5.2 后第五轮增量审查发现）：`toggleAll` 的首次 `clickNext` 是同步调用，
-在「running 已置位、finally 只兜 `!started`」的窗口里抛出会让锁卡死、「确认添加」
-从此置灰。修法为 `runCatching + endRun()`，纯加固不动正常路径 —— 异常分支难以
-人为触发，真机按「正常路径无回归」口径验证。
-
-真机（魅族 20 / Android 16 / 宿主 8.7.0 / 模块 3.5.3 (54)，构建 2026-11-01 21:23）：
-
-| # | 场景 | 结果 |
-|---|---|---|
-| 1 | 「50e」策略详情（列表 17/23）→ 勾选加入自选股 → 模块注入「全选」出现在「取消」左侧 | 注入位置与样式正常 |
-| 2 | 点「全选」 | 「已选 17」== 列表行数，文案变「反选」，可见 9 行对钩全画 |
-| 3 | 确认添加 → 选择分组 → 新建分组 `test54` | 创建即提交；分组页对 `test54` 显示「已在该组合」 |
-| 4 | 核验 `test54` 内容 | 与屏幕列表 **17 只逐只一致、顺序一致**（603131…688334）—— `264ebdc` 提交包校正无回归 |
-| 5 | 收尾 | 分组已删除还原，设备配置未动 |
-
-> 注：验证过程中一次 fling 跳行让分组前 9 + 后 6 的两屏 dump 看似只有 15 只，
-> 小步回滚后确认 605598 / 002737 都在 —— 核验分组内容要用小步滚动逐屏采，
-> 大 fling 会漏行。证据 `.work/shots/r54-*.png`。
-
-### 4.7 2026-11-04：一次性全选 + 手动取消后对钩不消失（已真机验证）
-
-用户报两条：
-
-1. 全选后**手动点掉一行**，底部「已选 N」确实 -1，但屏上那颗 √ 去不掉（视觉残留）。
-2. 全选现在是 40ms/行逐个往下勾，希望变成「一次性全选」，不要逐行动画。
-
-根因（静态定位，AOSP 源码核对）：
-
-- `AbsListView.performItemClick`（framework `AbsListView.java` 约 1222–1280 行）
-  先按适配器位置取反写 `mCheckStates`，再调 `updateOnScreenCheckedViews()` ——
-  后者只对**行根** `Checkable` 调 `setChecked` / 对非 Checkable 行设 `activated`，
-  **不碰嵌套的 `#ct_item`**。
-- 8.7.0 起宿主 `checkCodes` 恒空，`paintVisibleRows()` 原逻辑读到空模型直接 `return`；
-  于是全选时写下的 `#ct_item.isChecked=true` 在手动取消后没人再改写 ——
-  框架只清行根、宿主若没重绑行，勾就一直挂着。
-- 方向判定也有同源风险：手动取消一只后宿主模型可能还没删（计数 N-1、模型 N 项），
-  `takeShot()` 拿残值判会认为「已全选」→ 再点「全选」变成「反选」，把剩下的一起取消。
-
-修法：
-
-| 改动 | 位置 |
-|---|---|
-| 首轮改为**同一帧批量点击**（主线程循环期间不布局 / 不重绑，宿主监听仍逐行执行），屏幕一次性全勾；补点轮保持 40ms 逐行 | `clickAll` / `clickOneRow` / `toggleAll` |
-| 批量期间静默计数 watcher（跳过 `updateLabel / syncHostModel / post / reassertGate`），收尾统一做一次 | `batchClicking` |
-| 批量期间保留每行的 `syncHostModel`（筛选下宿主按位置记错票，隔到最后才修可能因碰撞少加一行；无筛选时该函数自己早退） | `clickRow` / `clickAll` |
-| 模型不可用 / 条数与计数对不上时，按框架 checked states 把行根、`#ct_item`、`activated` 三处一起刷 | `paintVisibleRowsFromTable` / `writeRowChecked` |
-| 计数每次变化（非批量）立刻按表重画一次可见行 | 计数 watcher |
-| 首轮方向 / 文案 / 显示刷新统一用 `modelTrusted(条数 == 底部计数)`；对不上退回 checked states | `StgSelectAllPlan.modelTrusted` / `takeShot` / `updateLabel` / `refreshVisibleChecked` |
-
-回退开关：`StgSelectAllFeature.BATCH_CLICK = false` 即恢复逐行 40ms 旧路径，
-显示 / 模型判据的修复独立生效。
-
-#### 真机验证（2026-11-04 完成）
-
-设备：魅族 20 / Android 16 (SDK 36) / 宿主 8.7.0 (vc273) / 模块 3.5.4 (55)，
-安装后 `am force-stop com.guosen.android` 再启动（新包必须重启宿主进程才生效）。
-策略：**量100，34 只**（一屏可见 6 行，其余 28 行在屏外），验收项 §5 第 15–18 条。
-
-取证方式：设备侧 `screenrecord` 与点击写在**同一条 shell** 里（`screenrecord &` →
-`sleep 3` → `input tap` → `sleep 4` → `kill -2`），再用 ffmpeg 拆帧逐帧量「左列勾选框
-区域的蓝色像素数」；设备无 root（`adb shell` 无 `su`），LSPosed 模块日志读不到，
-所以本次口径是**录屏逐帧 + uiautomator 计数**，不是日志。证据在 `.work/shots/`
-（`s01`–`s15`、`sa16.mp4` / `rm1.mp4` / `sa17.mp4`、`f16` / `fr1` / `f17` 帧目录）。
-
-| 验收项 | 结果 | 证据 |
-|---|---|---|
-| 15 一次性全选 | ✅ 点击后**第一帧**（t=3.036s）6 个可见行同时对钩出现，上一帧（t=3.027s）还是全空 —— 间隔 8ms，没有任何「从第一行往下勾」的中间态；同一拍底部计数 0 → **34**，按钮「全选」→「反选」 | `sa16.mp4`（38 帧），6 行蓝色像素：帧 3 ≈ 207/220/159/215/178/239 → 帧 4 ≈ 983/940/803/900/796/943 |
-| 16 手动取消后对钩消失 | ✅ 点行 1 后**下一帧**该行对钩即消失（953 → 172），其余 5 行数值不变；计数 34 → **33**，按钮仍「全选」 | `rm1.mp4`，行 1：帧 1 = 953 → 帧 2 = 172 |
-| 17 取消后再全选方向正确 | ✅ 再点「全选」只补回被取消的那一行（207 → 897，其余行不动），计数 33 → **34**，按钮「全选」→「反选」，**没有**变成全部取消 | `sa17.mp4`，行 1：帧 4 = 207 → 帧 5 = 897 |
-| 18 筛选叠加 | ✅ 三点菜单「筛选股票」勾「涨家股票」→ 标题变 `策略个股 6/34`；进多选点「全选」计数 **6**、6 行全勾、按钮「反选」；手动取消一只 → **5**/「全选」；再全选 → **6**/「反选」（筛选下位置≠全量下标的映射没串行） | `s02`（34 只）→ `s03`（全选 34）→ `s04`（取消一只 33） |
-| 18 确认添加内容一致 | ✅ 筛选态全选 6 只 → 确认添加 → 新建分组 `tmpv1`，组内**恰好** 300666 江丰电子 / 000506 招金黄金 / 601126 四方股份 / 600563 法拉电子 / 002773 康弘药业 / 688485 九州一轨，与屏幕逐只一致（不是另外 6 只，也没有多带） | `s07`（全部）/ `s08`（tmpv1 组内） |
-
-清理与副作用：验证用的 `tmpv1` 分组已删除（第一次删除宿主报 `-19:网络连接失败（WIFI接收失败）`，
-原样重试一次成功）；「确认添加」本身会把 6 只写进账号自选，**这 6 只仍留在「全部/自选」里**，
-如需还原要在自选里手动删掉。
-
-其它：批量现在耗时在毫秒级（同一帧内完成），「运行中退出多选态 / 关开关」这个旧验收项
-已经没有可操作窗口，不再单列。
-
-
-若出现「宿主模型 X 项与计数 Y 不一致」，说明手动取消后模型滞后，已自动退回 checked
-states；若出现「已达补点上限」，把该段日志留下。
-
----
-
-### 4.8 2026-11-12：全选/反选 1763 ms → 429 / 346 ms（已真机验证）
-
-| 项 | 结果 |
-|---|---|
-| 触发场景 | 策略详情页 285 行（筛选态，并集 630），多点几下全选 / 反选 |
-| 分段 | 造View 1 ms / 276 行、宿主点击 33 ms、校正模型 **22 ms**（反选 10 ms） |
-| 计数同步 | 全选 `宿主计数 0 → 285`、反选 `285 → 0`，与列表勾选数一致 |
-| 流畅度 | `gfxinfo` 99th **300 ms**（原 1750 ms）、Janky 0% |
-| 回归 | 手动单击、屏外行探针、`isCodeLike` 校验、漏选补轮全部未变 |
-
-改法与原理见 [§2.5](#25-批量点击的耗时逐行数据缓存2026-11-12)。
-
----
-
-### 4.9 2026-11-13：聚合组「全选 → 确认添加」加不进去（MuMu 真机已验）
-
-| 项 | 内容 |
-|---|---|
-| 报障原话 | 「在全选以后点击 确认添加 我的分组内的自选显示 已在该组合 但组合内并没有当前的股票」 |
-| 触发路径 | 我的策略 → 勾聚合成员 → 进聚合组详情（列表 = 成员并集）→「勾选加入自选股」→「全选」→「确认添加」 |
-| 观察到的错象 | 屏上全勾、底部「已选 N 只」，分组页**每个分组**都显示「已在该组合」，点进去一只都没有 |
-| 根因 | 聚合只写 `adapter.data`，宿主 `m_stkList` 为空 ⇒ 宿主构造不出提交票（`codes` 为 null / 空 / 残值）⇒ 分组页拿**空集**比对，空集 ⊆ 任何分组 ⇒ 全部误报「已在该组合」。详见 [§2.3.4](#234-与我的策略聚合叠加全选后确认添加什么也没加2026-11-13) |
-| 修法 | 捕获放开无筛/聚合态 + 提交包判据按屏幕勾选覆盖 + `markets` 必写（含长度不符重写）+ `prices` 防越界 + 列表兜底找回 + 捕获只认当次（7 处，见 §2.3.4 表） |
-| 本地验证 | `gradlew :app:testReleaseUnitTest :app:assembleRelease` BUILD SUCCESSFUL；`StgSelectAllPlanTest` 38 例 0 失败（新增 6 例覆盖 `needsGroupFix` 的 null / 长度不符 / 内容不同 / 一致 / 带后缀 / 空选） |
-| 真机状态 | **通过**（MuMu 6.8.8.0 / Android 12 / 金太阳 8.7.1(274) / 模块 3.8.2(61)）：527 只全选后提交包由「宿主 0 只」校正为「屏幕 527 只」，分组页不再出现「已在该组合」；5 只小样本已真实入组。见下表 |
-
-真机记录（2026-11-13，MuMu 6.8.8.0）：
-
-| 步骤 | 实测结果 |
-|---|---|
-| 聚合组「聚合组2」详情（策略个股 527/778）→「勾选加入自选股」→「全选」 | 底部计数 527；日志 `一次性点击 527 行完成（耗时 1088 ms，失败 0，宿主计数 0 → 527）`、`宿主模型 checkCodes=527 项，列表已勾 527/527` |
-| 点「确认添加」 | 日志 `提交包核对（聚合页+筛选态，宿主 0 只 / 屏幕 527 只）` → `确认添加的提交代码已按屏幕勾选校正（527 只，原 0 只）`：宿主自己构造的是**空包**，被改写为屏幕上的 527 只 |
-| 分组页（「自选」与测试组 t527） | **两个组都不再显示「已在该组合」**（修复前空集 ⊆ 任何组，每组都会误报） |
-| 小样本闭环：重进多选只勾 5 只 → 确认添加 → 点分组 | ChooseGroupAct 正常关闭；宿主发出 `POST /securities-group/add-securities/2.0`，`groupIds=2,-1`、`codes=300528,301218,300324,688371,000665`；回自选页这 5 只在列表里 ⇒ 端到端确实加进去了 |
-| 同一页一次提交 527 只 | 请求同样发出（codes 527 个），但 ChooseGroupAct 不关闭、界面无任何提示。宿主 APK 字符串池含 `分组中股票数量超过限制,添加失败` ⇒ 卡住的是**宿主服务端的分组容量限制**，不是模块的提交包 |
-
-结论：模块侧「提交包正确」已闭环；527 只这类大批量剩下的拦路虎在宿主服务端容量上限（阈值未实测，需产品侧确认，分批添加是可行绕法）。
-
-遗留：模拟器上还留着测试用分组 `t527` 与「自选」组里那 5 只（300528 / 301218 / 300324 / 688371 / 000665），需要时手工删。
-
-复验三步：
-
-1. 聚合组详情 → 全选 → 确认添加 → 选一个**空分组** → 进去看：屏上那 N 只应全部在里面，不带别的票；
-2. 同一批再添加一次 → 此时显示「已在该组合」才是**正确**语义（第一次添加后确实都在）；
-3. 看模块日志：应出现「确认添加的提交代码已按屏幕勾选校正（N 只，宿主包里没有 codes）」；
-   若仍是「选择分组页不是从策略详情进来的」→ 把该行留下，说明页面归属判据没命中；
-   若是「上次捕获已过期（N ms）」→ 点按钮和分组页被打开不是同一次点击（模拟/脚本点击常见），
-   手动再点一次即可，这行属于预期的防护而不是故障。
+## 4. 历史回归台账
+
+九轮真机回归压成一张表：症状、根因与判据保留，逐日过程见 [CHANGELOG.md](../CHANGELOG.md)。「现行处置」列指向正文对应小节。
+
+| 日期 | 症状 | 根因 | 现行处置 |
+|---|---|---|---|
+| 2026-10-20 | 筛选生效时全选，确认页收到的是全量前 N 只 | 合成点击传子集下标，宿主按全量位置取值 | 合成点击与手动点行统一按适配器位置（§2.3.1） |
+| 2026-10-21 | 做过一次全选后，再全选部分行选不中 | 读屏上勾选框（宿主没重画）+ 取反写 checked states 撞残值 | 状态来源四级优先级 + 只点不同行 + `setItemChecked` 预置（§2.3 要点 1 / 2 / 7） |
+| 2026-10-21 | 手动点行勾中下一行 | 手写 wrapper 把取反结果搬到全量位置 | 手动点行不搬表，只把 `header + 全量下标` 转给宿主；id 改用代理 `getItemId(index)`（§2.3.1） |
+| 2026-10-22 | 计数与确认页都对，但部分可见行不显示勾 | `updateOnScreenCheckedViews` 按适配器位置重写行根，与全量位置的表错位 | 三处一起写 + 每点一行刷 + 收尾 + 下一帧 pre-draw（§2.3.2） |
+| 2026-10-22 | 偶发漏选 | 单轮点完就收工，筛选变化 / 探针造不出 / 宿主改表都留缺口 | 120ms 重读 + 补点，最多 4 轮点击；筛选下标变了重开一轮，适配器实例换了才中止（§2.3 要点 6 / 9） |
+| 2026-10-23 | 全选后个别对钩不显示，再点一下计数 +1 | 只写 `#ct_item` 没写行根 `Checkable`；验证看的是自己刚写的表；16ms 太快 | 优先读宿主 `checkCodes` 判方向 + 行视图也摆成「点击前」+ 40ms / 120ms（§2.3 要点 1、§2.3.2） |
+| 2026-10-27 | 多选态中途宿主刷新后勾又被盖回去 | 每次 `notifyDataSetChanged` 都重绑行，收尾那次刷白做 | 常驻 `OnPreDrawListener` 每帧按 `checkCodes` 重画（§2.3.2） |
+| 2026-10-28 | 全选后 0.7s 点确认添加，72 只只进 18 只 | 宿主点击那刻快照选中集合，只拿到已点前缀 | 运行期间锁「确认添加」，只动 `enabled / clickable / alpha`（§2.3.3） |
+| 2026-10-28 | 「确认添加」返回后全选摁不动 | 宿主清了底部计数却没清 `checkCodes`，残值把整轮卡死 | 计数 0 但模型非空 → 清残值、按「一只没选」处理（§2.3 要点 1） |
+| 2026-11-01 | 首轮同步 `clickNext` 抛异常会让锁卡死、「确认添加」从此置灰 | 首次调用落在「running 已置位、finally 只兜 `!started`」的窗口 | `runCatching + endRun()` 纯加固，不动正常路径（§2.3 要点 4） |
+| 2026-11-04 | 全选后手动取消一行，√ 去不掉 | `performItemClick` 只刷行根、不碰嵌套 `#ct_item`；`checkCodes` 恒空使旧画勾逻辑早退 | 批量点击 + `paintVisibleRowsFromTable` 按表画三处（§2.3.2） |
+| 2026-11-04 | 逐行 40ms 勾得太慢 | 首轮同步逐行点击 | `clickAll` 同帧批量，`BATCH_CLICK` 作回退开关（§2.3 要点 4） |
+| 2026-11-12 | 285 行全选 1763ms，「一格一格」地勾 | `syncHostModel` 每行重读整表，`O(N²)` | `RowCodes` 行缓存，非批量态回退老实现（§2.5） |
+| 2026-11-13 | 聚合组全选后确认添加，每个分组都「已在该组合」 | 聚合只写 `adapter.data`，宿主 `m_stkList` 空 → 提交包空集 | 捕获放开无筛 / 聚合态 + 判据按屏幕覆盖 + `markets` / `prices` 一并校正（§2.3.4） |
+| 2026-11-13 | 普通详情页筛完确认添加少几只 | 判据放宽到「长度不等就覆盖」，把屏外票裁掉 | `needsGroupFix` 加 `screenWins` 第二道闸（§2.3.5） |
+| 2026-11-13 | 聚合页点一行后批量落到别的股票上 | 无过滤代理时 `clickOneRow` 零校验 | 比对 `rowEpoch`，不等就重开一轮（§2.3.6） |
+| 2026-11-13 | 手机上随机「已在该组合」，模拟器正常 | 捕获链上三处静默放弃 | 捕获按时刻 + 现场重捕 + 市场号按前缀推（§2.3.7） |
+
+**仍未闭环的边界**：① 宿主监听器**静默忽略**合成点击时，补点与核对都看不出来（`performItemClick` 先写表、无条件 `handled=true`），只能靠「计数满了但确认页少几只」的现象去抓宿主日志；② 单次提交超过宿主服务端分组容量时会卡在「选择分组」页无提示（527 只实测，见 [FEATURE-STG-FILTER.md](FEATURE-STG-FILTER.md) §八的容量结论），需分批添加。
 
 ---
 
@@ -883,41 +335,19 @@ states；若出现「已达补点上限」，把该段日志留下。
 5. 反复进出多选态不会出现第二个按钮。
 6. 关掉 `stg_select_all` → 按钮消失（即时生效）；重开并重进多选态 → 按钮回来。
 7. 目标 App 无新增崩溃；release 包 `Lio/github/libxposed/api` 定义类 0。
-8. **筛选生效时**：全选勾中的行 = 页面可见的股票；确认添加收到的代码与之一致
-   （不能是全量前 N 只）；手动点行也选中屏幕上那一只。
-9. **重复点**：全选 → 反选 → 全选、全选 → 手动改几行 → 全选 —— 每次结束都应达到
-   目标状态（全勾或全不勾），**不能有行反向**（2026-10-21 修的就是这个）。
-10. **屏幕显示与表一致（2026-10-22）**：全选后**屏上可见的每一行**勾选框都显示为勾上
-    （包括筛选生效时），滚到列表任意位置再滚回来也保持一致；反选后全部显示为空。
-11. **筛选 + 手动勾选 + 全选（2026-10-22 新增用例）**：筛选生效时先手动勾 1~2 行，
-    再点「全选」—— 已手动勾上的行**不能被点掉**（它们会被再次点一次 = 取消），
-    底部计数 = 筛选后行数，确认页与屏幕一致。
-12. **补点轮不误伤**：全选后立刻再点一次（按钮此时是「反选」）→ 全部取消；
-    再点「全选」→ 全部勾上。每轮结束都达到目标，不能出现「点两次才到位」的中间态。
-13. **对钩与宿主模型一致（2026-10-23）**：全选后屏上**每一个可见行**都显示勾；
-    再点任意一行应是「取消」、底部计数 **-1** —— 不能出现「点一下反而 +1」
-    （那说明宿主模型里被加了重复项）。反选后同理，计数与对钩一起归零。
-14. **运行中确认添加被锁（2026-10-28）**：点「全选」后立刻点「确认添加」——
-    按钮为置灰禁用状态、**不弹「选择分组」**；等按钮文案变「反选」/计数稳定后，
-    按钮恢复原样且能正常添加，确认页收到的数量 == 「已选 N」。
-15. **一次性全选（2026-11-04）**：点「全选」后**一帧内**全部对钩出现，底部计数直接到 N；
-    不能看到从第一行往下逐个勾的动画（可用录屏 / 逐帧截图核对）。
-16. **手动取消后对钩消失（2026-11-04）**：全选后手动点掉任意一行，对钩**立即消失**、
-    底部计数 -1，按钮文案仍为「全选」；不能出现「计数 -1 但对钩还在」。
-17. **取消后再全选方向正确（2026-11-04）**：接第 16 条再点「全选」，只补回被取消的
-    那一只，**不能变成全部取消**（按钮不能变「反选」再点掉其余行）。
-18. **批量回归**：筛选生效时重复第 15–17 条；确认添加的分组内容与屏幕逐只一致；
-    批量运行中退出多选态 / 关开关 → 不再继续点击，「确认添加」恢复原状。
-19. **聚合组全选后确认添加（2026-11-13）**：聚合组详情全选 N 只 → 确认添加 → 空分组里
-    **恰好**是屏上那 N 只（不带成员外的票、不缺）；此时分组页**不应**再显示「已在该组合」
-    （那是「一只都没加」的旧症状）；对同一批再添加一次，显示「已在该组合」才是正确语义。
-    聚合组上手动逐只勾选后确认添加同样要一致（与全选走同一份提交包校正）。
-20. **聚合 × 筛选叠加（2026-11-13 回归修复）**：聚合组详情里先筛到 10 只以内，勾第 2、4 行，
-    再改筛选条件让结果换一批 —— 勾选必须跟着**同一只股票**走（被滤掉则相应消失），不能出现在
-    别的行上；接着全选 → 确认添加，分组内容与屏上逐只一致。日志里应有
-    `策略全选：提交包核对（聚合页+筛选态，宿主 N 只 / 屏幕 M 只）`；有勾选迁移时应同时有
-    `筛选股票：勾选态按代码迁移 K 行`。普通详情页（无筛无聚合）宿主包比屏幕长时**不得**被裁
-    （`提交包核对（全量页…）` 之后不应打「已按屏幕勾选校正」）。
+8. **筛选生效时**：全选勾中的行 = 页面可见的股票；确认添加收到的代码与之一致（不能是全量前 N 只）；手动点行也选中屏幕上那一只。
+9. **重复点**：全选 → 反选 → 全选、全选 → 手动改几行 → 全选 —— 每次结束都应达到目标状态（全勾或全不勾），**不能有行反向**。
+10. **屏幕显示与表一致**：全选后**屏上可见的每一行**勾选框都显示为勾上（包括筛选生效时），滚到列表任意位置再滚回来也保持一致；反选后全部显示为空。
+11. **筛选 + 手动勾选 + 全选**：筛选生效时先手动勾 1~2 行，再点「全选」—— 已手动勾上的行**不能被点掉**，底部计数 = 筛选后行数，确认页与屏幕一致。
+12. **补点轮不误伤**：全选后立刻再点一次（按钮此时是「反选」）→ 全部取消；再点「全选」→ 全部勾上。每轮结束都达到目标，不能出现「点两次才到位」的中间态。
+13. **对钩与宿主模型一致**：全选后屏上**每一个可见行**都显示勾；再点任意一行应是「取消」、底部计数 **-1** —— 不能出现「点一下反而 +1」。反选后同理，计数与对钩一起归零。
+14. **运行中确认添加被锁**：点「全选」后立刻点「确认添加」—— 按钮为置灰禁用状态、**不弹「选择分组」**；等按钮文案变「反选」/ 计数稳定后，按钮恢复原样且能正常添加，确认页收到的数量 == 「已选 N」。
+15. **一次性全选**：点「全选」后**一帧内**全部对钩出现，底部计数直接到 N；不能看到从第一行往下逐个勾的动画（可用录屏 / 逐帧截图核对）。
+16. **手动取消后对钩消失**：全选后手动点掉任意一行，对钩**立即消失**、底部计数 -1，按钮文案仍为「全选」。
+17. **取消后再全选方向正确**：接第 16 条再点「全选」，只补回被取消的那一只，**不能变成全部取消**。
+18. **批量回归**：筛选生效时重复第 15–17 条；确认添加的分组内容与屏幕逐只一致；批量运行中退出多选态 / 关开关 → 不再继续点击，「确认添加」恢复原状。
+19. **聚合组全选后确认添加**：聚合组详情全选 N 只 → 确认添加 → 空分组里**恰好**是屏上那 N 只（不带成员外的票、不缺）；此时分组页**不应**再显示「已在该组合」。对同一批再添加一次，显示「已在该组合」才是正确语义。聚合组上手动逐只勾选后确认添加同样要一致。
+20. **聚合 × 筛选叠加**：聚合组详情里先筛到 10 只以内，勾第 2、4 行，再改筛选条件让结果换一批 —— 勾选必须跟着**同一只股票**走（被滤掉则相应消失），不能出现在别的行上；接着全选 → 确认添加，分组内容与屏上逐只一致。日志里应有 `策略全选：提交包核对（聚合页+筛选态，宿主 N 只 / 屏幕 M 只）`，有勾选迁移时应同时有 `筛选股票：勾选态按代码迁移 K 行`。普通详情页（无筛无聚合）宿主包比屏幕长时**不得**被裁（`提交包核对（全量页…）` 之后不应打「已按屏幕勾选校正」）。
 
 ---
 
@@ -932,16 +362,9 @@ bash tools/ui.sh tap "我的策略"
 bash tools/ui.sh tap "100e"                # 进策略详情（挑股票数多的那条）
 bash tools/ui.sh tap "勾选加入自选股"        # 进多选态
 bash tools/ui.sh list                      # 记下「取消」与各勾选框的 bounds
+bash tools/ui.sh list | grep -E "已选|只股票"   # 再确认底部计数控件
 ```
 
-再确认底部计数控件：
+把新的 id / 文案写回 `StgSelectAllTargets.kt` 的**候选数组**（`CANCEL_BUTTON_ID_CANDIDATES` / `LIST_ID_CANDIDATES` / `CHECKBOX_ID_CANDIDATES` / `COUNT_ID_CANDIDATES` / `CONFIRM_BUTTON_ID_CANDIDATES` / `CODE_FIELDS` / `CAM_FIELDS`）即可，不用改实现逻辑。
 
-```bash
-bash tools/ui.sh list | grep -E "已选|只股票"
-```
-
-把新的 id / 文案写回 `StgSelectAllTargets.kt` 的**候选数组**即可，不用改实现逻辑。
-
-> 环境坑（无线调试掉线、mDNS 抢设备、`adb pull` 路径被改写、`/data/adb/lspd/config/modules_config.db`
-> 是陈旧快照）见 [`../tools/README.md`](../tools/README.md) 与
-> [TROUBLESHOOTING.md §9「设备相关（自动化脚本）」](TROUBLESHOOTING.md#9-设备相关自动化脚本)。
+> 环境坑（无线调试掉线、mDNS 抢设备、`adb pull` 路径被改写、`/data/adb/lspd/config/modules_config.db` 是陈旧快照）见 [`../tools/README.md`](../tools/README.md) 与 [TROUBLESHOOTING.md §9「设备相关（自动化脚本）」](TROUBLESHOOTING.md#9-设备相关自动化脚本)。

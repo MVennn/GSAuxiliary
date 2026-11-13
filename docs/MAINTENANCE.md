@@ -102,7 +102,7 @@ python tools/hygiene.py all      # ①②③④⑤ 五条一起跑（res / decls
 | `CHANGELOG.md` 有没有漏条目 | `git log --oneline <上个版本>..HEAD` 逐条比对 | 漏的补进「未发布」段 |
 | `docs/` 里的相对链接是否失效 | 打开被改过的文档点一遍 | 断链改掉或删掉 |
 | 免责声明各份副本是否一致（见下） | `python tools/ci/check_disclaimer_sync.py` | 不一致立刻同步 |
-| 两仓 `docs/DESIGN-SYSTEM.md` 是否仍逐字同文 | 在两组仓的父目录跑 `Get-FileHash GSAuxiliary\docs\DESIGN-SYSTEM.md, WxPicLabe\docs\DESIGN-SYSTEM.md` | 两个 SHA256 必须相同；不同就以**内容更新的一侧**整份 `Copy-Item` 覆盖过去，别逐段手抄（2026-11-12 漂移过：WxPicLabe 已加滚轮形态，GSAuxiliary 缺 4 行） |
+| 两仓 `docs/DESIGN-SYSTEM.md` 是否仍同文 | 在两组仓的父目录跑 `git diff --no-index --unified=0 GSAuxiliary\docs\DESIGN-SYSTEM.md WxPicLabe\docs\DESIGN-SYSTEM.md` | **条款正文必须逐字一致**；允许的差异只有「指向各仓自己文档」的引用行 —— `UI-MATERIAL.md` / `UI-HISTORY.md` 只在 GSAuxiliary 落地，WxPicLabe 侧对应写成 `LIQUID-GLASS.md`、`UI.md` §4、`PITFALLS.md`。条款本身漂移时以内容更新的一侧整段覆盖，别逐段手抄；引用行按各仓文档名替换，**不做跨仓整份覆盖** |
 
 **免责声明多副本同步**：免责全文存在**三个地方**，**改任何一条都必须一起改**，
 没有例外：

@@ -417,7 +417,7 @@ SharedPreferences `launcher_icon_state`（键 `desktop_icon_local`，缺省 fals
   与 Miuix 底栏图标同一条路）
 - **锚定菜单要有最大高度**（3.1.0）：`MenuMaxHeightFraction = 0.45` 把卡片限在屏高 45%，
   超出的选项由列表自己 `verticalScroll`（右侧是一条**常驻**指示条，内容超出才画）——
-  取值项目录 18 项，不封顶时菜单几乎铺满整屏
+  取值项目录当时 18 项（现 20 项），不封顶时菜单几乎铺满整屏
 - **画在卡片里的东西别参与测量**（3.1.0 踩过）：那条常驻指示条一开始写成
   `Modifier.width(3.dp).fillMaxHeight()`，`fillMaxHeight` 会参与测量，把整张卡片顶到
   高度上限 —— 7 个周期的菜单只有 329dp 内容，却被撑成 390dp、底部白出一大截

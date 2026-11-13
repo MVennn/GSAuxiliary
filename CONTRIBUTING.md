@@ -30,7 +30,7 @@
    ```bash
    ./gradlew :app:assembleRelease          # 编译过
    ./gradlew :app:testReleaseUnitTest      # 单测过
-   python tools/ci/check_invariants.py     # 静态检查六项（见 tools/README.md）
+   python tools/ci/check_invariants.py     # 静态检查八条规则（见 tools/README.md）
    ```
 
 4. PR 描述里把「怎么验的」写清楚——**真机没验就明说没验**，别含糊。

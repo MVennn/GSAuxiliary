@@ -11,9 +11,9 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 
 | 类别 | 收什么 | 现有成员 |
 |---|---|---|
-| 架构与逆向 | 模块怎么搭、宿主怎么逆出来 | ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、UI-MATERIAL、UI-HISTORY |
-| 功能专项 | 一个功能一篇（FEATURE-*） | 14 篇（清单见 [README.md](README.md) 索引） |
-| 流程与规范 | 构建、发版、版本、维护、排错、命名、编码纪律、文档规则 | BUILD、RELEASE、VERSIONING、MAINTENANCE、TROUBLESHOOTING、NAMING、CODE-RULES、DOC-RULES、TOOLS-DOC-RULES |
+| 架构与逆向 | 模块怎么搭、宿主怎么逆出来、界面规范 | 7 篇：ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、DESIGN-SYSTEM、UI-MATERIAL、UI-HISTORY |
+| 功能专项 | 一个功能一篇（FEATURE-*） | 15 篇（清单见 [README.md](README.md) 索引） |
+| 流程与规范 | 构建、发版、版本、脱敏、审查快照、测试桥、维护、排错、命名、材质、编码纪律、文档规则 | 13 篇：BUILD、SECRETS、RELEASE、VERSIONING、REVIEW-2026-10、TEST-BRIDGE、MAINTENANCE、TROUBLESHOOTING、CODE-RULES、NAMING、LIQUID-GLASS、DOC-RULES、TOOLS-DOC-RULES（另有 `tools/` 下 3 篇 README，见 [README.md](README.md) 索引） |
 | 参考资料 | Release 说明、免责全文 | release-notes/、DISCLAIMER（reference/ 已转本地留存，不随仓库分发） |
 
 每篇文档开头必须有一个 **「一句话」引言块**（`> **一句话**：…` 或一行定位语），
@@ -60,6 +60,10 @@ tools/ 目录下的文档规则单独见 [TOOLS-DOC-RULES.md](TOOLS-DOC-RULES.md
 | 编码纪律（生命周期 / 热路径 / 日志隐私 / 缓存 / 仓库操作） | [CODE-RULES.md](CODE-RULES.md) |
 | 排错步骤 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 | 跨功能的勾选态读写（谁写 / 谁读 / 对齐键 / 行集合版本） | [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md) |
+| 脱敏与凭据（本仓清单 / 三道防线 / 误推处置） | [SECRETS.md](SECRETS.md)；通用的三类拦截面、放行规则与白名单口径在 [CODE-RULES.md](CODE-RULES.md) 篇末「推送前脱敏规则」 |
+| 界面设计规范（两仓共用的骨架 / 行型 / 字段 / 弹层 / 文案） | [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) |
+| 液态玻璃材质三档与逐表面参数 | [LIQUID-GLASS.md](LIQUID-GLASS.md) |
+| 测试桥（三层切分 / 协议字段 / 点击回退） | [TEST-BRIDGE.md](TEST-BRIDGE.md)；实现正本在 TBridge 仓 |
 
 ### 禁止重复清单（本次审查发现的反例，勿重蹈）
 

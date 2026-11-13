@@ -527,7 +527,7 @@ QuoteRepository
 
 - 点行 → 进编辑页；行尾 `⋮` 弹菜单（设为默认 / 上移 / 下移 / 删除），
   顺序 = 选择层里的顺序。
-- **这一页不再整列 §4.2 的取值项目录**（3.1.0 删）：18 项按分组铺开比方案列表
+- **这一页不再整列 §4.2 的取值项目录**（3.1.0 删）：20 项按分组铺开比方案列表
   还长，而那些名字在编辑页「添加取值项」的弹层里就有。卡底只留一句口径脚注。
 
 ### 6.3 方案编辑页
@@ -618,7 +618,7 @@ QuoteRepository
 | `app/DebugConfigProvider.kt` | 加 `aistare_quick_enabled`（int 0/1）与 `aistare_quick_config`（string）列（开发期脚本化） |
 | `docs/NAMING.md` §4/§5、`docs/EXTENDING.md`、`docs/ARCHITECTURE.md` | 同步新分区与新功能（含候选名能力表、功能计数 12 → 13） |
 
-**不动**：`GszxModule.kt`、`scope.list`、其余 12 个功能、`ConfigKeys.GROUP`。
+**不动**：`GszxModule.kt`、`scope.list`、其余功能、`ConfigKeys.GROUP`。
 
 > 新分区必须同步 `ui/FeatureCatalog.kt` 顶部注释、`docs/EXTENDING.md` 的「分区怎么选」、
 > `docs/NAMING.md` §4 —— 这是 `FeatureCatalog` 注释里明写的约定。

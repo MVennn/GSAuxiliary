@@ -714,7 +714,7 @@ python tools/audit/compare_quotes.py rows.tsv 报告.md
 - 容差：价 0.011 元、涨跌幅 0.02 个百分点（页面显示精度）。
 - **午休时段（11:30—13:00）报价冻结**，这时抓页面再比对必然同值，是核「值对不对」的最佳窗口；盘中抓只能证明「抓的这一刻对得上」。
 - 输出 `rows= uniq= ext= missing= bad_price= bad_zdf=`，退出码 0 无偏差 / 1 有偏差 / 2 用法错。
-- 真机实测：聚合组 535 行逐只，`missing=0 bad_price=0 bad_zdf=0`。判定口径见 `docs/FEATURE-STRATEGY-MERGE.md` §32。
+- 真机实测：聚合组 535 行逐只，`missing=0 bad_price=0 bad_zdf=0`。判定口径见 `docs/FEATURE-STRATEGY-MERGE.md` §8.9（数据准确度）。
 
 ---
 

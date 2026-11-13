@@ -2,7 +2,7 @@
 
 > 目标：把「取控件树 + 注入点击 + 取像素」从跨进程的慢路径（uiautomator 2.0s / screencap 0.28s）
 > 降到**进程内**的毫秒级，并且对**任意 App 通用**，不绑定某一个被测模块。
-> 状态：设计已踩点，地基已实测验证；代码未落地。
+> 状态：设计已踩点、地基已实测验证；**实现已迁到独立仓 `TBridge`**（本仓不复制其代码，`tools/drive.sh` 只做调用方），本篇保留设计与协议说明。
 
 ## 1. 为什么必须做成独立模块
 
@@ -149,9 +149,10 @@ python tools/tbridge.py com.example.app tap 登录
 `/data/adb/lspd/config/modules_config.db`（`scope` 表），最后 `setprop ctl.restart zygote` 生效。
 这是唯一需要 root 的操作，其余全走 socket。
 
-> [待补] `modules_config.db` 的表结构还没读出来：直接 pull 得到 77,824 字节但
-> `sqlite_master` 为空 —— 数据在 WAL 里，需要连 `-wal` / `-shm` 一起拉（本轮 cp 因路径问题失败）。
-> 落地时代码里用 `LSPosed` 的 Manager 接口或直接读 WAL 解决。
+> 表结构已经落地（早期 pull 出来 `sqlite_master` 为空是 WAL 未落盘所致，不是库坏了）：
+> `modules_config.db` 就三张表（`modules` / `modules_state` / `scope`），设备上自带 `/system/bin/sqlite3`，
+> 直接在设备执行 SQL 即可，不用 pull-modify-push，lspd 持着连接也不会锁库。
+> 实现在 TBridge 仓的 `scope.py`（在它的 `tools/` 下；WAL 场景连带 `db-wal` / `db-shm`，改完回读作用域确认）。
 
 ## 9. 边界与已知坑
 
@@ -176,7 +177,7 @@ Flutter）本来 `uiautomator` 也覆盖不了，所以这不是退化，是平�
 | scope 管理 | db 读写 + 进程重启 | ~80 行 |
 | `drive.sh` 接入 | 新增 `tb` 指令族，失败自动回退旧路径 | ~60 行 |
 
-合计约 800 行，两天量级。**收益**：单步交互 2.0s → 5ms（400×），15.8s 的登录链路可压到 3s 内；
+（以下是当时的估量，实际量级见 TBridge 仓）合计约 800 行，两天量级。**收益**：单步交互 2.0s → 5ms（400×），15.8s 的登录链路可压到 3s 内；
 且坐标与机型解耦，回归脚本不再因 UI 微调而失效。
 
 ## 11. 与现有 drive.sh 的关系

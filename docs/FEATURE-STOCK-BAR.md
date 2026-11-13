@@ -248,7 +248,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
    于是一旦掉了就再也补不回来。
 
 现在改走 [`PageSyncFeature`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/PageSyncFeature.kt)
-那套公共调度（与界面精简五个功能同一套骨架）：
+那套公共调度（与界面精简六个功能同一套骨架；涨跌筛选 `MarketFilterFeature` 也继承它，不计入那六个）：
 
 ```
 Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 decorView 只挂一次）

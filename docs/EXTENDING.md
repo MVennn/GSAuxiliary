@@ -146,59 +146,73 @@ bag.add(env.xposed.hook(m).setId("xxx").intercept { chain -> … })
 
 以「给自选股名称加粗」为例。**不需要动入口类、配置层或 UI 之外的任何文件。**
 
+> 这一例的真实落法有一点特别：它是**给已有功能加第二个开关**，所以不新建 `Feature` 类
+> （`watchlist_highlight` 与 `watchlist_bold` 共用 `WatchlistFeature`）。新功能走全程；
+> 加开关只走第 1、4 步 + 在 `isEnabled` 的 or 链上补一位。
+
 ### 第 1 步：加配置键（如果功能需要开关）
 
 `core/ConfigKeys.kt`：
 
 ```kotlin
-const val BOLD_WATCHLIST = "bold_watchlist"
-const val DEFAULT_BOLD_WATCHLIST = false
+const val WATCHLIST_BOLD = "watchlist_bold"
+const val DEFAULT_WATCHLIST_BOLD = false
 ```
+
+同一个文件里还有四张表要同步：`ALL_KEYS`（备份 / 恢复白名单）、`FEATURE_KEYS`（总开关）、
+`SNAPSHOT_KEYS`（要进目标进程快照的）与 `DEFAULTS`（重置用默认值）。
 
 `core/ConfigSnapshot.kt`：加字段 + 加进 `fingerprint`：
 
 ```kotlin
 data class ConfigSnapshot(
     val enabled: Boolean,
-    val color: Int,
-    val scopeStrategy: Boolean,
-    val stgDirectQuote: Boolean,         // 以下四项仅为示意，实际字段以 core/ConfigSnapshot.kt 为准
-    val stgQuoteSwipe: Boolean,
-    val stgSelectAll: Boolean,
-    val boldWatchlist: Boolean,          // ← 新增
+    // …其余字段以 core/ConfigSnapshot.kt 为准
+    val watchlistBold: Boolean,          // ← 新增字段
 ) {
-    val fingerprint: Int
-        get() = ((if (enabled) 1 else 0) * 31
-                + color * 7
-                + (if (scopeStrategy) 1 else 0) * 131
-                + (if (stgDirectQuote) 1 else 0) * 977
-                + (if (stgQuoteSwipe) 1 else 0) * 1231
-                + (if (stgSelectAll) 1 else 0) * 1543
-                + (if (boldWatchlist) 1 else 0) * 1877)   // ← 新增，取一个未占用的质数
+    val fingerprint: Int = run {
+        var h = 0
+        var bit = 1
+        fun mix(b: Boolean) { if (b) h = h xor bit; bit = bit shl 1 }
+        mix(enabled)
+        mix(watchlistBold)               // ← 新增一位，占下一个空位
+        // 数值项（颜色 / 日志等级 / JSON 键）各自再混一层：
+        h = h xor (color * 0x9E3779B1.toInt())
+        h
+    }
 }
 ```
 
-> **指纹里的乘数互不相同**（31 / 7 / 131 / 17 / 977 / 1231 / 1543 / …），
-> 且必须是质数风格的无关联值 —— 两个不同字段偶然算出同一个指纹，
-> 就会漏掉一次配置刷新。新增字段时挑一个没被占用的数。
+> **布尔项走位、数值项走杂凑。** 布尔项按 `mix()` 顺序占位 0、1、2…，
+> 现在已占 0..27（28 项），Int 32 位**只剩 4 位**：再加到第 32 项会 `bit shl 1` 溢出成 0，
+> 两个开关静默串味（改一个另一个跟着变）。到那天要换更宽的类型，别硬加。
+> 新开关除了 `mix()` 一行，还要同步 `ConfigSnapshot.kt` 顶部的个数说明与
+> `ConfigSnapshotFingerprintTest` 的清单。
 
 `core/ConfigSource.kt` 的 `read()` 里补一行：
 
 ```kotlin
-boldWatchlist = p.getBoolean(ConfigKeys.BOLD_WATCHLIST, ConfigKeys.DEFAULT_BOLD_WATCHLIST),
+watchlistBold = p.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD),
 ```
 
 ### 第 2 步：写功能类
 
-`feature/watchlist/BoldWatchlistFeature.kt`：
+若是**加开关**，改已有类（`feature/watchlist/WatchlistFeature.kt`）的这一行就够：
 
 ```kotlin
-class BoldWatchlistFeature : Feature {
+override fun isEnabled(cfg: ConfigSnapshot) =
+    cfg.enabled || cfg.watchlistBold        // ← or 链必须覆盖本功能下全部开关位
+```
 
-    override val id = "watchlist_bold"
-    override val title = "自选股加粗"
+若是**新功能**，照这个骨架新建 `feature/xxx/XxxFeature.kt`：
 
-    override fun isEnabled(cfg: ConfigSnapshot) = cfg.enabled && cfg.boldWatchlist
+```kotlin
+class XxxFeature : Feature {
+
+    override val id = "xxx"
+    override val title = "功能名"
+
+    override fun isEnabled(cfg: ConfigSnapshot) = cfg.enabled && cfg.xxx
 
     override fun install(env: FeatureEnv, bag: HookBag) {
         val cls = Reflect.loadClass("com.guosen.commonui.adapter.BaseQuickAdapter", env.classLoader)
@@ -234,8 +248,8 @@ class BoldWatchlistFeature : Feature {
 
 ```kotlin
 val features: List<Feature> = listOf(
-    WatchlistFeature(),
-    BoldWatchlistFeature(),      // ← 加这一行
+    WatchlistFeature(),          // 承载 watchlist_highlight / watchlist_bold 两个开关，只登记一次
+    XxxFeature(),                // ← 新功能加这一行
 )
 ```
 
@@ -256,13 +270,11 @@ val features: List<Feature> = listOf(
 FeatureSpec(
     id = "watchlist_bold",
     categoryRes = R.string.category_display,     // 「显示」；详见下面的「分区怎么选」
-    switchTitleRes = R.string.feature_bold_switch,
-    switchSummaryRes = R.string.feature_bold_switch_summary,
-    enableKey = ConfigKeys.BOLD_WATCHLIST,
-    defaultEnabled = ConfigKeys.DEFAULT_BOLD_WATCHLIST,
-    detailTitleRes = R.string.detail_bold_title,
-    detailEntryRes = R.string.feature_bold_detail_entry,
-    detailEntrySummaryRes = R.string.feature_bold_detail_entry_summary,
+    switchTitleRes = R.string.feature_watchlist_bold_switch,
+    // 无副标题：标题已经把话说全；要补时只写「塞到了哪 / 点了会怎样」（见 NAMING.md）
+    enableKey = ConfigKeys.WATCHLIST_BOLD,
+    defaultEnabled = ConfigKeys.DEFAULT_WATCHLIST_BOLD,
+    // 无参数项：加粗没有可调项 → hasDetail = false，一级页不展开二级入口
 )
 ```
 
@@ -275,8 +287,8 @@ FeatureSpec(
 >    底下不装钩子」的假开关（3.2.0 的「跳过保存确认」就是这么废掉的，见
 >    [CHANGELOG](../CHANGELOG.md) 未发布段）。
 >
-> 当前只存在九个分类资源：`category_login`（登录）、
-> `category_strategy`（策略页）、
+> 当前只存在十个分类资源：`category_login`（登录）、
+> `category_strategy`（策略页）、`category_stg_merge`（智能选股）、
 > `category_stock_detail`（股票详情页）、`category_aistare`（智能盯盘）、`category_dock`（底栏）、
 > `category_home`（首页）、`category_market`（行情市场）、`category_watchlist`（自选）
 > 与 `category_display`（显示）。
@@ -296,13 +308,14 @@ FeatureSpec(
 >
 > 这样「重置模块」才能各归各位：开关一律关掉，参数恢复默认。
 
-**分区怎么选（必读）** —— 功能列表按分区展示，目前九个分区，
+**分区怎么选（必读）** —— 功能列表按分区展示，目前十个分区，
 写 `categoryRes` 前先按下表对号入座（完整判据见 `ui/FeatureCatalog.kt` 顶部注释）：
 
 | 分区 | 一句话判据 | 归属范围 |
 |---|---|---|
 | `R.string.category_login` **登录** | **只在「登录 / 会话」这件事上成立** —— 登录之后弹什么 | 隐藏新股申购提醒弹窗 … |
 | `R.string.category_strategy` **策略页** | **改变策略页的交互行为** —— 点下去会发生什么、能做什么操作 | 点股票直达个股详情、策略页全选 / 反选股票、策略页三点菜单「筛选股票」、批量加入自选、长按菜单 … |
+| `R.string.category_stg_merge` **智能选股** | **只改「智能选股 → 策略详情」上显示哪些股票** —— 显示内容与聚合关系，不动菜单与跳转 | 我的策略聚合：同组多个原生策略的股票并集显示 … |
 | `R.string.category_stock_detail` **股票详情页** | **改变「个股 / 指数详情页」的交互行为** —— 判据同上，只是页面换成详情页 | 底栏「智能盯盘」快捷入口、详情页快捷下单、K 线手势、盘口长按 … |
 | `R.string.category_aistare` **智能盯盘** | **改的是「盯盘页面本身」** —— 盯盘页（H5）内部的交互与内容，与详情页底栏入口区分开 | 价格页「一键配置」按钮、盯盘页结构 … |
 | `R.string.category_dock` **底栏** | **只改主界面底栏的结构** —— 少一格、换排布 | 底栏隐藏「理财」那一格、底栏入口排序、底栏换图标 … |
@@ -331,7 +344,7 @@ FeatureSpec(
 > **组内顺序 = `FEATURE_CATALOG` 的出现顺序**（`FeatureTab` 用 `groupBy` 分组，
 > 首次出现的分组排最前）。所以想让某分区排在前面，就把它的一条 `FeatureSpec`
 > 写在前面。分区顺序按「上游 → 具体页面 → 通用外观」排：
-> 登录 → 策略页 → 股票详情页 → 智能盯盘 → 底栏 → 首页 → 行情市场 → 自选 → 显示。
+> 登录 → 策略页 → 智能选股 → 股票详情页 → 智能盯盘 → 底栏 → 首页 → 行情市场 → 自选 → 显示。
 > **新增分区**要同时改 `ui/FeatureCatalog.kt` 的注释、
 > 本表，以及 `values/strings.xml` / `values-en/strings.xml` 里的 `category_*`。
 
@@ -415,7 +428,7 @@ Scaffold { padding ->
 | 钩子生命周期 | `core/HookBag.kt` | 集中卸载 |
 | 配置变更通知 | `Feature.onConfigChanged` | 主线程，异常隔离 |
 | 运行时视图注入 | `feature/strategyselect/StgSelectAllFeature.kt` | 往宿主布局里插控件、克隆同款样式、分帧驱动宿主自己的点击回调 —— 想做「加按钮 / 改布局」类功能先看它 |
-| **在宿主页面上动视图（隐藏 / 压缩 / 插入）** | `feature/PageSyncFeature.kt`（调度骨架） | 改视图的**时机**（布局回调 + `OnPreDraw` 首帧屏障）、幂等自愈、限速、失配时打视图树快照、资源 id 预热。界面精简五个功能（`feature/uiclean/`，改动走 `ViewPatcher` 记账）与底栏「智能盯盘」入口（`feature/stockbar/`，插入视图 + 现成判据）都在用它。想做「去掉某一格 / 藏一条横幅 / 压矮某一块 / 往底栏插一个入口」先看它，见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)、[FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) |
+| **在宿主页面上动视图（隐藏 / 压缩 / 插入）** | `feature/PageSyncFeature.kt`（调度骨架） | 改视图的**时机**（布局回调 + `OnPreDraw` 首帧屏障）、幂等自愈、限速、失配时打视图树快照、资源 id 预热。界面精简六个功能（`feature/uiclean/`，改动走 `ViewPatcher` 记账；涨跌筛选 `MarketFilterFeature` 复用同一基类但不计入这六个）与底栏「智能盯盘」入口（`feature/stockbar/`，插入视图 + 现成判据）都在用它。想做「去掉某一格 / 藏一条横幅 / 压矮某一块 / 往底栏插一个入口」先看它，见 [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md)、[FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) |
 | **窗口属性 / 系统栏** | `feature/navbar/NavBarTint.kt` | 取色（结构合成 + `PixelCopy` 像素校准 + 主题兜底）、上色（`navigationBarColor` + 关强制对比度 + 横杠明暗）与「取色带画在哪」的量法。想改状态栏 / 导航条 / 窗口底色先看它，见 [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) |
 
 ---
@@ -448,11 +461,11 @@ Scaffold { padding ->
 ### 5.3 远期
 
 - **`DebugConfigProvider`** 目前只是 adb 读写配置，可以扩成完整的自动化测试夹具
-  （列已覆盖 `ConfigKeys.FEATURE_KEYS` 全部 21 个功能键（以源码为准）；
+  （列覆盖 `ConfigKeys.FEATURE_KEYS` 22 个功能键里的 21 个，缺 `STG_MERGE`；
   ⚠️ **读侧（`query`）的列数组与取值数组必须同长同序** —— `MatrixCursor.addRow` 长度不等
   会抛 `IllegalArgumentException`，整个调试通道就读不出配置了）
   （它已经是标准 ContentProvider：`query` 返回键值矩阵、`update` 按列写回；
-  但列**硬编码且已落后** —— `ConfigKeys.FEATURE_KEYS` 里的新开关没有对应列）
+  但列**硬编码且已落后** —— `ConfigKeys.FEATURE_KEYS` 里的 `STG_MERGE` 没有对应列）
 - **`ConfigSource.channel`** 是配置通道的健康状态，可在设置界面可视化
 - **热重载**已实现（`autoHotReload=true` + `onHotReloaded` 重装），可进一步做版本比对
 

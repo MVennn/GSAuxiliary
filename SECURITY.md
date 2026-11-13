@@ -23,7 +23,10 @@
 
 写在前面的事实，便于快速判断影响面：
 
-- **不申请任何 Android 权限**——`AndroidManifest.xml` 里没有声明任何 `uses-permission`，包括联网；
+- **不申请任何 Android 权限**——源码里的 `app/src/main/AndroidManifest.xml` 没有声明任何 `uses-permission`，包括联网；
+  （装出来的 APK 里能搜到一条 `io.github.MVennn.GSAuxiliary.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`，
+  那是 AGP 给 `targetSdk ≥ 33` 的包自动补的**自定义签名级权限**，只用于动态广播接收器的「不导出」约束，
+  既不是系统权限、也不会在安装或运行时弹授权，应用详情页的权限列表里看不到它。反编译核对时别把它当联网或隐私权限。）
 - 不修改金太阳的任何数据、不绕过任何鉴权、不上传任何信息；
 - 所有判定逻辑都调用金太阳自身的公开 API，模块只改变界面显示与交互；
 - 模块进程内没有网络通信，也不会向任何服务器发送设备信息。

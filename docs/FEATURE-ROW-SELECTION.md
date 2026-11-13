@@ -94,7 +94,7 @@ fun applyChecked(lv: ListView, count: Int, keys: Set<String>, rowCam: (Int) -> S
    （`StockTypes.marketOf`），推不出才退化成纯代码。
 4. **换行集合的功能必须发信号。** 筛选 `applyFilter0` 与聚合 `reapplyIfNeeded` 写完之后
    无条件 `StgRowSelection.publish(lv, keys)` + `bumpRowEpoch()`；
-   批量点行的循环在每行前比对 epoch，不等就重新快照（见 [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md) §2.5）。
+   批量点行的循环在每行前比对 epoch，不等就重新快照（见 [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md) §2.3.6）。
 
 ---
 

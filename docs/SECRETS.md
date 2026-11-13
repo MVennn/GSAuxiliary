@@ -22,7 +22,8 @@
 1. **`.gitignore`**：`/tools/login.local.env`、`*.keystore`、`*.jks`、`keystore.properties`、`*.p12` / `*.pem` / `*.key`。
    `git status` 与 `git add -A` 都看不到它们。
 2. **`tools/check-secrets.py`**：
-   - 扫已跟踪文件（`--all` 时扫工作树），模式覆盖私钥块、各类 token、shadow 哈希、代理节点 URI、订阅 token、本机用户目录、真实邮箱；
+   - 扫已跟踪文件（`--all` 时扫工作树）；**拦哪三类、怎么放行、白名单怎么加**的通用口径在
+     [CODE-RULES.md](CODE-RULES.md) 篇末「推送前脱敏规则」，本篇不重复；
    - 另加一条**铁律**：`tools/login.local.env` 一旦进入 git 索引就判失败 —— `.gitignore` 只拦「未跟踪」，
      `git add -f` 能绕过，这条专门堵那个口子（本仓公开，绕过即等于公开）。
 3. **脚本侧**：`tools/login.sh` 的日志只打账号与密码**位数**（`密码 = ******（6 位）`）；

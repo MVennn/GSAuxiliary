@@ -195,8 +195,10 @@
 > 这就是 §1 规则四想要的结果。副标题一旦开始复述标题（「隐藏 X」+「X 不再显示」），
 > 卡片就退化成把同一句话说两遍。
 
-**二级入口名**同样按「X 设置」起，现役三个：`聚合组设置`（`stg_merge`）、
-`筛选条件保存设置`（`stg_stock_filter`）、`高亮颜色设置`（`watchlist_highlight`）。
+**二级入口名**同样按「X 设置」起，现役九个：`滑动设置`（`stg_direct_quote`）、
+`筛选条件保存设置`（`stg_stock_filter`）、`聚合组设置`（`stg_merge`）、
+`方案设置` / `配置按钮设置`（`aistare_quick_config` 两个入口）、`保存后返回位置设置`（`aistare_skip_save_confirm`）、
+`复制设置` / `复制按钮设置`（`zx_group_copy` 两个入口）、`高亮颜色设置`（`watchlist_highlight`）。
 入口名自己已经说清进去做什么时**不写** `detailEntrySummaryRes`（§3「同一条规则管到别处」）
 —— 里面有哪些项目，点进去一眼就看到。开关页里只写**状态类**副标题
 （`item_*_summary_on/off`，说清此刻处在哪一档，见 DESIGN-SYSTEM 第 3.1 节），说明类一行不留。
