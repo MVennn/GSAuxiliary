@@ -4176,7 +4176,7 @@ LinearLayout #ll_main_tab [0,2100][1080,2205]
   `SystemBarStyle.auto(...)` 其 `nightMode` 是 `MODE_NIGHT_AUTO`，androidx 的
   `EdgeToEdgeApi29.setUp` 遇到这个值会执行
   `window.navigationBarContrastEnforced = true`，系统随即在透明的导航栏上叠一层
-  半透明遮罩。已在主题层与代码层双重关掉（详见 `docs/UI-HISTORY.md` §11 与 `docs/FEATURE-NAV-BAR.md` §2）。
+  半透明遮罩。已在主题层与代码层双重关掉（详见 `docs/UI-HISTORY.md` §11 与 `docs/FEATURE-NAV-BAR.md` §3 方案表第 2 步）。
 - **切换深色 / 浅色是硬切，没有过渡**：Miuix 的 `Colors` 有 53 个字段且 setter 是
   `internal`，外部无法逐字段插值。改为「旧配色整屏盖一层 → 320ms 淡出」。
 - **Dock 形态切换是生硬跳变**：两种底栏之间加 `AnimatedContent` 交叉淡变；
