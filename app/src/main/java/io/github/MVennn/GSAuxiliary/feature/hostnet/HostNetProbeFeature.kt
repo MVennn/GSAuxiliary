@@ -83,7 +83,7 @@ class HostNetProbeFeature : Feature {
         hookOutputStreamWrite(env, bag)
         // WebView 远程调试只在 debug 包里开：它会把页面全部请求与 Cookie 暴露给任何能做
         // adb forward 的进程，release 包不该带这个口子（详见 enableWebViewDebug 的 KDoc）。
-        if (BuildConfig.DEBUG) enableWebViewDebug(env)
+        if (BuildConfig.DEV_BUILD) enableWebViewDebug(env)
         hookWebViewLoadUrl(env, bag)
     }
 
@@ -93,7 +93,8 @@ class HostNetProbeFeature : Feature {
      * PC 侧 `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` + CDP 的 Network 域
      * 就能看到页面到底调了哪个接口 —— 这是「按标签直接查股票」的唯一取证途径。
      *
-     * 只在 **debug 包**里打开（install 里按 [BuildConfig.DEBUG] 判）：release 包带着这个口子，
+     * 只在 **debug 包**里打开（install 里按 [BuildConfig.DEV_BUILD] 判 —— 不用 DEBUG 是因为
+     * 本仓 debug 变体关掉了 isDebuggable，AGP 会把 BuildConfig.DEBUG 置 false）：release 包带着这个口子，
      * 任何能做 adb forward 的进程都能看到页面的全部请求与 Cookie。
      */
     private fun enableWebViewDebug(env: FeatureEnv) {

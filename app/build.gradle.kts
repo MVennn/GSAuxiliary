@@ -56,6 +56,15 @@ val hasEnvKeystore = envKeystorePath != null &&
 
 val hasCustomKeystore = keystorePropsFile.exists() || hasEnvKeystore
 
+// ---------------------------------------------------------------------------
+// 构建开关（命令行 -P 覆盖，默认值见各 buildType）
+//
+// Kotlin DSL 里没有现成的「读 gradle.properties / -P 参数并转 Boolean」的语法糖，
+// 这里抽一个：缺省返回 null，由调用处给默认值，避免「写了 -Pxxx=false 却被
+// ?: true 吞掉」这类静默失效。
+// ---------------------------------------------------------------------------
+fun flag(name: String): Boolean? = providers.gradleProperty(name).orNull?.toBooleanStrictOrNull()
+
 // 走到 debug 签名时明确说一声，别让人以为 release 包是自己签的
 if (!hasCustomKeystore) {
     logger.lifecycle(
@@ -86,6 +95,14 @@ android {
 
         // 第三方 UI 库版本，供设置界面「模块」页展示
         buildConfigField("String", "MIUIX_VERSION", "\"$miuixVersion\"")
+
+        // 「这是不是 debug 变体」的判定字段。
+        //
+        // 不用 AGP 自带的 BuildConfig.DEBUG：那个值跟着 isDebuggable 走，
+        // 而本仓为了让 debug 包能测真机帧率把 isDebuggable 关掉了
+        // （见 buildTypes.debug 的注释），于是 BuildConfig.DEBUG 会变成 false。
+        // 需要「debug 变体才开」的口子（如 WebView 远程调试）一律判这个字段。
+        buildConfigField("boolean", "DEV_BUILD", "false")
 
         // ------------------------------------------------------------------
         // 只打包 ARM 两个 ABI
@@ -150,6 +167,36 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
+
+            // ------------------------------------------------------------------
+            // debug 包也要能测真机流畅度（2026-11-13）
+            //
+            // 现象：同一份代码，debug 包装实机滚列表 / 全选 / 长策略明显掉帧，
+            // 编成 release 就顺 —— 差别不在代码，在这两个构建开关：
+            //
+            // 1) isDebuggable：debug 变体默认往清单里写 android:debuggable="true"。
+            //    ART 对这种 APK 安装时只做 verify、不做 AOT，同时抬高 JIT 阈值、
+            //    压低优化等级。本模块的 dex 是注入宿主进程执行的，但编译产物由
+            //    安装时的 debuggable 标志决定 —— 所以掉的是「模块自己」的帧。
+            // 2) R8：不裁剪时 dex 有 26000+ 个类，滚动过程中首次触达的类要现场
+            //    校验 / 解析，恰好压在那几帧上（2026-11-13 实测 dex 类数 26 553 → 3 468，
+            //    见 docs/BUILD.md 的「debug 变体默认按性能构建」一节）。
+            //
+            // 因此 debug 默认按「性能」构建：不写 debuggable、与 release 同一套 R8
+            // 与 keep 规则。要断点 / 可读混淆栈 / run-as 时显式退回：
+            //     ./gradlew :app:assembleDebug -Pgs.debuggable=true -Pgs.minifyDebug=false
+            // ⚠️ isDebuggable=false 会连带把 AGP 自动生成的 BuildConfig.DEBUG 变成 false，
+            // 所以「debug 变体才开」的口子改判 BuildConfig.DEV_BUILD（见 defaultConfig 注释）。
+            // ------------------------------------------------------------------
+            isDebuggable = flag("gs.debuggable") ?: false
+            buildConfigField("boolean", "DEV_BUILD", "true")
+            val minifyDebug = flag("gs.minifyDebug") ?: true
+            isMinifyEnabled = minifyDebug
+            isShrinkResources = minifyDebug
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
