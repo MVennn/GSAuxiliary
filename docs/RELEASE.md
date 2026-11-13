@@ -53,9 +53,12 @@
 
 1. **交的是 release 包，不是 debug 包。** 本机 `keystore.properties` 在，release 包用的是
    `gszx.keystore` —— 签名与机器上已装的模块一致，**可以直接覆盖安装**。
-   debug 包用的是 Android 调试证书，签名不同 ⇒ 装之前必须卸载重装，
-   而卸载会连带清掉 LSPosed 的作用域勾选与模块配置，测试成本比省下的构建时间高得多。
-   （确实需要可读堆栈时再自打 debug 包，见 §0 末尾那句，但它不进交付。）
+   同一份配置下 debug 包也签 `gszx.keystore`（`build.gradle.kts` 的 `hasCustomKeystore`
+   分支对两个 buildType 都生效），所以**本机自打的 debug 包同样可以覆盖安装**，不必卸载。
+   只有拿到没有密钥的机器（CI 默认产物 / 别人编的）打的 debug 包才会是 AGP 调试证书，
+   那种才必须卸载重装，而卸载会连带清掉 LSPosed 的作用域勾选与模块配置。
+   （确实需要可读堆栈时再自打 debug 包，并加 `-Pgs.debuggable=true -Pgs.minifyDebug=false`，
+   见 [BUILD.md](BUILD.md) §2.2；它不进交付。）
 2. **不发版就不要动版本号。** `versionCode` / `versionName` 只在发版时改
    （见 `docs/VERSIONING.md` §4）。交付包的版本号与上一个已发版本相同是正常现象。
 3. **顺带跑一次签名自检。** `app/build.gradle.kts` 在密钥不齐时会**安静地**退回 debug

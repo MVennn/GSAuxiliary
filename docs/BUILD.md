@@ -232,6 +232,49 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 > 原因是 Kotlin 2.4.0 比当前 AGP 内置的 R8 版本新。**属于已知无害警告**，
 > 不影响产物（`BUILD SUCCESSFUL`，且上述自查全部通过）。
 
+### 2.2 debug 变体默认按「性能」构建（2026-11-13 起）
+
+**现象**：同一份代码，debug 包装真机滚列表 / 全选 / 长策略明显掉帧，编成 release 就顺。
+差别不在代码，在两个构建开关：
+
+| 开关 | 旧 debug 默认 | 为什么掉帧 |
+| --- | --- | --- |
+| `android:debuggable` | `true` | ART 对 debuggable APK 安装时只 verify、不做 AOT，同时抬高 JIT 阈值、压低优化等级。模块 dex 注入宿主进程执行，但编译产物在**安装时**就定了 —— 掉的是模块自己的帧 |
+| R8 | 关 | dex 有 26 553 个类（见上一节），滚动中首次触达的类要现场校验 / 解析，正好压在那几帧上 |
+
+**现在的默认**（`app/build.gradle.kts` 的 `debug { }`）：
+
+```kotlin
+isDebuggable = flag("gs.debuggable") ?: false
+val minifyDebug = flag("gs.minifyDebug") ?: true
+isMinifyEnabled = minifyDebug
+isShrinkResources = minifyDebug
+proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+```
+
+2026-11-13 实测：`app-debug.apk` **11 882 278 B → 1 716 828 B（−85.6%）**，dex 类数 **26 553 → 3 468**，
+与 release 的 1 716 044 B 基本同量级；`python tools/ci/verify_apk.py --reject-debug-cert app/build/outputs/apk/debug/app-debug.apk`
+全项通过（签名仍是 `gszx.keystore`，可直接覆盖安装）。
+
+三条行为差异，改代码前先看一眼：
+
+1. **`BuildConfig.DEBUG` 会变成 `false`** —— AGP 让它跟着 `isDebuggable` 走。判「这是不是 debug 变体」
+   请用 `BuildConfig.DEV_BUILD`（`defaultConfig` 默认 `false`，debug 块覆盖成 `true`），
+   当前唯一用户是 `HostNetProbeFeature` 的 WebView 远程调试。
+2. **`run-as` 不可用** —— `adb shell run-as io.github.MVennn.GSAuxiliary` 依赖 debuggable；
+   要读模块 prefs 时按第 3 条退回。
+3. **断点 / 可读混淆栈 / `run-as` 都要显式退回**：
+
+```bash
+# 完整退回（等于旧的 debug 行为）
+./gradlew.bat :app:assembleDebug -Pgs.debuggable=true -Pgs.minifyDebug=false
+
+# 只要可读堆栈，帧率仍按性能构建
+./gradlew.bat :app:assembleDebug -Pgs.minifyDebug=false
+```
+
+CI 的 `build_debug` 手动开关走同一套默认值（见 §8.0）：拿到的也是性能版 debug 包。
+
 ---
 
 ## 3. Xposed 依赖与模块元数据

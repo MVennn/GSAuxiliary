@@ -11,6 +11,54 @@
 > 四个聚合 bug（吃本页策略 / 入口卡外显 / 标签叹号 / 表头与日涨跌幅）与三处稳态问题
 > （进位依据见 `docs/VERSIONING.md` §1）。
 
+## [3.8.3] — 2026-11-13
+
+> 本版为补丁版本（3.8.2 → 3.8.3）：**没有新增功能**，修的是聚合组策略详情页
+> 「全选 → 确认添加」一只都加不进去、分组页却提示「已在该组合」的聚合 bug
+> （进位依据见 `docs/VERSIONING.md` §1）。
+
+### 修复 聚合组「全选 → 确认添加」什么也没加（2026-11-13）
+
+- 现象：聚合成员并集的策略详情页里点「全选」，屏上全勾、底部「已选 N 只」正常，再点「确认添加」——
+  「我的分组」里**每个分组都显示「已在该组合」**，点进去一只都没有。
+- 根因：宿主按「列表第 N 行 == 它自己 `m_stkList` 的第 N 只」组提交包。聚合只写适配器数据
+  （`adapter.data` = 并集），宿主那份 `m_stkList` 在聚合态是空的（写它会把宿主的
+  `AIStkEmptyAdapter.convert` 搞崩，见 `StrategyMergeFeature.kt:3970` 的注释），于是提交包里
+  `codes` 是 `null` / 空 / 残值。分组页拿**空集**去和每个分组比对 —— 空集是任何集合的子集，
+  于是每个分组都被判成「都已在组里」，实际一只也没写进去。
+- 为什么全选功能自己的校正没兜住：`captureSelection` 的闸门是「没有过滤代理就直接放弃」
+  （只为筛选态设计），聚合页没有过滤代理 → 捕获恒空 → `fixGroupIntentCodes` 首行 return →
+  提交包原样进分组页。
+- 修法（不碰宿主 `m_stkList`，只纠提交包）：
+  - `captureSelection` 放开闸门：无筛 / 聚合态也逐行读屏幕勾选；无筛时两套坐标本来就一致，
+    捕获结果与宿主原包逐字相同，普通路径零影响；
+  - `fixGroupIntentCodes` 判据放宽：`codes` 为 `null` / 长度不等 / 内容不同都按屏幕勾选覆盖，
+    逐项**归一化**比较（`600000.1` 与 `600000` 视为同一只），一致时不动宿主原始格式；
+  - `markets` 改为无条件跟着 `codes` 一起写（缺一个宿主按位置配对就错位）；
+  - `prices` 读不到而宿主那份长度对不上时直接 `removeExtra`，不让宿主拿旧数组按下标取；
+  - 新增 `resolveConfirmList()`：聚合态宿主的「确认添加」若自带触摸监听（不抢是旧契约），
+    捕获从未跑过、`confirmList` 为空 —— 改从最近 resume 的策略详情页按同一控件 id 找回
+    `lvStks` 现场再捕一次；只在**本页还挂在窗口上**时生效，从自选 / 个股页打开的同名分组页不会被误改。
+- 判据抽成纯函数 `StgSelectAllPlan.needsGroupFix(hostCodes, selected)`，补 6 例单测。
+- 验证：`gradlew :app:testReleaseUnitTest :app:assembleRelease` BUILD SUCCESSFUL；`StgSelectAllPlanTest`
+  38 例 0 失败；`tools/ci/check_links.py` 0 断链、`tools/hygiene.py` exit 0。**真机待验**。
+- 文档：`docs/FEATURE-SELECT-ALL.md` 新增 §2.3.4（原理与修法）与 §4.9（真机验收三步），
+  验收标准追加第 19 条。
+
+### 构建 debug 包默认按性能构建（2026-11-13）
+
+- 现象：同一份代码，debug 包装真机滚列表 / 全选明显掉帧，release 顺。
+- 根因是构建开关不是代码：`android:debuggable=true` 让 ART 安装时只 verify、不做 AOT，并抬高
+  JIT 阈值、压低优化等级；debug 又不开 R8，dex 26 553 个类，滚动中首次触达的类要现场校验 / 解析。
+- 修法：`app/build.gradle.kts` 的 `debug { }` 改为 `isDebuggable=false` + 与 release 同一套
+  R8 / keep 规则。要断点 / 可读混淆栈 / `run-as` 时加 `-Pgs.debuggable=true -Pgs.minifyDebug=false`。
+- 连带：`BuildConfig.DEBUG` 随之变 `false`（AGP 让它跟 `isDebuggable` 走），新增
+  `BuildConfig.DEV_BUILD` 作为「是不是 debug 变体」的判据，WebView 远程调试（`HostNetProbeFeature`）改判它。
+- 实测：`app-debug.apk` 11 882 278 B → 1 716 828 B（−85.6%），dex 类数 26 553 → 3 468；
+  debug / release 两个包 `verify_apk.py --reject-debug-cert` 全项通过。
+- 文档：`docs/BUILD.md` 新增 §2.2；`docs/RELEASE.md` §0.1 订正「debug 包必须卸载重装」的旧说法
+  （本机 `keystore.properties` 存在时 debug 也签 `gszx.keystore`，可直接覆盖安装）。
+
 ## [3.8.2] — 2026-11-12
 
 > 本版为补丁版本（3.8.1 → 3.8.2）：**没有新增功能**，承接 3.8.1 发版后补做的一轮聚合审查 ——
