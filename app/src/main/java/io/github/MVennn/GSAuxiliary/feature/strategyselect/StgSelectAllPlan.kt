@@ -130,6 +130,32 @@ internal object StgSelectAllPlan {
         return out
     }
 
+    // ---------------------------------------------------------- 确认添加提交包
+
+    /**
+     * 「确认添加」提交包里的 [hostCodes] 要不要按屏幕勾选 [selected] 覆盖。
+     *
+     * 宿主按**适配器位置**索引它自己那份列表来组提交包，这条假设在两种页面上都不成立：
+     *  - 筛选生效：屏幕上是过滤子集，位置被压缩 → 取到全量里同下标的另一批票；
+     *  - 聚合生效：屏幕上并集是模块写的 adapter.data，宿主那份 m_stkList 是空的 →
+     *    它连票都构造不出来（codes 为 null / 空数组 / 长度与屏幕对不上）。
+     *
+     * 所以判据只能是「屏幕勾着的就是用户要的」：
+     *  - [selected] 为空：不动（用户一只都没选，改写没有意义）；
+     *  - [hostCodes] 为 null：要改（宿主没带票，聚合态就是这样）；
+     *  - 长度不同：要改（按位置配对已经错了）；
+     *  - 逐项归一化后全部相同：不改（宿主本来就对，别动它的原始格式，比如带市场后缀）。
+     */
+    fun needsGroupFix(hostCodes: Array<String>?, selected: Array<String>): Boolean {
+        if (selected.isEmpty()) return false
+        if (hostCodes == null) return true
+        if (hostCodes.size != selected.size) return true
+        for (i in selected.indices) {
+            if (normalizeCode(hostCodes[i]) != normalizeCode(selected[i])) return true
+        }
+        return false
+    }
+
     /** 代码归一化：去掉市场后缀（`600000.1` → `600000`）与空白 */
     fun normalizeCode(code: String): String = code.substringBefore('.').trim()
 

@@ -327,4 +327,72 @@ class StgSelectAllPlanTest {
         assertTrue(StgSelectAllPlan.modelTrusted(listOf("600000"), hostCount = -1))
         assertFalse(StgSelectAllPlan.modelTrusted(null, hostCount = -1))
     }
+
+    // ---------------------------------------------- 确认添加提交包判据（2026-11-13 聚合态）
+
+    @Test
+    fun `聚合态宿主没带 codes 时必须按屏幕勾选补上`() {
+        // 聚合页上宿主那份 m_stkList 是空的，它构造不出票：提交包里的 codes 可能直接是 null。
+        // 旧判据 `?: return` 让这条链彻底失效 → 分组页把空集判成「都已在该组」。
+        assertTrue(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = null,
+                selected = arrayOf("600000", "002368"),
+            ),
+        )
+    }
+
+    @Test
+    fun `聚合态宿主提交长度与屏幕不符时必须覆盖`() {
+        // 宿主按位置取票时常常少几只（m_stkList 只剩残值）
+        assertTrue(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000"),
+                selected = arrayOf("600000", "002368"),
+            ),
+        )
+    }
+
+    @Test
+    fun `筛选态同长度但内容不同必须覆盖`() {
+        // 这就是 2026-10-28 那条历史缺陷：屏幕 605333，宿主提交 300006
+        assertTrue(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("300006", "301529"),
+                selected = arrayOf("605333", "002683"),
+            ),
+        )
+    }
+
+    @Test
+    fun `宿主包与屏幕勾选一致时不动它`() {
+        // 普通（无筛、无聚合）页面：宿主本来就对，一个字都不许改
+        assertFalse(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000", "002368"),
+                selected = arrayOf("600000", "002368"),
+            ),
+        )
+    }
+
+    @Test
+    fun `宿主带市场后缀但同一只票时不动它`() {
+        // 归一化后相同 = 同一批票，保留宿主原始格式（带后缀），别把它改成裸码
+        assertFalse(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000.1", "002368.0"),
+                selected = arrayOf("600000", "002368"),
+            ),
+        )
+    }
+
+    @Test
+    fun `屏幕一只都没勾时不改写`() {
+        assertFalse(
+            StgSelectAllPlan.needsGroupFix(
+                hostCodes = arrayOf("600000"),
+                selected = emptyArray(),
+            ),
+        )
+    }
 }

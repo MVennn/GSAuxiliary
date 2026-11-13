@@ -294,6 +294,15 @@ class StgSelectAllFeature : Feature {
     /** 捕获选择时所在的那个列表：改写提交包前用它确认页面还在（没换页 / 没销毁） */
     private var confirmList: WeakReference<ListView>? = null
 
+    /**
+     * 最近一次 onResume 的策略详情页。
+     *
+     * 只作**兜底**：聚合页上如果宿主的「确认添加」自带触摸监听（我们按 [#installConfirmTouchSync]
+     * 的契约不抢），[captureSelection] 一次都没跑过，`confirmList` 就是空的 —— 那时用它
+     * 找回同一个页面上的列表，现场再捕一次（见 [resolveConfirmList]）。
+     */
+    private var watchActivity: WeakReference<Activity>? = null
+
     override fun isEnabled(cfg: ConfigSnapshot): Boolean = cfg.stgSelectAll
 
     // ------------------------------------------------------------------ 安装
@@ -357,17 +366,24 @@ class StgSelectAllFeature : Feature {
     /**
      * 捕获「屏幕上真正勾着」的股票（代码 / 市场 / 价格），供 [fixGroupIntentCodes] 使用。
      *
-     * 只认**筛选生效**的页面：没筛时两套坐标一致，宿主本来就对，别多此一举。
+     * **两种页面都要捕获**（2026-11-13 补聚合态）：
+     *  - 筛选生效：宿主按「适配器位置」索引全量列表，位置被压缩成子集下标 → 提交的是错票；
+     *  - 聚合生效（没有筛选代理）：列表上是成员策略的并集，宿主自己那份 m_stkList 在
+     *    聚合态是空的 / 上一批残值 —— 它按位置取票时取不到任何东西，「确认添加」于是
+     *    提交空集（或错批），分组页对每个分组都判成「已在该组合」，实际一只也没加。
+     *    聚合只写 adapter.data（见 StrategyMergeFeature 第 3970 行的注释：写宿主
+     *    m_stkList 会把宿主搞崩），所以这条链只能靠这里补。
+     *
+     * 没有筛选时两套坐标本来就是同一套，捕获结果与宿主原包逐字相同 →
+     * [fixGroupIntentCodes] 里会原样早退，对普通（无筛、无聚合）路径零影响。
+     *
      * 任何一行读不全就整组作废（宁可不改，也不能把错误的包换成另一个错误的包）。
      */
     private fun captureSelection(lv: ListView) {
         val adapter = unwrapHeaderAdapter(lv.adapter) ?: return
         val total = adapter.count
         if (total <= 0) return
-        if (fullIndices(adapter, total) == null) {
-            confirmSelection = null
-            return
-        }
+        val filtered = fullIndices(adapter, total) != null
         val header = lv.headerViewsCount
         val codes = ArrayList<String>(total)
         val markets = ArrayList<String>(total)
@@ -390,43 +406,88 @@ class StgSelectAllFeature : Feature {
             markets.toTypedArray(),
             if (pricesOk && prices.size == codes.size) prices.toTypedArray() else null,
         )
+        if (GLog.isDebug) {
+            GLog.d(
+                "策略全选：捕获屏幕勾选 " + codes.size + " 只" +
+                    (if (filtered) "（筛选）" else "（无筛/聚合）") +
+                    codes.joinToString(prefix = " [", postfix = "]") { LogMask.code(it) },
+            )
+        }
     }
 
-    /** 就地把宿主提交包里的 `codes` / `markets`（能读到价时连同 `prices`）换成真实股票 */
+    /**
+     * 把宿主提交包里的 codes / markets（能读到价时连同 prices）换成**屏幕真实勾选**。
+     *
+     * ## 判据为什么放宽（2026-11-13 聚合态 BUG）
+     *
+     * 旧判据是「宿主包里的 codes 与我们捕获的那批**长度相同**、内容不同才改」。聚合页上
+     * 宿主那份 m_stkList 是空的，它压根构造不出票：codes 可能是 null、空数组，或者长度
+     * 与屏幕勾选对不上。三种都被旧判据挡掉 → 提交包原样进分组页 → 空集被判成「都已经在
+     * 组里」→ 每个分组都显示「已在该组合」，分组里一只都没有。
+     *
+     * 现在：只要屏幕勾选读得到就以它为准 —— codes 为 null / 长度不等 / 内容不同一律覆盖；
+     * markets 跟着 codes 一起写（宿主原本没带也要补，否则它按位置配对会错位）；
+     * prices 读不到而宿主那份长度对不上时直接摘掉，避免宿主拿旧数组按下标越界。
+     */
     private fun fixGroupIntentCodes(intent: android.content.Intent) {
-        val sel = confirmSelection ?: return
         // 只在「捕获选择的那张列表还在窗口上」时改写：同名的选择分组页也可能从
         // 自选 / 个股页打开，那时这份捕获已经过期，改写会张冠李戴。
-        if (confirmList?.get()?.isAttachedToWindow != true) {
+        val lv = resolveConfirmList()
+        if (lv == null) {
             GLog.w("策略全选：选择分组页不是从策略详情进来的，跳过提交代码校正")
             return
         }
+        val s = confirmSelection ?: run {
+            // 兜底：确认添加不一定是手点出来的（「截图并添加」走 performClick，没有
+            // ACTION_DOWN）。现场按屏幕勾选再捕一次，捕到就用。
+            captureSelection(lv)
+            confirmSelection
+        } ?: run {
+            GLog.w("策略全选：屏幕勾选读不全，提交代码保持原样")
+            return
+        }
         @Suppress("DEPRECATION")
-        val codes = intent.getStringArrayExtra(GROUP_EXTRA_CODES) ?: return
-        if (codes.size != sel.codes.size) return
-        if (codes.contentEquals(sel.codes)) return
+        val codes = intent.getStringArrayExtra(GROUP_EXTRA_CODES)
+        if (!StgSelectAllPlan.needsGroupFix(codes, s.codes)) return
         GLog.i(
-            "策略全选：确认添加的提交代码已校正" +
-                "（${codes.size} 只，原为全量同下标的另一批）",
+            "策略全选：确认添加的提交代码已按屏幕勾选校正（" + s.codes.size + " 只，" +
+                (if (codes == null) "宿主包里没有 codes" else "原 " + codes.size + " 只") + "）",
         )
         if (GLog.isDebug) {
             GLog.d(
-                "策略全选：提交代码 " + codes.joinToString { LogMask.code(it) } +
-                    " → " + sel.codes.joinToString { LogMask.code(it) },
+                "策略全选：提交代码 " +
+                    (codes?.joinToString { LogMask.code(it) } ?: "<null>") +
+                    " → " + s.codes.joinToString { LogMask.code(it) },
             )
         }
-        intent.putExtra(GROUP_EXTRA_CODES, sel.codes)
-        @Suppress("DEPRECATION")
-        val markets = intent.getStringArrayExtra(GROUP_EXTRA_MARKETS)
-        if (markets != null && markets.size == sel.codes.size) {
-            intent.putExtra(GROUP_EXTRA_MARKETS, sel.markets)
-        }
+        intent.putExtra(GROUP_EXTRA_CODES, s.codes)
+        intent.putExtra(GROUP_EXTRA_MARKETS, s.markets)
         @Suppress("DEPRECATION")
         val prices = intent.getStringArrayExtra(GROUP_EXTRA_PRICES)
-        val fixedPrices = sel.prices
-        if (prices != null && prices.size == sel.codes.size && fixedPrices != null) {
-            intent.putExtra(GROUP_EXTRA_PRICES, fixedPrices)
+        val fixedPrices = s.prices
+        when {
+            fixedPrices != null -> intent.putExtra(GROUP_EXTRA_PRICES, fixedPrices)
+            prices != null && prices.size != s.codes.size -> intent.removeExtra(GROUP_EXTRA_PRICES)
         }
+    }
+
+    /**
+     * 找回「屏幕勾选」所在的那个列表。
+     *
+     * 优先用捕获时记下的那张（坐标与勾选态同源）；它已摘挂 / 压根没捕过时，退回到最近
+     * resume 的策略详情页按同一个控件 id 找 —— 聚合态宿主的「确认添加」可能自带触摸监听
+     * （[installConfirmTouchSync] 的契约是不抢），[captureSelection] 就没机会跑过。
+     *
+     * 这条兜底只在**本页确实还挂在窗口上**时生效：从自选 / 个股页打开的同名分组页不会
+     * 命中，改写不会张冠李戴。
+     */
+    private fun resolveConfirmList(): ListView? {
+        confirmList?.get()?.let { if (it.isAttachedToWindow) return it }
+        val act = watchActivity?.get() ?: return null
+        if (act.isFinishing) return null
+        val decor = act.window?.decorView ?: return null
+        if (!decor.isAttachedToWindow) return null
+        return findListView(decor)
     }
 
     /** 挂 `Activity.onResume`，只对策略详情页做「挂 watcher + 同步」这件事 */
@@ -662,6 +723,7 @@ class StgSelectAllFeature : Feature {
 
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
         if (!StgSelectAllTargets.isWatchActivity(activity.javaClass.name)) return
+        watchActivity = WeakReference(activity)
 
         val cancelId = cancelButtonId(activity)
         if (cancelId == 0) {
