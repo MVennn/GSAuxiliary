@@ -16,17 +16,19 @@
 | `MODULE_PKG` | 模块包名，默认 `io.github.MVennn.GSAuxiliary` |
 | `ADB_WIFI_TARGET` | 无线调试地址，如 `192.168.1.10:5555` |
 | `ADB_WIFI_HOST` | 无线调试主机 IP（dev.sh / adbw.sh，必须设置；占位符 `YOUR_DEVICE_IP`） |
+| `GS_USER` / `GS_PASS` | 登录脚本用的账号密码，优先于 `tools/login.local.env`（该文件已 gitignore） |
 
 ## 分类总览
 
 | 分类 | 脚本 |
 |---|---|
 | 环境与设备连接 | env.sh · adbw.sh · dev.sh · stayon.sh · rotate.sh |
-| 设备调试与日志 | sh.sh · ui.sh + uidump.py · drive.sh · glog.sh + glog_tail.py |
+| 设备调试与日志 | sh.sh · ui.sh + uidump.py · drive.sh · login.sh + uixml.py · glog.sh + glog_tail.py |
 | 真机功能验证 | verify.py · sample_colors.py + _color.py · enable_lsposed.py |
 | 品牌视觉与图标 | gen_launcher_icons.py · verify_icons.py · make_social_preview.py（+ 公共库 _png.py） |
 | 发布与 CI | publish.py · ci/ |
 | 运行时探针 | probe/ |
+| 数据核对 | audit/compare_quotes.py |
 | 代码卫生 | hygiene.py |
 
 ---
@@ -263,6 +265,83 @@ bash tools/drive.sh "tbmulti act;;wait 密码登录 3;;tap 用短信验证码登
 > `tbmulti` 的行内用 `;;` 分隔，整串是**一个参数**（要引号包住）。
 > 里面带空格的文本在 `set --` 分词时会丢引号，需要精确匹配长文本时改用
 > `tbtap "#idx"`（idx 由 `tbtree` 给出）。
+
+## login.sh + uixml.py
+
+**一键登录金太阳**（账号 + 密码），替掉每次手点。凭据只留在本机：
+
+```bash
+cp tools/login.example.env tools/login.local.env   # 填 GS_USER / GS_PASS（已 gitignore）
+bash tools/login.sh                                # Windows 上双击 tools/login.cmd 也行
+```
+
+也可以用环境变量覆盖（不建文件就能跑）：`GS_USER` / `GS_PASS`。
+参数：`--force`（已在登录态也重登一次）、`--no-submit`（只填不点登录，验证填充用）、`--user 手机号`。
+
+退出码：0 已登录 / 1 登录被拒（密码错误、账号锁定）/ 2 环境问题（没设备、控件树读不到）/ 3 缺凭据或密码含安全键盘不支持的字符。
+
+> 凭据文件已在 `.gitignore` 里，且 `tools/check-secrets.py` 会在它被 `git add -f` 强行入索引时直接判失败
+> —— 本仓是 PUBLIC，这条守护的意义见 [docs/SECRETS.md](../docs/SECRETS.md)。
+
+### 为什么只能点键盘，不能用 input text
+
+```
+etPhoneNum  普通 EditText —— input text 无效，但 input keyevent 有效
+etPwd       自绘 View（class=android.view.View），text 恒空、眼睛图标切明文也读不到
+```
+
+| 手段 | 手机号框 | 密码框 |
+|---|---|---|
+| `adb shell input text 123` | ✗ | ✗ |
+| AdbIME 广播 `ADB_INPUT_TEXT` | ✗ | ✗ |
+| `input keyevent`（数字键码 = 0→7 … 9→16，可连发） | ✓ | ✗ |
+| 国信安全键盘 `gs_keyboard`（按 content-desc 点键） | — | ✓ |
+
+所以脚本对手机号走 keyevent（先 `123` MOVE_END + 18×DEL 清空再逐位敲），对密码交给
+`tools/gskeys.py`：点 `etPwd` 弹键盘 → 它自己 dump、解析中文 content-desc、逐字符点。
+数字页角上那个 `ABC` 切字母页，字母页 `切换数字键盘` 切回来，`大小写切换` 翻大小写。
+**两页都没有「退格」和「完成」键** —— 别指望点「完成」收键盘；键盘在 y>950，不遮挡 y=721 的登录按钮。
+
+### gskeys.py
+
+密码专用键入器（2026-11-13 加）。单独拆成 python 的原因：切换键的 desc 是中文
+（`切换数字键盘` / `大小写切换`），用 bash + awk 比较时会被 locale 与编码坑掉，
+**字符被静默丢弃、密码不完整、点登录毫无反应**（App 对空/短密码既不提示也不提交）
+—— 这正是第一版 `press_char()` 的翻车现场。python 全程 UTF-8，稳定。
+
+```bash
+python tools/gskeys.py --adb <adb.exe> --serial 127.0.0.1:16416 \
+    --env-file tools/login.local.env --var GS_PASS
+```
+
+| 参数 | 作用 |
+|---|---|
+| `--env-file` + `--var` | 从凭据文件读要敲的文本（同名环境变量也可） |
+| `--dry-run` | 只 dump 并打印键位表，不点击 |
+| `--no-clear` | 不先点 `ivClearPwd` 清空 |
+
+退出码：0 全部敲进去 / 1 有字符没敲进去 / 2 环境问题（dump 失败、键盘没弹）/ 3 键盘不支持的字符。
+
+> 判断密码有没有真的进框：登录页的 `ivClearPwd`（框尾那个 ✕）**只在框里有内容时才出现在控件树里**
+> —— 不用截图就能验证输入（本机模拟器 `screencap` 恒出 0 字节，截不了图）。
+
+### uixml.py
+
+查 `uiautomator dump` 出来的 XML（原生 Windows python 也能用，路径自己用 `winpath` 转）：
+
+| 用法 | 作用 |
+|---|---|
+| `--center RID` | 控件中心坐标 `x y`（配合 `input tap`） |
+| `--value RID` | text 或 content-desc 的值 |
+| `--checked RID` | `true` / `false` |
+| `--map` | `gs_keyboard` 子树里所有「可点 + 有 content-desc」的键，`desc<TAB>x<TAB>y` |
+| `--has DESC\|RID` | 存在则 exit 0，否则 exit 1 |
+| `--texts` | 按屏幕顺序打出所有可见文本（判当前在哪个页） |
+
+退出码 0 命中 / 1 未命中 / 2 用法错。
+
+> 弹窗矩阵：`运行环境存在风险`、`登录信息已失效` 走 `btn_dialog_right`（确定）；
+> 隐私协议弹窗是双按钮，`btn_dialog_left` 才是「同意」。
 
 ## glog.sh + glog_tail.py
 
@@ -618,6 +697,24 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 其中 `pack_dex.py` 负责把 classes.dex 和 `meta/META-INF/xposed/` 目录树合并进
 aapt2 产出的 APK（被 `build.sh` 内部调用，不单独使用）。
 详细说明见 [probe/README.md](probe/README.md)。
+
+---
+
+# 数据核对
+
+## audit/compare_quotes.py
+
+**行情比对** —— 把从页面抓下来的 tsv 逐只对腾讯行情核一遍，给「模块对行级行情纯透传」这句话补证据。
+
+```bash
+python tools/audit/compare_quotes.py rows.tsv 报告.md
+```
+
+- tsv 四列：`code<TAB>name<TAB>price<TAB>zdf`；首行是表头会自动跳过。
+- 容差：价 0.011 元、涨跌幅 0.02 个百分点（页面显示精度）。
+- **午休时段（11:30—13:00）报价冻结**，这时抓页面再比对必然同值，是核「值对不对」的最佳窗口；盘中抓只能证明「抓的这一刻对得上」。
+- 输出 `rows= uniq= ext= missing= bad_price= bad_zdf=`，退出码 0 无偏差 / 1 有偏差 / 2 用法错。
+- 真机实测：聚合组 535 行逐只，`missing=0 bad_price=0 bad_zdf=0`。判定口径见 `docs/FEATURE-STRATEGY-MERGE.md` §32。
 
 ---
 

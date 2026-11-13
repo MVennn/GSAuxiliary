@@ -121,7 +121,31 @@ def is_doc_file(rel: str) -> bool:
     return base.split("/")[-1] in DOC_FILES
 
 
+# 本机凭据文件：绝不入库。.gitignore 只管「未跟踪」，一旦有人 `git add -f` 就能绕过，
+# 所以这里再拦一道 —— 只要它出现在 git 索引里就判定失败（该仓是 PUBLIC）。
+LOCAL_CREDS_FILES = ["tools/login.local.env"]
+
+
+def tracked_local_creds() -> list[str]:
+    try:
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "-z", "--"] + LOCAL_CREDS_FILES,
+                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [p for p in out.stdout.split("\0") if p.strip()]
+
+
 def main() -> int:
+    leaked = tracked_local_creds()
+    if leaked:
+        print("[FAIL] 本机凭据文件已被 git 跟踪 —— 推到 GitHub 就等于公开：")
+        for rel in leaked:
+            print(f"   {rel}")
+        print()
+        print("   修：git rm --cached " + " ".join(leaked) + "   （只从索引移除，本地文件保留）")
+        print("       确认 .gitignore 含 /tools/login.local.env；若已推到远端，直接改登录密码。")
+        return 1
+
     files = walk_files() if "--all" in sys.argv else tracked_files()
     bad = []
     for rel in files:

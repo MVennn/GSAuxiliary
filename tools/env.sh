@@ -73,8 +73,14 @@ if [ -z "${PYTHON:-}" ]; then
         [ -x "$p" ] && { PYTHON="$p"; break; }
     done
     if [ -z "${PYTHON:-}" ]; then
+        # 别直接用 command -v python3：本机 WindowsApps 下那个是 Microsoft Store 的
+        # 执行别名 stub，跑起来只会 exit 49 并提示去商店安装（真解释器在
+        # LocalApp\Programs\Python\Python3xx）。所以既排除 WindowsApps，又实跑一次验证。
         for c in python3 python py; do
-            command -v "$c" >/dev/null 2>&1 && { PYTHON="$(command -v "$c")"; break; }
+            p="$(command -v "$c" 2>/dev/null)" || continue
+            case "$p" in */WindowsApps/*) continue ;; esac
+            "$p" -c 'import sys' >/dev/null 2>&1 || continue
+            PYTHON="$p"; break
         done
     fi
 fi

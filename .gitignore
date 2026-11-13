@@ -38,6 +38,8 @@ keystore.properties
 *.p12
 *.pem
 *.key
+# 本机登录凭据（tools/login.sh 读它，模板是 tools/login.example.env）
+/tools/login.local.env
 
 # ---------------------------------------------------------------------------
 # IDE
