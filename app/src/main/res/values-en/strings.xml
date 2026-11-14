@@ -283,7 +283,20 @@
     <string name="quick_delete_confirm">This cannot be undone. Delete this scheme?</string>
 
     <!-- Dock -->
-    <string name="feature_dock_clean_switch">Hide "Wealth" entry</string>
+    <string name="feature_dock_clean_switch">Customize dock entries</string>
+    <string name="feature_dock_clean_entry">Dock entry settings</string>
+    <string name="feature_dock_clean_entry_summary">%1$d hidden</string>
+    <string name="feature_dock_clean_entry_summary_all">All six entries shown</string>
+    <string name="detail_dock_clean_title">Dock entry settings</string>
+    <string name="switch_dock_entry_home">Hide "Home" entry</string>
+    <string name="switch_dock_entry_quotes">Hide "Quotes" entry</string>
+    <string name="switch_dock_entry_zx">Hide "Watchlist" entry</string>
+    <string name="switch_dock_entry_trade">Hide "Trade" entry</string>
+    <string name="switch_dock_entry_money">Hide "Wealth" entry</string>
+    <string name="switch_dock_entry_mine">Hide "Account" entry</string>
+    <string name="switch_dock_entry_summary_on">Hidden</string>
+    <string name="switch_dock_entry_summary_off">Shown</string>
+    <string name="switch_dock_entry_summary_locked">Shown · at least one entry stays</string>
 
     <!-- Home -->
     <string name="feature_home_banner_switch">Hide banner</string>

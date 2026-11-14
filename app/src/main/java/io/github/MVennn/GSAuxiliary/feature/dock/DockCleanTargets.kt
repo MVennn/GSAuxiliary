@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.feature.dock
 
+import io.github.MVennn.GSAuxiliary.core.DockEntryStore
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 
 /**
@@ -36,15 +37,20 @@ import io.github.MVennn.GSAuxiliary.core.TargetApp
  *  2. **文字 `TextView` 没有资源 id**，整格的 id 挂在外层 `LottieTabView` 上 ——
  *     所以「按文案找 → 上溯到直属于行的那一格」这一招是必需的，不能只靠 id。
  *
- * ## 二、两级兜底
+ * ## 二、六格与两级兜底
  *
- *  1. **那一格自己的候选 id**（[REMOVE_ITEM_ID_CANDIDATES]）—— 命中直接藏，最快；
+ * 能藏哪几格由 [ENTRIES] 定（顺序与配置里的 key 顺序一致）；每一格都是两级兜底：
+ *
+ *  1. **那一格自己的候选 id**（[DockEntryTarget.idCandidates]）—— 命中直接藏，最快；
  *  2. **认行 + 按文案找**：先按 [DOCK_ID_CANDIDATES] 或结构判据（[BOTTOM_BAND_RATIO]、
  *     [MIN_ITEMS] / [MAX_ITEMS]、每格都是「图标 + 文字」）认出那一行，
- *     再在行里找文案为 [REMOVE_TEXT] 的格子。
+ *     再在行里找文案为 [DockEntryTarget.label] 的格子。
  *
  * 为什么不按下标：不同账号 / 版本底栏项数不一样（有的没有「交易」、有的多一个「基金」），
  * 下标一错就藏错东西。
+ *
+ * [REMOVE_ITEM_ID_CANDIDATES] / [REMOVE_TEXT] 是升级前「只藏理财」那一版的常量，
+ * 现在作为 [ENTRIES] 里「理财」那一格的数据继续用。
  *
  * ## 三、认不出来时
  *
@@ -94,6 +100,37 @@ object DockCleanTargets {
 
     /** 要移除的那一格文案 */
     const val REMOVE_TEXT = "理财"
+
+    /**
+     * 底栏里的一格。
+     *
+     * [key] 与 `core/DockEntryStore.kt` 的 `KEYS` 一一对应（配置里存的就是它），
+     * [label] 是那一格的文案 —— **只在候选 id 全部落空时**用它找格子
+     * （实测文字 `TextView` 没有资源 id）。
+     */
+    class DockEntryTarget(
+        val key: String,
+        val label: String,
+        val idCandidates: Array<String>,
+    )
+
+    /**
+     * 底栏默认的六格，顺序与 `DockEntryStore.KEYS` 一致（界面行序、编码顺序都靠它）。
+     *
+     * 六格的 id 都是 8.6.0 真机实测值；「理财」复用升级前的
+     * [REMOVE_ITEM_ID_CANDIDATES]，好让旧开关的迁移路径与老代码走同一套定位。
+     */
+    val ENTRIES = arrayOf(
+        DockEntryTarget(DockEntryStore.KEY_HOME, "首页", arrayOf("cb_main_tab_home")),
+        DockEntryTarget(DockEntryStore.KEY_QUOTES, "行情", arrayOf("cb_main_tab_quotes")),
+        DockEntryTarget(DockEntryStore.KEY_ZX, "自选", arrayOf("cb_main_tab_zx")),
+        DockEntryTarget(DockEntryStore.KEY_TRADE, "交易", arrayOf("cb_main_tab_trade")),
+        DockEntryTarget(DockEntryStore.KEY_MONEY, REMOVE_TEXT, REMOVE_ITEM_ID_CANDIDATES),
+        DockEntryTarget(DockEntryStore.KEY_MINE, "账户", arrayOf("cb_main_tab_mine")),
+    )
+
+    /** 按 key 取文案（日志用；认不出来就原样打 key） */
+    fun labelOf(key: String): String = ENTRIES.firstOrNull { it.key == key }?.label ?: key
 
     /** 一行至少 / 至多几个格子才算底栏 */
     const val MIN_ITEMS = 3

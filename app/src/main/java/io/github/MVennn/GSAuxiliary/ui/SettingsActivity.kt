@@ -102,8 +102,13 @@ class SettingsActivity : ComponentActivity() {
             window.isStatusBarContrastEnforced = false
         }
         syncTaskDescription()
-        // 「管理方案…」从宿主 H5 拉起时带 route extra 直达「一键配置」二级页（§6.1）
-        val initialRoute = intent?.getStringExtra(QuickConfigStore.EXTRA_ROUTE)?.let { key ->
+        // 「管理方案…」从宿主 H5 拉起时带 route extra 直达「一键配置」二级页（§6.1）。
+        // 这条 extra 来自 H5，长度不可信：本 Activity 是 exported 的，几十 KB 的串
+        // 会被 startsWith/substringAfter 反复拷贝。合法路由最长的是带组 id 的深链，
+        // 128 字符足够；超长直接当没带。
+        val initialRoute = intent?.getStringExtra(QuickConfigStore.EXTRA_ROUTE)
+            ?.take(MAX_ROUTE_CHARS)
+            ?.let { key ->
             when {
                 key == QuickConfigStore.ROUTE_QUICK_CONFIG -> Route.QuickConfig
                 key == ROUTE_STRATEGY_MERGE -> Route.StrategyMerge
@@ -163,6 +168,9 @@ class SettingsActivity : ComponentActivity() {
         /** 启动器图标位图（进程内缓存；launcher alias 由系统换图标，位图本身不变） */
         @Volatile
         var taskIcon: android.graphics.Bitmap? = null
+
+        /** route extra 的合理上限：最长深链 `aistare_strategy_merge_cond:<组 id>#<成员名>` 远小于此 */
+        const val MAX_ROUTE_CHARS = 128
     }
 }
 

@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  * 改成「布尔项占低位逐个异或」之后，这两组不再碰撞。
  *
  * **单键切换永远是安全的**（delta = ±该项的位），风险只在**多键同时写入**
- * （「重置模块」一次写 32 键、恢复备份一次写 39 键）。
+ * （「重置模块」一次写 32 键、恢复备份一次写 40 键）。
  */
 class ConfigSnapshotFingerprintTest {
 

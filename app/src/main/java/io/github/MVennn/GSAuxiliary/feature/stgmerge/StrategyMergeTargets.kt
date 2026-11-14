@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
 import io.github.MVennn.GSAuxiliary.core.TargetApp
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgCountBar
 import io.github.MVennn.GSAuxiliary.util.Reflect
 import java.lang.reflect.Field
 import java.util.WeakHashMap
@@ -147,16 +148,36 @@ object StrategyMergeTargets {
     fun strategyTagNames(item: Any?): List<String> {
         val raw = (field(item, STG_FIELD_TAGS) as? String)?.trim().orEmpty()
         if (raw.isEmpty()) return emptyList()
-        return runCatching {
+        // 列表页 800ms 一轮巡检，每轮对每张卡都把同一份 tags 原文重新 JSONArray 解析一遍。
+        // 按**原文内容**缓存结果（键必须是字符串内容，不能用对象引用：宿主会原地改卡片）：
+        // 内容没变就零解析，64 条封顶，最久没用的先走。
+        synchronized(tagNameCache) {
+            tagNameCache[raw]?.let { return it }
+        }
+        val parsed = runCatching {
             val arr = org.json.JSONArray(raw)
             val out = ArrayList<String>(arr.length())
             for (i in 0 until arr.length()) {
                 val nm = arr.optJSONObject(i)?.optString("labelName").orEmpty().trim()
                 if (nm.isNotEmpty()) out.add(nm)
             }
-            out
+            out as List<String>
         }.getOrDefault(emptyList())
+        synchronized(tagNameCache) {
+            if (tagNameCache.size >= TAG_NAME_CACHE_MAX) {
+                val oldest = tagNameCache.keys.firstOrNull()
+                if (oldest != null) tagNameCache.remove(oldest)
+            }
+            tagNameCache[raw] = parsed
+        }
+        return parsed
     }
+
+    /** [strategyTagNames] 的内容缓存：上限 [TAG_NAME_CACHE_MAX] 条，插入顺序淘汰 */
+    private val tagNameCache = LinkedHashMap<String, List<String>>(64)
+
+    /** 策略列表页一共也就几十张卡，64 条足够覆盖一页再加几页 */
+    private const val TAG_NAME_CACHE_MAX = 64
 
     // ------------------------------------------------------------------ 适配器字段
 
@@ -273,20 +294,25 @@ object StrategyMergeTargets {
 
     // ------------------------------------------------------------------ 文案
 
-    /** 「策略个股 N 只」的写法（与宿主原生文案同格式，N 换成聚合只数） */
-    const val RES_NUM_FORMAT = "策略个股%d只"
+    /**
+     * 「策略个股 N 只」的写法（与宿主原生文案同格式，N 换成聚合只数）。
+     *
+     * 文案口径的唯一正本是 [StgCountBar]（筛选侧也读同一份）：本文件只做转发，
+     * 不再自己攥一份格式串 —— 两处各写一份靠注释维持一致，真机上已经因此对不上过。
+     */
+    val RES_NUM_FORMAT = StgCountBar.FORMAT_TOTAL
 
     /** 宿主原样是「策略个股47只(11-11 19:40:22)」：换数字时把括号里的时间戳原样留下 */
-    val RES_NUM_REGEX = Regex("策略个股\\d+只(.*)")
+    val RES_NUM_REGEX = StgCountBar.HOST_TOTAL
 
     /**
      * 筛选生效时的计数写法：**保留数/总数**。
      *
-     * 与 stgfilter 的 `OUR_RES_NUM`（`^策略个股 \d+/\d+$`）**逐字同格式**：两个功能都会写
+     * 口径正本同样是 [StgCountBar]（筛选侧的 `isOurs` 与这里是同一个正则）：两个功能都会写
      * 同一个 `#tv_stg_res_num`，写成两种样子就会来回覆盖（屏幕上数字闪）。
-     * 这里刻意**不带尾部时间戳**：stgfilter 的正则是严格全匹配，带尾巴它就认不出是自己写的了。
+     * 这里刻意**不带尾部时间戳**：`StgCountBar.OURS` 是严格全匹配，带尾巴就认不出是自己写的了。
      */
-    const val RES_NUM_FILTERED_FORMAT = "策略个股 %d/%d"
+    val RES_NUM_FILTERED_FORMAT = StgCountBar.FORMAT_KEPT
 
     /** 聚合后写进头部策略名的前缀（后面接组内成员名） */
     const val MERGE_NAME_PREFIX = "聚合 · "

@@ -36,18 +36,20 @@ class WatchlistFeature : Feature {
     override val id = "watchlist_highlight"
     override val title = "自选股高亮"
 
-    /** 记录每个名称 TextView 第一次见到的「非高亮色」，用于还原 */
-    private val originalColors =
-        Collections.synchronizedMap(WeakHashMap<TextView, Int>())
-
-    /**
-     * 记录每个名称 TextView 第一次见到的「原始 Typeface」，用于还原。
+    /*
+     * 「原色 / 原字重」只记在视图自己的 tag 上（2026-11-14 改造）。
      *
-     * 与 [originalColors] 同一套道理：RecyclerView 复用视图，
-     * 换一批数据后要把加粗撤掉 —— 没有原 Typeface 就还原不回去。
+     * 早先除了 tag 还有两张实例内的 `synchronizedMap(WeakHashMap<TextView, …>)`，
+     * 那是冗余的：tag 跟着 View 走、跨实例跨热重载都读得到，而表只在当前实例里
+     * 有效 —— 热重载后新实例读表是空的，真正的权威从来就是 tag。
+     *
+     * 而每行列表项要各查两张带锁的弱引用表（两次 `synchronized` + 两次条目分配），
+     * 一次滑动就是几百次锁竞争，正好和内层 `textColors` 读取串在一起。
+     * 删掉后：每行只剩 tag 读（本来就必要，且 Map 命中后 tag 也已写好）。
+     *
+     * 谁还记得旧口径：`docs/CODE-RULES.md` §1.2 要求「装饰性现场必须能被热重载后的
+     * 新实例识别」—— tag 满足，实例内的表**不满足**，这也是删掉它的理由之一。
      */
-    private val originalTypefaces =
-        Collections.synchronizedMap(WeakHashMap<TextView, Typeface>())
 
     /** 见过的适配器（弱引用），配置变化时用它触发列表重绘 */
     private val seenAdapters =
@@ -173,6 +175,10 @@ class WatchlistFeature : Feature {
      *    （判定为否 → 用 `originalColor` 还原）。
      */
     private fun onActivityResumed(env: FeatureEnv, activity: Activity) {
+        // 回到页面就重新问一次宿主：用户可能刚在「个股详情」里加/删了自选。
+        // 缓存本身有 2 秒 TTL 兜底，这里清空是为了让「返回即准确」成立
+        // （否则可能拿着离开前的旧答案把刚加入的那只留成原色）。
+        WatchlistMembership.invalidate()
         observeConfig(env.config, allowRefresh = true)
 
         if (WatchlistTargets.isResumeRepaintActivity(activity.javaClass.name)) {
@@ -252,11 +258,14 @@ class WatchlistFeature : Feature {
             painted++
             if (firstMap == null) firstMap = "$dataPos→$fullPos"
         }
-        // onResume 才跑一次，INFO 级不刷屏；筛选生效时这行能直接证明代理拆包与下标映射都走到了
-        GLog.i(
-            "自选高亮：重绘 $painted 行（筛选=$filtered" +
-                (firstMap?.let { "，首个映射 $it" } ?: "") + "）",
-        )
+        // onResume 才跑一次，INFO 级不刷屏；筛选生效时这行能直接证明代理拆包与下标映射都走到了。
+        // 先判等级再拼串（CODE-RULES §2.5）。
+        if (GLog.isInfo) {
+            GLog.i(
+                "自选高亮：重绘 $painted 行（筛选=$filtered" +
+                    (firstMap?.let { "，首个映射 $it" } ?: "") + "）",
+            )
+        }
     }
 
     /**
@@ -307,9 +316,11 @@ class WatchlistFeature : Feature {
         val nameTv = findNameView(row) ?: return
 
         seenAdapters.add(adapter)
-        observeConfig(env.config, allowRefresh = true)
-
+        // 只读一次 `env.config`：它是 @Volatile，读两次之间配置可能已经换了新版，
+        // 那样 observeConfig 记的指纹与实际用来上色的快照就不是同一份。
         val cfg = env.config
+        observeConfig(cfg, allowRefresh = true)
+
         val inWatchlist = if (needsSelfCheck(cfg) && cfg.scopeStrategy) {
             judge(adapter, position)
         } else {
@@ -346,16 +357,18 @@ class WatchlistFeature : Feature {
         failMsg: String,
     ) {
         // ---- 颜色 ----
+        // `getTextColors()` 只有一次调用：既要拿当前色判原色，又要判「要不要改」。
+        // 原先 `originalColor()` 内部读一次、外面又读一次，热路径上白多一次
+        // ColorStateList 取色（后者是新建对象）。
+        val colors = runCatching { nameTv.textColors }.getOrNull()
+
         // ⚠️ **先无条件取一次原色**：这样「首次绑定到的就是自选股」的行也能记下宿主原色
         // （原先只在「不是自选」时才记 → 那类行还原时变成硬编码兜底色，宿主颜色被顶掉）。
-        val original = originalColor(nameTv)
+        val original = originalColor(nameTv, colors?.defaultColor)
         val target = if (inWatchlist && cfg.enabled) cfg.color else original
-        runCatching {
-            val colors = nameTv.textColors
-            if (colors == null || colors.defaultColor != target) {
-                nameTv.setTextColor(target)
-            }
-        }.onFailure { GLog.w(failMsg, it) }
+        if (colors == null || colors.defaultColor != target) {
+            runCatching { nameTv.setTextColor(target) }.onFailure { GLog.w(failMsg, it) }
+        }
 
         // ---- 字重 ----
         applyBold(nameTv, inWatchlist && cfg.watchlistBold)
@@ -376,34 +389,32 @@ class WatchlistFeature : Feature {
         // 它看到的 Typeface 已经是 BOLD，于是「原字重永远记不下来」，
         // 用户关掉「加粗」也撤不掉 → **那些名字永久粗着**。
         val tagged = tv.getTag(R.id.gsaux_watchlist_original_typeface) as? Typeface
-        val recorded = (tagged ?: originalTypefaces[tv])?.style
+        val recorded = tagged?.style
 
         // 决策走 [TypefacePlan]（纯逻辑，可单测）——
         // 「记原字重的时机」是这个功能最隐蔽的坑：记晚了就记下了加粗后的那个，
         // 还原时撤不回去（整行一直粗着）。
         when (val d = TypefacePlan.decide(curStyle, recorded, bold)) {
             is TypefacePlan.Decision.Set -> {
-                if (d.recordOriginal && cur != null) {
-                    originalTypefaces[tv] = cur
-                    // 也记到视图上（热重载后的新实例读得到）
+                // 记原字重（只记视图 tag —— 跨热重载认得出，见类顶部注释）
+                val base = if (d.recordOriginal && cur != null) {
                     runCatching { tv.setTag(R.id.gsaux_watchlist_original_typeface, cur) }
+                        .onFailure { GLog.w("记录原字重失败", it) }
+                    cur
+                } else {
+                    tagged ?: cur
                 }
-                if (curStyle != d.style) {
-                    val base = originalTypefaces[tv] ?: cur
-                    if (base != null) {
-                        runCatching { tv.typeface = Typeface.create(base, d.style) }
-                            .onFailure { GLog.w("加粗名称失败", it) }
-                    }
+                if (curStyle != d.style && base != null) {
+                    runCatching { tv.typeface = Typeface.create(base, d.style) }
+                        .onFailure { GLog.w("加粗名称失败", it) }
                 }
             }
             is TypefacePlan.Decision.Restore -> {
-                // 还原完就把记录清掉（视图上的 tag 与实例的表都清）——
+                // 还原完就把记录清掉 ——
                 // 留着的话下次加粗时会把「已还原的普通字重」当成原字重。
-                val taggedOrig = tv.getTag(R.id.gsaux_watchlist_original_typeface) as? Typeface
-                val orig = originalTypefaces.remove(tv) ?: taggedOrig
                 runCatching { tv.setTag(R.id.gsaux_watchlist_original_typeface, null) }
-                if (orig != null && cur != orig) {
-                    runCatching { tv.typeface = orig }
+                if (tagged != null && cur != tagged) {
+                    runCatching { tv.typeface = tagged }
                         .onFailure { GLog.w("还原名称字重失败", it) }
                 }
             }
@@ -413,14 +424,11 @@ class WatchlistFeature : Feature {
 
     private fun judge(adapter: Any, position: Int): Boolean {
         return try {
-            val item = itemAt(adapter, position)
-            val cam = codeAndMarket(item)
-            if (cam != null) {
-                val dot = cam.indexOf('.')
-                dot > 0 && ZxWatchlist.isInWatchlist(cam.substring(0, dot), cam.substring(dot + 1))
-            } else {
-                false
-            }
+            // 切分交给 [ZxWatchlist]（它内部本来就要拆一次）：这里再拆一次等于每行
+            // 白造两个 String。重载直接把宿主串喂进去，零分配。
+            // 再套一层 [WatchlistMembership]：滚动 / 筛选时同一只股票会被反复问，
+            // 缓存把「每行一次反射」降到「每次自选变化一次」。
+            WatchlistMembership.isInWatchlist(codeAndMarket(itemAt(adapter, position)))
         } catch (t: Throwable) {
             GLog.w("判定失败 pos=$position", t)
             false
@@ -466,27 +474,18 @@ class WatchlistFeature : Feature {
      * 原先只在「这一行不是自选」时才记 → 首次绑定到的就是自选股时，
      // 原色一次都没被记过 → 关掉高亮后还原成兜底色而不是宿主原来的颜色。
      */
-    private fun originalColor(tv: TextView): Int {
-        // ① 视图上的 tag（跨实例可认）
+    private fun originalColor(tv: TextView, currentColor: Int? = null): Int {
+        // ① 视图上的 tag（跨实例可认，唯一的权威记录）
         val tagged = tv.getTag(R.id.gsaux_watchlist_original_color) as? Int
         if (tagged != null && tagged != 0) return tagged
-        // ② 实例里的表（同实例的快路径）
-        originalColors[tv]?.let { return it }
 
-        var cur = ConfigKeys.FALLBACK_NORMAL_COLOR
-        runCatching {
-            val colors = tv.textColors
-            if (colors != null) {
-                val c = colors.defaultColor
-                if (c != 0) cur = c
-            }
-        }
+        // ② 调用方已经读过 `textColors` 就直接用，不再读第二次
+        val cur = currentColor?.takeIf { it != 0 } ?: ConfigKeys.FALLBACK_NORMAL_COLOR
 
         // 判定走纯函数（可单测）：当前色是我们染上去的预设色 → 那它不是「原色」
         if (!isPresetColor(cur)) {
-            originalColors[tv] = cur
-            // ③ 也记到视图上（热重载后的新实例读得到）
             runCatching { tv.setTag(R.id.gsaux_watchlist_original_color, cur) }
+                .onFailure { GLog.w("记录名称原色失败", it) }
             return cur
         }
         return ConfigKeys.FALLBACK_NORMAL_COLOR

@@ -512,7 +512,7 @@ internal fun mergeTagsJson(rawList: List<String>, want: List<String>): String? {
     var skipped = 0
     for (n in want) {
         val src = byName[n] ?: byPrefix[takeTagPrefix(n)]
-        val copy = src?.let { runCatching { org.json.JSONObject(it.toString()) }.getOrNull() }
+        val copy = copyTagObject(src)
         val e = copy ?: org.json.JSONObject()
         runCatching { e.put("labelName", n) }
         if (copy == null) {
@@ -551,6 +551,26 @@ internal fun mergeTagsJson(rawList: List<String>, want: List<String>): String? {
     // 但借来的原生卡会被永久清空 —— 下一轮 written == cur 也不会再补回来）。
     if (out.length() == 0) return null
     return out.toString()
+}
+
+/**
+ * 浅拷贝一个标签元素（键值逐个搬）：旧写法 `JSONObject(src.toString())` 要先
+ * 序列化再解析回来 —— 列表页巡检 800ms 一轮、每轮十几个标签，白造的字符串全进 GC
+ * （2026-11-14 改）。标签元素是扁平键值，逐键 `put` 与「拼串再解析」语义一致。
+ *
+ * 失败返回 null：调用方会走「新造元素 + 档位表补 labelId」那条路。
+ */
+private fun copyTagObject(src: org.json.JSONObject?): org.json.JSONObject? {
+    if (src == null) return null
+    return runCatching {
+        val out = org.json.JSONObject()
+        val keys = src.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            out.put(k, src.opt(k))
+        }
+        out
+    }.getOrNull()
 }
 
 /**

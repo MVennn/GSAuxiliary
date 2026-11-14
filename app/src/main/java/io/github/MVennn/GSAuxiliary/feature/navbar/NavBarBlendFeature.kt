@@ -281,11 +281,14 @@ class NavBarBlendFeature : Feature {
         // 三键导航时保留系统的强制对比度，保证那三个按键一定看得见
         val keepContrast = !NavBarTint.gestureNav(activity)
         NavBarTint.paint(activity, color, keepContrast)
-        val from = if (prev != null) "（原 ${NavBarTint.hex(prev)}）" else ""
-        GLog.i(
-            "$id：$why ${NavBarTint.hex(color)}$from → ${activity.javaClass.simpleName}" +
-                " 导航条已同色${if (keepContrast) "（三键导航，保留强制对比度）" else ""}"
-        )
+        // 两次 hex 转换 + 字符串拼接，先判等级（CODE-RULES §2.5）
+        if (GLog.isInfo) {
+            val from = if (prev != null) "（原 ${NavBarTint.hex(prev)}）" else ""
+            GLog.i(
+                "$id：$why ${NavBarTint.hex(color)}$from → ${activity.javaClass.simpleName}" +
+                    " 导航条已同色${if (keepContrast) "（三键导航，保留强制对比度）" else ""}"
+            )
+        }
         return true
     }
 

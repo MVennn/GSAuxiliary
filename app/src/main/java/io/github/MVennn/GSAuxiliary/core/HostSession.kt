@@ -24,30 +24,46 @@ package io.github.MVennn.GSAuxiliary.core
  */
 object HostSession {
 
-    /** 会话票据；空 = 还没截到 */
+    /**
+     * 一次截获得到的完整登录态。
+     *
+     * ## 为什么整体存一份而不是六个 `@Volatile` 字段（2026-11-14）
+     *
+     * 六个字段各自 volatile 时，[capture] 是「逐个赋值」的：另一条线程在中间读，
+     * 会拿到**新的 session 配旧的 sign**（甚至新 publicBlock 配旧 packtm）。
+     * [buildBody] 拿这种半新半旧的组合去发请求，服务端认不出是谁，只回来一个业务错误码，
+     * 现场看就是「偶发取不到数」，还查不出规律。
+     *
+     * 现在整份是不可变对象，[capture] 一次发布：读方要么看到上一份完整状态，
+     * 要么看到这一份完整状态。
+     */
+    private data class Snap(
+        val session: String = "",
+        val userCode: String = "",
+        val sign: String = "",
+        val packtm: String = "",
+        val sysVer: String = "",
+        val publicBlock: String = "",
+        val updatedAt: Long = 0L,
+    )
+
     @Volatile
-    var session: String = ""
-        private set
+    private var snap: Snap = Snap()
+
+    /** 会话票据；空 = 还没截到 */
+    val session: String get() = snap.session
 
     /** 用户号；空 = 还没截到 */
-    @Volatile
-    var userCode: String = ""
-        private set
+    val userCode: String get() = snap.userCode
 
     /** 请求签名（服务端**不校验参数绑定**，实测复用旧签名发全新参数照样 code=0） */
-    @Volatile
-    var sign: String = ""
-        private set
+    val sign: String get() = snap.sign
 
     /** 公共参数里的包时间（`packtm`），原样复用即可 */
-    @Volatile
-    var packtm: String = ""
-        private set
+    val packtm: String get() = snap.packtm
 
     /** 公共参数里的版本号（`sysVer`），原样复用即可 */
-    @Volatile
-    var sysVer: String = ""
-        private set
+    val sysVer: String get() = snap.sysVer
 
     /**
      * 公共参数块原文：从请求体开头截到 `openapi_sign=<值>` 结束为止。
@@ -56,17 +72,13 @@ object HostSession {
      * `conn_style=2.0.03.0.0` 这种点分三段的值，字段顺序也可能被服务端当签名输入
      * （虽然实测不校验参数绑定，但没必要去赌）。原样留一段，只替换 `pkg` 与 `reqtime`。
      */
-    @Volatile
-    var publicBlock: String = ""
-        private set
+    val publicBlock: String get() = snap.publicBlock
 
     /** 最近一次成功回填的时间戳（ms） */
-    @Volatile
-    var updatedAt: Long = 0L
-        private set
+    val updatedAt: Long get() = snap.updatedAt
 
     /** 三个必填项齐了才算可用 */
-    fun isReady(): Boolean = session.isNotEmpty() && userCode.isNotEmpty() && sign.isNotEmpty()
+    fun isReady(): Boolean = snap.let { it.session.isNotEmpty() && it.userCode.isNotEmpty() && it.sign.isNotEmpty() }
 
     /**
      * 从一段请求体里把公共参数抠出来。
@@ -83,18 +95,27 @@ object HostSession {
         val u = paramOf(body, "userCode")
         val g = paramOf(body, "openapi_sign")
         if (s.isEmpty() || g.isEmpty()) return false
-        val changed = s != session || g != sign || (u.isNotEmpty() && u != userCode)
-        session = s
-        sign = g
-        if (u.isNotEmpty()) userCode = u
-        val p = paramOf(body, "packtm")
-        if (p.isNotEmpty()) packtm = p
-        val v = paramOf(body, "sysVer")
-        if (v.isNotEmpty()) sysVer = v
+        val prev = snap
+        val p = paramOf(body, "packtm").ifEmpty { prev.packtm }
+        val v = paramOf(body, "sysVer").ifEmpty { prev.sysVer }
         val at = body.indexOf("openapi_sign=")
-        if (at >= 0) publicBlock = body.substring(0, at + "openapi_sign=".length + g.length)
-        updatedAt = System.currentTimeMillis()
-        return changed
+        val block = if (at >= 0) {
+            body.substring(0, at + "openapi_sign=".length + g.length)
+        } else {
+            prev.publicBlock
+        }
+        val next = Snap(
+            session = s,
+            userCode = u.ifEmpty { prev.userCode },
+            sign = g,
+            packtm = p,
+            sysVer = v,
+            publicBlock = block,
+            updatedAt = System.currentTimeMillis(),
+        )
+        // 整份发布：读方不会看到「新 session 配旧 sign」。
+        snap = next
+        return s != prev.session || g != prev.sign || (u.isNotEmpty() && u != prev.userCode)
     }
 
     /**
@@ -126,7 +147,8 @@ object HostSession {
      * 两者都必须和上一次不同，否则服务端可能按「重复包」直接丢弃。
      */
     fun buildBody(bizParams: String, pkgSeq: Long, stamp: String): String {
-        var t = publicBlock
+        // 只取一次快照：中途 capture 换了整份也不影响这一趟拼出来的完整性。
+        var t = snap.publicBlock
         t = replaceParam(t, "pkg", "N_" + pkgSeq)
         t = replaceParam(t, "reqtime", stamp)
         return if (bizParams.isEmpty()) t else t + "&" + bizParams
@@ -150,8 +172,9 @@ object HostSession {
 
     /** 诊断用：不打印任何凭据原文，只报长度与新鲜度 */
     fun describe(): String {
-        val age = if (updatedAt == 0L) "从未" else (System.currentTimeMillis() - updatedAt).toString() + "ms"
-        val uc = if (userCode.isEmpty()) "无" else "有"
-        return "session=" + session.length + "B userCode=" + uc + " sign=" + sign.length + "B 年龄=" + age
+        val s = snap
+        val age = if (s.updatedAt == 0L) "从未" else (System.currentTimeMillis() - s.updatedAt).toString() + "ms"
+        val uc = if (s.userCode.isEmpty()) "无" else "有"
+        return "session=" + s.session.length + "B userCode=" + uc + " sign=" + s.sign.length + "B 年龄=" + age
     }
 }

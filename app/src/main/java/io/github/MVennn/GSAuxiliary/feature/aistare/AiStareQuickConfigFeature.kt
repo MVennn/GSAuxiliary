@@ -183,7 +183,7 @@ class AiStareQuickConfigFeature : Feature {
                                         trackedWebViews.removeAll { it.get() == null }
                                         trackedWebViews.add(WeakReference(wv))
                                         wv.addJavascriptInterface(
-                                            Bridge(env),
+                                            Bridge(env, WeakReference(wv)),
                                             AiStareQuickConfigTargets.JS_BRIDGE_NAME,
                                         )
                                     }.onFailure { GLog.w("一键配置：构造期挂桥失败", it) }
@@ -247,7 +247,7 @@ class AiStareQuickConfigFeature : Feature {
 
     private fun injectInto(env: FeatureEnv, webView: WebView, url: String) {
         runCatching {
-            val bridge = Bridge(env)
+            val bridge = Bridge(env, WeakReference(webView))
             webView.addJavascriptInterface(bridge, AiStareQuickConfigTargets.JS_BRIDGE_NAME)
             webView.evaluateJavascript(injectedJs, null)
             val sj = schemesJson(env)
@@ -324,7 +324,17 @@ class AiStareQuickConfigFeature : Feature {
      * `addJavascriptInterface` 直达，宿主的 `GsBridge#showCommandError`
      * 永远看不到我们的命令（§0 / §10-3）。
      */
-    private inner class Bridge(private val env: FeatureEnv) {
+    /**
+     * @param owner **挂这个桥的那个 WebView**。守卫必须问它，不能问全局 [currentWebView]：
+     *   桥挂在宿主全部 HybirdWebView 上，而 [currentWebView] 只在价格页 onPageFinished 时
+     *   更新、离开价格页也不清空 —— 用户在价格页看完点进别的 H5，那个页面的第三方脚本照样
+     *   调得到 `gsaux.saved()`，守卫读到的却还是「上一个价格页」，于是真的 finish 掉页面、
+     *   拉起详情页。绑定自己的 WebView 之后，非价格页的调用一律失败（2026-11-14 审计 P1-1）。
+     */
+    private inner class Bridge(
+        private val env: FeatureEnv,
+        private val owner: WeakReference<WebView>,
+    ) {
 
         /**
          * JS → 日志（排查用）。H5 里没有 console 可看，点一次按钮到底走到哪一步
@@ -359,7 +369,7 @@ class AiStareQuickConfigFeature : Feature {
             lastToastAtMs = now
             val text = msg.take(TOAST_MAX_LEN)
             mainHandler.post {
-                if (!pricePageGuarded("toast")) return@post
+                if (!pricePageGuarded(owner, "toast")) return@post
                 nativeToast(text)
             }
         }
@@ -374,12 +384,11 @@ class AiStareQuickConfigFeature : Feature {
         @JavascriptInterface
         fun apply(schemeId: String) {
             val cfg = env.config
-            GLog.i("一键配置：apply $schemeId（开关=${cfg.aistareQuickEnabled}）")
             if (!cfg.aistareQuickEnabled) return
             mainHandler.post {
                 runCatching {
-                    val wv = currentWebView?.get()
-                    if (wv == null) { GLog.w("一键配置：apply 时没有 currentWebView"); return@runCatching }
+                    val wv = owner.get()
+                    if (wv == null) { GLog.w("一键配置：apply 时桥所属的 WebView 已回收"); return@runCatching }
                     // 桥现在挂在每个 HybirdWebView 上（必须赶在页面加载前挂），别的 H5
                     // 也看得见它：当前不是价格页就沉默返回，不要在别的页面弹「取数失败」。
                     val curUrl = wv.url.orEmpty()
@@ -388,6 +397,8 @@ class AiStareQuickConfigFeature : Feature {
                         GLog.d("一键配置：apply 时 URL 不是价格页（$curUrl）")
                         return@runCatching
                     }
+                    // 到这里才打日志：schemeId 是 H5 传进来的任意串，先截断再进 INFO
+                    GLog.i("一键配置：apply ${schemeId.take(32)}（开关=${cfg.aistareQuickEnabled}）")
                     val scheme = QuickConfigStore.decode(cfg.aiStareQuickConfig)
                         .schemes.firstOrNull { it.id == schemeId }
                     if (scheme == null) {
@@ -453,7 +464,7 @@ class AiStareQuickConfigFeature : Feature {
                 runCatching {
                     // 与 apply() 同款 URL 守卫：桥挂在全部 HybirdWebView 上，任意 H5 的
                     // 第三方脚本都能调到 saved()，不能让它触发原生 Toast / 收 Activity 栈。
-                    if (!pricePageGuarded("saved")) return@post
+                    if (!pricePageGuarded(owner, "saved")) return@post
                     GLog.i("一键配置：保存完成，收页面（回个股详情页=$backToStock）")
                     // 提示先弹：原生 Toast 是系统浮层，页面立刻关掉也不影响它
                     nativeToast("保存成功")
@@ -468,7 +479,7 @@ class AiStareQuickConfigFeature : Feature {
                     // 这族页面它自己会露出来。不是从详情页进来的（首页 → 智能盯盘 → 创建 →
                     // 价格），栈里压根没有详情页 —— 收完会掉到首页，所以要**自己拉起一个**。
                     val hasDetail = allActivities().any { it.javaClass.name == STOCK_FRAG_CLASS }
-                    val parsed = parseStockCode(currentWebView?.get()?.url.orEmpty())
+                    val parsed = parseStockCode(owner.get()?.url.orEmpty())
                     if (!hasDetail && parsed != null) {
                         // 先拉起详情页、再收页面：反过来做会让用户先看见首页闪一下
                         openStockDetail(env, parsed.first, parsed.second)
@@ -503,7 +514,7 @@ class AiStareQuickConfigFeature : Feature {
                 runCatching {
                     // 与 apply() 同款 URL 守卫：任意 H5 都调得到 manage()，
                     // 不能让第三方页面随意拉起模块设置页。
-                    if (!pricePageGuarded("manage")) return@post
+                    if (!pricePageGuarded(owner, "manage")) return@post
                     val ctx = hostApplicationContext() ?: run {
                         GLog.w("一键配置：拿不到宿主 Context，拉起模块 App 失败")
                         return@post
@@ -642,9 +653,9 @@ class AiStareQuickConfigFeature : Feature {
      * 当前 WebView 不是价格页就沉默拒绝，防其它页面触发原生副作用。
      * **必须主线程调**（`WebView.getUrl()` 是主线程 API，Bridge 各方法已 post 进主线程）。
      */
-    private fun pricePageGuarded(action: String): Boolean {
-        val wv = currentWebView?.get() ?: run {
-            GLog.d("一键配置：$action 时没有 currentWebView")
+    private fun pricePageGuarded(view: WeakReference<WebView>, action: String): Boolean {
+        val wv = view.get() ?: run {
+            GLog.d("一键配置：$action 时桥所属的 WebView 已回收")
             return false
         }
         val url = wv.url.orEmpty()

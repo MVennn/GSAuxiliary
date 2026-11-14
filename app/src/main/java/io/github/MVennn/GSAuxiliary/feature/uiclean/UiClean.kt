@@ -115,7 +115,24 @@ object UiClean {
      * 底栏 tab、首页快捷入口、行情页快捷入口都是这个形状，
      * 所以这个判据被三处复用 —— 它是本层最重要的结构特征。
      */
-    fun looksLikeEntryItem(v: View): Boolean = v is ViewGroup && hasIcon(v) && firstLabel(v) != null
+    fun looksLikeEntryItem(v: View): Boolean {
+        if (v !is ViewGroup) return false
+        // 一次遍历同时判「有没有图标」和「有没有文案」（两者都成立就停）。
+        // 原来是 hasIcon + firstLabel 各走一遍整棵子树，而调用方又对「每个候选 ViewGroup」
+        // 调本函数 —— 嵌套结构下逼近 O(n²)，进页面 / 换 Tab 时有 5–30ms 的尖峰。
+        var icon = false
+        var label = false
+        walk(v) { cur ->
+            if (!icon && (cur is ImageView ||
+                    (cur is TextView && cur.compoundDrawables.getOrNull(1) != null))
+            ) {
+                icon = true
+            }
+            if (!label && cur is TextView && !textOf(cur).isNullOrEmpty()) label = true
+            icon && label
+        }
+        return icon && label
+    }
 
     /** 屏幕上真的画得出来（`GONE`、零尺寸、父链不可见都算 false） */
     fun visibleOnScreen(v: View): Boolean = v.isShown && v.width > 0 && v.height > 0

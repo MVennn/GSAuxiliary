@@ -32,8 +32,17 @@ object ConfigKeys {
     /** 总开关：自选股高亮 */
     const val ENABLED = "enabled"
 
-    /** 高亮色（ARGB int） */
+    /** 高亮色（ARGB int）——老版本的**唯一**高亮色，现在是分档配色为空时的回落值 */
     const val COLOR = "color"
+
+    /**
+     * 分档配色：涨 / 跌 / 平 三档各用一个高亮色（JSON 字符串，结构见
+     * [io.github.MVennn.GSAuxiliary.core.WatchlistColorStore]）。
+     *
+     * 空串 = 三档同色、颜色取 [COLOR] —— 出厂配置与「升级上来的老配置」都是这个形态，
+     * 所以升级后看到的颜色与升级前完全一致，不需要一次性迁移。
+     */
+    const val WATCHLIST_COLORS = "watchlist_colors"
 
     /**
      * 自选股名称**加粗**（策略详情页）。
@@ -194,12 +203,28 @@ object ConfigKeys {
     const val STOCK_BAR_ENTRY = "stock_bar_entry"
 
     /**
-     * 底栏：主界面底栏不再显示「理财」那一格，其余入口重新均分整行。
+     * 底栏入口自定义：主界面底栏的若干格可以隐藏，其余入口重新均分整行。
      *
-     * 运行时视图精简实现（只改可见性，不删 Tab、不动索引），见
+     * **这个键是总开关**（出厂关）；具体藏哪几格在 [DOCK_ENTRIES] 里。老版本的
+     * 「隐藏理财入口」只有这一位布尔，升级后它同时充当**迁移源**：
+     * [DOCK_ENTRIES] 没写过（空串）时，本键为真等价于「藏理财」（见
+     * `DockEntryStore.decode`），老用户升级后表现不变。
+     *
+     * 运行时视图实现（只改可见性与边距，不删 Tab、不动索引），见
      * [io.github.MVennn.GSAuxiliary.feature.dock.DockCleanFeature]。
      */
     const val DOCK_CLEAN = "dock_clean"
+
+    /**
+     * 底栏**藏哪几格**（JSON 字符串，v1：`{"v":1,"hidden":["money"]}`）。
+     *
+     * 归 [FEATURE_PARAM_KEYS] 而不是 [FEATURE_KEYS]：它是 [DOCK_CLEAN] 的**数据**，
+     * 重置时该回到「一个都不藏」，不是被当成开关关掉。
+     *
+     * 出厂值是**空串**而不是 `{"v":1,"hidden":[]}`：空串表示「这条键从没被写过」，
+     * 读取侧才能回落到老布尔键 [DOCK_CLEAN] 做迁移（见 `DockEntryStore.decode`）。
+     */
+    const val DOCK_ENTRIES = "dock_entries"
 
     /**
      * 首页：隐藏首页快捷入口下方的那条横幅。
@@ -424,6 +449,14 @@ object ConfigKeys {
     const val DEFAULT_COLOR = 0xFFFF8000.toInt()
 
     /**
+     * 分档配色的出厂值：**空串**（三档同色，都回落 [DEFAULT_COLOR]）。
+     *
+     * 不写成「三档都等于某个色值」的 JSON：那样用户之后改 [COLOR] 就不再影响分档表，
+     * 而空串让「没配过分档」这件事一直可判。
+     */
+    const val DEFAULT_WATCHLIST_COLORS = ""
+
+    /**
      * 作用域开关：是否作用于「我的策略 → 策略详情」。
      *
      * 二级菜单参数，默认开启（总开关关了看不出来，开关一开就该是全覆盖）。
@@ -501,6 +534,9 @@ object ConfigKeys {
      * 出厂一律默认关，由用户自己按需打开。
      */
     const val DEFAULT_DOCK_CLEAN = false
+
+    /** 出厂「一个都不藏」＝**空串**（见 [DOCK_ENTRIES] 的迁移说明） */
+    const val DEFAULT_DOCK_ENTRIES = ""
     const val DEFAULT_HOME_BANNER_HIDE = false
     const val DEFAULT_MARKET_BANNER_HIDE = false
     const val DEFAULT_MARKET_SECTOR_COMPACT = false
@@ -589,9 +625,10 @@ object ConfigKeys {
 
     /** 会被备份 / 恢复 / 重置覆盖的全部配置键 */
     val ALL_KEYS = arrayOf(
-        ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL,
+        ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE,
+        STG_SELECT_ALL,
         STG_SNAP_ADD, STG_STOCK_FILTER, STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
-        DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
+        DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
@@ -636,11 +673,15 @@ object ConfigKeys {
      *
      * [STG_FILTER_PER_STRATEGY] 也归这里：它是「筛选股票」下面的子选项，
      * 重置应回到「共用一份筛选」而不是被关掉。
+     *
+     * [DOCK_ENTRIES] 同理：它是「底栏入口自定义」的数据（藏哪几格），
+     * 重置 = 一个都不藏（[DEFAULT_DOCK_ENTRIES] 的空串），而不是把功能关掉。
      */
     val FEATURE_PARAM_KEYS = arrayOf(
-        COLOR, SCOPE_STRATEGY, STG_QUOTE_SWIPE, STG_FILTER_PER_STRATEGY, STG_MERGE_GROUPS, AISTARE_QUICK_CONFIG,
+        COLOR, WATCHLIST_COLORS, SCOPE_STRATEGY, STG_QUOTE_SWIPE, STG_FILTER_PER_STRATEGY, STG_MERGE_GROUPS,
+        AISTARE_QUICK_CONFIG,
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
-        ZX_COPY_MENU, ZX_COPY_RULES,
+        ZX_COPY_MENU, ZX_COPY_RULES, DOCK_ENTRIES,
     )
 
     /**
@@ -660,10 +701,10 @@ object ConfigKeys {
      * 「[ConfigSnapshot] 只放目标进程要读的键」。
      */
     val SNAPSHOT_KEYS: Set<String> = setOf(
-        ENABLED, COLOR, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
+        ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
         STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER,
         STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
-        DOCK_CLEAN, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
+        DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
         AISTARE_QUICK_ENABLED, AISTARE_QUICK_CONFIG,
@@ -677,6 +718,7 @@ object ConfigKeys {
         ENABLED to DEFAULT_ENABLED,
         WATCHLIST_BOLD to DEFAULT_WATCHLIST_BOLD,
         COLOR to DEFAULT_COLOR,
+        WATCHLIST_COLORS to DEFAULT_WATCHLIST_COLORS,
         SCOPE_STRATEGY to DEFAULT_SCOPE_STRATEGY,
         STG_DIRECT_QUOTE to DEFAULT_STG_DIRECT_QUOTE,
         STG_QUOTE_SWIPE to DEFAULT_STG_QUOTE_SWIPE,
@@ -688,6 +730,7 @@ object ConfigKeys {
         STG_MERGE_GROUPS to DEFAULT_STG_MERGE_GROUPS,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
         DOCK_CLEAN to DEFAULT_DOCK_CLEAN,
+        DOCK_ENTRIES to DEFAULT_DOCK_ENTRIES,
         HOME_BANNER_HIDE to DEFAULT_HOME_BANNER_HIDE,
         MARKET_BANNER_HIDE to DEFAULT_MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT to DEFAULT_MARKET_SECTOR_COMPACT,

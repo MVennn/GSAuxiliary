@@ -367,8 +367,12 @@ class StockDetailBarFeature : PageSyncFeature() {
                 env.xposed.hook(m)
                     .setId("stockbar:updateViewLayout")
                     .intercept { chain ->
-                        runCatching { clampWindowDim(chain.args) }
-                            .onFailure { GLog.w("底栏入口：压住宿主调暗失败", it) }
+                        // 先判轮次再取参数（CODE-RULES §2.7）：空闲时绝大多数调用
+                        // 在这儿就返回，不必物化整条参数表。
+                        if (round.get() != null) {
+                            runCatching { clampWindowDim(chain.args) }
+                                .onFailure { GLog.w("底栏入口：压住宿主调暗失败", it) }
+                        }
                         chain.proceed()
                     }
             )

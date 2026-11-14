@@ -160,6 +160,9 @@ object LogExporter {
 
     private data class ShellResult(val exitCode: Int, val output: String, val timedOut: Boolean)
 
+    /** 导出文本的硬顶（字符）：日志本身 512 KB 滚动，留 8 倍余量足够，且封住异常放量的口子 */
+    private const val MAX_OUTPUT_CHARS = 4 * 1024 * 1024
+
     /**
      * 跑一条 `su -c` 命令。
      *
@@ -171,10 +174,18 @@ object LogExporter {
             val process = ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
                 .start()
-            val out = StringBuilder()
+            // StringBuffer 而不是 StringBuilder：读线程在写，主线程在 join 超时后可能
+            // 直接 toString() —— 未同步的 StringBuilder 在这种读写下会抛
+            // ArrayIndexOutOfBoundsException，或导出一段被截断的半行。
+            val out = StringBuffer()
             val reader = Thread {
                 runCatching {
-                    process.inputStream.bufferedReader().useLines { seq -> seq.forEach { out.appendLine(it) } }
+                    process.inputStream.bufferedReader().useLines { seq ->
+                        seq.forEach { line ->
+                            // 极端情况下 su 输出可以很大，给个硬顶，避免导出把内存顶满
+                            if (out.length < MAX_OUTPUT_CHARS) out.append(line).append('\n')
+                        }
+                    }
                 }
             }
             reader.isDaemon = true

@@ -38,4 +38,31 @@ object StgCatalogBroadcast {
 
     /** payload 结构版本：解析端只认这个值，字段改了要一起改 */
     const val VERSION = 1
+
+    /*
+     * ---- 载荷上限（2026-11-14 加） ----
+     *
+     * 这个广播是 **exported** 的，[SIG] 只是固定串（谁都能读到）——
+     * 也就是说任何装在本机的应用都能往这里灌载荷。旧实现直接 `JSONObject(raw)`：
+     * 一个 50MB 的包会在主线程（receiver 默认在主线程）解析并写进 prefs，
+     * 轻则 ANR、重则把设置页永久卡在「导入」上。
+     *
+     * 这些上限只约束**畸形/恶意**输入：真实清单是 10 来个策略、名字几十字。
+     */
+
+    /** 整包字符数上限（正常几 KB） */
+    const val MAX_PAYLOAD_CHARS = 32 * 1024
+
+    /** 条目数上限（宿主策略名额 10 个，留足余量） */
+    const val MAX_ITEMS = 200
+
+    /** 单条策略名上限 */
+    const val MAX_NAME_CHARS = 120
+
+    /** stId 上限（宿主内部编号，正常是短数字串） */
+    const val MAX_ST_ID_CHARS = 32
+
+    /** 单条标签数上限与单个标签长度上限 */
+    const val MAX_TAGS_PER_ITEM = 16
+    const val MAX_TAG_CHARS = 32
 }

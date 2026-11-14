@@ -34,8 +34,15 @@ data class ConfigSnapshot(
     val stgMergeGroups: String,
     /** 个股详情页底栏在「自选」与「更多」之间注入「智能盯盘」快捷入口 */
     val stockBarEntry: Boolean,
-    /** 主界面底栏不再显示「理财」那一格 */
+    /**
+     * 主界面底栏入口自定义的**总开关**；藏哪几格见 [dockEntries]。
+     *
+     * 老版本只有这一位布尔（＝只藏「理财」），升级后它同时充当迁移源：
+     * [dockEntries] 为空串时，本项为真等价于「藏理财」（`DockEntryStore.decode`）。
+     */
     val dockClean: Boolean,
+    /** 底栏要藏哪几格（JSON 字符串，结构见 `DockEntryStore`） */
+    val dockEntries: String,
     /** 隐藏首页快捷入口下方的横幅 */
     val homeBannerHide: Boolean,
     /** 隐藏行情市场页的滚动横幅与它下方的快捷入口 */
@@ -92,7 +99,7 @@ data class ConfigSnapshot(
      *
      * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
      * （「重置模块」一次写 32 个键 = `FEATURE_KEYS` 22 + `FEATURE_PARAM_KEYS` 10、
-     * 恢复备份一次写 39 个键 = `ALL_KEYS`）。
+     * 恢复备份一次写 40 个键 = `ALL_KEYS`）。
      *
      * 改成「布尔项占低位、逐个异或」之后：**28 个布尔项之间不再有任何碰撞**
      * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON /
@@ -147,6 +154,7 @@ data class ConfigSnapshot(
         h = h xor aiStareQuickConfig.hashCode()
         h = h xor zxCopyRules.hashCode()
         h = h xor stgMergeGroups.hashCode()
+        h = h xor dockEntries.hashCode()
         h
     }
 
@@ -167,6 +175,7 @@ data class ConfigSnapshot(
             stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
             stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
             dockClean = ConfigKeys.DEFAULT_DOCK_CLEAN,
+            dockEntries = ConfigKeys.DEFAULT_DOCK_ENTRIES,
             homeBannerHide = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,
             marketBannerHide = ConfigKeys.DEFAULT_MARKET_BANNER_HIDE,
             marketSectorCompact = ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT,

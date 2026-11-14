@@ -40,8 +40,14 @@ internal object StrategyLabelTable {
         val parentId: String,
         val parentName: String,
     ) {
-        /** 界面上的那一行：有父标签时写成「量比1.5-2.0」，没有就只是标签名 */
-        val display: String get() = if (parentName.isEmpty()) labelName else parentName + labelName
+        /**
+         * 界面上的那一行：有父标签时写成「量比1.5-2.0」，没有就只是标签名。
+         *
+         * **构造期算好**（2026-11-14）：旧写法是计算型 getter，全表 1119 条、每次读都要
+         * 新拼一个字符串，而 [byDisplay] 建索引时本来就要读一遍 —— 相当于同一个字符串
+         * 拼好又扔掉。CODE-RULES §2.2 也明确禁止计算型 getter。
+         */
+        val display: String = if (parentName.isEmpty()) labelName else parentName + labelName
     }
 
     /** 全部条目，顺序就是宿主标签表的顺序 */
@@ -93,8 +99,25 @@ internal object StrategyLabelTable {
         val n = name.trim()
         if (n.isEmpty()) return null
         byDisplay[n]?.let { return it }
-        return spanEntry(n)
+        // 跨档反查要扫全表 1119 条 + 每档正则，命不中时是主线程 0.5~2 ms；
+        // 合成文本的种类是有限的（用户建的组合），结果（含「查不到」）记下来。
+        synchronized(spanCache) {
+            spanCache[n]?.let { return if (it === NULL_HIT) null else it as Entry }
+        }
+        val hit = spanEntry(n)
+        synchronized(spanCache) {
+            if (spanCache.size >= SPAN_CACHE_MAX) spanCache.clear()
+            spanCache[n] = hit ?: NULL_HIT
+        }
+        return hit
     }
+
+    /** [entryForDisplay] 的跨档反查缓存：存 Entry 或 [NULL_HIT]（HashMap 存不了 null） */
+    private val spanCache = HashMap<String, Any>(64)
+
+    private val NULL_HIT = Any()
+
+    private const val SPAN_CACHE_MAX = 256
 
     /** 父标签名（「量比」「流通市值」「股价」…），跨档反查要按最长的那个前缀切 */
     private val parentNames: List<String> by lazy {

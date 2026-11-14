@@ -230,7 +230,20 @@
     </string-array>
 
     <!-- 底栏 -->
-    <string name="feature_dock_clean_switch">隐藏 理财 入口</string>
+    <string name="feature_dock_clean_switch">自定义 底栏 入口</string>
+    <string name="feature_dock_clean_entry">底栏入口设置</string>
+    <string name="feature_dock_clean_entry_summary">已隐藏 %1$d 个</string>
+    <string name="feature_dock_clean_entry_summary_all">六个入口全部显示</string>
+    <string name="detail_dock_clean_title">底栏入口设置</string>
+    <string name="switch_dock_entry_home">隐藏 首页 入口</string>
+    <string name="switch_dock_entry_quotes">隐藏 行情 入口</string>
+    <string name="switch_dock_entry_zx">隐藏 自选 入口</string>
+    <string name="switch_dock_entry_trade">隐藏 交易 入口</string>
+    <string name="switch_dock_entry_money">隐藏 理财 入口</string>
+    <string name="switch_dock_entry_mine">隐藏 账户 入口</string>
+    <string name="switch_dock_entry_summary_on">已隐藏</string>
+    <string name="switch_dock_entry_summary_off">显示中</string>
+    <string name="switch_dock_entry_summary_locked">显示中·底栏至少保留一个入口</string>
 
     <!-- 首页 -->
     <string name="feature_home_banner_switch">隐藏 横幅</string>

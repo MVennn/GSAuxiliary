@@ -63,7 +63,8 @@ private const val CopyRuleRemoveMillis = 220
  * 与「一键配置」的方案列表页同构：规则列表 + 行尾 ⋮（设为默认 / 上移 / 下移 / 删除）
  * + 新建规则；每改一下立即写 `zx_copy_rules`。
  *
- * 页面顶部单独放一颗**长按动作菜单**开关（全局，不属于某条规则）。
+ * 「长按动作菜单」开关**不在本页**，它属于按钮自己，放在「复制按钮设置」页
+ * （[ZxCopyButtonScreen]）；本页只管规则。
  */
 @Composable
 internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {

@@ -98,6 +98,8 @@ class FeatureManager(private val env: FeatureEnv) {
                 GLog.e("安装功能 [${f.id}] 失败${hookFailureHint(t)}", t)
             }
         }
+        // 记下已分发过的指纹：装完这一轮的现场就是这份配置的样子
+        lastConfigFingerprint = cfg.fingerprint
         GLog.i("功能安装完成：$installed/${features.size}，共 ${bag.size} 个钩子")
         // 页面销毁时的统一回收点：与功能开关无关，装了就要有，否则页面级记账只能等
         // 关开关 / 热重载才释放（值→key 环会让弱表永远不生效）。
@@ -158,6 +160,15 @@ class FeatureManager(private val env: FeatureEnv) {
      */
     fun onConfigChanged(cfg: ConfigSnapshot) {
         env.config = cfg
+        // 指纹没变就是「值一个都没动」——比如设置页一次只改了个与功能无关的键、
+        // 或 remote preferences 重复回了同一条通知。此时既没有要补装的功能，
+        // 也没有任何功能会因这趟分发改变行为，直接跳过整趟主线程分发。
+        // 新开的开关一定改指纹（22 个功能键全在指纹里），所以不会漏装。
+        if (cfg.fingerprint == lastConfigFingerprint && !hasPendingInstall(cfg)) {
+            GLog.d("配置指纹未变，跳过本轮分发")
+            return
+        }
+        lastConfigFingerprint = cfg.fingerprint
         mainHandler.post {
             for (f in features) {
                 val newlyInstalled = f.isEnabled(cfg) &&
@@ -178,6 +189,15 @@ class FeatureManager(private val env: FeatureEnv) {
                     .onFailure { GLog.w("功能 [${f.id}] 处理配置变化失败", it) }
             }
         }
+    }
+
+    /** 本进程已分发过的配置指纹；[Int.MIN_VALUE] = 还没分发过 */
+    @Volatile
+    private var lastConfigFingerprint = Int.MIN_VALUE
+
+    /** 是否有「已启用但没装过」的功能（补装判定，与分发循环里的判据一致） */
+    private fun hasPendingInstall(cfg: ConfigSnapshot): Boolean = features.any { f ->
+        f.isEnabled(cfg) && synchronized(installedIds) { f.id !in installedIds }
     }
 
     /**
@@ -212,6 +232,8 @@ class FeatureManager(private val env: FeatureEnv) {
     fun uninstallAll() {
         val off = allOffSnapshot()
         env.config = off   // 旧实例自此只读得到「全关」：钩子里的开关判断也立即失效
+        // 卸载后如果又被复用，指纹必须能让下一趟分发照常进行
+        lastConfigFingerprint = Int.MIN_VALUE
         val features = this.features
         val teardown = Runnable {
             for (f in features) {
@@ -245,6 +267,7 @@ class FeatureManager(private val env: FeatureEnv) {
         stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
         stockBarEntry = false,
         dockClean = false,
+        dockEntries = ConfigKeys.DEFAULT_DOCK_ENTRIES,
         homeBannerHide = false,
         marketBannerHide = false,
         marketSectorCompact = false,

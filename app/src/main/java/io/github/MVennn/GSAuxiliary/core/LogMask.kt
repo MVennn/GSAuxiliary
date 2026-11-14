@@ -31,4 +31,50 @@ object LogMask {
      */
     fun code(code: String?): String =
         if (code.isNullOrBlank() || code.length <= 2) "代码已略" else code.take(2) + "****"
+
+    /**
+     * 把 URL / 请求体 / 头部里的**凭据类取值**换成 `***`（2026-11-14 加）。
+     *
+     * 为什么需要：网络探针会把宿主的请求体与头部打进日志，而宿主的行情 / 策略请求
+     * 带着 `session=…&openapi_sign=…`，头部还可能有 `Cookie` / `Authorization`。
+     * 这些日志会落进 512KB 滚动日志、还能被界面「导出日志」整段拷走 ——
+     * 等于把账号会话写进了可外发的文件（`docs/CODE-RULES.md` §3 只挡了个股代码）。
+     *
+     * 口径：**键名保留、取值抹掉**，仍然看得出「带了哪些参数」，但拼不出会话。
+     * 只用于诊断日志；采集用的原始串不经过这里（[HostSession] 要真值）。
+     */
+    fun secrets(text: String?): String {
+        if (text.isNullOrEmpty()) return text.orEmpty()
+        val masked = SECRET_PAIR.replace(text) { m ->
+            m.groupValues[1] + m.groupValues[2] + REDACTED
+        }
+        // 凭据抹完还要过一遍个股代码：行情接口常在查询串里回显 stockCode=600519.1，
+        // 只抹 session 的话，INFO 日志照样把用户盯的票整段写进可导出文件（§3.1）。
+        return STOCK_PARAM.replace(masked) { m ->
+            m.groupValues[1] + "=" + m.groupValues[2].take(2) + "****" + m.groupValues[3]
+        }
+    }
+
+    private const val REDACTED = "***"
+
+    /**
+     * 键名 + 分隔符 + 取值。
+     *
+     * 用原始字符串（三引号）写，正则里的反斜杠**不转义**，改的时候别再套一层。
+     * 取值止于 `&`、空白、分号、逗号、引号与右花括号 —— 够覆盖 URL 查询串、
+     * `k=v&k2=v2` 请求体、`Cookie: a=b; c=d` 与 JSON 里的 `"session":"…"`。
+     */
+    private val SECRET_PAIR = Regex(
+        """(?i)(openapi_sign|usercode|jsessionid|authorization|cookie|session|ticket|token|password|passwd|pwd|sign)(\s*[=:]\s*)([^&\s;,"'}]+)"""
+    )
+
+    /**
+     * 查询串里的个股代码：`stockCode=600519.1` / `symbol=000001`（键名不带分隔符，只认 `=`）。
+     *
+     * 与 [SECRET_PAIR] 分开写的唯一原因：这里要保留前两位与市场后缀，
+     * 不能整段抹成 `***` —— 排查时还需要看出「是哪只票」。
+     */
+    private val STOCK_PARAM = Regex(
+        """(?i)\b(stockCode|stock_code|symbol|secuCode|secu_code)=(\d{6})(\.\d+)?"""
+    )
 }

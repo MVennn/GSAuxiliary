@@ -3,8 +3,10 @@ package io.github.MVennn.GSAuxiliary.app
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.StgCatalogBroadcast
+import io.github.MVennn.GSAuxiliary.core.TargetApp
 
 /**
  * 接收宿主进程广播过来的策略清单（清单声明见 AndroidManifest.xml，exported）。
@@ -23,6 +25,22 @@ class HostStgCatalogReceiver : BroadcastReceiver() {
         if (sig != StgCatalogBroadcast.SIG) {
             GLog.w("宿主策略清单：广播签名不符，已忽略")
             return
+        }
+        // 签名是写死在 APK 里的常量，谁都能读出来 —— 它只能挡住「随手乱发」，挡不住伪造。
+        // API 34 起系统会告诉我们这条广播是谁发的，直接比宿主 uid：只有宿主进程本身的
+        // 清单可信。拿不到宿主 uid（未安装 / 系统查询失败）时退回只认签名，不因此拒收。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val hostUid = runCatching {
+                context.packageManager.getPackageUid(TargetApp.PACKAGE, 0)
+            }.getOrNull()
+            if (hostUid != null) {
+                @Suppress("NewApi")
+                val senderUid = runCatching { sentFromUid }.getOrNull() ?: -1
+                if (senderUid != hostUid) {
+                    GLog.w("宿主策略清单：发送方 uid=$senderUid 与宿主（$hostUid）不符，已忽略")
+                    return
+                }
+            }
         }
         val payload = intent.getStringExtra(StgCatalogBroadcast.EXTRA_PAYLOAD)
         val count = HostStgCatalog.store(context, payload)

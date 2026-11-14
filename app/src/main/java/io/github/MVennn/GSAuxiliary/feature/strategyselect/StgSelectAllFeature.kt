@@ -760,14 +760,17 @@ class StgSelectAllFeature : Feature {
     ) {
         if (lv.choiceMode != ListView.CHOICE_MODE_MULTIPLE) return
         val header = lv.headerViewsCount
-        val table = tableRowStates(lv, total) ?: return
-        if (!filtered && hostCount >= 0 && table.count { it } != hostCount) return
+        // 这条路径挂在 OnPreDraw 上、多选态**每帧**都跑：表用复用缓冲，
+        // 勾选数在同一次扫描里数出来（原来还要再过一遍 count { it }）。
+        val buf = rowStatesBuffer(total)
+        val tableChecked = tableRowStatesInto(lv, total, buf) ?: return
+        if (!filtered && hostCount >= 0 && tableChecked != hostCount) return
         val first = lv.firstVisiblePosition
         for (i in 0 until lv.childCount) {
             val index = first + i - header
             if (index !in 0 until total) continue
             val row = lv.getChildAt(i) ?: continue
-            writeRowChecked(lv, row, table[index], ctId)
+            writeRowChecked(lv, row, buf[index], ctId)
         }
     }
 
@@ -1447,12 +1450,39 @@ class StgSelectAllFeature : Feature {
      * 已不承载选中态，框架、宿主 `getView`、手动点行读写的都是这一格。
      */
     private fun tableRowStates(lv: ListView, total: Int): BooleanArray? {
+        val out = BooleanArray(total)
+        return if (tableRowStatesInto(lv, total, out) == null) null else out
+    }
+
+    /**
+     * 把 checked states 读进调用方给的数组，同时数出勾着几行。
+     *
+     * 数组由调用方决定是新建还是复用（[rowStatesBuffer]）；返回 null = 这个列表
+     * 没有 checked states 可读。**只复用的调用方**才可以传成员缓冲——返回值数组
+     * 会被别处继续持有，那是新建出来的。
+     */
+    private fun tableRowStatesInto(lv: ListView, total: Int, out: BooleanArray): Int? {
         if (lv.choiceMode == ListView.CHOICE_MODE_NONE) return null
         val header = lv.headerViewsCount
-        val out = BooleanArray(total)
-        for (i in 0 until total) out[i] = lv.isItemChecked(header + i)
-        return out
+        var checked = 0
+        for (i in 0 until total) {
+            val v = lv.isItemChecked(header + i)
+            out[i] = v
+            if (v) checked++
+        }
+        return checked
     }
+
+    /** [tableRowStatesInto] 的复用缓冲：只在 OnPreDraw 那条每帧路径上使用 */
+    private fun rowStatesBuffer(total: Int): BooleanArray {
+        val cur = rowStatesBuf
+        if (cur != null && cur.size == total) return cur
+        val fresh = BooleanArray(total)
+        rowStatesBuf = fresh
+        return fresh
+    }
+
+    private var rowStatesBuf: BooleanArray? = null
 
     /**
      * 逐行现绑探针视图读勾选态（`getView` 会按宿主模型绑定 `#ct_item`）。
@@ -2317,8 +2347,10 @@ class StgSelectAllFeature : Feature {
     private fun unwrapHeaderAdapter(a: Any?): android.widget.ListAdapter? {
         if (a == null) return null
         if (a.javaClass.name == "android.widget.HeaderViewListAdapter") {
+            // 走 Reflect（按类缓存，失败也缓存）：带 header 的列表每帧都会走到这里，
+            // 每次现查 getMethod 是白花的类元数据查找。
             return runCatching {
-                a.javaClass.getMethod("getWrappedAdapter").invoke(a)
+                Reflect.findMethod(a.javaClass, "getWrappedAdapter")?.invoke(a)
             }.getOrNull() as? android.widget.ListAdapter
         }
         return a as? android.widget.ListAdapter

@@ -3,7 +3,9 @@ package io.github.MVennn.GSAuxiliary.feature.stgmerge
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HostSession
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -49,6 +51,9 @@ object StrategyComboClient {
 
     private const val CONNECT_TIMEOUT_MS = 8000
     private const val READ_TIMEOUT_MS = 15000
+
+    /** 响应体上限，与 [io.github.MVennn.GSAuxiliary.feature.aistare.quote.HttpTransport] 同口径 */
+    private const val MAX_BODY_BYTES = 4 * 1024 * 1024
 
     /** 一条组合：展示名 + 两个标签 id（市值档、量比档，均可再加第三个） */
     data class Combo(val key: String, val labelIds: List<String>) {
@@ -404,12 +409,33 @@ object StrategyComboClient {
             conn.outputStream.use { it.write(bytes) }
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.use { String(it.readBytes(), Charsets.UTF_8) } ?: ""
+            val text = stream?.use { String(readCapped(it, MAX_BODY_BYTES), Charsets.UTF_8) } ?: ""
             if (code !in 200..299) throw IOException("HTTP " + code + " " + text.take(200))
             return text
         } finally {
             runCatching { conn.disconnect() }
         }
+    }
+
+    /**
+     * 读响应体，最多 [limit] 字节。
+     *
+     * 不用 `readBytes()`：它对长度不设上限，一个跑歪的响应（或中间设备塞回来的错误页）
+     * 就能把目标进程的堆顶满 —— 这是宿主进程，OOM 会连累用户正在看的行情页。
+     */
+    private fun readCapped(input: InputStream, limit: Int): ByteArray {
+        val buf = ByteArrayOutputStream(minOf(limit, 16 * 1024))
+        val chunk = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val n = input.read(chunk)
+            if (n <= 0) break
+            val room = limit - total
+            if (room <= 0) break
+            buf.write(chunk, 0, minOf(n, room))
+            total += minOf(n, room)
+        }
+        return buf.toByteArray()
     }
 
     /** 响应统一是 `{"result":[{"code":0,"msg":"请求成功"}],"data":…}`；code≠0 就是业务失败 */

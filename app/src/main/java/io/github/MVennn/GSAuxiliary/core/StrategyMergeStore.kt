@@ -111,11 +111,23 @@ object StrategyMergeStore {
      */
     fun decode(raw: String?): MergeConfig {
         if (raw == null || raw.isBlank()) return MergeConfig(emptyList())
-        return runCatching { decodeInternal(raw) }.getOrElse { t ->
+        // 同一份快照的原文实例在进程里是稳定的（ConfigSnapshot 持有同一个 String），
+        // 而调用点每 800ms 一轮、每轮不止一次 —— 用身份比较做零成本记忆：
+        // 只有换了新 String 才真的重新解析。
+        decodeMemo?.let { if (it.raw === raw) return it.config }
+        val cfg = runCatching { decodeInternal(raw) }.getOrElse { t ->
             GLog.w("策略合并：组数据解析失败，按空配置处理（长度 ${raw.length}）", t)
             MergeConfig(emptyList())
         }
+        decodeMemo = DecodeMemo(raw, cfg)
+        return cfg
     }
+
+    /** [decode] 的身份记忆：原文实例相同即认定结果相同 */
+    private class DecodeMemo(val raw: String, val config: MergeConfig)
+
+    @Volatile
+    private var decodeMemo: DecodeMemo? = null
 
     private fun decodeInternal(raw: String): MergeConfig {
         val root = JSONObject(raw)

@@ -263,15 +263,16 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
     ),
 
-    // ---- 底栏：只改主界面底栏的结构 ----
+    // ---- 底栏：六格可以逐格藏（藏的是哪几格写在参数键 dock_entries 里）----
     FeatureSpec(
         id = "dock_clean",
         categoryRes = R.string.category_dock,
         switchTitleRes = R.string.feature_dock_clean_switch,
-        // 无副标题：原副标题「其余入口自动均分铺满整行」是布局后果，不是功能本身
+        // 一级开关不写副标题：它只说「能不能自定义」，藏了几个留给下面入口行的状态句
         enableKey = ConfigKeys.DOCK_CLEAN,
         defaultEnabled = ConfigKeys.DEFAULT_DOCK_CLEAN,
-        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+        detailTitleRes = R.string.detail_dock_clean_title,
+        detailEntryRes = R.string.feature_dock_clean_entry,
     ),
 
     // ---- 首页：只改首页的结构 ----

@@ -7,7 +7,8 @@ import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
 /**
@@ -61,17 +62,39 @@ internal class LogStore(
 
         /** 堆栈的续行缩进：让「一条日志」在纯文本里一眼能看出边界 */
         private const val TraceIndent = "    "
+
+        /** 落盘队列容量：1024 条 ≈ 几百 KB，正常排空只要几毫秒 */
+        private const val QueueCapacity = 1024
     }
 
     private val current = File(dir, fileName)
     private val previous = File(dir, "$fileName.1")
 
-    private val writer = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "gszx-log-writer").apply {
-            isDaemon = true
-            priority = Thread.MIN_PRIORITY
-        }
-    }
+    /**
+     * 单线程落盘队列，**有界**（[QueueCapacity] 条）。
+     *
+     * 原来用 `newSingleThreadExecutor` = 无界链表队列：页面里的第三方脚本狂刷
+     * `gsaux.diag`，或者某个钩子被高频触发时，日志会一直堆在堆里 —— 磁盘有 512 KB
+     * 硬顶，内存这边反而没有，最终表现是模块 App 卡死或 OOM。
+     *
+     * 满了用 [ThreadPoolExecutor.CallerRunsPolicy]（在调用线程上就地写）：这比丢弃更合适 ——
+     * [flush] 靠往队列里塞一个空任务来「等队列跑完」，丢弃策略会把那个标记也丢掉，
+     * 导出就只能干等 2 秒超时。就地写等于对刷屏者反向施压，日志一条不丢。
+     */
+    private val writer = ThreadPoolExecutor(
+        1,
+        1,
+        0L,
+        TimeUnit.MILLISECONDS,
+        ArrayBlockingQueue(QueueCapacity),
+        { r ->
+            Thread(r, "gszx-log-writer").apply {
+                isDaemon = true
+                priority = Thread.MIN_PRIORITY
+            }
+        },
+        ThreadPoolExecutor.CallerRunsPolicy(),
+    )
 
     /**
      * 时间戳格式化器。

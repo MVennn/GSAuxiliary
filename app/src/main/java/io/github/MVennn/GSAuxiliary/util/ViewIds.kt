@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import java.util.Collections
 import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 通用视图树工具：资源 id 解析、视图树快照，以及快照依赖的文案 / 几何小工具。
@@ -136,12 +137,18 @@ class IdCache(context: Context, private val pkg: String) {
 
     private val res = (context.applicationContext ?: context).resources
 
-    /** 本包在进程级共享的命中表；构造期取一次引用，之后查表不再拼串、不再抢全局锁 */
-    private val hits: HashMap<String, Int> =
-        synchronized(HITS) { HITS.getOrPut(pkg) { HashMap() } }
+    /**
+     * 本包在进程级共享的命中表；构造期取一次引用，之后查表不再拼串、不再抢全局锁。
+     *
+     * 用 [ConcurrentHashMap] 而不是 `HashMap` + `synchronized`：这里**每个控件名**都要查一次，
+     * 页面 resume 时的预热一次就几十个名字，锁本身比查表还贵；而且原来的写法
+     * 一次查表要先后抢两把锁（hits 与 misses），现在两把都成无锁读。
+     */
+    private val hits: ConcurrentHashMap<String, Int> =
+        synchronized(HITS) { HITS.getOrPut(pkg) { ConcurrentHashMap() } }
 
     /** 本 `Context` 上查不到的 id 名（见类注释：未命中不跨 `Context` 共享） */
-    private val misses = HashMap<String, Int>()
+    private val misses = ConcurrentHashMap<String, Int>()
 
     /**
      * 解析一个 id 名；不存在返回 0。
@@ -150,11 +157,10 @@ class IdCache(context: Context, private val pkg: String) {
      * 所以启动路径上的解析一定要提前做掉 —— 见 [warm]。
      */
     fun of(name: String): Int {
-        synchronized(hits) { hits[name] }?.let { return it }
-        synchronized(misses) { misses[name] }?.let { return it }
+        hits[name]?.let { return it }
+        misses[name]?.let { return it }
         val id = runCatching { res.getIdentifier(name, "id", pkg) }.getOrDefault(0)
-        if (id != 0) synchronized(hits) { hits[name] = id }
-        else synchronized(misses) { misses[name] = 0 }
+        if (id != 0) hits[name] = id else misses[name] = 0
         return id
     }
 
@@ -188,6 +194,6 @@ class IdCache(context: Context, private val pkg: String) {
 
     private companion object {
         /** `包名 -> (资源名 -> id)`，进程级共享（只存命中的） */
-        val HITS = HashMap<String, HashMap<String, Int>>()
+        val HITS = HashMap<String, ConcurrentHashMap<String, Int>>()
     }
 }

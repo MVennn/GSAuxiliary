@@ -100,6 +100,32 @@ class LogMaskTest {
     }
 
     @Test
+    fun `secrets 抹掉凭据取值但保留键名`() {
+        val url = "https://x/gsnews?session=ABCDEFG&userCode=13800000000&openapi_sign=ZZZ"
+        val out = LogMask.secrets(url)
+        assertFalse(out.contains("ABCDEFG"), "session 取值漏出去了：$out")
+        assertFalse(out.contains("13800000000"), "userCode 取值漏出去了：$out")
+        assertFalse(out.contains("ZZZ"), "openapi_sign 取值漏出去了：$out")
+        // 键名要留着：排查时需要知道「带了哪些参数」
+        assertTrue(out.contains("session="), out)
+        assertTrue(out.contains("openapi_sign="), out)
+    }
+
+    @Test
+    fun `secrets 同时抹掉查询串里的个股代码`() {
+        val out = LogMask.secrets("https://x/quote?stockCode=600519.1&market=2")
+        assertFalse(Regex("\\b\\d{6}\\b").containsMatchIn(out), "仍有完整六位码：$out")
+        assertTrue(out.contains("60****.1"), "应保留前两位与市场后缀：$out")
+    }
+
+    @Test
+    fun `secrets 不改动普通文本`() {
+        val plain = "一键配置：已注入价格页（开关=true）"
+        assertEquals(plain, LogMask.secrets(plain))
+        assertEquals("", LogMask.secrets(null))
+    }
+
+    @Test
     fun `打码后仍能看出是哪一只 - 保留前两位是有意为之`() {
         val out = LogMask.stock("300045.1")
         assertTrue(out.startsWith("30"), "应保留前两位：$out")

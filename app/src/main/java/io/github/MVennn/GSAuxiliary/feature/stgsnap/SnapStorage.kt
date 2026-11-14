@@ -32,11 +32,24 @@ internal object SnapStorage {
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
 
     fun save(context: Context, bitmap: Bitmap, fileName: String, runFolder: String): Saved? {
+        // 文件名是拼给 MediaStore 与 File(dir, name) 的：带上 `/` 或 `..` 就能跳出
+        // Pictures/GSAuxiliary 之外写文件。当前唯一调用方（StgSnapPlan）已经净化过，
+        // 但这里是唯一的落盘入口，自己再兜一次，别把安全寄托在调用方。
+        val safeName = safeSegment(fileName).ifEmpty { "snap_" + System.currentTimeMillis() + ".png" }
+        val safeFolder = safeSegment(runFolder).ifEmpty { newRunFolder() }
         if (Build.VERSION.SDK_INT >= 29) {
-            mediaStore(context, bitmap, fileName, runFolder)?.let { return it }
+            mediaStore(context, bitmap, safeName, safeFolder)?.let { return it }
         }
-        return appDir(context, bitmap, fileName, runFolder)
+        return appDir(context, bitmap, safeName, safeFolder)
     }
+
+    /** 只留文件名安全字符：去掉路径分隔符与上跳，压掉控制字符 */
+    private fun safeSegment(raw: String): String = raw
+        .replace('\\', '_')
+        .replace('/', '_')
+        .replace("..", "_")
+        .filter { it.code >= 0x20 && it.code != 0x7F }
+        .take(120)
 
     private fun mediaStore(
         context: Context,

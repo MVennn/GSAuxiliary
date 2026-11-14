@@ -639,8 +639,21 @@ internal object AiStareJs {
     /** 把字符串包成可安全内联进 JS 的字面量（双引号 + 反斜杠转义） */
     fun safeJson(json: String): String = "\"" + escape(json) + "\""
 
-    private fun escape(s: String): String =
-        s.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"")
+    /**
+     * JSON 字符串字面量的转义。
+     *
+     * 必须盖住换行与 U+2028/U+2029：方案名里粘进一个换行，[safeJson] 直接把它
+     * 原样塞进 `"...` 之间，整段 init 脚本就变成语法错误 —— 页面上看到的是
+     * 「按钮没了」，而控制台只报一行 SyntaxError。
+     */
+    private fun escape(s: String): String = s
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
 
     /** JS **单引号字符串**的转义（占位符替换用；与 [escape] 的 JSON 口径不同） */
     private fun escapeJs(s: String): String = s

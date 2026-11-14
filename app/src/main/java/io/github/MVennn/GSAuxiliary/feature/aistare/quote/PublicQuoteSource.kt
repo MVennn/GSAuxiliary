@@ -28,10 +28,16 @@ class PublicQuoteSource : QuoteSource {
 
     override val name = "public"
 
-    /** 日 K 缓存：key = code.market，value = (时间戳, 当时请求的根数, 拿到的行) */
-    private val klineCache = HashMap<String, Triple<Long, Int, List<QuoteBar>>>()
+    /** 日 K 缓存：key = code.market；LRU + 根数预算见 [KlineCache] */
+    private val klineCache = KlineCache()
 
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
+        if (!isPlainCode(code)) {
+            // code 来自页面 URL 的 stockCode 参数（H5 可以随便写）。它会被直接拼进
+            // 请求地址，不校验就等于把「往任意路径发 GET」的能力交给页面。
+            GLog.w("一键配置取数：代码形状非法，已拒绝拼地址（${LogMask.code(code)}）")
+            return null
+        }
         val mkt = marketToPrefix(market) ?: return null
         // ⚠️ 快照接口是 **GBK**：按 UTF-8 解会把「华力创通」解成一串问号，
         // 名称一废，引擎的 ST 判定就失效（→ 涨停价算错 5%/10%）。
@@ -54,19 +60,18 @@ class PublicQuoteSource : QuoteSource {
 
     override fun dailyKline(code: String, market: String, n: Int): List<QuoteBar>? {
         if (n <= 0) return null
+        if (!isPlainCode(code)) {
+            GLog.w("一键配置取数：代码形状非法，已拒绝拼地址（${LogMask.code(code)}）")
+            return null
+        }
         val mkt = marketToPrefix(market) ?: return null
         val key = "$code.$market"
         // 要多少根问多少根（下限 320）：「最近前高 / 前低」的回扫窗口要 2000 根（≈8 年），
         // 「30 日最高价」只要 320。腾讯单次上限就是 2000，超过会回 param error。
         val want = maxOf(n, DEFAULT_BARS).coerceAtMost(MAX_BARS)
 
-        val now = System.currentTimeMillis()
-        synchronized(klineCache) {
-            klineCache[key]?.let { (t, asked, bars) ->
-                // 够用就命中：① 行数够 n；② 上次要的就不少（说明这只股票总共只有这么多）
-                if (now - t < KLINE_TTL_MS && (bars.size >= n || asked >= n)) return bars
-            }
-        }
+        // 够用就命中：① 行数够 n；② 上次要的就不少（说明这只股票总共只有这么多）
+        klineCache.get(key, n)?.let { return it }
 
         val url = String.format(QT_KLINE_URL, mkt + code)
             // 连逗号一起换：模板是 `…,day,,,320,`，只替数字会少一格 → 服务端 param error
@@ -85,10 +90,7 @@ class PublicQuoteSource : QuoteSource {
             GLog.w("一键配置取数：公开行情日 K 解析失败（${LogMask.stock(code, market)}）")
             return null
         }
-        synchronized(klineCache) {
-            if (klineCache.size >= KLINE_CACHE_MAX) klineCache.clear() // 极简淘汰
-            klineCache[key] = Triple(now, want, bars)
-        }
+        klineCache.put(key, want, bars)
         // **不再因为「不足 n 根」返回 null**：新股 / 次新股本来就凑不到 2000 根，
         // 「最近前高」要的是「有多少算多少」。够不够由引擎按各项口径自己判
         // （highN/lowN/maN 仍要求 size >= N，历史项只要求 >= 2）。
@@ -97,6 +99,9 @@ class PublicQuoteSource : QuoteSource {
         }
         return bars
     }
+
+    /** 只接受 6 位纯数字：拼 URL 前必须过这一关（见 [snapshot]） */
+    private fun isPlainCode(code: String): Boolean = code.length == 6 && code.all { it in '0'..'9' }
 
     // ------------------------------------------------------------ 解析
 
@@ -237,7 +242,5 @@ class PublicQuoteSource : QuoteSource {
 
         /** 日 K 的读超时（2000 根 100 多 KB，快照那 5 秒不够） */
         private const val KLINE_TIMEOUT_MS = 8000
-        private const val KLINE_TTL_MS = 5 * 60 * 1000L
-        private const val KLINE_CACHE_MAX = 16
     }
 }

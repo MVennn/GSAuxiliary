@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Process
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.GLog
 
 /**
  * adb 调试通道（**仅供开发期自动化，不参与运行期配置读取**）。
@@ -38,6 +39,15 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_BACKEND = "backend"
         const val COL_RAW = "raw"
 
+        /**
+         * 字符串列的长度上限（`aistare_quick_config` / `zx_copy_rules`）。
+         *
+         * 正常值：方案 JSON 几 KB、复制规则几十条也就几 KB。96KB 是宽松上限 ——
+         * 目的是挡住「有人往配置里灌几 MB」把远端 prefs 和每帧快照指纹拖垮，
+         * 不是限制正常用法。
+         */
+        private const val MAX_STRING_LEN = 96 * 1024
+
         // 功能开关（与 ConfigKeys.FEATURE_KEYS 对应）：开发期自动化需要可脚本化地开关功能，
         // 否则每验证一个功能都要手工在设置界面点一遍。
         const val COL_STG_DIRECT = "stg_direct_quote"
@@ -55,6 +65,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_AISTARE_PICK_SCHEME = "aistare_pick_scheme"
         const val COL_AISTARE_CARD_DETAIL = "aistare_card_detail"
         const val COL_DOCK_CLEAN = "dock_clean"
+        const val COL_DOCK_ENTRIES = "dock_entries"
         const val COL_HOME_BANNER_HIDE = "home_banner_hide"
         const val COL_MARKET_BANNER_HIDE = "market_banner_hide"
         const val COL_MARKET_SECTOR_COMPACT = "market_sector_compact"
@@ -119,7 +130,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
             COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
             COL_AISTARE_CARD_DETAIL,
-            COL_DOCK_CLEAN, COL_HOME_BANNER_HIDE,
+            COL_DOCK_CLEAN, COL_DOCK_ENTRIES, COL_HOME_BANNER_HIDE,
             COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
             COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
             COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD, COL_ZX_GROUP_COPY,
@@ -147,6 +158,7 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_PICK_SCHEME, ConfigKeys.DEFAULT_AISTARE_PICK_SCHEME)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_CARD_DETAIL, ConfigKeys.DEFAULT_AISTARE_CARD_DETAIL)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.DOCK_CLEAN, ConfigKeys.DEFAULT_DOCK_CLEAN)) 1 else 0,
+            ModulePreferences.getString(ConfigKeys.DOCK_ENTRIES, ConfigKeys.DEFAULT_DOCK_ENTRIES),
             if (ModulePreferences.getBoolean(ConfigKeys.HOME_BANNER_HIDE, ConfigKeys.DEFAULT_HOME_BANNER_HIDE)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.MARKET_BANNER_HIDE, ConfigKeys.DEFAULT_MARKET_BANNER_HIDE)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.MARKET_SECTOR_COMPACT, ConfigKeys.DEFAULT_MARKET_SECTOR_COMPACT)) 1 else 0,
@@ -168,6 +180,21 @@ class DebugConfigProvider : ContentProvider() {
         return MatrixCursor(columns).apply { addRow(values) }
     }
 
+    /**
+     * 取字符串列并卡上限（见 [update] 里的说明）。
+     *
+     * 用 `require` 抛 [IllegalArgumentException]，而不是静默截断：
+     * 截断会写进去一份**语法不完整**的 JSON，目标进程解析失败后整块配置回退默认值，
+     * 反而更像「设置自己丢了」。
+     */
+    private fun boundedString(values: ContentValues, col: String): String? {
+        val s = values.getAsString(col) ?: return null
+        require(s.length <= MAX_STRING_LEN) {
+            "调试通道：$col 超长（${s.length} > $MAX_STRING_LEN 字符）"
+        }
+        return s
+    }
+
     override fun getType(uri: Uri): String? = null
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
@@ -184,8 +211,15 @@ class DebugConfigProvider : ContentProvider() {
         if (values == null) return 0
 
         // getAsInteger 可能返回 null（值缺失/类型不对），直接 unboxing 会 NPE；
-        // 计数只在实际发生写入时增加，异常时返回值才不会虚报
-        fun intOf(col: String): Int? = if (values.containsKey(col)) values.getAsInteger(col) else null
+        // 计数只在实际发生写入时增加，异常时返回值才不会虚报。
+        // 类型不符时留一行日志：否则 adb 脚本改了 "enabled":"abc" 只会「看起来没生效」，
+        // 分不清是通道没通、uid 被拒，还是这一列的类型错了。
+        fun intOf(col: String): Int? {
+            if (!values.containsKey(col)) return null
+            val v = values.getAsInteger(col)
+            if (v == null) GLog.w("调试通道：列 $col 的值不是整数，已跳过")
+            return v
+        }
 
         var n = 0
         ModulePreferences.edit {
@@ -217,12 +251,21 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_WATCHLIST_BOLD)?.let { putBoolean(ConfigKeys.WATCHLIST_BOLD, it != 0); n++ }
             intOf(COL_ZX_GROUP_COPY)?.let { putBoolean(ConfigKeys.ZX_GROUP_COPY, it != 0); n++ }
             intOf(COL_ZX_COPY_MENU)?.let { putBoolean(ConfigKeys.ZX_COPY_MENU, it != 0); n++ }
+            // ⚠️ 下面这几列是**唯一能塞进任意长度字符串**的入口（其余都是 int/boolean）。
+            // 本 provider 是 exported 的，虽然 uid 白名单挡住了普通应用，
+            // 但一旦有人（脚本 / 误操作）往这里灌几百 KB，配置会被写到 LSPosed 的
+            // 远端 prefs 里、再经 Binder 推到目标进程，每次快照都要 hashCode 一遍。
+            // 正常规则的量级是几 KB，96KB 足够宽松，超了直接拒（不静默截断）。
             if (values.containsKey(COL_AISTARE_SCHEMES)) {
-                putString(ConfigKeys.AISTARE_QUICK_CONFIG, values.getAsString(COL_AISTARE_SCHEMES))
+                putString(ConfigKeys.AISTARE_QUICK_CONFIG, boundedString(values, COL_AISTARE_SCHEMES))
                 n++
             }
             if (values.containsKey(COL_ZX_COPY_RULES)) {
-                putString(ConfigKeys.ZX_COPY_RULES, values.getAsString(COL_ZX_COPY_RULES))
+                putString(ConfigKeys.ZX_COPY_RULES, boundedString(values, COL_ZX_COPY_RULES))
+                n++
+            }
+            if (values.containsKey(COL_DOCK_ENTRIES)) {
+                putString(ConfigKeys.DOCK_ENTRIES, boundedString(values, COL_DOCK_ENTRIES))
                 n++
             }
         }

@@ -26,6 +26,7 @@ import io.github.MVennn.GSAuxiliary.feature.filter.PercentTimeline
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
+import io.github.MVennn.GSAuxiliary.feature.stgrow.StgCountBar
 import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowChecked
 import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowSelection
 import io.github.MVennn.GSAuxiliary.feature.watchlist.ZxWatchlist
@@ -1026,7 +1027,8 @@ class StgStockFilterFeature : Feature {
         // 一整趟共用一个时间戳：这一趟读到的字段值都算「此刻」的观察，
         // 逐项取时间会让后几只股票凭空比前面「更新」。
         val now = SystemClock.uptimeMillis()
-        for ((i, item) in full.withIndex()) {
+        for (i in full.indices) {
+            val item = full[i]
             // 一只股票的两个维度一次算清：方向类别（自选优先 / 平盘独立）+ 类型位掩码
             //
             // ⚠️ **纯重构，判定一字未变**：把每项要算 3 次的 fieldsOf 合成 1 次、
@@ -1127,6 +1129,16 @@ class StgStockFilterFeature : Feature {
             }
         }
 
+        // ★ 先发布下标表，再搬勾选（2026-11-14）。
+        //
+        // 这一步原先在搬勾选之后（原 :1150）：代理已经挂上、`setItemChecked` 已经在跑，
+        // 而桥里还是**上一轮**的结论。搬勾选会写宿主的多选模型，宿主若同步重写底部计数
+        // `#tv_bottom_zxg_num`，「全选」功能挂在那颗控件上的 TextWatcher 会当场读桥
+        // （见 StgSelectAllFeature 的 updateLabel → fullIndices），读到旧表就按旧下标点行。
+        // 把发布提到这里，那段窗口就不存在了：此刻代理已确定挂在列表上，
+        // 下游任何时刻读到的都是「与列表一致」的那一份。
+        publishSnapshot(lv, st, keep, rows, full)
+
         // 装完按**代码**把勾选态搬回新坐标（2026-11-13：行集合变过就没法按位置对）。
         // 只在多选态、且旧勾选读得全的时候做；一行读不出就整趟不动。
         if (checkedBefore != null && checkedBefore.isNotEmpty()) {
@@ -1147,26 +1159,11 @@ class StgStockFilterFeature : Feature {
         // 行集合换了 = 批量循环里记下的下标全部作废，见 StgRowSelection.rowEpoch
         StgRowSelection.bumpRowEpoch()
 
-        // 只有过滤代理**确实挂在列表上**时才发布下标表。
-        // 发布了下标表却没有代理时，列表上还是全量数据，而「全选」会按这张表
-        // 把子集下标当全量下标用 —— 点到别的股票上（比不筛更糟）。
-        if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) {
-            lastPublishSkip = null
-            StgFilterBridge.publish(keep, rows, full, st.proxy)
-        } else {
-            // 这一支不能静默：下游会退化成「全量」/「放弃全选」，日志里必须有原因
-            val why = if (st.proxy == null) "过滤代理没装上" else "列表上挂的不是我们的代理"
-            if (lastPublishSkip != why) {
-                lastPublishSkip = why
-                GLog.w("筛选股票：下标表未发布 —— $why（全选/直达行情按全量处理）")
-            }
-            // 代理没挂在列表上 → 列表上是全量数据，行点击**不能**再按子集下标回映射，
-            // 否则手动点行会选中另一只股票（点击 wrapper 读的就是 st.snap）。
-            st.snap = null
-            StgFilterBridge.publish(null)
-        }
         if (notify) notifyAdapter(adapter)
 
+        // 日志先判等级再拼串（CODE-RULES §2.5）：summary 是几十段字符串拼接，
+        // 关着 INFO 时每趟白造一次；这里只保留「要不要打」的判据本身。
+        if (!GLog.isInfo) return
         val summary = buildString {
             append("全量 ${full.size} → 保留 ${keep.size}（涨 $up / 跌 $down / 自选 $zx / 平盘 $flat")
             for (row in FilterRow.TYPE_ROWS) {
@@ -1180,6 +1177,41 @@ class StgStockFilterFeature : Feature {
             lastSummary = summary
             GLog.i("筛选股票：$summary")
         }
+    }
+
+
+    /**
+     * 把这一轮的结果发布到跨功能通道（[StgFilterBridge]），失败分支留可诊断的原因。
+     *
+     * 只有过滤代理**确实挂在列表上**时才发布下标表：发布了下标表却没有代理时，
+     * 列表上还是全量数据，而「全选」会按这张表把子集下标当全量下标用 —— 点到别的
+     * 股票上（比不筛更糟）。所以这一支不能静默：下游会退化成「全量」/「放弃全选」，
+     * 日志里必须有原因（同一原因只记一次，见 [lastPublishSkip]）。
+     *
+     * 抽成函数是为了**发布点只有一处**（2026-11-14）：发布已提前到「装完代理、搬勾选之前」，
+     * 两处各写一遍的话，早晚有一处忘了同步。
+     */
+    private fun publishSnapshot(
+        lv: ListView,
+        st: AdapterState,
+        keep: ArrayList<Any>,
+        rows: IntArray,
+        full: List<Any>,
+    ) {
+        if (st.proxy != null && unwrapHeaderAdapter(lv.adapter) === st.proxy) {
+            lastPublishSkip = null
+            StgFilterBridge.publish(keep, rows, full, st.proxy)
+            return
+        }
+        val why = if (st.proxy == null) "过滤代理没装上" else "列表上挂的不是我们的代理"
+        if (lastPublishSkip != why) {
+            lastPublishSkip = why
+            GLog.w("筛选股票：下标表未发布 —— $why（全选/直达行情按全量处理）")
+        }
+        // 代理没挂在列表上 → 列表上是全量数据，行点击**不能**再按子集下标回映射，
+        // 否则手动点行会选中另一只股票（点击 wrapper 读的就是 st.snap）。
+        st.snap = null
+        StgFilterBridge.publish(null)
     }
 
     private fun sameList(a: List<Any>?, b: List<Any>): Boolean {
@@ -1228,8 +1260,8 @@ class StgStockFilterFeature : Feature {
         if (id == 0) return false
         val tv = runCatching { act.findViewById<View>(id) as? TextView }.getOrNull() ?: return false
         val cur = tv.text?.toString().orEmpty()
-        if (!active && !OUR_RES_NUM.matches(cur)) return false
-        val want = if (active) "策略个股 $kept/$total" else "策略个股${total}只"
+        if (!active && !StgCountBar.isOurs(cur)) return false
+        val want = if (active) StgCountBar.kept(kept, total) else StgCountBar.total(total)
         if (cur == want) return false
         return runCatching { tv.text = want }
             .onSuccess { GLog.i("筛选股票：左上角计数 → $want") }
@@ -2217,9 +2249,6 @@ class StgStockFilterFeature : Feature {
 
         /** 列表数据字段名（实测 `BaseQuickAdapter` 上就叫 `data`） */
         const val DATA_FIELD = "data"
-
-        /** 我们自己写进 `#tv_stg_res_num` 的格式：「策略个股 3/15」 */
-        val OUR_RES_NUM = Regex("""^策略个股 \d+/\d+$""")
 
         /**
          * `onResume` 之后延后多久再复查一次代理有没有装上。

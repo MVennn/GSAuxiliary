@@ -63,6 +63,33 @@ object ZxWatchlist {
     }
 
     /**
+     * 宿主的合并形状（`300006.1`）直接判定 —— 列表行里最常用的入口。
+     *
+     * 为什么不放在调用方做 `substring`：列表每行都要判一次，调用方拆、这里再拼
+     * `"$code.$market"` 会把同一行拆了又拼，白造 3 个 String。这里拆一次、
+     * 直接走 [byStkGrpMap] 的同一个 key 形状，只有 `byWorkflow` 可用时才付出拼接。
+     */
+    fun isInWatchlist(codeAndMarket: String?): Boolean {
+        val parts = splitCodeAndMarket(codeAndMarket) ?: return false
+        byWorkflow(parts.first, parts.second)?.let { return it }
+        // 走到这里说明 byWorkflow 用不了，直接拿原串查表（不再拼 code.market）
+        return byStkGrpMap(codeAndMarket!!)
+    }
+
+    /**
+     * 把宿主的 `code.market` 拆成两段；拆不出（空、无点、点在最前/最后）返回 null。
+     *
+     * 抽成独立函数是为了能用单测钉住口径 —— 这处判错的后果是「该染的行不染」，
+     * 界面上与「真的不在自选」一模一样，看不出来（`ZxWatchlistCamTest` 守着）。
+     */
+    internal fun splitCodeAndMarket(cam: String?): Pair<String, String>? {
+        if (cam.isNullOrEmpty()) return null
+        val dot = cam.indexOf('.')
+        if (dot <= 0 || dot >= cam.length - 1) return null
+        return cam.substring(0, dot) to cam.substring(dot + 1)
+    }
+
+    /**
      * 自选代码集合（**忽略市场号**）；`null` = 这一刻读不出来。
      *
      * ## 为什么需要它

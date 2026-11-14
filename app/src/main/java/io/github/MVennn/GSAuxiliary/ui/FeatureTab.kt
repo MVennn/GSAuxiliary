@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
+import io.github.MVennn.GSAuxiliary.core.DockEntryStore
 import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -31,6 +32,9 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 
 /** 「我的策略聚合」的 Feature.id（必须与 FEATURE_CATALOG 里的 id 一致）—— 它的入口副标题是动态计数 */
 private const val StgMergeFeatureId = "stg_merge"
+
+/** 「底栏入口自定义」的 Feature.id —— 它的入口副标题是「已隐藏 N 个」，同样现算 */
+private const val DockCleanFeatureId = "dock_clean"
 
 /**
  * Tab 2 · 功能 —— 功能菜单，按分类用子标题隔开。
@@ -130,6 +134,18 @@ private fun featureEntrySummary(spec: FeatureSpec): String? {
         val json by rememberStringPref(ConfigKeys.STG_MERGE_GROUPS, DefaultMergeGroupsJson)
         val count = remember(json) { StrategyMergeStore.decode(json).groups.size }
         return if (count == 0) null else stringResource(R.string.stg_merge_entry_summary, count)
+    }
+    // 底栏入口：藏了 0 个也照样有状态句（「六个入口全部显示」）——
+    // 这一行是进二级页的唯一入口，副标题此处正是唯一说明「现在藏了几个」的位置
+    if (spec.id == DockCleanFeatureId) {
+        val raw by rememberStringPref(ConfigKeys.DOCK_ENTRIES, ConfigKeys.DEFAULT_DOCK_ENTRIES)
+        val legacy by rememberBoolPref(ConfigKeys.DOCK_CLEAN, ConfigKeys.DEFAULT_DOCK_CLEAN)
+        val count = remember(raw, legacy) { DockEntryStore.decode(raw, legacy).size }
+        return if (count == 0) {
+            stringResource(R.string.feature_dock_clean_entry_summary_all)
+        } else {
+            stringResource(R.string.feature_dock_clean_entry_summary, count)
+        }
     }
     return spec.detailEntrySummaryRes?.let { stringResource(it) }
 }

@@ -72,6 +72,8 @@ internal sealed interface Route {
     data class StrategyMergeCond(val groupId: String, val memberKey: String = "") : Route
     /** 保存后返回位置设置：保存成功退到哪一层 */
     data object AiStareSaveBehavior : Route
+    /** 底栏入口设置（二级）：六格里显示哪几个 */
+    data object DockEntries : Route
     data object Disclaimer : Route
     data object Notice : Route
 }
@@ -103,6 +105,7 @@ private object RouteSaver : Saver<Route, String> {
         Route.WatchlistDetail -> "watchlist_detail"
         Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
         Route.StgFilterSettings -> "stg_filter_settings"
+        Route.DockEntries -> "dock_entries"
         Route.Disclaimer -> "disclaimer"
         Route.Notice -> "notice"
     }
@@ -127,6 +130,7 @@ private object RouteSaver : Saver<Route, String> {
         value == "watchlist_detail" -> Route.WatchlistDetail
         value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
         value == "stg_filter_settings" -> Route.StgFilterSettings
+        value == "dock_entries" -> Route.DockEntries
         value == "disclaimer" -> Route.Disclaimer
         value == "notice" -> Route.Notice
         else -> Route.Home
@@ -376,6 +380,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                         "zx_group_copy#2" -> Route.ZxCopyButton
                         // 智能选股：聚合组列表（组里装哪些原生策略）
                         "stg_merge" -> Route.StrategyMerge
+                        // 底栏入口：六格里显示哪几个
+                        "dock_clean" -> Route.DockEntries
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -485,6 +491,13 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             onBack = { route = Route.Home },
                         ) {
                             AiStareSaveBehaviorScreen()
+                        }
+
+                        Route.DockEntries -> SubScreen(
+                            title = stringResource(R.string.detail_dock_clean_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            DockEntriesScreen()
                         }
 
                         Route.Disclaimer -> SubScreen(

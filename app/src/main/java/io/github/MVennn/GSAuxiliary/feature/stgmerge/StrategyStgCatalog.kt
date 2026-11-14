@@ -67,22 +67,29 @@ object StrategyStgCatalog {
             if (now - lastAt < MIN_INTERVAL_MS) return
             changed = payload.key != lastKey
             if (!changed && now - lastAt < RESEND_INTERVAL_MS) return
-            lastKey = payload.key
-            lastAt = now
         }
         val app = ctx.applicationContext ?: ctx
-        runCatching {
+        val sent = runCatching {
             val intent = Intent(StgCatalogBroadcast.ACTION_CATALOG)
             intent.setPackage(StgCatalogBroadcast.MODULE_PACKAGE)
             intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
             intent.putExtra(StgCatalogBroadcast.EXTRA_PAYLOAD, payload.json)
             intent.putExtra(StgCatalogBroadcast.EXTRA_SIG, StgCatalogBroadcast.SIG)
             app.sendBroadcast(intent)
-            if (changed) {
-                // 日志报实际发出去的条数（扣掉入口卡），与接收端「已收到 N 条」能对上
-                GLog.i(LOG + "已广播宿主策略清单 " + payload.count + " 条")
-            }
-        }.onFailure { GLog.w(LOG + "广播失败", it) }
+        }.onFailure { GLog.w(LOG + "广播失败", it) }.isSuccess
+        if (!sent) return
+
+        // ⚠️ 额度（lastKey / lastAt）只在**发成功之后**才记账（2026-11-14）。
+        // 旧实现先记账再发：一次 sendBroadcast 失败就占满 3s 窗口，内容没变还要再等
+        // 30s 才重试 —— 而用户此刻正盯着模块里的「从金太阳导入」列表，看到的是一份旧清单。
+        synchronized(lock) {
+            lastKey = payload.key
+            lastAt = now
+        }
+        if (changed) {
+            // 日志报实际发出去的条数（扣掉入口卡），与接收端「已收到 N 条」能对上
+            GLog.i(LOG + "已广播宿主策略清单 " + payload.count + " 条")
+        }
     }
 
     /**

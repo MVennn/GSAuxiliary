@@ -1,6 +1,7 @@
 package io.github.MVennn.GSAuxiliary.app
 
 import android.content.Context
+import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.StgCatalogBroadcast
 import org.json.JSONObject
 
@@ -46,6 +47,13 @@ object HostStgCatalog {
     /** 存一份广播载荷，返回解析出的条数（广播接收器打日志用） */
     fun store(context: Context?, payload: String?): Int {
         if (payload.isNullOrBlank()) return 0
+        // 超长载荷连解析都不做：这条广播是 exported 的，谁都能发；
+        // receiver 默认跑在主线程，JSONObject 解析几十 MB 会直接把界面拖死，
+        // 而且这份串还会被原样写进本模块的 prefs。
+        if (payload.length > StgCatalogBroadcast.MAX_PAYLOAD_CHARS) {
+            GLog.w("宿主策略清单：载荷超长（${payload.length} 字符 > ${StgCatalogBroadcast.MAX_PAYLOAD_CHARS}），已丢弃")
+            return 0
+        }
         val snapshot = parse(payload)
         if (snapshot.items.isEmpty()) return 0
         runCatching {
@@ -62,25 +70,31 @@ object HostStgCatalog {
      */
     fun parse(raw: String?): Snapshot {
         if (raw.isNullOrBlank()) return Snapshot.EMPTY
+        if (raw.length > StgCatalogBroadcast.MAX_PAYLOAD_CHARS) return Snapshot.EMPTY
         val root = runCatching { JSONObject(raw) }.getOrNull() ?: return Snapshot.EMPTY
         if (root.optInt("v", 0) != StgCatalogBroadcast.VERSION) return Snapshot.EMPTY
         val at = root.optLong("at", 0L)
         val arr = root.optJSONArray("items") ?: return Snapshot(at, emptyList())
-        val out = ArrayList<Item>(arr.length())
+        // 条目数与字段长度都卡上限（见 [StgCatalogBroadcast] 里的载荷上限说明）：
+        // 这条广播谁都能发，不能让一个畸形包把设置页的列表撑爆。
+        val out = ArrayList<Item>(minOf(arr.length(), StgCatalogBroadcast.MAX_ITEMS))
         for (i in 0 until arr.length()) {
+            if (out.size >= StgCatalogBroadcast.MAX_ITEMS) break
             val obj = arr.optJSONObject(i) ?: continue
             val id = obj.optString("id").trim()
             val name = obj.optString("name").trim()
             if (id.isEmpty() || name.isEmpty()) continue
+            if (id.length > StgCatalogBroadcast.MAX_ST_ID_CHARS) continue
             val tagsArr = obj.optJSONArray("tags")
             val tags = ArrayList<String>()
             if (tagsArr != null) {
                 for (k in 0 until tagsArr.length()) {
+                    if (tags.size >= StgCatalogBroadcast.MAX_TAGS_PER_ITEM) break
                     val t = tagsArr.optString(k).trim()
-                    if (t.isNotEmpty()) tags.add(t)
+                    if (t.isNotEmpty() && t.length <= StgCatalogBroadcast.MAX_TAG_CHARS) tags.add(t)
                 }
             }
-            out.add(Item(id, name, tags))
+            out.add(Item(id, name.take(StgCatalogBroadcast.MAX_NAME_CHARS), tags))
         }
         return Snapshot(at, out)
     }

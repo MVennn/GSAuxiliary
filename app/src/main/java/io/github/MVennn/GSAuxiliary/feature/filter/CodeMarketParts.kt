@@ -1,5 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.filter
 
+import io.github.MVennn.GSAuxiliary.feature.stgrow.RowCode
+
 /**
  * 「代码.市场」串的切分 —— **纯逻辑**。
  *
@@ -37,13 +39,5 @@ internal object CodeMarketParts {
      *
      * @return (code, market)；[cam] 为 null 时两个都是 null
      */
-    fun split(cam: String?): Pair<String?, String?> {
-        if (cam.isNullOrEmpty()) return null to null
-        val dot = cam.indexOf('.')
-        return if (dot > 0) {
-            cam.substring(0, dot) to cam.substring(dot + 1)
-        } else {
-            cam to null
-        }
-    }
+    fun split(cam: String?): Pair<String?, String?> = RowCode.splitLenient(cam)
 }

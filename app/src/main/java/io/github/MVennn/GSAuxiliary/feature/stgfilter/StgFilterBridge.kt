@@ -51,6 +51,18 @@ object StgFilterBridge {
     @Volatile private var current: Snapshot? = null
 
     /**
+     * 发布代际：每次 [publish] 自增（2026-11-14 加）。
+     *
+     * 下游以前只能靠 `size` 与 `owner` 猜「这张表还是不是同一轮的」—— 两轮保留数恰好
+     * 相同、代理又没换时，猜不出来。有了代际号，`epochOf` 一变就是新结论，
+     * 不必再比内容；也让「一次筛选里视图先变、桥后变」那段窗口可被观察（日志里打它）。
+     */
+    @Volatile private var epochValue = 0
+
+    /** 当前快照的代际；从未发布过是 0 */
+    val epoch: Int get() = epochValue
+
+    /**
      * 筛选侧调用：条件生效时传保留的条目、全量下标、**算这份结果用的全量列表**
      * 与**列表上那个过滤代理**；不筛 / 功能关闭时传 null。
      *
@@ -68,6 +80,8 @@ object StgFilterBridge {
         } else {
             Snapshot(kept, keptIndices, source, owner)
         }
+        // 与上一个语句紧挨着自增：调用方看到 epoch 变化时，快照一定已经是新的
+        epochValue++
     }
 
     /** 当前是否有生效的筛选快照（用于调用方区分「没筛」与「快照不属于本页」） */

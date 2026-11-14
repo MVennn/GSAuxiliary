@@ -1,5 +1,7 @@
 package io.github.MVennn.GSAuxiliary.feature.stgsnap
 
+import io.github.MVennn.GSAuxiliary.feature.stgrow.RowCode
+
 /**
  * 一只要截图的股票，以及它对应的宿主数据对象。
  *
@@ -23,24 +25,15 @@ internal data class SelectedStock(
  */
 internal object StgSnapPlan {
 
-    private val CODE_RE = Regex("^\\d{6}$")
     private val ILLEGAL = Regex("[\\\\/:*?\"<>|\\r\\n\\t]")
 
-    fun isValidCode(code: String?): Boolean = code != null && CODE_RE.matches(code)
+    fun isValidCode(code: String?): Boolean = RowCode.isCode(code)
 
     /** 1=深、2=沪、5=北（与 `StockTypes` 的实测口径一致） */
-    fun isValidMarket(market: String?): Boolean = market == "1" || market == "2" || market == "5"
+    fun isValidMarket(market: String?): Boolean = RowCode.isMarket(market)
 
-    /** `300006.1` → (`300006`, `1`)；格式不对返回 null */
-    fun splitCam(cam: String?): Pair<String, String>? {
-        if (cam.isNullOrEmpty()) return null
-        val dot = cam.indexOf('.')
-        if (dot <= 0 || dot != cam.lastIndexOf('.')) return null
-        val code = cam.substring(0, dot)
-        val market = cam.substring(dot + 1)
-        if (!isValidCode(code) || !isValidMarket(market)) return null
-        return code to market
-    }
+    /** `300006.1` → (`300006`, `1`)；格式不对返回 null（严格口径见 [RowCode.splitStrict]） */
+    fun splitCam(cam: String?): Pair<String, String>? = RowCode.splitStrict(cam)
 
     /** 按 `code.market` 去重，保留第一次出现的顺序 */
     fun dedup(items: List<SelectedStock>): List<SelectedStock> {

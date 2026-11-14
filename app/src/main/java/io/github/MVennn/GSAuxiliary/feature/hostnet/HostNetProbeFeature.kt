@@ -5,6 +5,7 @@ import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HostSession
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.core.LogMask
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.util.Reflect
@@ -139,7 +140,8 @@ class HostNetProbeFeature : Feature {
                         runCatching {
                             val raw = chain.getArg(0) as? String ?: return@runCatching
                             val hit = synchronized(seen) { seen.size < 40 && seen.add(raw) }
-                            if (hit) GLog.i("网络探针 WEBVIEW → " + raw)
+                            // 页面地址可能带 token（H5 常把登录态挂在 query 上）
+                            if (hit) GLog.i("网络探针 WEBVIEW → " + LogMask.secrets(raw).take(400))
                         }
                         chain.proceed()
                     }
@@ -168,6 +170,8 @@ class HostNetProbeFeature : Feature {
                 env.xposed.hook(m)
                     .setId("hostnet:write:" + pc)
                     .intercept { chain ->
+                        // 只有「本线程刚 openConnection 过、带着 URL」的那次写才解析；
+                        // 其余写只花一次 ThreadLocal 读（宿主每秒上千次 socket 写）。
                         if (pendingUrl.get() != null) {
                             runCatching {
                                 val b = chain.getArg(0) as? ByteArray
@@ -175,20 +179,36 @@ class HostNetProbeFeature : Feature {
                                     val off = if (pc == 3) (chain.getArg(1) as? Int ?: 0) else 0
                                     val len = if (pc == 3) (chain.getArg(2) as? Int ?: b.size) else b.size
                                     if (len > 0) {
-                                        val text = String(b, off, minOf(len, BODY_LIMIT), Charsets.UTF_8)
-                                        GLog.i("网络探针 BODY → " + pendingUrl.get() + "\n  " + text)
-                                        // 顺手把宿主的 session / 签名截下来：聚合要按标签组合
-                                        // 自己取数（宿主策略名额只有 10 个，装不下 20 个组合），
-                                        // 而这些凭据不在 shared_prefs 里，只能在请求体里捡。
-                                        // 用比打印更宽的窗口：公共块在业务参数之前，但也留点余量。
-                                        val wide = String(b, off, minOf(len, CAPTURE_LIMIT), Charsets.UTF_8)
-                                        if (HostSession.capture(wide)) {
-                                            GLog.i("网络探针：已回填宿主会话 " + HostSession.describe())
+                                        val scan = minOf(len, CAPTURE_LIMIT)
+                                        // ① **先在字节层找标记，命中才解码**。
+                                        //    旧实现不管要不要采集都先 `String(b, …)` 造一个
+                                        //    最多 16KB 的字符串：行情轮询每次请求都白造一个，
+                                        //    在 hook 里就是实打实的 GC 压力。
+                                        if (indexOfMarker(b, off, scan) >= 0) {
+                                            // 顺手把宿主的 session / 签名截下来：聚合要按标签组合
+                                            // 自己取数（宿主策略名额只有 10 个，装不下 20 个组合），
+                                            // 而这些凭据不在 shared_prefs 里，只能在请求体里捡。
+                                            val wide = String(b, off, scan, Charsets.UTF_8)
+                                            if (HostSession.capture(wide)) {
+                                                GLog.i("网络探针：已回填宿主会话 " + HostSession.describe())
+                                            }
+                                        }
+                                        // ② 明文正文只给 DEBUG 级（默认 INFO），并且脱敏：
+                                        //    旧实现在 INFO 打完整请求体，session / 签名就跟着
+                                        //    进了 512KB 滚动日志，还能被「导出日志」拷走。
+                                        if (GLog.isDebug) {
+                                            val text = String(b, off, minOf(len, BODY_LIMIT), Charsets.UTF_8)
+                                            GLog.d(
+                                                "网络探针 BODY → " + LogMask.secrets(pendingUrl.get()) +
+                                                    "\n  " + LogMask.secrets(text)
+                                            )
                                         }
                                     }
                                 }
-                                pendingUrl.remove()
+                                // ③ 无论上面成功与否都摘掉 URL（旧实现只在成功分支 remove，
+                                //    b == null / len <= 0 时它会留在 ThreadLocal 里）。
                             }.onFailure { GLog.w("网络探针：读请求体失败", it) }
+                            pendingUrl.remove()
                         }
                         chain.proceed()
                     }
@@ -204,27 +224,63 @@ class HostNetProbeFeature : Feature {
     /** URL 去重，只留每个 host+path 的第一条，避免行情轮询刷屏 */
     private fun noteUrl(url: String) {
         val key = url.substringBefore('?')
-        if (!SEEN.add(key)) return
-        GLog.i("网络探针 URL → " + url.take(400))
+        // 上限（2026-11-14）：旧实现只增不删，宿主进程活多久这张表就涨多久 ——
+        // 详情页 / 行情轮询的 URL 带各种 id，一天下来能攒上千条常驻字符串。
+        // 满了就不再记新 path：探针是诊断工具，前 512 条足够看清接口面。
+        synchronized(SEEN) {
+            if (SEEN.size >= MAX_SEEN || !SEEN.add(key)) return
+        }
+        // 去重之后才脱敏：SEEN 已在上面挡住重复，正则只对每个新 path 跑一次。
+        // 不脱敏的话 session / openapi_sign 会整条写进日志（旧行为）。
+        GLog.i("网络探针 URL → " + LogMask.secrets(url).take(400))
     }
 
     private fun dump(env: FeatureEnv, req: Any?) {
         if (req == null) return
         val rc = req.javaClass
-        val url = runCatching { rc.getMethod("url").invoke(req).toString() }.getOrNull() ?: return
+        val url = runCatching { rc.getMethod("url").invoke(req)?.toString() }.getOrNull() ?: return
         val method = runCatching { rc.getMethod("method").invoke(req) as String }.getOrNull() ?: ""
-        val bodyText = runCatching { bodyText(env, req, rc) }.getOrNull() ?: ""
         val isWrite = method == "POST" || method == "PUT" || method == "PATCH"
         if (!isWrite && KEYWORDS.none { url.contains(it) }) return
-        if (!isWrite && bodyText.isEmpty() && KEYWORDS.none { url.contains(it) }) return
+
+        // ⚠️ 级别分层（2026-11-14）：**INFO 只留「方法 + 脱敏后的 URL」**。
+        // 旧实现在 INFO 打完整请求体与头部，而宿主请求头带 Cookie / Authorization、
+        // 请求体带 session / openapi_sign —— 它们会进 512KB 滚动日志，
+        // 界面上的「导出日志」还能整段拷走。诊断价值改由 DEBUG 级保留。
+        GLog.i("网络探针 → " + method + " " + LogMask.secrets(url))
+        if (!GLog.isDebug) return
+
+        // 正文与头部只在 DEBUG 级才解析：bodyText 要把 RequestBody writeTo 到一个
+        // okio.Buffer 再读出来，开销远大于一次反射 —— 默认级别下不该做（旧实现每次请求都做）。
+        val bodyText = runCatching { bodyText(env, req, rc) }.getOrNull() ?: ""
         val headers = runCatching {
-            rc.getMethod("headers").invoke(req).toString().replace("\n", " | ")
+            rc.getMethod("headers").invoke(req)?.toString()?.replace("\n", " | ").orEmpty()
         }.getOrNull() ?: ""
-        GLog.i(
-            "网络探针 → " + method + " " + url +
-                (if (bodyText.isEmpty()) "" else "\n  body=" + bodyText.take(BODY_LIMIT)) +
-                "\n  headers=" + headers.take(HEADER_LIMIT)
+        GLog.d(
+            "网络探针（明细）→ " + method + " " + LogMask.secrets(url) +
+                (if (bodyText.isEmpty()) "" else "\n  body=" + LogMask.secrets(bodyText).take(BODY_LIMIT)) +
+                "\n  headers=" + LogMask.secrets(headers).take(HEADER_LIMIT)
         )
+    }
+
+    /**
+     * 在字节数组的 [off, off+len) 区间里找 [MARKER]。
+     *
+     * 为什么不在 String 上找：见 [hookOutputStreamWrite] 的注释 —— 宿主每次 socket 写
+     * 都要过这个钩子，先解码再 contains 等于给每个请求白造一个字符串。
+     * 纯字节比较没有分配、模式串只有 14 字节，比「构造 String + 正则」快一个量级。
+     */
+    private fun indexOfMarker(b: ByteArray, off: Int, len: Int): Int {
+        val pat = MARKER
+        val n = pat.size
+        if (len < n) return -1
+        val last = off + len - n
+        for (i in off..last) {
+            var j = 0
+            while (j < n && b[i + j] == pat[j]) j++
+            if (j == n) return i
+        }
+        return -1
     }
 
     private fun bodyText(env: FeatureEnv, req: Any, rc: Class<*>): String {
@@ -235,7 +291,8 @@ class HostNetProbeFeature : Feature {
             val nm = bc.getMethod("name", Int::class.javaPrimitiveType)
             val vm = bc.getMethod("value", Int::class.javaPrimitiveType)
             return (0 until size).joinToString("&") {
-                nm.invoke(body, it).toString() + "=" + vm.invoke(body, it).toString()
+                // invoke 返回 Any?：显式接住 null，别让调用方替反射兜底
+                nm.invoke(body, it)?.toString().orEmpty() + "=" + vm.invoke(body, it)?.toString().orEmpty()
             }
         }
         // 其余 RequestBody 一律 writeTo 到一个空 Buffer 再读出来
@@ -247,9 +304,15 @@ class HostNetProbeFeature : Feature {
 
     private companion object {
         val SEEN = java.util.Collections.synchronizedSet(HashSet<String>())
+
+        /** 宿主会话的标记串（[HostSession.capture] 认的就是它） */
+        val MARKER = "openapi_sign=".toByteArray(Charsets.US_ASCII)
         val KEYWORDS = arrayOf("stg", "strategy", "choose", "aistk", "condition", "tag", "selfstock")
         const val BODY_LIMIT = 3000
         const val CAPTURE_LIMIT = 16384
         const val HEADER_LIMIT = 900
+
+        /** [SEEN] 的上限：探针日志只需要看清接口面，不需要记住每一个带 id 的 URL */
+        const val MAX_SEEN = 512
     }
 }

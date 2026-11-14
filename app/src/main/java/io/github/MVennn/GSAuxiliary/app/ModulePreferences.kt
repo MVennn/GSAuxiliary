@@ -47,6 +47,23 @@ object ModulePreferences {
      */
     private const val DIRTY_KEY = "__gszx_local_dirty"
 
+    /**
+     * 「本地兜底配置已经搬过一次」的一次性标记（2026-11-14）。
+     *
+     * ## 为什么需要
+     *
+     * [migrateLocalToRemote] 由 [FrameworkBridge] 的 service 回调驱动，而那个回调的触发方
+     * 是**合并进本 APK 的 `io.github.libxposed.service.XposedProvider`**（exported，无
+     * permission）。任何一个 App 都能 `contentResolver.call(...)` 递一个自己的 Binder
+     * 冒充框架服务 —— 于是「框架刚连上」被伪造，本地全部偏好被灌进**攻击者**的
+     * remote preferences 实现里。
+     *
+     * 真正的防线在 manifest 侧（给该 provider 加 signature 权限）；这里做的是纵深防御：
+     * 迁移只发生一次，且只搬 [ConfigKeys.ALL_KEYS] 白名单内的键，不再把用户表里
+     * 任意历史键（含调试残留）成批外送。
+     */
+    private const val MIGRATED_KEY = "__gszx_migrated"
+
     private val changeListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> notifyChanged() }
 
@@ -103,7 +120,13 @@ object ModulePreferences {
         if (localAll.isEmpty()) return
         val remoteAll = runCatching { rp.all }.getOrNull() ?: return
         val dirty = (localAll[DIRTY_KEY] as? Set<*>)?.mapNotNull { it as? String }?.toSet() ?: emptySet()
-        val missing = localAll.filterKeys { it !in remoteAll && it != DIRTY_KEY }
+        // 已经搬过一次就不再成批外送：只剩「断连期间用户真改过的键」这一条窄通道。
+        val migrated = (localAll[MIGRATED_KEY] as? Boolean) == true
+        val missing = if (migrated) {
+            emptyMap<String, Any>()
+        } else {
+            localAll.filterKeys { it in ConfigKeys.ALL_KEYS && it !in remoteAll }
+        }
         if (missing.isEmpty() && dirty.isEmpty()) return
         GLog.i(
             "框架重连：远端已有 ${remoteAll.size} 个键，本地暂存 ${missing.size} 个缺失键、" +
@@ -121,7 +144,7 @@ object ModulePreferences {
             }
             // 断连期间写过的键以本地为准：本地有值就覆盖远端，本地已删除就删远端。
             for (k in dirty) {
-                if (k == DIRTY_KEY) continue
+                if (k !in ConfigKeys.ALL_KEYS) continue
                 val v = localAll[k]
                 if (v == null) {
                     e.remove(k)
@@ -137,7 +160,7 @@ object ModulePreferences {
             false
         }
         if (ok) {
-            lp.edit().remove(DIRTY_KEY).commit()
+            lp.edit().remove(DIRTY_KEY).putBoolean(MIGRATED_KEY, true).commit()
             GLog.i("已把本地配置同步到 remote preferences（写 $written 项、删 $removed 项）")
         }
     }
@@ -171,7 +194,14 @@ object ModulePreferences {
 
     private fun active(): SharedPreferences? = remote ?: local
 
-    fun getBoolean(key: String, def: Boolean): Boolean = active()?.getBoolean(key, def) ?: def
+    fun getBoolean(key: String, def: Boolean): Boolean = runCatching {
+        active()?.getBoolean(key, def) ?: def
+    }.getOrElse { t ->
+        // 值类型被写错（备份手改 / 调试通道 typo）时 SharedPreferences 抛 CCE：
+        // 不兜就会冒到设置页 UI 线程。回落默认值并留证据。
+        GLog.w("配置项类型不符，回退默认：$key", t)
+        def
+    }
 
     /**
      * 读**只属于本机**的界面状态 —— **永远走本地文件，不碰 remote preferences**。
@@ -216,9 +246,19 @@ object ModulePreferences {
         false
     }
 
-    fun getInt(key: String, def: Int): Int = active()?.getInt(key, def) ?: def
+    fun getInt(key: String, def: Int): Int = runCatching {
+        active()?.getInt(key, def) ?: def
+    }.getOrElse { t ->
+        GLog.w("配置项类型不符，回退默认：$key", t)
+        def
+    }
 
-    fun getString(key: String, def: String): String = active()?.getString(key, def) ?: def
+    fun getString(key: String, def: String): String = runCatching {
+        active()?.getString(key, def) ?: def
+    }.getOrElse { t ->
+        GLog.w("配置项类型不符，回退默认：$key", t)
+        def
+    }
 
     fun all(): Map<String, *> = active()?.all ?: emptyMap<String, Any>()
 
@@ -228,9 +268,27 @@ object ModulePreferences {
         return ConfigKeys.ALL_KEYS.associateWith { all[it] }
     }
 
-    /** 批量写入（备份恢复 / 重置共用）。值为 null 表示删除该键，读取时回落到默认值。 */
+    /**
+     * 批量写入（备份恢复 / 重置共用）。值为 null 表示删除该键，读取时回落到默认值。
+     *
+     * **按 [ConfigKeys.DEFAULTS] 的期望类型归一后写入**（2026-11-14）：备份文件是手改得动的
+     * JSON，把 `"enabled": "true"` 写成字符串就会落进 prefs；设置页随后 `getBoolean` 抛
+     * ClassCastException，宿主侧 `ConfigSource.read()` 抛异常后**整份快照回落默认** ——
+     * 22 个功能一起静默失效，用户只能清数据。归不了的类型直接丢弃并留日志，不让脏值落盘。
+     * 不在 DEFAULTS 里的键原样按类型写入（调试通道 / 未来新增键不受影响）。
+     */
     fun putAll(values: Map<String, Any?>): Boolean = edit {
-        for ((k, v) in values) {
+        for ((k, raw) in values) {
+            if (raw == null) {
+                remove(k)
+                continue
+            }
+            val def = ConfigKeys.DEFAULTS[k]
+            val v = if (def == null) raw else coerce(k, def, raw)
+            if (v == null) {
+                GLog.w("配置项类型不符，已跳过：$k（期望 ${def?.javaClass?.simpleName}）")
+                continue
+            }
             when (v) {
                 is Boolean -> putBoolean(k, v)
                 is Int -> putInt(k, v)
@@ -242,10 +300,47 @@ object ModulePreferences {
                     putStringSet(k, v as Set<String>)
                 }
 
-                null -> remove(k)
                 else -> putString(k, v.toString())
             }
         }
+    }
+
+    /**
+     * 把 [raw] 归一成 [def] 的类型；归不了返回 null。
+     *
+     * 只做「不会改变语义」的转换：字符串 `"true"` → true、数字串 → Int、
+     * 数字 → 字符串。其它组合一律判失败（宁可丢这一项，也不写一个会让宿主抛异常的值）。
+     */
+    private fun coerce(key: String, def: Any, raw: Any): Any? = when (def) {
+        is Boolean -> when (raw) {
+            is Boolean -> raw
+            is String -> raw.trim().lowercase().let {
+                when (it) {
+                    "true" -> true
+                    "false" -> false
+                    else -> null
+                }
+            }
+
+            is Number -> raw.toInt() != 0
+            else -> null
+        }
+
+        is Int -> when (raw) {
+            is Int -> raw
+            is Number -> raw.toInt()
+            is String -> raw.trim().toIntOrNull()
+            else -> null
+        }
+
+        is Long -> when (raw) {
+            is Number -> raw.toLong()
+            is String -> raw.trim().toLongOrNull()
+            else -> null
+        }
+
+        is String -> raw as? String ?: raw.takeIf { it !is Set<*> }?.toString()
+        else -> null
     }
 
     /** 恢复出厂设置：把 [ConfigKeys.DEFAULTS] 整体写回，不残留旧键 */

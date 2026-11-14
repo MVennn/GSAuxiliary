@@ -35,8 +35,8 @@ class EastmoneyQuoteSource : QuoteSource {
 
     override val name = "eastmoney"
 
-    /** 日 K 缓存：与 [PublicQuoteSource] 同口径（5 分钟），避免同一槽的多个取值项重复打接口 */
-    private val klineCache = HashMap<String, Triple<Long, Int, List<QuoteBar>>>()
+    /** 日 K 缓存：与 [PublicQuoteSource] 同口径（5 分钟 + LRU），避免同一槽的多个取值项重复打接口 */
+    private val klineCache = KlineCache()
 
     override fun snapshot(code: String, market: String): QuoteSnapshot? {
         val secid = secid(code, market) ?: return null
@@ -58,12 +58,7 @@ class EastmoneyQuoteSource : QuoteSource {
         val want = maxOf(n, DEFAULT_BARS).coerceAtMost(MAX_BARS)
         val key = "$code.$market"
 
-        val now = System.currentTimeMillis()
-        synchronized(klineCache) {
-            klineCache[key]?.let { (t, asked, bars) ->
-                if (now - t < KLINE_TTL_MS && (bars.size >= n || asked >= n)) return bars
-            }
-        }
+        klineCache.get(key, n)?.let { return it }
 
         val text = HttpTransport.get(
             "$KLINE_URL$secid&klt=101&fqt=0&lmt=$want&end=20500101&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57&fltt=2",
@@ -75,10 +70,7 @@ class EastmoneyQuoteSource : QuoteSource {
             GLog.w("一键配置取数：东财日 K 响应解析失败（${LogMask.stock(code, market)}）")
             return null
         }
-        synchronized(klineCache) {
-            if (klineCache.size >= KLINE_CACHE_MAX) klineCache.clear()
-            klineCache[key] = Triple(now, want, bars)
-        }
+        klineCache.put(key, want, bars)
         return bars
     }
 
@@ -209,8 +201,5 @@ class EastmoneyQuoteSource : QuoteSource {
         private const val CONNECT_TIMEOUT_MS = 4000
         private const val SNAPSHOT_TIMEOUT_MS = 5000
         private const val KLINE_TIMEOUT_MS = 8000
-
-        private const val KLINE_TTL_MS = 5 * 60 * 1000L
-        private const val KLINE_CACHE_MAX = 16
     }
 }
