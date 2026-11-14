@@ -545,13 +545,15 @@ nameTv.setTextColor(target)
 ### 附带问题：什么是「原始色」
 
 不能简单地把"当前颜色"当作原始色 —— 当前颜色可能就是我们自己染的黄。
-所以维护一张 `WeakHashMap<TextView, Int>` 缓存**第一次见到的非高亮色**：
+所以要把**第一次见到的非高亮色**记下来：
 
 ```kotlin
-if (!isPresetColor(cur)) originalColors[tv] = cur
+if (!isPresetColor(cur)) tv.setTag(R.id.gsaux_watchlist_original_color, cur)
 ```
 
-用 `WeakHashMap` 避免长时间持有已回收的 View。
+早期实现是实例内一张 `WeakHashMap<TextView, Int>`（`originalColors[tv] = cur`）；
+2026-11-14 改成记在 View 自己的 tag 上，理由是热重载换实例后那张表就断了，
+而 tag 跟着 View 走（CODE-RULES §1.2），顺带省掉每行两次 `synchronized`。
 
 ---
 

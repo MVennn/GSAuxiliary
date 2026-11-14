@@ -130,7 +130,7 @@
 
 ### 4.3 五处齐补与 fingerprint 位预算
 
-[core/ConfigKeys.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigKeys.kt)：`ALL_KEYS`（39 键）、`FEATURE_KEYS`（22 键）、`FEATURE_PARAM_KEYS`（10 键）、`SNAPSHOT_KEYS`（33 键）、`DEFAULTS` 五个表；[core/ConfigSnapshot.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigSnapshot.kt)：33 字段 + `fingerprint`；[core/ConfigSource.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigSource.kt)：变更监听用 `if (key != null && key !in ConfigKeys.SNAPSHOT_KEYS) return@OnSharedPreferenceChangeListener` 挡无关键。
+[core/ConfigKeys.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigKeys.kt)：`ALL_KEYS`（40 键）、`FEATURE_KEYS`（22 键）、`FEATURE_PARAM_KEYS`（11 键）、`SNAPSHOT_KEYS`（34 键）、`DEFAULTS` 五个表；[core/ConfigSnapshot.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigSnapshot.kt)：34 字段 + `fingerprint`；[core/ConfigSource.kt](../app/src/main/java/io/github/MVennn/GSAuxiliary/core/ConfigSource.kt)：变更监听用 `if (key != null && key !in ConfigKeys.SNAPSHOT_KEYS) return@OnSharedPreferenceChangeListener` 挡无关键。
 
 ⚠️ `SNAPSHOT_KEYS` 漏补 → 目标进程静默收不到变更。⚠️ `fingerprint` 现有 28 个布尔位占 0..27，Int 32 位只剩 4 位，再加布尔项 `bit shl 1` 在第 32 位溢出成 0 会让两个开关互相串 —— 所以聚合配置走**一个 JSON 字符串键**（照 `AISTARE_QUICK_CONFIG` / `ZX_COPY_RULES`），布尔量收进 JSON，不再吃位。
 

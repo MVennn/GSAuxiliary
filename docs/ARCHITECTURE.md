@@ -67,14 +67,16 @@
 | `core/ConfigSnapshot.kt` | 不可变配置快照 + 稳定指纹 | 两处共用 |
 | `core/ConfigKeys.kt` | 配置键与默认值（**纯常量，不引用任何框架类**） | 两处共用 |
 | `core/GLog.kt` | 统一日志出口 + `LogLevel`，等级由配置驱动（**不引用 api 类型**） | 两处共用 |
-| `core/LogStore.kt` | 日志落盘（两份滚动，`filesDir/logs`），供「导出日志」读取 | 模块 App |
+| `core/LogStore.kt` | 日志落盘（两份滚动，`filesDir/logs`），供「导出日志」读取；写入走**有界队列**（1024 条 + `CallerRunsPolicy`，队列满时就地写，既不丢行也不无界吃内存） | 模块 App |
 | `core/LogExporter.kt` | 导出日志：本机落盘 + 直读 / `su` 读 LSPosed 日志，拼一份文本 | 模块 App |
 | `core/HookBag.kt` | 钩子句柄集合，支持一次性卸载 | 目标进程 |
+| `core/BoundedTtlCache.kt` | 有上限 + TTL 的 LRU 缓存（自选判定、日 K 各一份实例）：容量满按「最久没用」淘汰，过期自动失效 | 目标进程 |
 | `core/MainThreadStallWatchdog.kt` | 主线程卡死看门狗：主线程定时报活，超阈值（默认 2.5s 没动）dump 栈并告警；带代次令牌，重复 `start` 不会起第二条线程 | 目标进程 |
 | `core/HostSession.kt` | 宿主会话回填：从宿主自己的请求体里抠 `session` / `userCode` / `openapi_sign` 与公共段，供模块侧直连网关取数 | 目标进程 |
 | `core/StgCatalogBroadcast.kt` | 策略清单广播（`com.guosen.aistare.STG_CATALOG`）：把「页面上真实存在的策略」整份发给模块 App | 目标进程 |
 | `core/TargetApp.kt` | 目标包名 | 两处共用 |
 | `util/Reflect.kt` | 反射：候选名、继承链查找、过滤 abstract | 目标进程 |
+| `util/ViewIds.kt` | 资源 id 名解析 + 视图树快照。命中表按包名进程级共享，**无锁读**（`ConcurrentHashMap`，一页 resume 预热几十个名字，锁比查表还贵） | 目标进程 |
 | `feature/Feature.kt` | 功能扩展接口 | 目标进程 |
 | `feature/FeatureEnv.kt` | 功能运行环境（xposed / classLoader / config） | 目标进程 |
 | `feature/FeatureManager.kt` | 功能注册表 + 安装/分发/卸载 | 目标进程 |
@@ -86,11 +88,13 @@
 |---|---|---|
 | `feature/watchlist/WatchlistFeature.kt` | **自选高亮**功能本体（渲染后补色） | 目标进程 |
 | `feature/watchlist/WatchlistTargets.kt` | 该功能的宿主类名/字段名候选常量 | 目标进程 |
-| `feature/watchlist/ZxWatchlist.kt` | 自选判定（`ZXWorkflow` + 兜底） | 目标进程 |
+| `feature/watchlist/ZxWatchlist.kt` | 自选判定（`ZXWorkflow` + 兜底）；有吃 `代码.市场` 单串的重载 | 目标进程 |
+| `feature/watchlist/WatchlistMembership.kt` | 自选判定的带 TTL 缓存（2s / 512 条，进页面时 `invalidate`）：行情页每行都要问一次，宿主侧是反射调用 | 目标进程 |
 | `feature/strategyquote/StgDirectQuoteFeature.kt` | **策略详情直达标准行情 + 左右滑动**功能本体（改写 `EngineIntent`） | 目标进程 |
 | `feature/strategyquote/StgDirectQuoteTargets.kt` | 该功能的类名 / action / extra key 候选常量 | 目标进程 |
 | `feature/strategyselect/StgSelectAllFeature.kt` | **策略多选栏「全选 / 反选」**功能本体（运行时视图注入） | 目标进程 |
 | `feature/strategyselect/StgSelectAllTargets.kt` | 该功能的宿主控件 id / 类名候选常量 | 目标进程 |
+| `feature/stgrow/RowCode.kt` · `StgRowChecked.kt` · `StgRowSelection.kt` · `StgCountBar.kt` | 行层的**共用底座**：代码串解析的唯一入口（宽松 / 推导 / 严格三种口径显式命名）+ 按代码读写的勾选态 + 勾选态缓存（单写者语义见类注释）+ 左上角 `#tv_stg_res_num` 计数文案的唯一口径（`策略个股N只` / `策略个股 保留数/总数` 与「是不是我们写的」判定，筛选与聚合两侧共用） | 目标进程 |
 | `feature/stgsnap/StgSnapAddFeature.kt` · `SnapCaptureJob.kt` | **策略详情「截图并添加」**功能本体（选中读取、子集详情页逐页截图、宿主分组页接力）+ 就绪门禁 / PixelCopy / 相册写入 | 目标进程 |
 | `feature/stgsnap/StgSnapAddTargets.kt` · `SnapSelection.kt` · `StockDetailLauncher.kt` · `SnapReadiness.kt` · `SnapStorage.kt` · `SnapProgressOverlay.kt` · `StgSnapPlan.kt` | 该功能的宿主候选常量、选中读取、Intent 转换、就绪判定、存储、进度条与纯逻辑 | 目标进程 |
 | `feature/stgfilter/StgStockFilterFeature.kt` | **策略详情筛选股票**功能本体（挂点分析与状态机：方向 + 股票类型两组条件） | 目标进程 |
@@ -112,6 +116,7 @@
 | `feature/aistare/quote/QuoteRepository.kt` · `QuoteFetcher.kt` | 取数源接口 + 会话（按各通道**声明的能力**逐级降级，非全局锁定）+ 取数编排（持久实例，日 K 缓存） | 目标进程 |
 | `feature/aistare/quote/HostQuoteSource.kt` · `PublicQuoteSource.kt` · `EastmoneyQuoteSource.kt` · `DomQuoteSource.kt` | 四条取数通道：① 宿主反射（只快照）→ ② 腾讯 → ③ 东财 → ④ 页面 DOM（只最新价） | 目标进程 |
 | `feature/aistare/quote/HttpTransport.kt` | 公开行情 HTTP 统一出口（状态码判定、可恢复错误重试一次、响应体封顶） | 目标进程 |
+| `feature/aistare/quote/KlineCache.kt` | 日 K 缓存：真 LRU + **根数预算**（16 只 / 8000 根，≈2 MB/通道）；腾讯与东财各持一个实例 | 目标进程 |
 | `feature/ipoclean/IpoDialogCleanFeature.kt` · `IpoCleanTargets.kt` | **新股申购提醒弹窗净化**功能本体 + 弹窗类名候选常量 | 目标进程 |
 | `core/QuickConfigStore.kt` | 「一键配置」方案的数据模型 + JSON 编解码（**两处共用**：目标进程算价、模块进程的方案设置页读写） | 两处共用 |
 | `core/QuickConfigCatalog.kt` | 取值项目录（§4.2 那张表）：id / 分类 / 参数约束；解析时「认不认识」的唯一权威 | 两处共用 |
@@ -120,7 +125,7 @@
 | `feature/uiclean/UiCleanFeature.kt` | 「界面精简」类功能的公共骨架（认现成视图 → 隐藏 / 压缩，走 `PageSyncFeature`） | 目标进程 |
 | `feature/uiclean/UiClean.kt` | 视图树遍历 / 文案查找 / 结构判据等共用工具 | 目标进程 |
 | `feature/uiclean/ViewPatcher.kt` | 改动记账（隐藏 / 压缩 / 缩放），支持一键还原（首帧屏障判据来源） | 目标进程 |
-| `feature/dock/DockCleanFeature.kt` · `DockCleanTargets.kt` | **底栏隐藏「理财」项**本体 + 定位常量 | 目标进程 |
+| `feature/dock/DockCleanFeature.kt` · `DockCleanTargets.kt` | **底栏逐格隐藏**本体（按 `dock_entries` 决定藏哪几格）+ 六格定位常量 | 目标进程 |
 | `feature/home/HomeBannerFeature.kt` · `HomeBannerTargets.kt` | **首页隐藏横幅**本体 + 定位常量 | 目标进程 |
 | `feature/market/MarketBannerFeature.kt` | **行情市场隐藏滚动横幅与快捷入口**功能本体 | 目标进程 |
 | `feature/market/MarketSectorCompactFeature.kt` | **行情市场板块六项压三项**功能本体 | 目标进程 |
@@ -251,7 +256,7 @@ onHotReloaded(param)
 
 | 功能 | `Feature` 实现 | 目标页面（`pages` 门禁） | 做什么 |
 |---|---|---|---|
-| **底栏隐藏理财入口** | `DockCleanFeature` | `MainAct` | 把底栏「理财」那一格 `GONE` + 其余格均分铺满 |
+| **底栏逐格隐藏**（自定义 底栏 入口） | `DockCleanFeature` | `MainAct` | 按 `dock_entries` 的 hidden 集合把对应格 `GONE`，剩下的格改序号 + 整行加宽铺满（至少留一格） |
 | **首页隐藏横幅** | `HomeBannerFeature` | `MainAct` | 隐藏首页快捷入口下方那条横幅 |
 | **行情市场隐藏滚动横幅与快捷入口** | `MarketBannerFeature` | `MainAct` | 收起轮播横幅 + 快捷入口两个版块 |
 | **行情市场板块显示单行** | `MarketSectorCompactFeature` | `MainAct` | 板块 3 列 × 2 行压成一行（限高） |
@@ -302,11 +307,13 @@ BaseQuickAdapter.getView(position, convertView, parent)      ← 被 Hook（拦�
    ├─ findViewById(R.id.tv_item_stk_name) → TextView
    │
    ├─ 从 adapter 取 position 对应的数据项（反射 + 多级兜底）
-   │     └─ 取出 "代码.市场"（如 300006.1）
+   │     └─ 取出 "代码.市场"（如 300006.1），整串往后传，不在这里拆
    │
-   ├─ ZxWatchlist.isInWatchlist(code, market)
-   │     ├─ 主：ZXWorkflow.isBelongByStock(code, market)
-   │     └─ 兜底：查 ZXManager.m_stkGrpMap 的 "code.market" 键
+   ├─ WatchlistMembership.isInWatchlist("代码.市场")   ← 带 TTL 的缓存（2s / 512 条）
+   │     │   进页面时 invalidate（自选可能在别的页面改过）
+   │     └─ 未命中 → ZxWatchlist.isInWatchlist(cam)
+   │           ├─ 主：ZXWorkflow.isBelongByStock(code, market)
+   │           └─ 兜底：查 ZXManager.m_stkGrpMap 的 "code.market" 键（不再二次拼串）
    │
    ├─ env.config  ← 内存中的不可变快照（零 IO）
    │
@@ -383,7 +390,8 @@ data class ConfigSnapshot(
     val stgMerge: Boolean,              // 策略详情页「策略合并」总开关
     val stgMergeGroups: String,         // 策略合并的聚合组数据（JSON）
     val stockBarEntry: Boolean,          // 个股详情页底栏「智能盯盘」入口
-    val dockClean: Boolean,              // 底栏不再显示「理财」那一格
+    val dockClean: Boolean,              // 底栏入口自定义总开关（出厂关）
+    val dockEntries: String,             // 底栏藏了哪几格（JSON：{"v":1,"hidden":[...]}）
     val homeBannerHide: Boolean,         // 隐藏首页快捷入口下方的横幅
     val marketBannerHide: Boolean,       // 隐藏行情市场滚动横幅与快捷入口
     val marketSectorCompact: Boolean,    // 行情市场板块由六项压缩为三项
@@ -413,8 +421,8 @@ data class ConfigSnapshot(
 }
 ```
 
-> `ConfigSnapshot` 共 **33 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 39 个键
-> = `SNAPSHOT_KEYS` 33 个进快照 + 6 个只属模块 App 进程（桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
+> `ConfigSnapshot` 共 **34 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 40 个键
+> = `SNAPSHOT_KEYS` 34 个进快照 + 6 个只属模块 App 进程（桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
 > ⚠️ **日志等级（`LOG_LEVEL`）是例外** —— 它既不在功能键也不在参数键里，
 > 但**进快照**（目标进程用它控制日志等级，见 `ConfigKeys` 的类注释）。
 
@@ -425,18 +433,26 @@ data class ConfigSnapshot(
 - 新增配置项只需改这里 + `ConfigKeys` + 设置界面
   （⚠️ 还要加进 `ConfigKeys.SNAPSHOT_KEYS` —— 否则目标进程**收不到**它的变更）
 
-### 4.2 `WatchlistFeature.originalColors` — 原始色缓存
+### 4.2 原始色 / 原始字重的记账位置：View 自己的 tag
 
 ```kotlin
-Collections.synchronizedMap(WeakHashMap<TextView, Int>())
+tv.setTag(R.id.gsaux_watchlist_original_color, cur)      // 原始色
+tv.setTag(R.id.gsaux_watchlist_original_typeface, cur)   // 原始字重
 ```
 
-记录每个名称 `TextView` **第一次见到的非高亮色**，用于还原。
+记录每个名称 `TextView` **第一次见到的非高亮色 / 非加粗字重**，用于还原。
 
 为什么不能直接用"当前颜色"当原始色？因为当前颜色可能就是我们自己染的黄色。
-所以只在颜色**不属于任何预设高亮色**时才写入缓存。
+所以只在颜色**不属于任何预设高亮色**时才写入。
 
-用 `WeakHashMap` 避免长时间持有已回收的 View。
+为什么记在 View 上而不是实例内的 `WeakHashMap<TextView, Int>`（2026-11-14 改）：
+tag 是 View 自己的字段，**跨实例、跨热重载**都还在——新装的 Feature 实例
+直接读 tag 就能接着还原，而实例内那张表在热重载换实例后就断了
+（CODE-RULES §1.2 要求装饰性现场能被新实例识别）。另外每行少两次
+`synchronized` 锁与一个 Map 条目分配，列表滚动时是真金白银。
+
+代价：读不到某个 View 的 tag 时只能退回 `FALLBACK_NORMAL_COLOR`；
+这条已有兜底，且首屏本来就会重新写 tag。
 
 ### 4.3 `WatchlistFeature.seenAdapters` — 见过的适配器
 
@@ -462,7 +478,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
 | **功能总开关** | `FEATURE_KEYS` 全表（22 个键）：`ENABLED` / `WATCHLIST_BOLD` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_SNAP_ADD` / `STG_STOCK_FILTER` / `STG_MERGE` / `STOCK_BAR_ENTRY` / 界面精简六项 / `MARKET_STOCK_FILTER` / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` / `ZX_GROUP_COPY` | 目标进程 | ✅ | **一律 `false`** |
-| **功能参数** | `FEATURE_PARAM_KEYS` 全表（10 个键）：`COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `STG_FILTER_PER_STRATEGY` / `STG_MERGE_GROUPS` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` / `ZX_COPY_MENU` / `ZX_COPY_RULES` | 目标进程 | ✅ | 开启 / 默认值 |
+| **功能参数** | `FEATURE_PARAM_KEYS` 全表（11 个键）：`COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `STG_FILTER_PER_STRATEGY` / `STG_MERGE_GROUPS` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` / `ZX_COPY_MENU` / `ZX_COPY_RULES` / `DOCK_ENTRIES`（底栏藏哪几格，JSON） | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 
 判定标准很简单：**目标进程需不需要它**。
@@ -500,7 +516,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |
 | 我的盯盘卡片跳个股详情页 | `feature/aistare/AiStareCardDetailTargets.kt` |
 | 新股申购提醒弹窗净化 | `feature/ipoclean/IpoCleanTargets.kt` |
-| 底栏隐藏理财入口 | `feature/dock/DockCleanTargets.kt` |
+| 底栏逐格隐藏（六格 id 表 `ENTRIES`） | `feature/dock/DockCleanTargets.kt` |
 | 首页隐藏横幅 | `feature/home/HomeBannerTargets.kt` |
 | 行情市场（滚动横幅 / 板块 / 概览，三功能共用） | `feature/market/MarketTargets.kt` |
 | 行情市场「涨跌与自选」筛选 | `feature/market/MarketFilterTargets.kt` |

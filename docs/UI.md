@@ -40,6 +40,7 @@
 | `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.1） |
 | `StgFilterSettingsScreen.kt` | 二级页：**筛选条件保存设置**（按策略 / 聚合组各记一份筛选条件，见 §4.5） |
+| `DockEntriesScreen.kt` | 二级页：**底栏入口设置**（六格逐格隐藏、至少留一格，入口副标题现算「已隐藏 N 个」，见 §4.2） |
 | `StrategyMergeScreen.kt` | 二级页：**聚合组设置**的组列表（组行 ⋮ 排序 / 设默认 / 删除、新建组，见 §4.5） |
 | `StrategyMergeEditScreen.kt` | **三级页**：单个聚合组的编辑（组名 / 成员三类 / 设为默认 / 删除，见 §4.5） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
@@ -449,14 +450,14 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 智能盯盘 | 优化确定逻辑 | `aistare_empty_save` | 无 |
 | 智能盯盘 | 无需确定保存盯盘 | `aistare_skip_save_confirm` | 保存后返回位置设置（`AiStareSaveBehaviorScreen`） |
 | 智能盯盘 | 盯盘数据卡片拓展 | `aistare_card_detail` | 无 |
-| 底栏 | 隐藏 理财 入口 | `dock_clean` | 无 |
+| 底栏 | 自定义 底栏 入口 | `dock_clean` | 底栏入口设置（`DockEntriesScreen`；六格逐格隐藏、至少留一格，入口副标题按 `dock_entries` 现算「已隐藏 N 个」） |
 | 首页 | 隐藏 横幅 | `home_banner_hide` | 无 |
 | 行情市场 | 隐藏 滚动横幅与快捷入口 | `market_banner_hide` | 无 |
 | 行情市场 | 板块显示单行 | `market_sector_compact` | 无 |
 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | 无 |
 | 行情市场 | 隐藏 指数概览 | `market_index_hide` | 无 |
 | 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
-| 自选 | 自选分组复制 | `zx_group_copy` | 无 |
+| 自选 | 自选分组复制 | `zx_group_copy` | 两个：复制设置（`ZxCopyRules`）/ 复制按钮设置（`ZxCopyButton`） |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
 | 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
 | 显示 | 自选股名称加粗 | `watchlist_bold` | 无 |
@@ -477,6 +478,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 |---|---|---|
 | `WatchlistDetail.kt` | 自选股高亮 → 高亮颜色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设）/ 效果预览（两行示例，无说明行） |
 | `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，不带副标题 —— 2.17.2 起，见 [NAMING.md](NAMING.md) §3） |
+| `DockEntriesScreen.kt` | 自定义 底栏 入口 → 底栏入口设置 | 六个开关（开 = 隐藏那一格）/ 只剩一格时该行置灰 / 即改即生效，无保存按钮 |
 
 **二级页只放「总开关之外」的参数。**
 
@@ -488,6 +490,24 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 >
 > 「左右滑动」的 `enabled` 仍跟随 `stg_direct_quote`：正常路径下恒为 `true`，
 > 留着是兜住非常规路径（进程重建后路由被恢复、而配置已被重置）。
+
+#### 4.2 二级页：「底栏入口设置」
+
+| 页面 | 层级 | 结构 |
+|---|---|---|
+| `DockEntriesScreen.kt` | 二级 | 一张卡六个开关：隐藏 首页 / 行情 / 自选 / 交易 / 理财 / 账户 入口 |
+
+三件事值得记：
+
+- **开关语义是「隐藏」不是「显示」**：底栏六格出厂全在，把某一行打开就是藏掉那一格，
+  所以每行副标题写「已隐藏」/「显示中」两套状态句（见 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) 第 3.1 节），
+  一级页入口行副标题则现算「已隐藏 N 个」，一个都没藏时写「六个入口全部显示」。
+- **至少留一格**：藏到只剩一格时，最后那一行的开关置灰、副标题换成
+  「显示中·底栏至少保留一个入口」—— 底栏空格子是宿主把剩下几格均分铺满的，
+  一格不剩就没有可铺的基准，宿主自己的布局会错位。
+- **数据落在参数键 `dock_entries`**（`{"v":1,"hidden":["money"]}`，按底栏顺序输出），
+  总开关仍是 `dock_clean`；键没写过时按老布尔键迁移（开着 = 藏理财一格），
+  写过之后只认新键（见 [FEATURE-DOCK-ENTRIES.md](FEATURE-DOCK-ENTRIES.md) §7）。
 
 #### 4.4 「一键配置」的方案列表页与编辑页（3.1.0 重排）
 

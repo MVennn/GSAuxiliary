@@ -14,7 +14,7 @@
 
 | # | 分区 | 功能（卡片上的名字） | 配置键 | 实现类 |
 |---|---|---|---|---|
-| 1 | 底栏 | 隐藏 理财 入口 | `dock_clean` | `feature/dock/DockCleanFeature.kt` |
+| 1 | 底栏 | 自定义 底栏 入口 | `dock_clean`（总开关）+ `dock_entries`（藏哪几格） | `feature/dock/DockCleanFeature.kt` |
 | 2 | 首页 | 隐藏横幅 | `home_banner_hide` | `feature/home/HomeBannerFeature.kt` |
 | 3 | 行情市场 | 隐藏滚动横幅与快捷入口 | `market_banner_hide` | `feature/market/MarketBannerFeature.kt` |
 | 4 | 行情市场 | 板块显示单行 | `market_sector_compact` | `feature/market/MarketSectorCompactFeature.kt` |
@@ -22,6 +22,10 @@
 | 6 | 行情市场 | 隐藏 指数概览 | `market_index_hide` | `feature/market/MarketIndexHideFeature.kt` |
 
 定位常量分别落在 `DockCleanTargets.kt` / `HomeBannerTargets.kt` / `MarketTargets.kt`。
+
+> 第 1 行 2026-11-14 已从「隐藏 理财 入口」升级成「自定义 底栏 入口」：六格各一个开关，
+> 藏哪几格写进参数键 `dock_entries`（结构与迁移口径见 [FEATURE-DOCK-ENTRIES](FEATURE-DOCK-ENTRIES.md) §7），
+> 升级前的布尔键 `dock_clean` 保留为总开关与迁移源。本篇仍是认法与重排的正本。
 
 ---
 
@@ -69,7 +73,7 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 
 挂钩子早只保证「改动来得早」，保证不了「用户看不见中间态」：
 
-- 精简类功能经常**一拍改不完** —— `DockCleanFeature.fillRow` 是四招状态机，
+- 精简类功能经常**一拍改不完** —— `DockCleanFeature.fillRow` 是三态两招的状态机，
   每一招都得等下一次布局量过尺寸才知道有没有用，中间连着好几帧界面都处在「改到一半」；
 - 宿主的首屏也常常是**分批挂上来**的 —— 主壳先布局，Fragment 内容随后才 add。
 
@@ -89,7 +93,7 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 
 | 档 | 时机 | 上限 | 为什么 |
 |---|---|---|---|
-| 宽 | 进入页面起 1500ms 内（启动图通常还盖着） | 12 帧 / 1500ms | 实测宿主布局一次要 **100~350ms**，而 `DockCleanFeature` 的四招状态机整体要 **~800ms** —— 只有这段时间亏得起 |
+| 宽 | 进入页面起 1500ms 内（启动图通常还盖着） | 12 帧 / 1500ms | 实测宿主布局一次要 **100~350ms**，而 `DockCleanFeature` 的重排状态机整体要 **~800ms** —— 只有这段时间亏得起 |
 | 紧 | 启动窗口外（用户正看着这一页） | 2 帧 / 120ms | 再多就宁可让他看见一次中间态，也不能让界面「卡住不动」 |
 
 两档都到顶就立刻放行，并进入 800ms 静默期。**绝不把界面冻住。**
@@ -122,6 +126,9 @@ O(1) 的快速通道：
 ```kotlin
 // 「藏掉某个视图」类：那个视图还在树上且已经是 GONE
 if (alreadyHidden(lastHidden?.get())) return true
+
+// 「按集合藏若干视图」类：这趟算出的签名与上一趟相同 → 不退回、不重排，只补一次 hide
+if (hidden.joinToString(",") == appliedSig) { /* 逐格 patcher.hide，幂等 */ }
 
 // 「改容器 / 改子项」类：处理过的容器还在树上
 if (stillAttached(lastGroup?.get())) return true
@@ -158,7 +165,7 @@ if (stillAttached(lastGroup?.get())) return true
 「底栏『理财』先消失、占位过一会儿才归位」。2026-10-19 起改成：**窗口内进来的回调
 汇总成一趟、排到窗口结束时补跑**，窗口本身缩到 200ms（≈12 帧，用户感知不到）——
 压爆发的收益来自「同一窗口只跑一趟」，与窗口多长无关。多趟状态机要更快就覆写
-`needsFollowUp` 让窗口整体让路（`DockCleanFeature` 的四招重排就是这样）。
+`needsFollowUp` 让窗口整体让路（`DockCleanFeature` 的重排就是这样）。
 
 这条日志就是**校准入口** —— 不需要 `uiautomator`，也不需要自己找控件：
 打开功能、进一次页面、看模块日志即可（目标进程的日志在 LSPosed 的
@@ -171,19 +178,26 @@ if (stillAttached(lastGroup?.get())) return true
 
 ## 3. 六个功能各自的认法
 
-### 3.1 底栏移除「理财」（`DockCleanFeature`）
+### 3.1 底栏逐格隐藏（`DockCleanFeature`）
 
-底栏是「图标在上、文字在下」的一行格子（典型：首页 / 行情 / 交易 / 理财 / 我的）。
+底栏是「图标在上、文字在下」的一行格子（8.6.0 实测六格：首页 / 行情 / 自选 / 交易 / 理财 / 账户）。
 
 ```
-① 候选 id：DOCK_ID_CANDIDATES
-② 结构判据（findBottomRow）：
+① 整行：候选 id `fl_main_tab` 直取；拿不到再按结构判据（findBottomRow）
      · 整行顶边落在屏幕高度 75% 以下
      · 一行 3~6 格，每格都是「有图标 + 有文字」（UiClean.looksLikeEntryItem）
      · 整行高度 ≤ 110dp
-③ 在行内**按文案**找「理财」→ 取它「直属于行」的那个子视图 → GONE
-④ 若行是横向 LinearLayout：把**宽度相近**的其余格子设成 width=0 + weight=1，重新铺满
+② 六格：按 `DockCleanTargets.ENTRIES` 逐个 key 取 id（cb_main_tab_home / _quotes / _zx /
+     _trade / _money / _mine），再上溯到「直属于行」的那个子视图
+③ id 全落空时按文案找（首页 / 行情 / 自选 / 交易 / 理财 / 账户）→ 同样上溯一格
+④ 配置里该 key 在 hidden 集合里 → GONE
+⑤ 剩下的可见格重排铺满，见 §7.4
 ```
+
+**藏几格由配置决定**：参数键 `dock_entries` 是一份 JSON（`{"v":1,"hidden":["money"]}`），
+`DockEntryStore.decode` 把「新键 + 老布尔键迁移」统一成一个 Set；总开关 `dock_clean`
+关掉时整条链路不跑（`switchedOn`）。**至少留一格**：配置要求把六格全藏时按
+「一个都不藏」处理，界面侧也把最后那一行置灰（见 [FEATURE-DOCK-ENTRIES](FEATURE-DOCK-ENTRIES.md) §5）。
 
 **为什么不按下标**：不同账号 / 版本底栏项数不一样（有的没有「交易」、有的多一个「基金」），
 下标一错就藏错东西。
@@ -191,6 +205,10 @@ if (stillAttached(lastGroup?.get())) return true
 **为什么不删 Tab**：底栏通常和 `ViewPager` 索引绑死，删掉中间的 Tab 会让索引错位
 （点「交易」进「理财」页）。所以**只藏不删**：那一格从界面上消失、点不到，
 宿主自己的索引一个都没动。
+
+**为什么重排不靠改子项**：8.6.0 的容器是等分栅格 `SingleGridLayout`，子项宽度和边距
+都不吃，只有「改序号 + 加宽整行」管用（见 §7.4）。横向 `LinearLayout` 的宿主仍走 weight
+那一招 —— 两招都在 `fillRow` 里，先试 weight。
 
 **为什么均分只在 LinearLayout 里做**：`ConstraintLayout` 里子项本来就在链上，
 `GONE` 之后宿主自己会重排，我们插手反而可能把链搞散
@@ -458,7 +476,7 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 | 宿主版本升级、结构变了 | 最坏结果是「认不出来 → 什么都不做」，不会改错地方 |
 | 页面重新创建（切 Tab / 重建 Fragment） | 旧视图 detach → 幂等标记失效 → **下一次布局回调自动重新处理**；处理过程中的中间帧同样被首帧屏障拦掉 |
 | 宿主把改过的高度 / 宽度改回去 | 幂等标记按「视图还在不在树上」判，改回去不会让标记失效 —— 若真遇到（宿主重排自己的 `LayoutParams`），按各功能自己的 `reassert` 逻辑处理（底栏入口就是这么做的） |
-| 底栏「理财」被别的方式隐藏 | 找不到那一格 → 本页无事可做（日志会说明） |
+| 底栏某一格被别的方式隐藏（比如宿主自己把它拿掉了） | 那一格解析不到 → 只跳过对应的 key，其余照常（日志会列出跳过了哪几项） |
 | 宿主在**每帧**都改布局（极端情况） | 连拦到预算上限后放行并静默 800ms —— 宁可漏一次中间态，也不卡帧 |
 
 ---
@@ -532,7 +550,9 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 | 常量 | 真机实测值（已排在候选数组最前） |
 |---|---|
 | `DockCleanTargets.DOCK_ID_CANDIDATES` | `fl_main_tab` |
-| `DockCleanTargets.REMOVE_ITEM_ID_CANDIDATES` | `cb_main_tab_money` |
+| `DockCleanTargets.REMOVE_TEXT` | `理财`（`money` 那一格的文案兜底） |
+| `DockCleanTargets.ENTRIES` | 六格：`cb_main_tab_home` / `_quotes` / `_zx` / `_trade` / `_money` / `_mine` |
+| `DockCleanTargets.REMOVE_ITEM_ID_CANDIDATES` | `cb_main_tab_money`（升级前的唯一候选，现作为 `ENTRIES` 里 `money` 那一格的 id 表） |
 | `HomeBannerTargets.BANNER_ID_CANDIDATES` | `layout_banner` |
 | `HomeBannerTargets.QUICK_ENTRY_ID_CANDIDATES` | `rv_home_func` |
 | `HomeBannerTargets.HOME_ENTRY_ITEM_ID` | `home_func_icon` |
@@ -561,14 +581,23 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 不 `clickable`），所以挪位安全：点「账户」（序号 5 → 4）仍然正常打开账户页。
 换宿主版本要重新验这一步。
 
-`DockCleanFeature.fillRow` 就是按这张表写的状态机：**每一步改完都等下一帧量一次**，
-成了就收手、不成再试下一招，四招都不灵就用 `ViewPatcher.restore()` 逐项退回原样，
-只记一条警告、不再重试 —— 免得每帧都改一遍布局。
+`DockCleanFeature.fillRow` 就是按这张表写的状态机，**三态两招**：
 
-**还踩过一个测量坑**：判断「有没有铺满」必须用**可见格子的宽度之和**，
-不能用「最左到最右的跨度」（`max(right) − min(left)`）—— 去掉中间那格之后，
-剩下的格子仍然从 0 铺到 1080，跨度是满的，中间却空着一格（180px）。
-第一版就是被这个跨度判据骗了，日志里写着「宿主自己重排，不用我们插手」。
+| 态 | 做什么 |
+|---|---|
+| `TODO` | 先试招 ①（横向 `LinearLayout` 才有的 weight 均分）；容器不是 LinearLayout 就走招 ④（把被藏的格子挪到子项末尾 + 整行加宽） |
+| `APPLIED` | 等下一帧量：量到「逐格对位」就进 `SETTLED`；没生效就退回重排改动、把隐藏补回来、记一条警告，**不再重试** |
+| `SETTLED` | 收手；之后每趟只做幂等的补 hide（宿主重建视图、或我们自己退回重排，都可能把格子放回来） |
+
+多格同时藏时公式不变：整行宽度 = 原行宽 × 子项总数 ÷ 可见格数。
+1080 宽 6 格藏掉 2 格 → 行放到 1620、每格 270px，4 个可见格正好铺满 1080。
+
+**还踩过一个测量坑**：判断「有没有铺满」不能只看跨度
+（`max(right) − min(left)`）—— 去掉中间那格之后，剩下的格子仍然从 0 铺到 1080，
+跨度是满的，中间却空着一格（180px）。第一版就是被这个判据骗了，
+日志里写着「宿主自己重排，不用我们插手」。现在用**逐格对位**：第 j 个可见格的
+`left` 与 `width` 都要落在「j × 每格宽」的 ±1/8 格内 —— 藏起多格之后，
+只比总宽度同样会漏掉中间的空档。
 
 ### 7.5 行情市场（行情 tab → **A股** 子页的顶部）
 
@@ -636,7 +665,7 @@ grep -n 'bounds="\[0,2[01][0-9][0-9]\]' ui.xml
 | 1 | 底栏「理财」藏掉后留一条空档 | `SingleGridLayout` 不吃子项宽度 / 边距，只按序号摆位 | 挪到末尾 + 加宽整行，见 §7.4 |
 | 2 | 「市场概览压矮」压了 `DecorView` 与 8 个首页视图 | 结构兜底「类名像图表 / 自绘 + 够宽」在**首页**命中了 AppBarLayout、快捷入口网格、广告图 | 删掉结构兜底，**只认 id** |
 | 3 | 三个行情功能在首页各报 3 次「认不出目标控件」 | 首页与行情页同属 `MainAct`，功能在非目标页也照样跑 | 加**页面门禁**（`MarketTargets.onMarketPage`），不在这一页就静默返回 |
-| 4 | 「已铺满」误报 | 用「最左到最右跨度」判铺满，中间的空档被算进去了 | 改用**可见格子宽度之和**，另加「没有格子被挤出可视宽度」的检查 |
+| 4 | 「已铺满」误报 | 用「最左到最右跨度」判铺满，中间的空档被算进去了 | 改用**逐格对位**（第 j 格的 `left` 与 `width` 都落在 j × 每格宽的 ±1/8 内）；只比总宽度同样会漏掉中间空档 |
 
 共同点：**四个都没有静态答案，全靠真机日志**。所以模块里那些「认不出来就什么都不做 +
 打一份视图树快照」的设计不是保守，是唯一可行的路子 —— 这四条都是照着日志改出来的。

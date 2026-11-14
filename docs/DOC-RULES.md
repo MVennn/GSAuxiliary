@@ -12,7 +12,7 @@ docs/ 分四类（索引见 [README.md](README.md)）：
 | 类别 | 收什么 | 现有成员 |
 |---|---|---|
 | 架构与逆向 | 模块怎么搭、宿主怎么逆出来、界面规范 | 7 篇：ARCHITECTURE、REVERSE-ENGINEERING、EXTENDING、UI、DESIGN-SYSTEM、UI-MATERIAL、UI-HISTORY |
-| 功能专项 | 一个功能一篇（FEATURE-*） | 15 篇（清单见 [README.md](README.md) 索引） |
+| 功能专项 | 一个功能一篇（FEATURE-*） | 17 篇（清单见 [README.md](README.md) 索引） |
 | 流程与规范 | 构建、发版、版本、脱敏、审查快照、测试桥、维护、排错、命名、材质、编码纪律、文档规则 | 13 篇：BUILD、SECRETS、RELEASE、VERSIONING、REVIEW-2026-10、TEST-BRIDGE、MAINTENANCE、TROUBLESHOOTING、CODE-RULES、NAMING、LIQUID-GLASS、DOC-RULES、TOOLS-DOC-RULES（另有 `tools/` 下 3 篇 README，见 [README.md](README.md) 索引） |
 | 参考资料 | Release 说明、免责全文 | release-notes/、DISCLAIMER（reference/ 已转本地留存，不随仓库分发） |
 

@@ -36,6 +36,8 @@
 | [FEATURE-IPO-DIALOG.md](FEATURE-IPO-DIALOG.md) | 隐藏 新股申购 弹窗，含真机校准手册 |
 | [FEATURE-NAV-BAR.md](FEATURE-NAV-BAR.md) | 手势导航条同色 |
 | [FEATURE-UI-CLEAN.md](FEATURE-UI-CLEAN.md) | 界面精简（底栏 / 首页 / 行情市场，含「隐藏 指数概览」），含真机校准手册 |
+| [FEATURE-DOCK-ENTRIES.md](FEATURE-DOCK-ENTRIES.md) | 底栏入口自定义（`dock_clean` 升级，已落地）：把单点开关反推成六格开关组的方法与判据、二级页形态、多格重排公式 |
+| [FEATURE-UPGRADE-ROADMAP.md](FEATURE-UPGRADE-ROADMAP.md) | 功能升级路线图：22 个功能逐个按四条判据判定能否从「单点开关」升级成「对象族 + 二级设置页」，含四个 A 级族的形态、键、文案与成本 |
 | [FEATURE-ROW-SELECTION.md](FEATURE-ROW-SELECTION.md) | 策略详情页「勾选态」的跨功能通道：筛选 / 全选 / 聚合 / 截图并添加四个功能共用的一份勾选读写口径与行集合版本号（**跨功能状态正本**） |
 | [FEATURE-STRATEGY-MERGE.md](FEATURE-STRATEGY-MERGE.md) | 我的策略聚合（聚合组）：同组多条原生策略的股票并到一张原生结果页；含踩点报告、真机探针记录、筛选联动、从金太阳导入、标签成员、组合维度、入口卡命名与全选提速 |
 

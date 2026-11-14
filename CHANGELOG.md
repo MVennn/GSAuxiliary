@@ -5,6 +5,109 @@
 
 ---
 
+## [未发布] — 2026-11-14
+
+> 性能 / 内存 / 健壮性整轮整理：没有新增开关，界面行为不变。版本号仍停 3.8.12，发版时再抬。
+
+### 提速 配置变更合流（一次重置不再跑 30 多趟全量读盘）
+
+- 旧行为：`ConfigSource` 每收到一条 remote prefs 变更就整份 `read()`（33 个取值 + 33 字段快照 + 3 个 JSON 的 O(n) `hashCode`）
+  再往主线程 post 一趟。恢复备份 / 重置一次连写 32 键 → 32 趟重复工作。
+- 现在：变更只置脏位，40ms 合流窗口里攒够一次再跑；`close()` 同时取消挂起的回调，热重载不会把旧实例的 `onChanged` 唤醒。
+- `FeatureManager.onConfigChanged` 增加指纹短路：值没动就直接返回，20 个功能不再整趟空转。
+- 文件：`core/ConfigSource.kt`、`feature/FeatureManager.kt`。
+
+### 提速 自选高亮每行少两把锁、少两次反射
+
+- 原来每行无条件读一次 `textColors`、再查两张 `synchronizedMap(WeakHashMap)`（颜色 / 字重各一次锁 + 条目分配），
+  还要拼 `代码.市场` 再在 `ZxWatchlist` 内部二次拼串。
+- 现在：原色 / 原字重只记在 View 自己的 tag 上（tag 跨实例、跨热重载照样可信）；`textColors` 每行只读一次；
+  `ZxWatchlist` 新增吃单串的重载；行级判定加 `WatchlistMembership`（2s / 512 条 TTL 缓存，进页面 `invalidate`）。
+- 文件：`feature/watchlist/WatchlistFeature.kt`、`ZxWatchlist.kt`、`WatchlistMembership.kt`（新）、`core/BoundedTtlCache.kt`（新）。
+
+### 内存 日 K 缓存从「满了整张清空」改成真 LRU + 根数预算
+
+- 旧实现：两个行情通道各一张 `HashMap`，`if (size >= 16) clear()` —— 满一次扔掉 15 条热数据；只按只数不按根数，
+  上限约 8.3 MB / 通道。
+- 现在：`KlineCache` 按访问顺序淘汰、老的先走，并同时受「16 只 / 8000 根（≈2 MB）」双预算约束。
+- 文件：`feature/aistare/quote/KlineCache.kt`（新）、`PublicQuoteSource.kt`、`EastmoneyQuoteSource.kt`。
+
+### 提速 日志落盘队列改为有界（1024 条 + CallerRunsPolicy）
+
+- 旧实现 `newSingleThreadExecutor` = 无界队列：某个钩子被高频触发或页面脚本狂刷 `gsaux.diag` 时，日志全堆在堆里，
+  磁盘有 512 KB 硬顶、内存没有。
+- 现在队列有界，满了在调用线程就地写 —— 不丢行，`flush()` 的等待标记也不会被丢弃策略吃掉（否则导出干等 2s 超时）。
+- 文件：`core/LogStore.kt`。
+
+### 修补 网络探针不再把凭据与个股代码写进日志
+
+- 旧实现：每个 socket 写都先造一个最多 16 KB 的字符串（即使不需要抓会话）；INFO 级直接打完整 URL 与请求头
+  （含 `Cookie` / `Authorization` / `openapi_sign`），凭据落进 512 KB 滚动日志，还能被「导出日志」带走；
+  线程本地的 `pendingUrl` 在纯 GET 路径上不清。
+- 现在：先在**字节层**找 `openapi_sign=`，命中才解码；INFO 只留脱敏后的方法与地址，正文 / 请求头降级到 DEBUG；
+  `pendingUrl` 在 `finally` 里无条件清；`LogMask.secrets()` 同时抹凭据取值与 `stockCode=` 这类 6 位代码（保留前两位认票）。
+- 文件：`feature/hostnet/HostNetProbeFeature.kt`、`core/LogMask.kt`。
+
+### 修补 策略清单广播与调试通道的输入边界
+
+- 广播接收侧：API 34+ 校验发送方 uid 必须是宿主；条目数 / 名称 / id / 标签长度全部封顶（此前任意 App 能发一份大包把主线程拖住）。
+- 调试通道（`DebugConfigProvider`）：两列 JSON 字符串加 96 KB 上限；非整数写进整数列时打日志而不是静默丢键。
+- 文件：`app/HostStgCatalogReceiver.kt`、`app/HostStgCatalog.kt`、`core/StgCatalogBroadcast.kt`、`app/DebugConfigProvider.kt`。
+
+### 修补 H5 侧 JS 桥只认自己挂的那个 WebView
+
+- 旧实现：桥挂在**所有** WebView 上，守卫却读全局 `currentWebView`（只在价格页 `onPageFinished` 赋值、离开不清），
+  于是任意 H5 页面都能调 `gsaux.saved()` / `manage()` / `toast()`，触发「关页面 / 拉设置页 / 拉起个股详情」。
+- 现在：`Bridge` 构造时绑定自己的 `WeakReference<WebView>`，守卫与 `parseStockCode` 都问这个引用。
+- 文件：`feature/aistare/AiStareQuickConfigFeature.kt`。
+
+### 修补 配置读写不再因一份脏备份整片失效
+
+- 旧实现：备份 JSON 里把 `"enabled"` 写成 `"true"`（字符串）就能让设置页 CCE；宿主侧 `read()` 抛异常后整份快照回落默认，
+  22 个功能一起静默失效。
+- 现在：三个 getter 包 `runCatching` 并记日志；`putAll` 按 `ConfigKeys.DEFAULTS` 的期望类型归一，归不了的跳过并说明；
+  本地→远程迁移加一次性 marker 且只迁 `ALL_KEYS` 白名单。
+- 文件：`app/ModulePreferences.kt`。
+
+### 修补 其它并发面
+
+- `HostSession` 六字段改成一次性发布的不可变快照（此前可能读到「新 session + 旧 sign」，服务端只回业务错误码）。
+- 日志导出的 `StringBuilder` 换 `StringBuffer` 并封顶 4 MB（读线程写、主线程 join 超时后 `toString()` 会越界）。
+- 策略组合取数读响应体封顶 4 MB（与 `HttpTransport` 同口径）。
+- `SnapStorage` 文件名自净（去掉 `/`、`..` 与控制字符），避免截图跳出 `Pictures/GSAuxiliary`。
+- `AiStareJs` 的转义补齐换行与 U+2028/U+2029（方案名带换行会让整段 init 脚本语法错误，页面表现是按钮消失）。
+- 文件：`core/HostSession.kt`、`core/LogExporter.kt`、`feature/stgmerge/StrategyComboClient.kt`、`feature/stgsnap/SnapStorage.kt`、`feature/aistare/AiStareJs.kt`。
+
+### 搭桥 行层与计数文案的共用底座
+
+- `feature/stgrow/RowCode.kt`：代码串解析收成一个入口，宽松 / 推导 / 严格三种口径显式命名。
+  原先筛选、全选、聚合、截图四套各自一份，`CodeMarketParts` / `StgSelectAllPlan` / `StgSnapPlan` 已全部改调它。
+- `feature/stgrow/StgCountBar.kt`：左上角 `#tv_stg_res_num` 的格式串与正则收成唯一口径，筛选与聚合两侧都调它，
+  不再靠「两边注释说逐字一致」维持（真机 2026-11-12 因为这件事出现过「列表 36 行、数字 212 只」）。
+- `StgFilterBridge` 增加 `epoch`：发布顺序前移到「装完代理」之后、「搬勾选」之前 —— 搬勾选会触发宿主重写计数，
+  全选侧原先会拿上一轮的下标表点行。
+- 文件：`feature/stgrow/RowCode.kt`（新）、`StgCountBar.kt`（新）、`StgFilterBridge.kt`、`StgStockFilterFeature.kt`。
+
+### 验证
+
+- 单测：`gradlew :app:testDebugUnitTest` → 38 个测试类 / 415 例 / 0 failures（新增 `BoundedTtlCacheTest`、`KlineCacheTest`、
+  `RowCodeTest`、`StgCountBarTest`、`ZxWatchlistCamTest`，`LogMaskTest` 补 3 例）。
+- 构建：`gradlew :app:assembleRelease` exit 0，产物 1,716,044 B；dex 内可检出新的计数格式串与 `gszx-log-writer` 线程名。
+- 门禁：`tools/ci/check_links.py` exit 0（74 篇 / 351 链接 / 0 断链）、`tools/hygiene.py` exit 0。
+- 真机（MuMu 12 / Android 12，宿主 8.7.1 / LSPosed 2.2.1 api 102，2026-11-14）逐项过：
+  - 合流窗口：单键 `配置已更新（color，合流 1 条）指纹=1742424271`；双键 `配置已更新（color,watchlist_bold，合流 2 条）指纹=-583183107`。
+  - 计数栏：`策略个股 19/27`（筛选态）与 `策略个股 114/141`（聚合态）各自成立，写序不互相覆盖。
+  - 全选：聚合页筛选态 114 只一趟点完 `耗时 147ms，失败 0，宿主计数 114 → 0`；再点一次 `反选` 回到「已选 0 只股票」。
+  - 自选高亮：`重绘 8 行（筛选=true，首个映射 0→0）` —— tag 记原色 + TTL 缓存这条路径确实走到了。
+  - 脱敏：`log_level=3` 逛行情 / 自选 / 策略详情，`session=` / `openapi_sign=` / `token=` / `cookie` / 手机号命中 0；勾选日志里代码打成 `30****`。
+  - 回退路径：`nav_bar_blend` 解析不出主题底色时改走像素取色 `#68A6FC`，同色结果一致。
+- 真机踩到的坑（已写进 `docs/TROUBLESHOOTING.md` §3 原因 C 与 `docs/BUILD.md`）：`install -r` 覆盖安装模块包后，
+  模块 App 进程手里的框架 binder 已失效，值写进 remote prefs 却不推给宿主 —— 必须
+  `am force-stop io.github.MVennn.GSAuxiliary` 让 `FrameworkBridge` 重新绑定。
+- 未做：手机端（非模拟器）观感复核；`docs/ARCHITECTURE.md` 已同步新增文件与 `util/ViewIds.kt`、`core/LogStore.kt` 的口径变化。
+
+---
+
 ## [3.8.12] — 2026-11-13
 
 > 补丁版本。修「手机上随机提示已在该组合」：全选提交链上有三处静默放弃。

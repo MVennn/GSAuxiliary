@@ -574,6 +574,47 @@ cp keystore.properties.example keystore.properties
 > 2026-10-20 第一次跑就找出**两个真的守卫盲区**（「当前已加粗态时不能把加粗后的
 > 记成原字重」与「打码要挡住两位的代码」）。
 
+### 真机回归一律先走 MuMu（2026-11-14 定）
+
+用户口径：**真机回归都用 MuMu 模拟器**，一上来不要在实体机上折腾；MuMu 复现不了再上真机。
+
+本机现成的实例（`MuMuManager.exe info -v all` 可复核）：
+
+| 项 | 值 |
+|---|---|
+| 实例 | `1`（`MuMu安卓设备`），Android 12 |
+| 管理器 | `<MuMu 安装根>\nx_main\MuMuManager.exe` |
+| adb | `<MuMu 安装根>\nx_device\12.0\shell\adb.exe`（与系统 adb 同一份协议，直接用它就不必改 PATH） |
+| 设备序列号 | `emulator-5556`（启动后由 MuMu 自己注册，**不需要** `adb connect 127.0.0.1:16384`） |
+
+跑一轮回归的最小步骤：
+
+```
+MuMuManager.exe control -v 1 launch      # 实例已启动时幂等
+adb -s emulator-5556 install -r app/build/outputs/apk/release/app-release.apk
+adb -s emulator-5556 shell am force-stop com.guosen.android            # 模块更新后必须重启宿主
+adb -s emulator-5556 shell am force-stop io.github.MVennn.GSAuxiliary  # 模块 App 也要重启，否则通知推不出去
+adb -s emulator-5556 logcat -c
+# 在模拟器里开 App 走一遍要验的页面
+adb -s emulator-5556 logcat -d -s GSZXEnhance:V > .work/logcat.txt
+```
+
+两条 `am force-stop` 都不能省：宿主进程要重载模块，模块 App 进程要重连框架服务。
+只重启宿主时，模块 App 手里那份 binder 已经失效 —— 值写进 remote preferences 却不再推给宿主，
+表现就是「配置 query 得到新值、宿主一行 `配置已更新` 都没有」（详见 `docs/TROUBLESHOOTING.md` §3 原因 C）。
+
+其它两条环境事实：
+
+- **实例的 adb 端口可能不是 emulator-5556**：MuMu 每个实例会额外注册 `127.0.0.1:<16384+32×序号>`（实例 1 实测 `127.0.0.1:16416`），
+  `adb devices` 里两条都在就用哪条都行；模拟器重启后连接会断，`adb connect` 一次即可。
+- **宿主每次冷启动都弹**「您的运行环境存在风险，请注意安全防范。」；720×1280 下「确定」在 `(359,694)`，
+  不点掉它，后续 `input tap` 全落在弹窗上（自动化脚本第一步就点它）。
+
+`logcat` 里认这几行：`功能安装完成：N/20`（N 少于 20 就是有功能没装上）、`配置已更新（…，合流 N 条）`、
+`筛选股票：左上角计数 → 策略个股 N/M`、`自选高亮：重绘 N 行（筛选=…）`、
+`策略全选：一次性点击 N 行完成（耗时 Nms，失败 0…）`。模拟器上 LSPosed 与宿主（`com.guosen.android`）
+都已装好、模块在作用域里，不必重进 LSPosed 管理器；但重装模块包后**宿主与模块 App 都要停一次**（见上）。
+
 ### 仍然只能靠真机的那一半
 
 **界面观感**（液态玻璃 / 深色模式 / 字体度量 / 抗锯齿）与**宿主行为**

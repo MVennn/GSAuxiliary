@@ -170,7 +170,7 @@ adb shell su -c "content query --uri content://io.github.MVennn.GSAuxiliary.conf
 ## 3. 设置里改了开关，但 App 里没反应
 
 配置走框架的 remote preferences，正常情况下是**实时推送**的。
-没反应基本只有两类原因。
+没反应基本只有三类原因。
 
 **排查**
 
@@ -222,6 +222,22 @@ GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 
 > 通道打不开会**明确记日志**，不会静默失败 —— 这也是设置界面要显示
 > 「配置通道」的原因。
+
+### 原因 C：模块 App 的连接是「僵尸」（重装模块包后没重启模块 App）
+
+现象很别扭：`content query` 能看到值**确实变了**，目标 App 却一行 `配置已更新` 都没有，页面也不动。
+
+根因：`install -r` 覆盖安装后宿主进程换掉了，模块 App 进程却还在，手里那份框架 binder 已经失效；
+写 remote preferences 走的仍是同一份文件，所以「值变了、通知没人收」。模块 App 不会因为 binder 死而自己重启。
+
+解法：重装模块包后，除了重启宿主，把模块 App 也停一次 —— 再打开它让 `FrameworkBridge` 重新绑定：
+
+```bash
+bash tools/sh.sh "am force-stop io.github.MVennn.GSAuxiliary"
+```
+
+恢复时日志会依次出现 `模块 App 启动：配置仓库与服务监听就绪` → `已连接框架服务：LSPosed …` →
+`配置后端 = REMOTE（框架已连接）`。2026-11-14 在 MuMu 上实测到过这一次（`module lines: 0` 一路找不到原因的，先查这条）。
 
 ---
 
