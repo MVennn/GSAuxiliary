@@ -38,7 +38,8 @@ import java.util.concurrent.Executors
 /**
  * 功能：**自选页右上角的「编辑」按钮换成「复制」按钮**。
  *
- * 短按按默认规则复制当前分组的股票；长按（[ConfigSnapshot.zxCopyMenu] 开启时）
+ * 短按按「当前分组绑定的规则」复制当前分组的股票（没绑定就用默认规则，
+ * 见 [ZxCopyRuleStore.Data.ruleForGroup]）；长按（[ConfigSnapshot.zxCopyMenu] 开启时）
  * 弹动作菜单：复制 / 按其它规则复制 / 分享文本 / 导出图片 / 导出 PDF。
  *
  * ## 认页与认按钮（真机 2026-10-23 实测）
@@ -394,7 +395,10 @@ class ZxGroupCopyFeature : PageSyncFeature() {
 
     private fun performDefault(activity: Activity) {
         val data = ZxCopyRuleStore.decode(cfg.zxCopyRules)
-        val rule = data.defaultRule() ?: ZxCopyRuleStore.defaultData().defaultRule() ?: return
+        // 当前分组绑了规则就用它，否则仍旧是默认规则（绑定上线前的行为）
+        val rule = data.ruleForGroup(groupKeyOf(activity))
+            ?: ZxCopyRuleStore.defaultData().defaultRule()
+            ?: return
         when (rule.action) {
             ZxCopyRuleStore.ACTION_SHARE_TEXT -> performShareText(activity, rule)
             ZxCopyRuleStore.ACTION_IMAGE -> performImage(activity, rule)
@@ -524,6 +528,11 @@ class ZxGroupCopyFeature : PageSyncFeature() {
             }
         }
     }
+
+    /** 当前 tab 的绑定键；认不出（自建分组 / 文案改过）返回 null，按没绑定处理 */
+    private fun groupKeyOf(activity: Activity): String? = runCatching {
+        ZxGroupStocks.groupKeyOf(activity, ViewIds.idsFor(activity, TargetApp.PACKAGE))
+    }.getOrNull()
 
     private fun readSnapshot(activity: Activity): ZxGroupStocks.Snapshot? {
         val ids = ViewIds.idsFor(activity, TargetApp.PACKAGE)

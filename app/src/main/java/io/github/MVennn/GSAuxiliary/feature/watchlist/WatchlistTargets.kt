@@ -32,6 +32,25 @@ object WatchlistTargets {
     )
 
     /**
+     * 行内「涨跌幅」那格的 id（策略详情页实测；「筛选股票」读的是同一格）。
+     *
+     * 分档配色按它与数据项上的涨跌幅字段判涨 / 跌 / 平 ——
+     * 字段有时是空的（列表只给了文案），文案才是用户眼睛里看到的东西。
+     */
+    val CHANGE_ID_CANDIDATES = arrayOf(
+        "tv_item_stk_percent",
+    )
+
+    /**
+     * 数据项里「涨跌幅」字段的候选（`zdf` 来自 StockInfo dump，实测是 `BigDecimal`）。
+     *
+     * 按序取第一个非空；全都读不出来时按行内文案判定。
+     */
+    val ZDF_FIELDS = arrayOf(
+        "zdf", "m_stkZdf", "mStkZdf", "m_zdf", "m_stkPercent", "mPercent", "percent",
+    )
+
+    /**
      * 策略详情页承载股票列表的 ListView（实测 id = `lvStks`）。
      *
      * 从个股详情页加/删自选返回后，行视图已存在、`getView` 不再被调用，

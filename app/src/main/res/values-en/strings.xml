@@ -76,8 +76,21 @@
     <string name="feature_stg_merge_switch_summary">All strategies of a merge group on the detail page</string>
     <string name="feature_stg_merge_entry">Merge group settings</string>
 
-    <string name="feature_stock_bar_switch">Add "Smart Watch" entry</string>
-    <string name="feature_stock_bar_switch_summary">Stock detail bottom bar, between Watchlist and More</string>
+    <string name="feature_stock_bar_switch">Customize detail dock entries</string>
+    <string name="feature_stock_bar_entry">Detail dock entry settings</string>
+    <string name="feature_stock_bar_entry_summary">%1$d pinned</string>
+    <string name="feature_stock_bar_entry_summary_none">Nothing pinned</string>
+    <string name="detail_stock_bar_title">Detail dock entry settings</string>
+    <string name="switch_stock_bar_condition">Pin "Conditional order" entry</string>
+    <string name="switch_stock_bar_aistare">Pin "Smart Watch" entry</string>
+    <string name="switch_stock_bar_kline">Pin "Smart K-line" entry</string>
+    <string name="switch_stock_bar_chain">Pin "Supply chain" entry</string>
+    <string name="switch_stock_bar_range">Pin "Range stats" entry</string>
+    <string name="switch_stock_bar_trades">Pin "Trade details" entry</string>
+    <string name="switch_stock_bar_pk">Pin "Stock PK" entry</string>
+    <string name="switch_stock_bar_summary_on">Pinned to dock</string>
+    <string name="switch_stock_bar_summary_off">Still under More</string>
+    <string name="switch_stock_bar_summary_locked">Still under More · two entries at most</string>
 
     <!-- Watchlist -->
     <string name="feature_zx_copy_switch">Copy watchlist group</string>
@@ -151,6 +164,13 @@
     <string name="zx_copy_action_share_text">Share text</string>
     <string name="zx_copy_action_image">Export image</string>
     <string name="zx_copy_action_pdf">Export PDF</string>
+    <string name="zx_copy_section_groups">Applies to</string>
+    <string name="zx_copy_groups">Group</string>
+    <string name="zx_copy_group_any">Any group</string>
+    <string name="zx_copy_group_all">All</string>
+    <string name="zx_copy_group_self">Watchlist</string>
+    <string name="zx_copy_group_holding">Holdings</string>
+    <string name="zx_copy_only_groups">Only %1$s</string>
     <string name="zx_copy_section_image">Image style</string>
     <string name="zx_copy_image_preset">Preset</string>
     <string name="zx_copy_image_simple">Simple list</string>
@@ -397,6 +417,16 @@
     <string name="preview_not_in_watchlist">Not in watchlist</string>
     <string name="preview_sample_in">Example Stock A</string>
     <string name="preview_sample_out">Example Stock B</string>
+    <string name="preview_sample_flat">Example Stock C</string>
+    <string name="preview_sample_plain">Example Stock D</string>
+
+    <!-- Per-tier colors: each row title keeps the word "color" so it reads on its own (see docs/NAMING.md §3) -->
+    <string name="item_color_up">Rising color</string>
+    <string name="item_color_down">Falling color</string>
+    <string name="item_color_flat">Flat color</string>
+    <!-- Entry summary states how many colors are in use; no mechanism talk -->
+    <string name="feature_watchlist_entry_summary_same">One color for all three</string>
+    <string name="feature_watchlist_entry_summary_count">%1$d colors in use</string>
 
     <!-- ============================ Settings tab ============================ -->
     <string name="section_interface">Interface</string>

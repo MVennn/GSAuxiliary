@@ -74,8 +74,21 @@
     <string name="feature_stg_filter_switch_summary">策略详情右上角三点菜单里</string>
     <string name="feature_stg_filter_entry">筛选条件保存设置</string>
 
-    <string name="feature_stock_bar_switch">增加 智能盯盘 入口</string>
-    <string name="feature_stock_bar_switch_summary">详情页底栏自选与更多之间</string>
+    <string name="feature_stock_bar_switch">自定义 详情页底栏 入口</string>
+    <string name="feature_stock_bar_entry">详情页底栏入口设置</string>
+    <string name="feature_stock_bar_entry_summary">已外提 %1$d 个</string>
+    <string name="feature_stock_bar_entry_summary_none">一项都不外提</string>
+    <string name="detail_stock_bar_title">详情页底栏入口设置</string>
+    <string name="switch_stock_bar_condition">外提 条件单 入口</string>
+    <string name="switch_stock_bar_aistare">外提 智能盯盘 入口</string>
+    <string name="switch_stock_bar_kline">外提 智能K线 入口</string>
+    <string name="switch_stock_bar_chain">外提 产业链 入口</string>
+    <string name="switch_stock_bar_range">外提 区间统计 入口</string>
+    <string name="switch_stock_bar_trades">外提 交易明细 入口</string>
+    <string name="switch_stock_bar_pk">外提 股票PK 入口</string>
+    <string name="switch_stock_bar_summary_on">已放到底栏</string>
+    <string name="switch_stock_bar_summary_off">仍在更多里</string>
+    <string name="switch_stock_bar_summary_locked">仍在更多里·底栏最多两个入口</string>
 
     <!-- 智能选股 -->
     <string name="feature_stg_merge_switch">我的策略聚合</string>
@@ -154,6 +167,13 @@
     <string name="zx_copy_action_share_text">分享文本</string>
     <string name="zx_copy_action_image">导出图片</string>
     <string name="zx_copy_action_pdf">导出 PDF</string>
+    <string name="zx_copy_section_groups">适用分组</string>
+    <string name="zx_copy_groups">分组</string>
+    <string name="zx_copy_group_any">任何分组</string>
+    <string name="zx_copy_group_all">全部</string>
+    <string name="zx_copy_group_self">自选</string>
+    <string name="zx_copy_group_holding">持仓股</string>
+    <string name="zx_copy_only_groups">仅 %1$s</string>
     <string name="zx_copy_section_image">图片样式</string>
     <string name="zx_copy_image_preset">预设</string>
     <string name="zx_copy_image_simple">简洁列表</string>
@@ -344,6 +364,16 @@
     <string name="preview_not_in_watchlist">未加自选</string>
     <string name="preview_sample_in">示例股票甲</string>
     <string name="preview_sample_out">示例股票乙</string>
+    <string name="preview_sample_flat">示例股票丙</string>
+    <string name="preview_sample_plain">示例股票丁</string>
+
+    <!-- 三档配色：行标题各带「颜色」二字，离开分组标题也读得懂（规则见 docs/NAMING.md §3） -->
+    <string name="item_color_up">上涨颜色</string>
+    <string name="item_color_down">下跌颜色</string>
+    <string name="item_color_flat">平盘颜色</string>
+    <!-- 入口行副标题：说出「现在配了几种颜色」这个状态，不解释机制 -->
+    <string name="feature_watchlist_entry_summary_same">三档同一个颜色</string>
+    <string name="feature_watchlist_entry_summary_count">已分 %1$d 种颜色</string>
 
     <!-- ============================ 我的策略聚合（二级 + 三级菜单） ============================ -->
     <!-- 开关与入口行在一级「功能」页的「智能选股」分区；二级页列聚合组，三级页编一个组。

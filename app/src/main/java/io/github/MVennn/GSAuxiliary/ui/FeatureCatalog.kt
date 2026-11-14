@@ -206,11 +206,12 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         id = "stock_bar_entry",
         categoryRes = R.string.category_stock_detail,
         switchTitleRes = R.string.feature_stock_bar_switch,
-        // 副标题说位置：入口塞在底栏哪一格，开了开关去哪里看
-        switchSummaryRes = R.string.feature_stock_bar_switch_summary,
         enableKey = ConfigKeys.STOCK_BAR_ENTRY,
         defaultEnabled = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
-        // 无参数项：一级页只放开关，不展开二级入口（FeatureSpec.hasDetail = false）
+        // 提哪几项写在参数键 stock_bar_items 里（最多两项，见 StockBarItemStore）
+        // 一级开关不写副标题：位置由入口行的状态句承担（「已外提 N 个」）
+        detailTitleRes = R.string.detail_stock_bar_title,
+        detailEntryRes = R.string.feature_stock_bar_entry,
     ),
 
     // ---- 智能盯盘：改盯盘页面本身（价格页是 H5，入口在详情页底栏不归这里）----
@@ -376,7 +377,8 @@ internal val FEATURE_CATALOG: List<FeatureSpec> = listOf(
         defaultEnabled = ConfigKeys.DEFAULT_ENABLED,
         detailTitleRes = R.string.detail_color_title,
         detailEntryRes = R.string.feature_detail_entry,
-        // 无入口副标题：「高亮颜色设置」已经说清进去做什么，不再列一遍里面的项目
+        // 入口副标题由 `FeatureTab.featureEntrySummary` 现算（"已分 N 种颜色" / "三档同一个颜色"），
+        // 不再填静态串：三档配色的「几种不同颜色」只有读配置才知道，写死会与二级页里的三行打架
     ),
 
     // 「自选股名称加粗」：**与上面那个高亮共用同一个 Feature**

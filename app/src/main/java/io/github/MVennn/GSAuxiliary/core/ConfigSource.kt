@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * 一次「重置配置 / 恢复备份 / 切主题预设」会连写 30+ 个快照键，框架对**每个键**
  * 各推一条 Binder 通知。旧的实现每条通知都跑一趟 [read]：33 次 `getXxx` +
- * 构造 34 字段的快照 + 指纹里 3 个 JSON 的 O(n) `hashCode`，末尾还各 post 一次
+ * 构造 36 字段的快照 + 指纹里 6 个 JSON 的 O(n) `hashCode`，末尾还各 post 一次
  * 主线程 —— 恢复一次备份等于把同一份工作做 30 遍。
  *
  * 现在每条通知只做两件小事（置脏标记、排队一趟），真正的工作在
@@ -234,6 +234,9 @@ class ConfigSource(private val xposed: XposedInterface) {
             ConfigSnapshot(
                 enabled = p.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED),
                 color = p.getInt(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR),
+                watchlistColors = p.getString(
+                    ConfigKeys.WATCHLIST_COLORS, ConfigKeys.DEFAULT_WATCHLIST_COLORS,
+                ) ?: ConfigKeys.DEFAULT_WATCHLIST_COLORS,
                 watchlistBold = p.getBoolean(ConfigKeys.WATCHLIST_BOLD, ConfigKeys.DEFAULT_WATCHLIST_BOLD),
                 scopeStrategy = p.getBoolean(ConfigKeys.SCOPE_STRATEGY, ConfigKeys.DEFAULT_SCOPE_STRATEGY),
                 logLevel = p.getInt(ConfigKeys.LOG_LEVEL, ConfigKeys.DEFAULT_LOG_LEVEL),
@@ -250,6 +253,8 @@ class ConfigSource(private val xposed: XposedInterface) {
                     ConfigKeys.STG_MERGE_GROUPS, ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
                 ) ?: ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
                 stockBarEntry = p.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY),
+                stockBarItems = p.getString(ConfigKeys.STOCK_BAR_ITEMS, ConfigKeys.DEFAULT_STOCK_BAR_ITEMS)
+                    ?: ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
                 dockClean = p.getBoolean(ConfigKeys.DOCK_CLEAN, ConfigKeys.DEFAULT_DOCK_CLEAN),
                 dockEntries = p.getString(ConfigKeys.DOCK_ENTRIES, ConfigKeys.DEFAULT_DOCK_ENTRIES)
                     ?: ConfigKeys.DEFAULT_DOCK_ENTRIES,

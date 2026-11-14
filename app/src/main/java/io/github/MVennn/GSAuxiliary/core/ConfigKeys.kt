@@ -194,13 +194,29 @@ object ConfigKeys {
     const val STG_MERGE_GROUPS = "stg_merge_groups"
 
     /**
-     * 个股详情页底栏「智能盯盘」快捷入口：在「自选」与「更多」之间注入一个
-     * 「智能盯盘」按钮，把原本埋在「更多」弹层里的那一项提到一级位置。
+     * 个股详情页底栏快捷入口：在「自选」与「更多」之间注入按钮，把原本埋在「更多」
+     * 弹层里的面板项提到一级位置。
+     *
+     * **这个键是总开关**（出厂关）；具体提哪几项在 [STOCK_BAR_ITEMS] 里。老版本的
+     * 「智能盯盘入口」只有这一位布尔，升级后它同时充当**迁移源**：
+     * [STOCK_BAR_ITEMS] 没写过（空串）时，本键为真等价于「只提智能盯盘」（见
+     * `StockBarItemStore.decode`），老用户升级后表现不变。
      *
      * 运行时视图注入实现，不改目标 App 源码；见
      * [io.github.MVennn.GSAuxiliary.feature.stockbar.StockDetailBarFeature]。
      */
     const val STOCK_BAR_ENTRY = "stock_bar_entry"
+
+    /**
+     * 详情页底栏**提哪几项**（JSON 字符串，v1：`{"v":1,"items":["aistare","range"]}`）。
+     *
+     * 归 [FEATURE_PARAM_KEYS] 而不是 [FEATURE_KEYS]：它是 [STOCK_BAR_ENTRY] 的**数据**，
+     * 重置时该回到「只提智能盯盘」，不是被当成开关关掉。
+     *
+     * 出厂值是**空串**而不是 `{"v":1,"items":[]}`：空串表示「这条键从没被写过」，
+     * 读取侧才能回落到老布尔键 [STOCK_BAR_ENTRY] 做迁移（见 `StockBarItemStore.decode`）。
+     */
+    const val STOCK_BAR_ITEMS = "stock_bar_items"
 
     /**
      * 底栏入口自定义：主界面底栏的若干格可以隐藏，其余入口重新均分整行。
@@ -526,6 +542,9 @@ object ConfigKeys {
      */
     const val DEFAULT_STOCK_BAR_ENTRY = false
 
+    /** 出厂「只提智能盯盘」＝**空串**（见 [STOCK_BAR_ITEMS] 的迁移说明） */
+    const val DEFAULT_STOCK_BAR_ITEMS = ""
+
     /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
@@ -627,7 +646,8 @@ object ConfigKeys {
     val ALL_KEYS = arrayOf(
         ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE,
         STG_SELECT_ALL,
-        STG_SNAP_ADD, STG_STOCK_FILTER, STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
+        STG_SNAP_ADD, STG_STOCK_FILTER, STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS,
+        STOCK_BAR_ENTRY, STOCK_BAR_ITEMS,
         DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -676,12 +696,15 @@ object ConfigKeys {
      *
      * [DOCK_ENTRIES] 同理：它是「底栏入口自定义」的数据（藏哪几格），
      * 重置 = 一个都不藏（[DEFAULT_DOCK_ENTRIES] 的空串），而不是把功能关掉。
+     *
+     * [STOCK_BAR_ITEMS] 同理：它是「详情页底栏入口自定义」的数据（提哪几项），
+     * 重置 = 只提智能盯盘（[DEFAULT_STOCK_BAR_ITEMS] 的空串 → 回落老键的默认项）。
      */
     val FEATURE_PARAM_KEYS = arrayOf(
         COLOR, WATCHLIST_COLORS, SCOPE_STRATEGY, STG_QUOTE_SWIPE, STG_FILTER_PER_STRATEGY, STG_MERGE_GROUPS,
         AISTARE_QUICK_CONFIG,
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
-        ZX_COPY_MENU, ZX_COPY_RULES, DOCK_ENTRIES,
+        ZX_COPY_MENU, ZX_COPY_RULES, DOCK_ENTRIES, STOCK_BAR_ITEMS,
     )
 
     /**
@@ -693,7 +716,7 @@ object ConfigKeys {
      * 而目标进程**根本不需要知道**（`ConfigSnapshot` 里没有它们）。
      *
      * 用途：`ConfigSource` 收到变更通知时先用它挡一道 —— 不是快照键就直接返回，
-     * 省掉一次「全量读 33 个远端键 + 构造快照 + 算指纹」（指纹里还有 O(n) 的方案 / 规则 /
+     * 省掉一次「全量读 35 个远端键 + 构造快照 + 算指纹」（指纹里还有 O(n) 的方案 / 规则 /
      * 聚合组 JSON 哈希）。
      *
      * ⚠️ **只增不减**：新增配置键时，若它要进 [ConfigSnapshot]，必须同时加进这里，
@@ -703,7 +726,7 @@ object ConfigKeys {
     val SNAPSHOT_KEYS: Set<String> = setOf(
         ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
         STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER,
-        STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY,
+        STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY, STOCK_BAR_ITEMS,
         DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -729,6 +752,7 @@ object ConfigKeys {
         STG_MERGE to DEFAULT_STG_MERGE,
         STG_MERGE_GROUPS to DEFAULT_STG_MERGE_GROUPS,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
+        STOCK_BAR_ITEMS to DEFAULT_STOCK_BAR_ITEMS,
         DOCK_CLEAN to DEFAULT_DOCK_CLEAN,
         DOCK_ENTRIES to DEFAULT_DOCK_ENTRIES,
         HOME_BANNER_HIDE to DEFAULT_HOME_BANNER_HIDE,

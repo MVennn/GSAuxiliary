@@ -23,7 +23,7 @@ import kotlin.test.assertTrue
  * 改成「布尔项占低位逐个异或」之后，这两组不再碰撞。
  *
  * **单键切换永远是安全的**（delta = ±该项的位），风险只在**多键同时写入**
- * （「重置模块」一次写 32 键、恢复备份一次写 40 键）。
+ * （「重置模块」一次写全部功能键与功能参数键、恢复备份一次写 42 键 = `ALL_KEYS`）。
  */
 class ConfigSnapshotFingerprintTest {
 
@@ -52,7 +52,7 @@ class ConfigSnapshotFingerprintTest {
         // 快照里**只有布尔类型**的字段参与指纹（数值项另外混一层异或）。
         // 清单与它对不上 = 某个开关没被守住（改了不影响指纹 → 配置变更被静默丢弃）。
         val booleanFields = ConfigSnapshot::class.java.declaredFields
-            .filter { !it.isSynthetic && it.type == java.lang.Boolean::class.javaPrimitiveType }
+            .filter { !it.isSynthetic && it.type == Boolean::class.javaPrimitiveType }
             .map { it.name }
             .toSet()
         assertEquals(

@@ -45,6 +45,7 @@ import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFieldCatalog
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFormat
+import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyGroups
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyImageRenderer
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRuleStore
 import kotlinx.coroutines.delay
@@ -65,8 +66,8 @@ private const val FieldAnimMillis = 200
 /**
  * 「复制规则」三级编辑页。
  *
- * 排版与「一键配置」的方案编辑页同构：名称 / 字段 / 格式 / 排序 / 动作 /
- * 图片样式 / PDF 样式 / 操作 / 预览，每组一张卡，**每改一下立即写**
+ * 排版与「一键配置」的方案编辑页同构：名称 / 动作 / 适用分组 / 字段 / 排序与空值 /
+ * 文本格式 / 页脚 / 图片样式 / PDF 样式 / 规则与导出，每组一张卡，**每改一下立即写**
  * `zx_copy_rules`，不设保存按钮。
  *
  * ## 几个刻意的 UI 取舍（都是 QuickConfig 踩过的坑）
@@ -111,6 +112,15 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
         stringResource(R.string.zx_copy_action_image),
         stringResource(R.string.zx_copy_action_pdf),
     )
+    val groupLabels = zxCopyGroupLabels()
+    // 顺序与 ZX_COPY_GROUP_CHOICES 一一对应：不绑定 / 全部 / 自选 / 持仓股
+    val groupTexts = listOf(
+        stringResource(R.string.zx_copy_group_any),
+        groupLabels.getValue(ZxCopyGroups.ALL),
+        groupLabels.getValue(ZxCopyGroups.SELF),
+        groupLabels.getValue(ZxCopyGroups.HOLDING),
+    )
+    val onlyGroupsFormat = stringResource(R.string.zx_copy_only_groups)
     val sortTexts = listOf(
         stringResource(R.string.zx_copy_sort_screen),
         stringResource(R.string.zx_copy_sort_code),
@@ -141,8 +151,14 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
     )
 
     fun labelsFor(r: ZxCopyRuleStore.Rule) = zxCopyLabels(r, fieldNames)
-    fun previewFor(r: ZxCopyRuleStore.Rule) =
-        zxCopyPreview(r, fieldNames, formatTexts, actionTexts, moreItemsFormat)
+    fun previewFor(r: ZxCopyRuleStore.Rule) = zxCopyPreview(
+        rule = r,
+        fieldNames = fieldNames,
+        formatTexts = formatTexts,
+        actionTexts = actionTexts,
+        moreFormat = moreItemsFormat,
+        binding = zxCopyGroupBinding(r, groupLabels, onlyGroupsFormat),
+    )
 
     fun update(transform: (ZxCopyRuleStore.Rule) -> ZxCopyRuleStore.Rule) {
         if (!alive) return
@@ -214,6 +230,18 @@ internal fun ZxCopyRuleEditScreen(ruleId: String, onDeleted: () -> Unit) {
                 items = actionTexts,
                 selectedIndex = zxCopyActionIndex(rule.action),
                 onPick = { index -> update { it.copy(action = ZX_COPY_ACTIONS[index]) } },
+            )
+        }
+
+        // ---- 适用分组（这条规则用在哪个 tab） ----
+        SmallTitle(stringResource(R.string.zx_copy_section_groups))
+        Card(modifier = Modifier.cardPadding()) {
+            PickerRow(
+                title = stringResource(R.string.zx_copy_groups),
+                summary = groupTexts.getOrElse(zxCopyGroupIndex(rule.groups)) { groupTexts.first() },
+                items = groupTexts,
+                selectedIndex = zxCopyGroupIndex(rule.groups),
+                onPick = { index -> update { it.copy(groups = ZX_COPY_GROUP_CHOICES[index]) } },
             )
         }
 

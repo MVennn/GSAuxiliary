@@ -147,6 +147,65 @@ class ZxCopyRuleStoreTest {
     }
 
     @Test
+    fun `出厂规则不绑定任何分组`() {
+        assertTrue(ZxCopyRuleStore.defaultData().defaultRule()!!.groups.isEmpty())
+    }
+
+    @Test
+    fun `分组绑定往返并按 tab 顺序排`() {
+        val source = ZxCopyRuleStore.defaultData().defaultRule()!!
+            .copy(groups = listOf(ZxCopyGroups.HOLDING, ZxCopyGroups.SELF))
+        val json = ZxCopyRuleStore.encode(ZxCopyRuleStore.Data(source.id, listOf(source)))
+        val back = ZxCopyRuleStore.decode(json).defaultRule()!!
+        assertEquals(listOf(ZxCopyGroups.SELF, ZxCopyGroups.HOLDING), back.groups)
+    }
+
+    @Test
+    fun `不认识的分组键丢弃 缺字段视为不绑定`() {
+        val json = """
+            {"v":1,"defaultId":"r1","rules":[
+              {"id":"r1","name":"甲","fields":["name"],"groups":["self","gone","self"]},
+              {"id":"r2","name":"乙","fields":["name"]}
+            ]}
+        """.trimIndent()
+        val data = ZxCopyRuleStore.decode(json)
+        assertEquals(listOf(ZxCopyGroups.SELF), data.rules[0].groups)
+        assertTrue(data.rules[1].groups.isEmpty())
+    }
+
+    @Test
+    fun `按分组取规则 绑定优先 没绑定回落默认`() {
+        val base = ZxCopyRuleStore.defaultData().defaultRule()!!
+        val bound = base.copy(
+            id = "r2",
+            name = "持仓专用",
+            isDefault = false,
+            groups = listOf(ZxCopyGroups.HOLDING),
+        )
+        val data = ZxCopyRuleStore.Data(defaultId = base.id, rules = listOf(base, bound))
+        assertEquals("r2", data.ruleForGroup(ZxCopyGroups.HOLDING)?.id)
+        assertEquals(base.id, data.ruleForGroup(ZxCopyGroups.SELF)?.id)
+        assertEquals(base.id, data.ruleForGroup(null)?.id)
+    }
+
+    @Test
+    fun `绑定同一分组的规则按列表顺序取第一条`() {
+        val first = ZxCopyRuleStore.defaultData().defaultRule()!!
+            .copy(id = "r1", name = "甲", groups = listOf(ZxCopyGroups.SELF))
+        val second = first.copy(id = "r2", name = "乙")
+        val data = ZxCopyRuleStore.Data(defaultId = "r2", rules = listOf(first, second))
+        assertEquals("r1", data.ruleForGroup(ZxCopyGroups.SELF)?.id)
+    }
+
+    @Test
+    fun `duplicate 保住分组绑定`() {
+        val source = ZxCopyRuleStore.defaultData().defaultRule()!!
+            .copy(groups = listOf(ZxCopyGroups.HOLDING))
+        val copy = ZxCopyRuleStore.duplicate(source, "r9", "副本")
+        assertEquals(listOf(ZxCopyGroups.HOLDING), copy.groups)
+    }
+
+    @Test
     fun `newId 与 newName 不撞现有值`() {
         val rules = listOf(
             ZxCopyRuleStore.defaultData().defaultRule()!!,

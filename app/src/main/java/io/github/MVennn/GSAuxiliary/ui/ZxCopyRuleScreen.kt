@@ -95,6 +95,8 @@ internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {
     )
     val newPrefix = stringResource(R.string.zx_copy_new_rule_prefix)
     val moreItemsFormat = stringResource(R.string.preview_more_items)
+    val onlyGroupsFormat = stringResource(R.string.zx_copy_only_groups)
+    val groupLabels = zxCopyGroupLabels()
     // 元信息前缀随规则 JSON 带去目标进程，必须在这里按当前语言取一次
     val metaLabels = mapOf(
         "group" to stringResource(R.string.meta_group_prefix),
@@ -118,7 +120,14 @@ internal fun ZxCopyRuleScreen(onEdit: (String) -> Unit) {
         Card(modifier = Modifier.cardPadding()) {
             data.rules.forEachIndexed { index, rule ->
                 key(rule.id) {
-                    val preview = zxCopyPreview(rule, fieldNames, formatTexts, actionTexts, moreItemsFormat)
+                    val preview = zxCopyPreview(
+                        rule = rule,
+                        fieldNames = fieldNames,
+                        formatTexts = formatTexts,
+                        actionTexts = actionTexts,
+                        moreFormat = moreItemsFormat,
+                        binding = zxCopyGroupBinding(rule, groupLabels, onlyGroupsFormat),
+                    )
                     val row: @Composable () -> Unit = {
                         CopyRuleRow(
                             name = rule.name,

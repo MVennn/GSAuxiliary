@@ -25,7 +25,9 @@ import io.github.MVennn.GSAuxiliary.R
 import io.github.MVennn.GSAuxiliary.app.ModulePreferences
 import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.DockEntryStore
+import io.github.MVennn.GSAuxiliary.core.StockBarItemStore
 import io.github.MVennn.GSAuxiliary.core.StrategyMergeStore
+import io.github.MVennn.GSAuxiliary.core.WatchlistColorStore
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -35,6 +37,12 @@ private const val StgMergeFeatureId = "stg_merge"
 
 /** 「底栏入口自定义」的 Feature.id —— 它的入口副标题是「已隐藏 N 个」，同样现算 */
 private const val DockCleanFeatureId = "dock_clean"
+
+/** 「详情页底栏快捷入口」的功能 id（二级页副标题要按配置现算，见 featureEntrySummary） */
+private const val StockBarFeatureId = "stock_bar_entry"
+
+/** 「自选股高亮」的 Feature.id —— 入口副标题说「现在分了几种颜色」 */
+private const val WatchlistFeatureId = "watchlist_highlight"
 
 /**
  * Tab 2 · 功能 —— 功能菜单，按分类用子标题隔开。
@@ -145,6 +153,32 @@ private fun featureEntrySummary(spec: FeatureSpec): String? {
             stringResource(R.string.feature_dock_clean_entry_summary_all)
         } else {
             stringResource(R.string.feature_dock_clean_entry_summary, count)
+        }
+    }
+    // 详情页底栏入口：一项都不外提时也有说法（「一项都不外提」）——
+    // 这一行是进二级页的唯一入口，副标题此处正是唯一说明「现在提了几项」的位置
+    if (spec.id == StockBarFeatureId) {
+        val raw by rememberStringPref(ConfigKeys.STOCK_BAR_ITEMS, ConfigKeys.DEFAULT_STOCK_BAR_ITEMS)
+        val legacy by rememberBoolPref(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)
+        val count = remember(raw, legacy) { StockBarItemStore.decode(raw, legacy).size }
+        return if (count == 0) {
+            stringResource(R.string.feature_stock_bar_entry_summary_none)
+        } else {
+            stringResource(R.string.feature_stock_bar_entry_summary, count)
+        }
+    }
+    // 自选股高亮：三档（涨 / 跌 / 平）可以配成不同颜色，副标题说「现在分了几种」——
+    // 三档同一个颜色时也有说法（老配置就是这个状态），不留下空副标题
+    if (spec.id == WatchlistFeatureId) {
+        val raw by rememberStringPref(
+            ConfigKeys.WATCHLIST_COLORS, ConfigKeys.DEFAULT_WATCHLIST_COLORS,
+        )
+        val legacy by rememberIntPref(ConfigKeys.COLOR, ConfigKeys.DEFAULT_COLOR)
+        val kinds = remember(raw, legacy) { WatchlistColorStore.distinctCount(raw, legacy) }
+        return if (kinds <= 1) {
+            stringResource(R.string.feature_watchlist_entry_summary_same)
+        } else {
+            stringResource(R.string.feature_watchlist_entry_summary_count, kinds)
         }
     }
     return spec.detailEntrySummaryRes?.let { stringResource(it) }

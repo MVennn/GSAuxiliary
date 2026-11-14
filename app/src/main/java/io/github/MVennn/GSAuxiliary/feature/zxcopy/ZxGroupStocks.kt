@@ -7,6 +7,7 @@ import android.widget.AbsListView
 import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyFieldCatalog
+import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyGroups
 import io.github.MVennn.GSAuxiliary.core.zxcopy.ZxCopyRow
 import io.github.MVennn.GSAuxiliary.util.IdCache
 import io.github.MVennn.GSAuxiliary.util.Reflect
@@ -60,6 +61,21 @@ object ZxGroupStocks {
     private val fieldsByClass =
         Collections.synchronizedMap(WeakHashMap<Class<*>, FieldAccess>())
 
+    /**
+     * 当前分组对应的绑定键（[ZxCopyGroups.KEYS] 之一）；认不出返回 null。
+     *
+     * 只读 tab 文案，不扫股票列表 —— 短按复制要先知道「这个分组用哪条规则」，
+     * 规则决定动作（复制 / 分享 / 导出），比读整页数据早一步。
+     */
+    fun groupKeyOf(activity: Activity, ids: IdCache): String? {
+        val root = runCatching { activity.window?.decorView }.getOrNull() ?: return null
+        val pagerId = ids.of(ZxGroupCopyTargets.PAGER_ID)
+        val pager = (if (pagerId != 0) root.findViewById<View>(pagerId) as? ViewGroup else null)
+            ?: return null
+        val title = groupTitle(root, ids, pager) ?: return null
+        return ZxCopyGroups.keyOfHostTitle(title)
+    }
+
     fun read(activity: Activity, ids: IdCache): Snapshot? {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return null
 
@@ -88,7 +104,7 @@ object ZxGroupStocks {
             return null
         }
 
-        val groupName = groupName(root, ids, pager)
+        val groupName = groupTitle(root, ids, pager)
         val count = adapter.count
         if (count <= 0) return Snapshot(groupName, emptyList())
 
@@ -206,7 +222,7 @@ object ZxGroupStocks {
     }
 
     /** 分组名：`#indicator_zx_group` 的 `#title_container` 第 currentItem 个子项 */
-    private fun groupName(root: View, ids: IdCache, pager: ViewGroup): String? {
+    private fun groupTitle(root: View, ids: IdCache, pager: ViewGroup): String? {
         val indicatorId = ids.of(ZxGroupCopyTargets.GROUP_INDICATOR_ID)
         val titleId = ids.of(ZxGroupCopyTargets.TITLE_CONTAINER_ID)
         if (indicatorId == 0 || titleId == 0) return null

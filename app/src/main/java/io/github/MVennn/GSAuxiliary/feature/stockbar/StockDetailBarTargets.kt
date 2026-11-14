@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.feature.stockbar
 
+import io.github.MVennn.GSAuxiliary.core.StockBarItemStore
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 
 /**
@@ -151,11 +152,42 @@ object StockDetailBarTargets {
     /** 底栏上「更多」按钮的文案（按文字兜底定位用） */
     const val MORE_TEXT = "更多"
 
-    /** 「更多」面板里要提到外面来的那一项（按文字定位，位置不固定） */
-    const val MENU_ITEM_TEXT = "智能盯盘"
+    /**
+     * 「更多」面板里可外提的项，按面板顺序排列（面板项位置不固定，只能按文字找）。
+     *
+     * key 与 [io.github.MVennn.GSAuxiliary.core.StockBarItemStore.KEYS] 一致，value 是面板里那一项的文字。
+     */
+    val STOCK_MENU_ITEMS: Map<String, String> = linkedMapOf(
+        StockBarItemStore.KEY_CONDITION to "条件单",
+        StockBarItemStore.KEY_AISTARE to "智能盯盘",
+        StockBarItemStore.KEY_KLINE to "智能K线",
+        StockBarItemStore.KEY_CHAIN to "产业链",
+        StockBarItemStore.KEY_RANGE to "区间统计",
+        StockBarItemStore.KEY_TRADES to "交易明细",
+        StockBarItemStore.KEY_PK to "股票PK",
+    )
 
-    /** 注入按钮的文案 */
+    /** 指数 / 板块形态的「更多」面板只有两项（个股形态七项，见 [STOCK_MENU_ITEMS]） */
+    val INDEX_MENU_ITEMS: Map<String, String> = linkedMapOf(
+        StockBarItemStore.KEY_AISTARE to "智能盯盘",
+        StockBarItemStore.KEY_RANGE to "区间统计",
+    )
+
+    /**
+     * 底栏上最多并排外提几个。
+     *
+     * 每项实测 124 px + 间距 26 px；第三项会把买 / 卖从 246 / 245 压到 96 / 95
+     * （宽度实测见本文件头注），买卖就挤成跟「撤单」一样宽了。
+     */
+    const val MAX_ENTRIES = 2
+
+    /** 老版本只提这一项；迁移语义与兜底文案都用它 */
     const val ENTRY_TEXT = "智能盯盘"
+
+    /** 面板文字 → key；认不出返回 null */
+    fun keyOfMenuText(text: CharSequence?): String? =
+        STOCK_MENU_ITEMS.entries.firstOrNull { it.value == text?.toString() }?.key
+
 
     /** 注入按钮的 tag，用于幂等判断（同一行里只留一个） */
     const val ENTRY_TAG = "gsaux.stockbar.entry"

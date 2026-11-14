@@ -11,6 +11,8 @@ import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.core.WatchlistColorStore
+import io.github.MVennn.GSAuxiliary.core.WatchlistTier
 import io.github.MVennn.GSAuxiliary.feature.Feature
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.stgfilter.StgFilterBridge
@@ -30,6 +32,9 @@ import java.util.WeakHashMap
  *   `ZXWorkflow.isBelongByStock(code, market)` 重新判定一次并补上颜色。
  *
  * 只染名称，不动涨跌幅、不动其它任何 UI。
+ *
+ * 颜色按**涨 / 跌 / 平三档**取（`core/WatchlistColorStore`）：三档配同一个颜色时，
+ * 行为与老版本的单色高亮完全等价。
  */
 class WatchlistFeature : Feature {
 
@@ -56,6 +61,9 @@ class WatchlistFeature : Feature {
         Collections.newSetFromMap(Collections.synchronizedMap(WeakHashMap<Any, Boolean>()))
 
     @Volatile private var nameIdCache = 0
+
+    /** 行内涨跌幅那格的资源 id 缓存（0 = 还没解析过） */
+    @Volatile private var changeIdCache = 0
 
     /** 策略详情页 ListView 的资源 id 缓存（0 = 还没解析过） */
     @Volatile private var listIdCache = 0
@@ -254,7 +262,14 @@ class WatchlistFeature : Feature {
             } else {
                 false
             }
-            applyStyle(cfg, nameTv, inWatchlist, "重绘名称失败 pos=$fullPos")
+            // 分档配色只在「这一行是自选、且高亮开着」时才有意义 ——
+            // 不着色的行不必再去判一档（那要多读一次数据项 / 文案）
+            val tier = if (inWatchlist && cfg.enabled) {
+                tierOf(base, fullPos, row)
+            } else {
+                WatchlistTier.FLAT
+            }
+            applyStyle(cfg, nameTv, inWatchlist, tier, "重绘名称失败 pos=$fullPos")
             painted++
             if (firstMap == null) firstMap = "$dataPos→$fullPos"
         }
@@ -329,7 +344,12 @@ class WatchlistFeature : Feature {
 
         // 注意：关闭开关时也要显式还原原色 / 原字重，
         // 否则 RecyclerView 复用视图上残留的高亮色与加粗不会自己消失。
-        applyStyle(cfg, nameTv, inWatchlist, "设置名称样式失败")
+        val tier = if (inWatchlist && cfg.enabled) {
+            tierOf(adapter, position, row)
+        } else {
+            WatchlistTier.FLAT
+        }
+        applyStyle(cfg, nameTv, inWatchlist, tier, "设置名称样式失败")
     }
 
     /**
@@ -344,7 +364,8 @@ class WatchlistFeature : Feature {
      * 把「高亮色 + 加粗」一起应用到名称 TextView 上。
      *
      * 两个开关**互相独立**：
-     *  - [ConfigSnapshot.enabled] —— 自选股名称染成 [ConfigSnapshot.color]；
+     *  - [ConfigSnapshot.enabled] —— 自选股名称按**档位**染色（涨 / 跌 / 平各一色，
+     *    见 `WatchlistColorStore`；三档同色时就是老版本的单色高亮）；
      *  - [ConfigSnapshot.watchlistBold] —— 自选股名称加粗。
      *
      * 任一关掉，对应的那一项就要**还原**（颜色回原色 / 字重回原字重）——
@@ -354,6 +375,7 @@ class WatchlistFeature : Feature {
         cfg: ConfigSnapshot,
         nameTv: TextView,
         inWatchlist: Boolean,
+        tier: String,
         failMsg: String,
     ) {
         // ---- 颜色 ----
@@ -365,13 +387,59 @@ class WatchlistFeature : Feature {
         // ⚠️ **先无条件取一次原色**：这样「首次绑定到的就是自选股」的行也能记下宿主原色
         // （原先只在「不是自选」时才记 → 那类行还原时变成硬编码兜底色，宿主颜色被顶掉）。
         val original = originalColor(nameTv, colors?.defaultColor)
-        val target = if (inWatchlist && cfg.enabled) cfg.color else original
+        val target = if (inWatchlist && cfg.enabled) {
+            WatchlistColorStore.colorFor(cfg.watchlistColors, cfg.color, tier)
+        } else {
+            original
+        }
         if (colors == null || colors.defaultColor != target) {
             runCatching { nameTv.setTextColor(target) }.onFailure { GLog.w(failMsg, it) }
         }
 
         // ---- 字重 ----
         applyBold(nameTv, inWatchlist && cfg.watchlistBold)
+    }
+
+    /**
+     * 这一行属于哪一档（涨 / 跌 / 平）。
+     *
+     * 两道来源，先准后糙：
+     *  ① 数据项上的涨跌幅字段（[WatchlistTargets.ZDF_FIELDS]，实测 `zdf` 是 `BigDecimal`）——
+     *    与行情页同源，最准；
+     *  ② 行内那格文案（[WatchlistTargets.CHANGE_ID_CANDIDATES]，形如 `+2.34%`）——
+     *    行情原地刷新时字段与文案未必同时更新，而文案才是用户眼睛看到的；
+     *  两条都读不出来按 [WatchlistTier.FLAT] 处理（用平盘那档颜色）。
+     *
+     * 判定本身是纯函数（`core/WatchlistTier`，有单测）：这里只负责「从哪儿取数」。
+     */
+    private fun tierOf(adapter: Any, position: Int, row: View): String {
+        val item = itemAt(adapter, position)
+        if (item != null) {
+            val field = runCatching {
+                Reflect.readField(item, *WatchlistTargets.ZDF_FIELDS)
+            }.getOrNull()
+            WatchlistTier.ofZdf(field)?.let { return it }
+        }
+        return WatchlistTier.ofText(changeView(row)?.text?.toString()) ?: WatchlistTier.FLAT
+    }
+
+    /** 行内涨跌幅那格（id 解析一次即缓存；解析不到返回 null，不刷日志） */
+    private fun changeView(row: View): TextView? {
+        var id = changeIdCache
+        if (id == 0) {
+            for (name in WatchlistTargets.CHANGE_ID_CANDIDATES) {
+                val r = runCatching {
+                    row.resources.getIdentifier(name, "id", WatchlistTargets.TARGET_PKG)
+                }.getOrDefault(0)
+                if (r != 0) {
+                    id = r
+                    break
+                }
+            }
+            if (id == 0) return null
+            changeIdCache = id
+        }
+        return row.findViewById<View>(id) as? TextView
     }
 
     /**

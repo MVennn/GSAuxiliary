@@ -56,6 +56,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_STG_SNAP_ADD = "stg_snap_add"
         const val COL_STG_STOCK_FILTER = "stg_stock_filter"
         const val COL_STOCK_BAR_ENTRY = "stock_bar_entry"
+        const val COL_STOCK_BAR_ITEMS = "stock_bar_items"
         const val COL_IPO_DIALOG_CLEAN = "ipo_dialog_clean"
         const val COL_AISTARE_QUICK = "aistare_quick_enabled"
         const val COL_AISTARE_SCHEMES = "aistare_quick_config"
@@ -77,6 +78,7 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_ZX_GROUP_COPY = "zx_group_copy"
         const val COL_ZX_COPY_MENU = "zx_copy_menu"
         const val COL_ZX_COPY_RULES = "zx_copy_rules"
+        const val COL_WATCHLIST_COLORS = "watchlist_colors"
     }
 
     override fun onCreate(): Boolean {
@@ -126,7 +128,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_ENABLED, COL_COLOR, COL_SCOPE_STRATEGY,
             COL_LOG_LEVEL, COL_BACKEND, COL_RAW,
             COL_STG_DIRECT, COL_STG_SWIPE, COL_STG_SELECT_ALL, COL_STG_SNAP_ADD, COL_STG_STOCK_FILTER,
-            COL_STOCK_BAR_ENTRY, COL_IPO_DIALOG_CLEAN,
+            COL_STOCK_BAR_ENTRY, COL_STOCK_BAR_ITEMS, COL_IPO_DIALOG_CLEAN,
             COL_AISTARE_QUICK, COL_AISTARE_SCHEMES, COL_AISTARE_EMPTY_SAVE,
             COL_AISTARE_SKIP_CONFIRM, COL_AISTARE_SAVE_BACK, COL_AISTARE_PICK_SCHEME,
             COL_AISTARE_CARD_DETAIL,
@@ -134,7 +136,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_MARKET_BANNER_HIDE, COL_MARKET_SECTOR_COMPACT,
             COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
             COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD, COL_ZX_GROUP_COPY,
-            COL_ZX_COPY_MENU, COL_ZX_COPY_RULES,
+            COL_ZX_COPY_MENU, COL_ZX_COPY_RULES, COL_WATCHLIST_COLORS,
         )
         val values = arrayOf<Any>(
             if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
@@ -149,6 +151,7 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.STG_SNAP_ADD, ConfigKeys.DEFAULT_STG_SNAP_ADD)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STG_STOCK_FILTER, ConfigKeys.DEFAULT_STG_STOCK_FILTER)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY)) 1 else 0,
+            ModulePreferences.getString(ConfigKeys.STOCK_BAR_ITEMS, ConfigKeys.DEFAULT_STOCK_BAR_ITEMS),
             if (ModulePreferences.getBoolean(ConfigKeys.IPO_DIALOG_CLEAN, ConfigKeys.DEFAULT_IPO_DIALOG_CLEAN)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.AISTARE_QUICK_ENABLED, ConfigKeys.DEFAULT_AISTARE_QUICK_ENABLED)) 1 else 0,
             ModulePreferences.getString(ConfigKeys.AISTARE_QUICK_CONFIG, ConfigKeys.DEFAULT_AISTARE_QUICK_CONFIG),
@@ -170,6 +173,7 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.ZX_GROUP_COPY, ConfigKeys.DEFAULT_ZX_GROUP_COPY)) 1 else 0,
             if (ModulePreferences.getBoolean(ConfigKeys.ZX_COPY_MENU, ConfigKeys.DEFAULT_ZX_COPY_MENU)) 1 else 0,
             ModulePreferences.getString(ConfigKeys.ZX_COPY_RULES, ConfigKeys.DEFAULT_ZX_COPY_RULES),
+            ModulePreferences.getString(ConfigKeys.WATCHLIST_COLORS, ConfigKeys.DEFAULT_WATCHLIST_COLORS),
         )
         // 列与值必须等长 —— `MatrixCursor.addRow` 长度不等会抛 IllegalArgumentException
         if (columns.size != values.size) {
@@ -264,8 +268,16 @@ class DebugConfigProvider : ContentProvider() {
                 putString(ConfigKeys.ZX_COPY_RULES, boundedString(values, COL_ZX_COPY_RULES))
                 n++
             }
+            if (values.containsKey(COL_STOCK_BAR_ITEMS)) {
+                putString(ConfigKeys.STOCK_BAR_ITEMS, boundedString(values, COL_STOCK_BAR_ITEMS))
+                n++
+            }
             if (values.containsKey(COL_DOCK_ENTRIES)) {
                 putString(ConfigKeys.DOCK_ENTRIES, boundedString(values, COL_DOCK_ENTRIES))
+                n++
+            }
+            if (values.containsKey(COL_WATCHLIST_COLORS)) {
+                putString(ConfigKeys.WATCHLIST_COLORS, boundedString(values, COL_WATCHLIST_COLORS))
                 n++
             }
         }

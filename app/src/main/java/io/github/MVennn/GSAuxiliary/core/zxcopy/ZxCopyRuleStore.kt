@@ -118,6 +118,12 @@ object ZxCopyRuleStore {
         /** 列表页的一行预览（设置页写入时生成） */
         val preview: String,
         val isDefault: Boolean,
+        /**
+         * 绑定的分组（[ZxCopyGroups.KEYS] 的子集）；空 = 不绑定，任何分组都用默认规则。
+         *
+         * 短按复制时先按当前分组找绑定了它的规则，找不到再回落 [Data.defaultRule]。
+         */
+        val groups: List<String> = emptyList(),
         /** 字段 id，有序 */
         val fields: List<String>,
         /** 字段 id → 当前语言标签（Markdown / CSV / 图片 / PDF 表头用） */
@@ -151,6 +157,19 @@ object ZxCopyRuleStore {
             rules.firstOrNull { it.id == defaultId }
                 ?: rules.firstOrNull { it.isDefault }
                 ?: rules.firstOrNull()
+
+        /**
+         * 当前分组该用哪条规则。
+         *
+         * 绑了分组的规则优先，按列表顺序取第一条；没有被任何规则绑定的分组
+         * 落到 [defaultRule] —— 这就是绑定功能上线前的行为，老配置零变化。
+         */
+        fun ruleForGroup(groupKey: String?): Rule? {
+            if (groupKey != null) {
+                rules.firstOrNull { groupKey in it.groups }?.let { return it }
+            }
+            return defaultRule()
+        }
     }
 
     // ------------------------------------------------------------ 出厂规则
@@ -252,6 +271,15 @@ object ZxCopyRuleStore {
             }
         }
 
+        val rawGroups = o.optJSONArray("groups")
+        val groups = ArrayList<String>()
+        if (rawGroups != null) {
+            for (i in 0 until rawGroups.length()) {
+                val key = rawGroups.optString(i)
+                if (key.isNotEmpty() && key !in groups) groups.add(key)
+            }
+        }
+
         val format = o.optString("format").takeIf { it in FORMATS } ?: FORMAT_TEXT
         val sort = o.optString("sort").takeIf { it in SORTS } ?: SORT_SCREEN
         val empty = o.optString("empty").takeIf { it in EMPTIES } ?: EMPTY_DASH
@@ -264,6 +292,7 @@ object ZxCopyRuleStore {
             name = name,
             preview = o.optString("preview", ""),
             isDefault = o.optBoolean("isDefault", false),
+            groups = ZxCopyGroups.normalize(groups),
             fields = fields,
             labels = labels,
             metaLabels = metaLabels,
@@ -339,6 +368,7 @@ object ZxCopyRuleStore {
         o.put("name", r.name)
         o.put("preview", r.preview)
         o.put("isDefault", r.isDefault)
+        o.put("groups", JSONArray(ZxCopyGroups.normalize(r.groups)))
         o.put("fields", JSONArray(r.fields))
         val labels = JSONObject()
         for ((k, v) in r.labels) labels.put(k, v)

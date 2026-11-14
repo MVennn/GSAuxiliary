@@ -15,6 +15,7 @@ import android.widget.TextView
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
+import io.github.MVennn.GSAuxiliary.core.StockBarItemStore
 import io.github.MVennn.GSAuxiliary.feature.FeatureEnv
 import io.github.MVennn.GSAuxiliary.feature.PageSyncFeature
 import io.github.MVennn.GSAuxiliary.util.Reflect
@@ -26,10 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 功能：个股详情页底栏，在「自选」与「更多」之间注入一个 **「智能盯盘」快捷入口**。
+ * 功能：个股详情页底栏，在「自选」与「更多」之间注入 **1~2 个快捷入口**。
  *
- * 「智能盯盘」原本埋在底栏「更多」的弹层里（个股页是第 2 项、指数页是第 1 项），
- * 点两下才到；本功能把它提到一级位置，底栏上直接可点。
+ * 这些入口原本埋在底栏「更多」的弹层里（个股页面板七项、指数页两项），点两下才到；
+ * 本功能把用户挑中的项提到一级位置，底栏上直接可点。挑哪几项由参数键 `stock_bar_items`
+ * 决定（见 `StockBarItemStore`），最多两项 —— 每项实测 124 px + 间距 26 px，第三项就会
+ * 把买 / 卖压到 96 px 以下。
  *
  * **LSPosed 运行时视图注入，不改目标 App 源码、不碰任何数据。**
  *
@@ -148,7 +151,7 @@ import java.util.concurrent.atomic.AtomicReference
 class StockDetailBarFeature : PageSyncFeature() {
 
     override val id = "stock_bar_entry"
-    override val title = "个股详情页底栏智能盯盘入口"
+    override val title = "个股详情页底栏快捷入口"
 
     /** 只在这一个页面跑同步：别的页面（H5、资讯、首页…）连一次 `sync` 都不该进来 */
     override val pages = StockDetailBarTargets.WATCH_ACTIVITIES
@@ -187,11 +190,14 @@ class StockDetailBarFeature : PageSyncFeature() {
         // （滚动期每帧全量重扫）。
         if (!e.box.isAttachedToWindow) return true
         if (e.holder.parent !== e.box) return false
-        if (e.button.parent !== e.holder) return false
-        if (!e.button.isAttachedToWindow) return false
+        if (e.buttons.isEmpty()) return false
+        for (b in e.buttons) {
+            if (b.parent !== e.holder) return false
+            if (!b.isAttachedToWindow) return false
+        }
         if (!e.confirmed) return false
         // 图标采到过就必须套上；还没采到不算「没落地」（采集是异步的，见 maybeHarvestIcon）
-        return entryIcon == null || topDrawableOf(e) != null
+        return !missingIcon(e)
     }
 
     /** 一次注入的现场，用于「关开关立即还原」 */
@@ -199,7 +205,10 @@ class StockDetailBarFeature : PageSyncFeature() {
         val box: ViewGroup,
         val holder: LinearLayout,
         val moreText: TextView,
-        val button: TextView,
+        /** 注入的按钮，顺序与 [targets] 一一对应 */
+        val buttons: List<TextView>,
+        /** 每个按钮对应「更多」面板里的哪一项（面板文字） */
+        val targets: List<String>,
         val originalBoxWidth: Int,
         /** 「更多」摘出前在盒子里的下标 —— detach 时按原位放回，别再现场查（那时它已不在盒子里，恒 -1） */
         val originalMoreIndex: Int,
@@ -253,12 +262,24 @@ class StockDetailBarFeature : PageSyncFeature() {
 
         /** 面板已被我们认领 —— **同一轮只允许认领一次**（嵌套的 show 重载会重复回调） */
         val claimed = AtomicBoolean(false)
+
+        /**
+         * 这一轮要点的面板项（面板文字）。
+         *
+         * null = 图标采集轮（一次面板里把所有已配置项都采一遍，见 [attemptHandle]）；
+         * 非 null = 用户点击轮，只点这一项。
+         */
+        @Volatile var target: String? = null
     }
 
     // ------------------------------------------------------------------ 状态
 
-    /** 面板里那一项的图标（进程级缓存，取到一次即可复用） */
-    @Volatile private var entryIcon: Drawable? = null
+    /**
+     * 面板项的图标（进程级缓存，键是面板文字，取到一次即可复用）。
+     *
+     * 用并发 map 而不是加锁：读多写少，读侧还要在 [settled] 里被每趟布局回调摸一遍。
+     */
+    private val entryIcons = java.util.concurrent.ConcurrentHashMap<String, Drawable>()
 
     /** 是否已经发起过图标采集（失败会复位，允许下次重试） */
     private val harvestStarted = AtomicBoolean(false)
@@ -420,12 +441,19 @@ class StockDetailBarFeature : PageSyncFeature() {
         val root = runCatching { activity.window?.decorView }.getOrNull() ?: return true
         seenDecors[root] = true   // 留个扫描起点给热重载兜底清理（弱引用，页面销毁自动失效）
         val barId = resolveId(root.context, IdKey.BOTTOM_BAR)
-        if (barId == 0) return true                       // App 里没这个资源，再同步也没用
+        if (barId == 0) {
+            GLog.d("底栏入口：资源 id 里没有 ${StockDetailBarTargets.BOTTOM_BAR_ID_CANDIDATES.joinToString()}，跳过")
+            return true                                   // App 里没这个资源，再同步也没用
+        }
         val bars = findBars(root, barId)
-        if (bars.isEmpty()) return true                   // 引擎片段还没挂上：等布局回调
+        if (bars.isEmpty()) {
+            // 只记 debug：翻页时那一页的底栏常常还没铺开，这不是异常
+            GLog.d("底栏入口：${activity.javaClass.simpleName} 上还没挂出底栏（id=$barId），等下一次布局")
+            return true
+        }
         var ok = 0
         for (bar in bars) {
-            val done = runCatching { syncBar(bar) }.getOrElse {
+            val done = runCatching { syncBar(env, bar) }.getOrElse {
                 GLog.w("底栏入口：同步底栏失败", it)
                 false
             }
@@ -491,16 +519,25 @@ class StockDetailBarFeature : PageSyncFeature() {
      * 判据用 [liveRecord]（**现场**）而不是「记账表里有没有这一条」—— 宿主重建底栏
      * 之后记账表还在，只查它就会永远误判成「已经注入过了」，再也修不回来。
      */
-    private fun syncBar(bar: View): Boolean {
+    private fun syncBar(env: FeatureEnv, bar: View): Boolean {
         val more = findMoreText(bar) ?: return false
         val box = boxOf(bar, more) ?: return false
         // 盒子可能是别的页面残留的同一个 id，确认它属于这条底栏
         if (!isDescendant(box, bar)) return false
+        val targets = desiredTargets(env.config, more)
         val live = liveRecord(box, more)
         if (live != null) {
-            reassert(live)
-            return true
+            if (live.targets == targets) {
+                reassert(live)
+                return true
+            }
+            // 用户刚在设置页改了外提项：宿主不会重建这一块，只能自己按新配置重来
+            synchronized(injected) { injected.remove(box) }
+            runCatching { detach(live) }
+            GLog.i("底栏入口：外提项变了（" + live.targets + " -> " + targets + "），按新配置重建")
         }
+        // 一项都不外提：盒子里本来就只有「更多」，不用动
+        if (targets.isEmpty()) return true
         // 硬红线：**绝不把我们的容器套进另一个我们的容器里**。
         // 正常路径不会走到这里（盒子 + 现场都判过了）；走到只能说明「更多」外面套的
         // 是**旧实例 / 丢记账后留下的孤儿容器**（审查 2026-10-17 中-9：热重载残留）——
@@ -515,20 +552,44 @@ class StockDetailBarFeature : PageSyncFeature() {
             if (ok) noteChange()
             return true
         }
-        val entry = buildEntry(more) ?: return false
-        val built = buildInline(more, box, entry) ?: return false
+        val entries = targets.mapNotNull { buildEntry(more, it) }
+        if (entries.isEmpty()) return false
+        val built = buildInline(more, box, entries, targets) ?: return false
         injected[box] = built
         noteChange()
         GLog.i(
-            "底栏入口：已在「自选」与「更多」之间注入「${StockDetailBarTargets.ENTRY_TEXT}」" +
-                "（盒子 ${box.javaClass.simpleName}，原宽 ${built.originalBoxWidth}px）"
+            "底栏入口：已在「自选」与「更多」之间注入「" + targets.joinToString("」「") + "」" +
+                "（盒子 " + box.javaClass.simpleName + "，原宽 " + built.originalBoxWidth + "px）"
         )
-        // 图标早采到过（进程级缓存）就**当场套上**：不套的话这颗按钮要等下几趟同步被
+        // 图标早采到过（进程级缓存）就**当场套上**：不套的话按钮要等下几趟同步被
         // [reassert] 补图标，用户看到的是「先注入文字，图标过一会儿才出现」（2026-10-19 修 BUG1）。
         // 一次都还没采到才交给下面那条异步采集（它要隐形开一次「更多」面板，快不了）。
-        if (entryIcon != null) applyIcon(built)
-        maybeHarvestIcon(more)
+        applyIcons(built)
+        maybeHarvestIcons(more, targets)
         return true
+    }
+
+    /**
+     * 当前配置下、**这条底栏**该外提哪几项（面板文字，按面板顺序）。
+     *
+     * 个股形态的面板有七项、指数形态只有两项，所以配置里那几项不一定都能在这条底栏上出现 ——
+     * 认不出来的直接跳过（配置本身不动，翻回个股页照样生效）。
+     */
+    private fun desiredTargets(cfg: ConfigSnapshot, more: TextView): List<String> {
+        val keys = StockBarItemStore.decode(cfg.stockBarItems, cfg.stockBarEntry)
+        if (keys.isEmpty()) return emptyList()
+        val menu = if (isIndexForm(more)) {
+            StockDetailBarTargets.INDEX_MENU_ITEMS
+        } else {
+            StockDetailBarTargets.STOCK_MENU_ITEMS
+        }
+        return keys.mapNotNull { menu[it] }.take(StockDetailBarTargets.MAX_ENTRIES)
+    }
+
+    /** 这个「更多」是指数 / 板块形态那一个吗（两套按钮 id 不同，见 [StockDetailBarTargets.MORE_TEXT_ID_CANDIDATES]） */
+    private fun isIndexForm(more: TextView): Boolean {
+        val indexId = resolveIdByName(more.context, StockDetailBarTargets.MORE_TEXT_ID_CANDIDATES[1])
+        return indexId != 0 && more.id == indexId
     }
 
     /**
@@ -595,10 +656,15 @@ class StockDetailBarFeature : PageSyncFeature() {
      */
     private fun liveRecord(box: ViewGroup, more: View): Injected? {
         val e = synchronized(injected) { injected[box] } ?: return null
-        val alive = e.moreText === more &&
-            e.holder.parent === box &&
-            e.button.parent === e.holder &&
-            e.button.isAttachedToWindow
+        var alive = e.moreText === more && e.holder.parent === box && e.buttons.isNotEmpty()
+        if (alive) {
+            for (b in e.buttons) {
+                if (b.parent !== e.holder || !b.isAttachedToWindow) {
+                    alive = false
+                    break
+                }
+            }
+        }
         if (alive) return e
 
         synchronized(injected) { injected.remove(box) }
@@ -609,7 +675,7 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     /** 丢掉一次失效注入留下的容器（**不**碰「更多」：它要么已被宿主换掉，要么由重新注入接管） */
     private fun cleanupStale(e: Injected) {
-        runCatching { e.holder.removeView(e.button) }
+        for (b in e.buttons) runCatching { e.holder.removeView(b) }
         runCatching { (e.holder.parent as? ViewGroup)?.removeView(e.holder) }
     }
 
@@ -629,20 +695,35 @@ class StockDetailBarFeature : PageSyncFeature() {
             noteChange()
             GLog.i("底栏入口：宿主把「更多」盒子宽度改回去了，已重新加宽（买卖重新让位）")
         }
-        if (topDrawableOf(e) == null) applyIcon(e)
+        // 只在「图标已采到、按钮上还没套」时才补。
+        // [applyIcons] 每次调用都会 noteChange()，无条件调它会让限速闸永远认为
+        // 「界面刚被改过」，退化成每 200ms 一次的补跑死循环（真机实测刷屏）。
+        if (missingIcon(e)) applyIcons(e)
         // 这一份现场到此算复核过：限速闸恢复正常（见 needsFollowUp）
         e.confirmed = true
     }
 
-    /** 我们套在入口按钮上的那颗图标；没套（或套失败）返回 null */
-    private fun topDrawableOf(e: Injected): Drawable? =
-        runCatching { e.button.compoundDrawables.getOrNull(1) }.getOrNull()
+    /** 有没有「图标已经采到、按钮上却还没套」的情况 */
+    private fun missingIcon(e: Injected): Boolean {
+        for (i in e.buttons.indices) {
+            val target = e.targets.getOrNull(i) ?: continue
+            if (!entryIcons.containsKey(target)) continue
+            val d = runCatching { e.buttons[i].compoundDrawables.getOrNull(1) }.getOrNull()
+            if (d == null) return true
+        }
+        return false
+    }
 
     /**
      * 真正动手：把「更多」搬进一个横向容器，前面并排我们的按钮，再把容器塞回盒子，
      * 最后把盒子宽度改成 `wrap_content`（这一步才是「买卖让位」的来源）。
      */
-    private fun buildInline(moreText: TextView, box: ViewGroup, entry: TextView): Injected? {
+    private fun buildInline(
+        moreText: TextView,
+        box: ViewGroup,
+        entries: List<TextView>,
+        targets: List<String>,
+    ): Injected? {
         val originalWidth = box.width.takeIf { it > 0 }
             ?: box.measuredWidth.takeIf { it > 0 }
             ?: box.layoutParams?.width ?: ViewGroup.LayoutParams.WRAP_CONTENT
@@ -665,15 +746,17 @@ class StockDetailBarFeature : PageSyncFeature() {
             // 旧实例的记账表可查，只能从视图本身找回原宽（审查 2026-10-17 中-9）
             setTag(KEY_ORIG_BOX_WIDTH, originalWidth)
         }
-        entry.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.MATCH_PARENT,
-        ).apply { rightMargin = gapPx }
+        for (entry in entries) {
+            entry.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ).apply { rightMargin = gapPx }
+            holder.addView(entry)
+        }
         moreText.layoutParams = LinearLayout.LayoutParams(
             if (moreWidth > 0) moreWidth else ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ).apply { gravity = Gravity.CENTER }
-        holder.addView(entry)
         holder.addView(moreText)
 
         // ③ 容器塞回盒子
@@ -687,7 +770,8 @@ class StockDetailBarFeature : PageSyncFeature() {
             else box.addView(holder, holderLp)
         }.onFailure {
             GLog.w("底栏入口：容器塞回盒子失败，回滚", it)
-            runCatching { holder.removeView(entry); holder.removeView(moreText) }
+            for (entry in entries) runCatching { holder.removeView(entry) }
+            runCatching { holder.removeView(moreText) }
             runCatching { box.addView(moreText, index.coerceIn(0, box.childCount)) }
             return null
         }
@@ -700,15 +784,21 @@ class StockDetailBarFeature : PageSyncFeature() {
         }
         runCatching { box.requestLayout() }
 
-        return Injected(box, holder, moreText, entry, originalWidth, index, iconW, iconH)
+        return Injected(box, holder, moreText, entries, targets, originalWidth, index, iconW, iconH)
     }
 
-    /** 从「更多」按钮克隆出一颗样式一致、但**独立 id / 独立 tag** 的按钮 */
-    private fun buildEntry(moreText: TextView): TextView? {
+    /**
+     * 从「更多」按钮克隆出一颗样式一致、但**独立 id / 独立 tag** 的按钮。
+     *
+     * [targetText] 既是按钮文案，也是「点下去要开面板里哪一项」——存在 keyed tag 上，
+     * 点击时直接读（[openEntry]），不用再猜。
+     */
+    private fun buildEntry(moreText: TextView, targetText: String): TextView? {
         val button = TextView(moreText.context)
         StockDetailBarMeasure.copyStyle(moreText, button)
-        button.text = StockDetailBarTargets.ENTRY_TEXT
+        button.text = targetText
         button.tag = StockDetailBarTargets.ENTRY_TAG
+        runCatching { button.setTag(KEY_TARGET_TEXT, targetText) }
         runCatching { button.id = View.generateViewId() }
         // 图标由采集流程补上；先清空，避免短暂顶着「更多」的图标（•••）
         runCatching { button.setCompoundDrawables(null, null, null, null) }
@@ -840,7 +930,7 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     private fun detach(e: Injected) {
         val holder = e.holder
-        runCatching { holder.removeView(e.button) }
+        for (b in e.buttons) runCatching { holder.removeView(b) }
         runCatching { holder.removeView(e.moreText) }
         runCatching { (holder.parent as? ViewGroup)?.removeView(holder) }
         val index = e.originalMoreIndex
@@ -897,6 +987,8 @@ class StockDetailBarFeature : PageSyncFeature() {
             GLog.d("底栏入口：已有一轮在途，本次点击合并")
             return
         }
+        // 点的是哪一项：按钮上的 keyed tag（[buildEntry] 写的），认不出就当默认项
+        r.target = (v.getTag(KEY_TARGET_TEXT) as? String) ?: StockDetailBarTargets.ENTRY_TEXT
         guardLogged.set(false)
         // ★ 必须在 performClick 之前抓窗口快照 —— 宿主是在点击处理里把窗口调暗的
         r.window = captureWindow(v)
@@ -909,9 +1001,13 @@ class StockDetailBarFeature : PageSyncFeature() {
         scheduleTimeout(r, moreText)
     }
 
-    /** 首次注入时隐形开一次面板，把「智能盯盘」那一项的图标取回来 */
-    private fun maybeHarvestIcon(moreText: TextView) {
-        if (entryIcon != null) return
+    /**
+     * 注入后隐形开一次面板，把外提项自带的图标取回来（一次面板能采到全部项）。
+     *
+     * 只有「还有项没采到」时才值得开面板；采齐了就直接返回。
+     */
+    private fun maybeHarvestIcons(moreText: TextView, targets: List<String>) {
+        if (targets.all { entryIcons.containsKey(it) }) return
         if (!harvestStarted.compareAndSet(false, true)) return
         val r = begin(harvest = true)
         if (r == null) {
@@ -919,7 +1015,7 @@ class StockDetailBarFeature : PageSyncFeature() {
             // 采集不着急，等用户这一轮走完再来
             harvestStarted.set(false)
             moreText.postDelayed({
-                if (moreText.isAttachedToWindow) maybeHarvestIcon(moreText)
+                if (moreText.isAttachedToWindow) maybeHarvestIcons(moreText, targets)
             }, HARVEST_RETRY_MS)
             return
         }
@@ -942,6 +1038,12 @@ class StockDetailBarFeature : PageSyncFeature() {
             }
             scheduleTimeout(r, moreText)
         }
+    }
+
+    /** 已注入的项里还缺图标的那些（采集轮照着这个清单找面板项） */
+    private fun pendingIconTargets(): List<String> {
+        val all = synchronized(injected) { injected.values.flatMap { it.targets } }
+        return all.distinct().filter { !entryIcons.containsKey(it) }
     }
 
     /** 开一轮「我们主动弹面板」：抢到空闲位才算开始（点击与采集互斥） */
@@ -1094,9 +1196,16 @@ class StockDetailBarFeature : PageSyncFeature() {
         }
 
         val grid = findMenuGrid(content)
-        val item = grid?.let { findMenuEntryText(it) }
+        // 采集轮：把「还缺图标的项」全采一遍（面板一次开着，能采几项采几项）
+        // 点击轮：只找点的那一项
+        val wanted = if (r.harvest) pendingIconTargets() else listOfNotNull(r.target)
+        val hits = if (grid == null) {
+            emptyList()
+        } else {
+            wanted.mapNotNull { t -> findMenuEntryText(grid, t)?.let { t to it } }
+        }
 
-        if (item == null && attempt < MAX_ATTEMPTS) {
+        if (hits.isEmpty() && attempt < MAX_ATTEMPTS) {
             content.postDelayed(
                 { runCatching { attemptHandle(content, layer, popup, r, attempt + 1) } },
                 RETRY_MS,
@@ -1105,15 +1214,21 @@ class StockDetailBarFeature : PageSyncFeature() {
         }
 
         runCatching {
-            if (item != null) {
+            for ((text, item) in hits) {
                 val icon = harvestIcon(item)
-                GLog.i("底栏入口：图标采集 -> ${if (icon != null) "成功" else "该面板项没有 drawableTop"}")
                 if (icon != null) {
-                    entryIcon = icon
+                    entryIcons[text] = icon
                     applyIconToAll()
                 }
-                // 采集轮到此为止；只有点击轮才继续往「智能盯盘」里走
-                if (!r.harvest && grid != null) clickMenuEntry(grid, item)
+                GLog.i(
+                    "底栏入口：图标采集「" + text + "」-> " +
+                        (if (icon != null) "成功" else "该面板项没有 drawableTop")
+                )
+            }
+            // 采集轮到此为止；只有点击轮才继续往面板项里走
+            if (!r.harvest && grid != null) {
+                val hit = hits.firstOrNull { it.first == r.target }
+                if (hit != null) clickMenuEntry(grid, hit.second, hit.first)
             }
         }.onFailure { GLog.w("底栏入口：处理面板内容异常", it) }
 
@@ -1126,9 +1241,9 @@ class StockDetailBarFeature : PageSyncFeature() {
         // 收尾：这一轮结束，防闪夹子随之失效（见 [clampWindowDim]）
         end(r)
 
-        if (item == null) {
+        if (hits.isEmpty()) {
             harvestStarted.set(false)        // 允许下次重试
-            GLog.w("底栏入口：面板里没找到「${StockDetailBarTargets.MENU_ITEM_TEXT}」（第 ${r.gen} 轮）")
+            GLog.w("底栏入口：面板里没找到 " + wanted + "（第 " + r.gen + " 轮）")
         }
     }
 
@@ -1139,9 +1254,9 @@ class StockDetailBarFeature : PageSyncFeature() {
      * 所以**必须**用 [GridView.performItemClick] —— 面板项容器本身不保证 `clickable`，
      * 往上找可点击祖先会直接落空。
      */
-    private fun clickMenuEntry(grid: GridView, itemText: TextView) {
+    private fun clickMenuEntry(grid: GridView, itemText: TextView, targetText: String) {
         val box = directChildOf(grid, itemText) ?: run {
-            GLog.w("底栏入口：「${StockDetailBarTargets.MENU_ITEM_TEXT}」不在 GridView 的直接子项里")
+            GLog.w("底栏入口：「" + targetText + "」不在 GridView 的直接子项里")
             return
         }
         val offset = (0 until grid.childCount).firstOrNull { grid.getChildAt(it) === box } ?: return
@@ -1159,11 +1274,11 @@ class StockDetailBarFeature : PageSyncFeature() {
             hasItemListener -> grid.performItemClick(box, position, id)
             box.isClickable -> box.performClick()
             else -> {
-                GLog.w("底栏入口：「${StockDetailBarTargets.MENU_ITEM_TEXT}」既没有 item 监听也不可点击")
+                GLog.w("底栏入口：「" + targetText + "」既没有 item 监听也不可点击")
                 return
             }
         }
-        GLog.i("底栏入口：已触发「${StockDetailBarTargets.MENU_ITEM_TEXT}」（position=$position）")
+        GLog.i("底栏入口：已触发「" + targetText + "」（position=" + position + "）")
     }
 
     /** 沿 parent 上溯到 `GridView` 的直接子项（也就是 item 容器） */
@@ -1179,7 +1294,7 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     // ------------------------------------------------------------------ 图标
 
-    /** 采集「智能盯盘」项自带的 `drawableTop` */
+    /** 采集某一项自带的 `drawableTop` */
     private fun harvestIcon(item: TextView): Drawable? {
         val d = runCatching { item.compoundDrawables.getOrNull(1) }.getOrNull() ?: return null
         return runCatching { d.constantState?.newDrawable()?.mutate() }.getOrNull()
@@ -1187,19 +1302,24 @@ class StockDetailBarFeature : PageSyncFeature() {
 
     private fun applyIconToAll() {
         val entries = synchronized(injected) { injected.values.toList() }
-        for (e in entries) applyIcon(e)
+        for (e in entries) applyIcons(e)
     }
 
-    private fun applyIcon(e: Injected) {
-        val icon = entryIcon ?: return
-        runCatching {
-            val d = icon.constantState?.newDrawable()?.mutate() ?: return@runCatching
-            // 必须显式设 bounds：`setCompoundDrawables` 不会给 drawable 设 bounds，
-            // 结果是「图标拿到了但一个像素都画不出来」；而且面板里的图标比底栏的大，
-            // 不缩到「更多」的尺寸会把底栏文字顶掉（都踩过）。
-            if (e.iconW > 0 && e.iconH > 0) d.setBounds(0, 0, e.iconW, e.iconH)
-            e.button.setCompoundDrawables(null, d, null, null)
-            noteChange()          // 图标是在改视图，这一帧同样要先拦下来（见 PageSyncFeature）
+    /** 把已采到的图标套到这一份现场的所有按钮上（没采到的项跳过，等采集轮补） */
+    private fun applyIcons(e: Injected) {
+        for (i in e.buttons.indices) {
+            val target = e.targets.getOrNull(i) ?: continue
+            val icon = entryIcons[target] ?: continue
+            val button = e.buttons[i]
+            runCatching {
+                val d = icon.constantState?.newDrawable()?.mutate() ?: return@runCatching
+                // 必须显式设 bounds：`setCompoundDrawables` 不会给 drawable 设 bounds，
+                // 结果是「图标拿到了但一个像素都画不出来」；而且面板里的图标比底栏的大，
+                // 不缩到「更多」的尺寸会把底栏文字顶掉（都踩过）。
+                if (e.iconW > 0 && e.iconH > 0) d.setBounds(0, 0, e.iconW, e.iconH)
+                button.setCompoundDrawables(null, d, null, null)
+                noteChange()      // 图标是在改视图，这一帧同样要先拦下来（见 PageSyncFeature）
+            }
         }
     }
 
@@ -1241,15 +1361,16 @@ class StockDetailBarFeature : PageSyncFeature() {
         return null
     }
 
-    private fun findMenuEntryText(grid: GridView): TextView? {
+    /** 在面板里按**文字**找那一项（面板项位置不固定，见本文件头注） */
+    private fun findMenuEntryText(grid: GridView, targetText: String): TextView? {
         val id = resolveId(grid.context, IdKey.MENU_ITEM_TEXT)
         if (id != 0) {
             for (i in 0 until grid.childCount) {
                 val tv = grid.getChildAt(i).findViewById<View>(id) as? TextView ?: continue
-                if (tv.text?.toString() == StockDetailBarTargets.MENU_ITEM_TEXT) return tv
+                if (tv.text?.toString() == targetText) return tv
             }
         }
-        return findText(grid, StockDetailBarTargets.MENU_ITEM_TEXT)
+        return findText(grid, targetText)
     }
 
     /** 深度优先找一个文案相等的 `TextView` */
@@ -1337,6 +1458,9 @@ class StockDetailBarFeature : PageSyncFeature() {
         /** 等 `GridView` 子项完成 measure/layout 的重试次数与间隔 */
         const val MAX_ATTEMPTS = 12
         const val RETRY_MS = 16L
+
+        /** 按钮上的 keyed tag：这一颗按钮对应面板里的哪一项（文字） */
+        val KEY_TARGET_TEXT = "gsaux.stockbar.target".hashCode()
 
         /**
          * 注入时把「更多」盒子的**原宽**记在我们自己的 holder 上（keyed tag）。

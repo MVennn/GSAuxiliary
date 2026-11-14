@@ -74,6 +74,8 @@ internal sealed interface Route {
     data object AiStareSaveBehavior : Route
     /** 底栏入口设置（二级）：六格里显示哪几个 */
     data object DockEntries : Route
+    /** 详情页底栏入口设置（二级）：把「更多」里的哪几项提到详情页底栏 */
+    data object StockBarEntries : Route
     data object Disclaimer : Route
     data object Notice : Route
 }
@@ -106,6 +108,7 @@ private object RouteSaver : Saver<Route, String> {
         Route.StgDirectQuoteDetail -> "stg_direct_quote_detail"
         Route.StgFilterSettings -> "stg_filter_settings"
         Route.DockEntries -> "dock_entries"
+        Route.StockBarEntries -> "stock_bar_entries"
         Route.Disclaimer -> "disclaimer"
         Route.Notice -> "notice"
     }
@@ -131,6 +134,7 @@ private object RouteSaver : Saver<Route, String> {
         value == "stg_direct_quote_detail" -> Route.StgDirectQuoteDetail
         value == "stg_filter_settings" -> Route.StgFilterSettings
         value == "dock_entries" -> Route.DockEntries
+        value == "stock_bar_entries" -> Route.StockBarEntries
         value == "disclaimer" -> Route.Disclaimer
         value == "notice" -> Route.Notice
         else -> Route.Home
@@ -382,6 +386,8 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                         "stg_merge" -> Route.StrategyMerge
                         // 底栏入口：六格里显示哪几个
                         "dock_clean" -> Route.DockEntries
+                        // 详情页底栏入口：把「更多」里的哪几项提到一级
+                        "stock_bar_entry" -> Route.StockBarEntries
                         else -> Route.WatchlistDetail
                     }
                 },
@@ -498,6 +504,13 @@ internal fun MainScreen(initialRoute: Route = Route.Home) {
                             onBack = { route = Route.Home },
                         ) {
                             DockEntriesScreen()
+                        }
+
+                        Route.StockBarEntries -> SubScreen(
+                            title = stringResource(R.string.detail_stock_bar_title),
+                            onBack = { route = Route.Home },
+                        ) {
+                            StockBarEntriesScreen()
                         }
 
                         Route.Disclaimer -> SubScreen(

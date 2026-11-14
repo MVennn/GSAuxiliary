@@ -11,6 +11,13 @@ package io.github.MVennn.GSAuxiliary.core
 data class ConfigSnapshot(
     val enabled: Boolean,
     val color: Int,
+    /**
+     * 分档配色：涨 / 跌 / 平 三档各用一个高亮色（JSON 字符串，结构见 `WatchlistColorStore`）。
+     *
+     * 空串 = 三档同色、都取 [color] —— 老配置与出厂配置都是这个形态，
+     * 所以「升级上来」与「没配过分档」走的是同一条路径。
+     */
+    val watchlistColors: String,
     /** 自选股名称加粗（与「自选股高亮」是两个独立开关） */
     val watchlistBold: Boolean,
     val scopeStrategy: Boolean,
@@ -32,8 +39,15 @@ data class ConfigSnapshot(
     val stgMerge: Boolean,
     /** 策略合并的聚合组数据（JSON 字符串，结构见 `StrategyMergeStore`） */
     val stgMergeGroups: String,
-    /** 个股详情页底栏在「自选」与「更多」之间注入「智能盯盘」快捷入口 */
+    /**
+     * 个股详情页底栏快捷入口的**总开关**；提哪几项见 [stockBarItems]。
+     *
+     * 老版本只有这一位布尔（＝只提「智能盯盘」），升级后它同时充当迁移源：
+     * [stockBarItems] 为空串时，本项为真等价于「只提智能盯盘」（`StockBarItemStore.decode`）。
+     */
     val stockBarEntry: Boolean,
+    /** 详情页底栏要提哪几项（JSON 字符串，结构见 `StockBarItemStore`） */
+    val stockBarItems: String,
     /**
      * 主界面底栏入口自定义的**总开关**；藏哪几格见 [dockEntries]。
      *
@@ -98,12 +112,12 @@ data class ConfigSnapshot(
      * —— 用户改了开关但功能不变，而且**日志里一行都没有**。
      *
      * 单键切换永远是安全的（delta = ±该项的位），风险只在**多键同时写入**
-     * （「重置模块」一次写 32 个键 = `FEATURE_KEYS` 22 + `FEATURE_PARAM_KEYS` 10、
-     * 恢复备份一次写 40 个键 = `ALL_KEYS`）。
+     * （「重置模块」一次写 34 个键 = `FEATURE_KEYS` 22 + `FEATURE_PARAM_KEYS` 12、
+     * 恢复备份一次写 42 个键 = `ALL_KEYS`）。
      *
      * 改成「布尔项占低位、逐个异或」之后：**28 个布尔项之间不再有任何碰撞**
      * （不同布尔集合 → 不同位掩码 → 必然不同），数值项（颜色 / 日志等级 / 方案 JSON /
-     * 复制规则 JSON / 聚合组 JSON）再各自混一层异或。
+     * 复制规则 JSON / 聚合组 JSON / 分档配色 JSON）再各自混一层异或。
      *
      * ⚠️ **位是有限的**：Int 有 32 位，布尔项占了位 0..27（28 项），**还剩 4 位**。
      * 再加布尔项时 `bit shl 1` 会在第 32 位溢出成 0 → **两个开关静默冲突**
@@ -155,6 +169,8 @@ data class ConfigSnapshot(
         h = h xor zxCopyRules.hashCode()
         h = h xor stgMergeGroups.hashCode()
         h = h xor dockEntries.hashCode()
+        h = h xor stockBarItems.hashCode()
+        h = h xor watchlistColors.hashCode()
         h
     }
 
@@ -162,6 +178,7 @@ data class ConfigSnapshot(
         val DEFAULT = ConfigSnapshot(
             enabled = ConfigKeys.DEFAULT_ENABLED,
             color = ConfigKeys.DEFAULT_COLOR,
+            watchlistColors = ConfigKeys.DEFAULT_WATCHLIST_COLORS,
             watchlistBold = ConfigKeys.DEFAULT_WATCHLIST_BOLD,
             scopeStrategy = ConfigKeys.DEFAULT_SCOPE_STRATEGY,
             logLevel = ConfigKeys.DEFAULT_LOG_LEVEL,
@@ -174,6 +191,7 @@ data class ConfigSnapshot(
             stgMerge = ConfigKeys.DEFAULT_STG_MERGE,
             stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
             stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
+            stockBarItems = ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
             dockClean = ConfigKeys.DEFAULT_DOCK_CLEAN,
             dockEntries = ConfigKeys.DEFAULT_DOCK_ENTRIES,
             homeBannerHide = ConfigKeys.DEFAULT_HOME_BANNER_HIDE,

@@ -255,6 +255,7 @@ class FeatureManager(private val env: FeatureEnv) {
     private fun allOffSnapshot(): ConfigSnapshot = ConfigSnapshot(
         enabled = false,
         color = ConfigKeys.DEFAULT_COLOR,
+        watchlistColors = ConfigKeys.DEFAULT_WATCHLIST_COLORS,
         scopeStrategy = false,
         logLevel = ConfigKeys.DEFAULT_LOG_LEVEL,
         stgDirectQuote = false,
@@ -266,6 +267,7 @@ class FeatureManager(private val env: FeatureEnv) {
         stgMerge = false,
         stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
         stockBarEntry = false,
+        stockBarItems = ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
         dockClean = false,
         dockEntries = ConfigKeys.DEFAULT_DOCK_ENTRIES,
         homeBannerHide = false,
