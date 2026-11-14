@@ -43,10 +43,10 @@
 
 | # | id | 现用标题 | 对象数 | P1 | P2 | P3 | P4 | 判定 | 建议 |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `stock_bar_entry` | 增加 智能盯盘 入口 | 7（个股页弹层） | ✓ | ✓ | ✓ | ✓ | **A 够格** | 升级成「详情页底栏入口」，容量 2 |
+| 1 | `stock_bar_entry` | 增加 智能盯盘 入口 | 7（个股页弹层） | ✓ | ✓ | ✓ | ✓ | **A 够格** | 已升级成「详情页底栏入口」，容量 2（落地见 §3.1） |
 | 2 | `dock_clean` | 自定义 底栏 入口 | 6（底栏格） | ✓ | ✓ | ✓ | ✓ | **A 够格** | **已落地 2026-11-14**，见 [FEATURE-DOCK-ENTRIES](FEATURE-DOCK-ENTRIES.md) |
-| 3 | `watchlist_highlight` | 自选股高亮 | 3（涨/跌/平） | ✓ | ✓ | ✓ | ✓ | **A 够格** | 颜色由 1 个值变三档 |
-| 4 | `zx_group_copy` | 自选分组复制 | 3（页签）+ 规则表 | ✓ | ✓ | ✓ | ✓ | **A 够格** | 规则绑分组，只多一维 |
+| 3 | `watchlist_highlight` | 自选股高亮 | 3（涨/跌/平） | ✓ | ✓ | ✓ | ✓ | **A 够格** | **已落地 2026-11-14**，三档配色 + 入口状态句 |
+| 4 | `zx_group_copy` | 自选分组复制 | 3（页签）+ 规则表 | ✓ | ✓ | ✓ | ✓ | **A 够格 · 已落地 2026-11-14** | 规则绑分组，只多一维 |
 | 5 | `stg_stock_filter` | 增加 筛选股票 菜单项 | 策略 ≤200 + 聚合组 | ✓ | ✓ | ✓ | ✓ | **B 够格·阻塞** | 筛选值在目标进程，回传通道要先补 |
 | 6 | `market_index_hide` | 隐藏 指数概览 | 4（指数项） | ✓ | ✓ | ✓ | ✓ | **B 够格·低价值** | 只能按位置序号做 key，id 未二次核实 |
 | 7 | `watchlist_bold` | 自选股名称加粗 | 4（行内列） | ✓ | ✓ | ✓ | ✓ | **B 够格·暂缓** | 需求集中在名称列，四列收益不均 |
@@ -70,7 +70,7 @@
 
 ## 三、A 级：值得做
 
-### 3.1 `stock_bar_entry` —— 详情页底栏入口（第一优先）
+### 3.1 `stock_bar_entry` —— 详情页底栏入口（已落地 2026-11-14）
 
 **为什么它排第一**：底栏那族解决「不想看的入口」，这一族解决「想一键直达的入口」，是同一个思路的另一半。而且宿主侧**本来就有一条重排机制**：把「更多」盒子加宽，「买 / 卖」按权重自动让位（`feature/stockbar/StockDetailBarTargets.kt:39-60`，实测 1 项时盒子 96→246px、买卖各让一半），加项只是往盒子里多插一颗按钮。
 
@@ -87,7 +87,23 @@
 
 **风险**：每项图标都要隐形开一次「更多」面板采集（`PENDING_TIMEOUT_MS=1500`、`MAX_ATTEMPTS=12`），多入口会串行拖慢；宿主文案随语言切换时按中文文案匹配会失手（未验证）。
 
-### 3.2 `watchlist_highlight` —— 高亮分涨 / 跌 / 平三档
+**落地结果（2026-11-14）**：与本节原稿有五处差异，都以实际代码为准。
+
+| 项 | 原稿 | 落地 |
+|---|---|---|
+| 键值 | 存中文面板文字（`["智能盯盘"]`） | 存稳定 key（`["aistare"]`），中文只作面板定位用；宿主换语言也不影响配置 |
+| 一级入口副标题 | 「已提上 %1$d 个」/「只用默认入口」 | 「已外提 %1$d 个」/「一项都不外提」（与「已隐藏 N 个」同构） |
+| 满额副标题 | 「底栏放不下第三个」 | 「仍在更多里·底栏最多两个入口」（先说当前状态，再说限制） |
+| 指数页 | 目标侧只认前 2 项 | 目标侧按「更多」按钮的 id 判形态，指数页只暴露「智能盯盘 / 区间统计」两项 |
+| 图标采集 | 未定 | 按面板文字分别缓存（`entryIcons: ConcurrentHashMap`），一次采集轮把所有缺图标的项一起补 |
+
+实现文件：`core/StockBarItemStore.kt`（新）、`ui/StockBarEntriesScreen.kt`（新）、
+`feature/stockbar/StockDetailBarTargets.kt`（七项映射表）、`feature/stockbar/StockDetailBarFeature.kt`
+（`Injected` 单按钮 → 按钮列表）、`ui/FeatureCatalog.kt` / `ui/Routing.kt` / `ui/FeatureTab.kt`、
+`core/ConfigKeys.kt` / `core/ConfigSnapshot.kt` / `core/ConfigSource.kt` / `feature/FeatureManager.kt` /
+`app/DebugConfigProvider.kt`、中英 strings 各 15 条、单测 `StockBarItemStoreTest`（12 条）。
+
+### 3.2 `watchlist_highlight` —— 高亮分涨 / 跌 / 平三档（已落地 2026-11-14）
 
 现状是一个颜色值（`ConfigKeys.COLOR`，默认 `0xFFFF8000`）给所有在自选的股票名称染色。涨跌平是行数据里现成的字段（`zdf` 已登记在 `core/zxcopy/ZxCopyHostFields.kt:23`），三档是真同类对象。
 
@@ -100,18 +116,39 @@
 
 **风险**：`WatchlistFeature.kt:507-508` 的 `isPresetColor` 只认 `PRESET_COLORS` 四色，三档默认色若不并入该集合，关开关时会把我们染的色当成原色记进 tag，还原成错色。真机必须走一遍「行情跳动后改档位」与「筛选中 / header 行」两条路径。
 
-### 3.3 `zx_group_copy` —— 复制规则绑分组
+**落地结果（2026-11-14）**：三个档位的取色全部收在 `core/WatchlistColorStore`（`decode` / `colorFor` / `encode` / `distinctCount`），
+判档逻辑单独放在纯函数 `core/WatchlistTier`（`ofZdf` 读数据项字段、`ofText` 读行内 `tv_item_stk_percent` 文案，**读不出返回 `null`** —— 由调用方落回平盘，
+不会把「字段缺失」当成平盘染色）。
+二级页 `ui/WatchlistDetail.kt` 换成三行选值行 + 四行预览；入口副标题在 `ui/FeatureTab.kt` 现算「已分 N 种颜色」；
+`WATCHLIST_COLORS` 走 String JSON（28 个布尔位一个没占）。单测 `WatchlistTierTest` 9 条 + `WatchlistColorStoreTest` 14 条，全套 438 条通过。
+风险那条：三档色一律从 `PRESET_COLORS` 里挑（UI 只给这四色），所以 `isPresetColor` 的集合不用扩，关开关能还原成原色。
+
+### 3.3 `zx_group_copy` —— 复制规则绑分组（已落地 2026-11-14）
 
 规则表本身就是对象族（`ZxCopyRuleStore.kt:115-144`，每条 19 个字段 + 专用编辑页 + 行级四操作），缺的只有一维：这条规则**用在哪个页签**。宿主三个页签是现成的（`#vp_zx_group` 三页），`Snapshot.groupName` 已经取到分组名。
 
 | 项 | 形态 |
 |---|---|
 | 一级 | 不动 |
-| 二级 | 在规则编辑页「按钮动作」卡后插一张「适用分组」卡：三行开关行；规则列表行尾加摘要「适用 %1$d 个分组」 |
-| 键 | **不新增键**，在 `zx_copy_rules` 的 `rules[]` 里加可选字段 `"groups":["__all__"]`，缺省 = 全部。**不要动 `FORMAT_VERSION`**（升版本只会诱使后来者写分支） |
+| 二级 | 在规则编辑页「按钮动作」卡后插一张「适用分组」卡：**一条选择行**（任何分组 / 全部 / 自选 / 持仓股）；规则列表预览前面多一段「仅 持仓股」 |
+| 键 | **不新增键**，在 `zx_copy_rules` 的 `rules[]` 里加可选字段 `"groups":[]`，空 = 不绑定。**不要动 `FORMAT_VERSION`**（升版本只会诱使后来者写分支） |
 | 成本 | 5 个文件，目标侧零重排 |
 
 **风险**：「持仓股」页的分组名可能不在 `getAllGroups()` 的返回里（该接口只回 2 组）→ 必须定义空名回落 `__all__`，否则那一页复制不出来。
+
+**落地结果（2026-11-14）**：与上面两处原稿不同，改成了更稳的两条：
+
+- **绑定的是分组 tab 的稳定键，不是分组名**：`core/zxcopy/ZxCopyGroups.kt` 只认 `all` / `self` / `holding`，
+  对应宿主 tab 的全部 / 自选 / 持仓股。存中文标题的话宿主一改文案全断；认不出的 tab 文案
+  （自建分组、宿主改名）一律返回 `null` 按「没绑定」处理，**不用位置序号兜底**（分组增删会挪位置）。
+- **不设 `__all__` 哨兵**：`groups` 空数组 = 不绑定，少一层编码分支；老配置解析出来就是这个状态，
+  升级模块不改任何既有规则的行为。
+- UI 改成**一条选择行**而不是三行开关（[DESIGN-SYSTEM](DESIGN-SYSTEM.md) §3.5：从固定几个值里选一个用选择行；
+  三开关还要额外定义「全关」「至少留一个」的语义）。
+- 取值语义：`Data.ruleForGroup(groupKey)` 取第一条命中当前分组的规则，否则回落 `defaultRule()`；
+  `feature/zxcopy/ZxGroupStocks.kt` 的 `groupKeyOf` 提供当前 tab 键。
+- 单测：`ZxCopyRuleStoreTest` 补 6 条（往返 / 未知键丢弃 / 缺字段 / 回落默认 / 同组取第一条 / duplicate 保绑定），
+  新增 `ZxCopyGroupsTest` 5 条；全套 449 条通过，`:app:assembleDebug` 通过。
 
 ### 3.4 `dock_clean` —— 已落地
 
@@ -197,8 +234,8 @@ JSON 回落读取抽成 `core/DockEntryStore.kt`（`decode(raw, legacyHidden)`�
 
 | 位置 | 问题 |
 |---|---|
-| `docs/UI.md:459` | 写 `zx_group_copy`「二级页：无」，与 `ui/FeatureCatalog.kt:352-354` 的两个入口矛盾 —— 文档陈旧 |
-| `ui/ZxCopyRuleScreen.kt:66` | 注释说菜单开关在本页顶部，实际在 `ui/ZxCopyButtonScreen.kt:38-48` |
+| `docs/UI.md:460` | 写 `zx_group_copy`「二级页：无」，与 `ui/FeatureCatalog.kt` 的两个入口矛盾 —— **已修（2026-11-14）**，改为列出两个入口 |
+| `ui/ZxCopyRuleScreen.kt:66` | 注释说菜单开关在本页顶部，实际在 `ui/ZxCopyButtonScreen.kt:38-48` —— **已修（2026-11-14）** |
 | `ui/Routing.kt:370` | `stg_stock_filter` 与 `aistare_quick_config` 两条 `when` 分支挤在同一行。**实测不是错误**：`--rerun-tasks` 全量重编通过，临时单测证明两个分支都活着 → 只是可读性问题，本轮不动 |
 | `app/src/main/res/values/strings.xml:253` | `nav_bar_blend` 副标题「安卓底部小白条吸色取色」写的是机制，违反 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) §7.3 |
 | `app/src/main/res/values/strings.xml:264/268/275` | 三条盯盘功能标题是抽象词（「优化确定逻辑」「无需确定保存盯盘」「盯盘数据卡片拓展」），违反 [NAMING](NAMING.md) §7 |
@@ -213,9 +250,9 @@ JSON 回落读取抽成 `core/DockEntryStore.kt`（`decode(raw, legacyHidden)`�
 | 0 | ~~修 `ui/Routing.kt:370` 语法错误~~ —— 实测不是错误，只是可读性问题（§7），本阶段取消 | — |
 | 1 | 样板基础设施：二级页母版抽出来、`RouteSaver` 加分支、入口行计数、JSON 读写的「回落不写盘」helper | 无 |
 | 2 | `dock_clean` → `FEATURE-DOCK-ENTRIES` 落地（六格开关）—— **已落地 2026-11-14** | 阶段 1 |
-| 3 | `stock_bar_entry` → 详情页底栏入口（容量 2） | 阶段 1；目标侧注入记账列表化 |
-| 4 | `watchlist_highlight` 三档色（不需要新 Route，改现有页） | 阶段 1 |
-| 5 | `zx_group_copy` 规则绑分组（不需要新键） | 阶段 1 |
+| 3 | `stock_bar_entry` → 详情页底栏入口（容量 2）—— **已落地 2026-11-14** | 阶段 1；目标侧注入记账列表化 |
+| 4 | `watchlist_highlight` 三档色（不需要新 Route，改现有页）—— **已落地 2026-11-14** | 阶段 1 |
+| 5 | `zx_group_copy` 规则绑分组（不需要新键）—— **已落地 2026-11-14** | 阶段 1 |
 | 6 | 文案与副标题清理（§7 后四项） | 无，可随时插入 |
 
 阶段 2–5 的每一族，落地时按 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) §1.5 的清单走：Route → RouteSaver save/restore → MainScreen when → 入口行 → FeatureSpec 三个 `detail*Res` → 中英 strings → UI.md → 本仓索引。

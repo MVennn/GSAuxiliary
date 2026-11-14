@@ -21,6 +21,7 @@
 | 为什么读适配器 | `ZXWorkflow.getStocksByGroupId()` 只回 `StockData`（**没有名称**），且「持仓股」不是真实分组；当前页适配器所见即所得，三种 tab 统一 |
 | 输出格式 | `名称 代码` 一行一只，例 `金山办公 688111`；名称缺失时只写代码；同一「代码.市场」只留第一次 |
 | 空分组 | Toast「当前分组没有股票」，**不覆盖**剪贴板原内容 |
+| 用哪条规则 | 先看当前分组 tab 有没有绑规则（规则里的 `groups`），绑了用它、没绑用默认规则；tab 键只认 `all` / `self` / `holding`，认不出的文案按没绑处理 |
 | 开关 | `ConfigKeys.ZX_GROUP_COPY = "zx_group_copy"`，默认关闭 |
 | 还原 | 原图 / 原监听 / 原 tint / 原 scaleType / 原 contentDescription / 原 clickable 全部挂在 ImageView 的 keyed tag 上；关开关还原成铅笔并恢复「自选管理」入口 |
 
@@ -84,6 +85,8 @@ mDefaultGrpId = -1
 ```
 点复制按钮
   ├─ 从 View 的 Context 取 Activity（监听不捕获页面）
+  ├─ 读 #vp_zx_group 当前页的分组 tab 文案 → 换成键（all / self / holding）
+  ├─ 挑规则：第一条 groups 命中该键的规则，命中不了就回落默认规则
   ├─ 找 #vp_zx_group → 当前页 → 第一个 AbsListView
   ├─ 逐条 adapter.getItem(i)：
   │    ├─ stkName + m_stkCode / codeAndMarket

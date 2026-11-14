@@ -106,7 +106,7 @@
 | `feature/stgmerge/StrategyMergeFeature.kt` · `StrategyMergeTargets.kt` · `StrategyMergeBridge.kt` · `StrategyMergeCache.kt` | **我的策略聚合**功能本体（并集写回、入口卡改造、条数口径、取数窗口）+ 全部宿主候选常量 + 只读结果通道 + 结果缓存 | 目标进程 |
 | `feature/stgmerge/StrategyComboCatalog.kt` · `StrategyComboClient.kt` · `StrategyLabelTable.kt` · `StrategyStgIndex.kt` · `StrategyStgCatalog.kt` | 组合维度模型（档位 / 笛卡尔积 / 口径展开）、直连网关建取删三连的客户端、宿主 1119 条标签档位表、名称 → stId 索引、清单广播的装配 | 目标进程 |
 | `feature/market/MarketFilterFeature.kt` · `MarketFilterTargets.kt` | **行情页「涨跌与自选」筛选**功能本体（往宿主 `FilterDiaglog` 里追加三行 + 按它们收起排行榜行）+ 定位常量 | 目标进程 |
-| `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏「智能盯盘」快捷入口**功能本体（注入按钮 + 触发面板） | 目标进程 |
+| `feature/stockbar/StockDetailBarFeature.kt` | **个股详情页底栏入口**功能本体（把「更多」面板里的项外提到底栏，提哪几项读参数键 + 触发面板） | 目标进程 |
 | `feature/stockbar/StockDetailBarTargets.kt` | 该功能的底栏 / 面板 id 候选常量 | 目标进程 |
 | `feature/stockbar/StockDetailBarMeasure.kt` | 取色 / 加宽测量（从 Feature 本体拆出：从「更多」按钮上取样式与几何尺寸） | 目标进程 |
 | `feature/aistare/AiStareQuickConfigFeature.kt` | **智能盯盘价格页「一键配置」**功能本体（H5 注入 + 自建 `gsaux` JS 桥 + 取数调度） | 目标进程 |
@@ -236,19 +236,19 @@ onHotReloaded(param)
 
 | 功能 | `Feature` 实现 | 挂在哪里 | 干什么 | 关键约束 |
 |---|---|---|---|---|
-| **自选高亮 + 名称加粗** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，`setTextColor`（高亮）/ `setTypeface`（加粗） | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色与旧字重（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)）。⚠️ **这个 Feature 承载两个开关**（`enabled` 高亮 / `watchlist_bold` 加粗）—— `FeatureManager` 里**只登记一次**，但 `isEnabled` 的 or 链必须**同时**覆盖两个位，漏一个就是「界面上有开关、底下不装钩子」的假开关（第三轮 H1 的真事） |
+| **自选高亮 + 名称加粗** | `WatchlistFeature` | `BaseQuickAdapter.getView`（拦截链）+ 目标适配器 `AIStkAdapter.getView` + `Activity.onResume` | `chain.proceed()` 之后从 adapter 取出「代码.市场」，判定是否在自选，**按涨 / 跌 / 平三档取色**（`core/WatchlistColorStore`；三档同色 = 老版本单色高亮）后 `setTextColor` / `setTypeface`（加粗） | **不能提前 return** —— 关开关时也要走一遍逻辑，否则 RecyclerView 复用会残留旧颜色与旧字重（见 [REVERSE-ENGINEERING §6（难点与解法）](REVERSE-ENGINEERING.md#6-关闭开关后颜色不还原)）。⚠️ **这个 Feature 承载两个开关**（`enabled` 高亮 / `watchlist_bold` 加粗）—— `FeatureManager` 里**只登记一次**，但 `isEnabled` 的 or 链必须**同时**覆盖两个位，漏一个就是「界面上有开关、底下不装钩子」的假开关（第三轮 H1 的真事） |
 | **直达标准行情 + 左右滑动** | `StgDirectQuoteFeature` | `EngineAct.startEngineAct` / `startEngineActForResult` | 命中「策略详情 → 中间页」时**改写 `EngineIntent`**（换 action、补 `stockList` / `stockIndex`），再 `chain.proceed()` 交给 App 自己路由 | **绝不原地改写宿主持有的集合** —— 必须构造新列表写进 `Bundle` 副本，否则第二次点击会 `ClassCastException` 崩溃（见 [FEATURE-DIRECT-QUOTE](FEATURE-DIRECT-QUOTE.md)） |
 | **多选栏全选 / 反选** | `StgSelectAllFeature` | `#tv_stg_add_zxg` 的 `TextWatcher`（观察文案进出多选态） | 在「取消」左侧注入一颗克隆按钮，点击时逐行 `ListView.performItemClick(...)` 驱动宿主自己的选中模型；点完隔 `ROUND_SETTLE_MS`（120ms）重读 checked states，有缺口再补点（上限 `MAX_ROUNDS` = 4 轮；逐行切换步长 `TOGGLE_STEP_MS` = 40ms） | **逐行必须分帧**（`postDelayed` 一行一帧）—— 宿主每次切换后会刷新列表，同帧继续拿旧子 View 会失效；**显示要按 checked states 刷**（`activated` + `isChecked`）—— 筛选时框架按适配器位置重写 `activated`，与全量位置的表错位（见 [FEATURE-SELECT-ALL](FEATURE-SELECT-ALL.md) §2.3.2） |
 | **截图并添加** | `StgSnapAddFeature` | `Activity.onResume` + `#tv_stg_add_zxg` 的 `TextWatcher`（进出多选态）+ 宿主 `#tv_bottom_add_zxg` 点击接力 | 在「确认添加」左侧注入克隆按钮；点击读取选中子集 → 一次打开 `StockFragAct`（`stockList` + `stockIndex=0`）→ `vp_stocks.setCurrentItem` 逐页 → **可见标题含目标代码 + K 线 `m_kxChartItems` 非空才 PixelCopy** → 存相册（**与翻页并行，在途上限 2**）；finish 回策略页后 `performClick` 宿主「确认添加」→ `ChooseGroupAct` | **数据没就绪不截图**（超时只记失败，不存半张图）；**不自己写分组**（完全交给宿主页面）；**截图前隐藏进度条**；`PixelCopy` 失败回退 `decorView.draw`（见 [FEATURE-SNAP-ADD](FEATURE-SNAP-ADD.md)） |
 | **策略详情筛选股票** | `StgStockFilterFeature` | `PopupWindow.showAsDropDown` / `showAtLocation`（**前置**改写）+ `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `getView` + `Activity.onResume` | 往三点菜单注入「筛选股票」，点开面板后给 ListView **套一层过滤代理**（`getCount` 报子集、`getView` 映射回全量；不碰宿主 `data`），再包一层行点击下标回映射 | **菜单注入必须在 `proceed()` 前**（`show` 一旦量过尺寸，后加的项会被裁掉）；**不能直接换 `data`**（宿主 `onItemClick` 用全量列表取值、`getCount()` 做范围校验，两套语义打架）；**换数据要在 `notifyDataSetChanged` 前置**，否则第一帧先闪一下全量（见 [FEATURE-STG-FILTER](FEATURE-STG-FILTER.md)） |
 | **我的策略聚合（聚合组）** | `StrategyMergeFeature` | `BaseAdapter.notifyDataSetChanged`（**前置**换数据）+ `AIStkAdapter.getView` + `Activity.onResume`（策略详情页 / 我的策略列表页）+ 包内广播接收（`HostStgCatalogReceiver` → `StgCatalogBroadcast`） | 用 `StrategyMergeTargets` 从当前页取 `stId` / 策略名，命中某个聚合组就按成员 `stId` 让宿主**自己重取**，把并集写回原生 `AIStkAdapter.data` 再 `notifyDataSetChanged`；组内计数栏与「筛选股票」抢同一个 `TextView`，按「列表实际行数 vs 并集总数」判是否处于筛选态 | **成员必须由宿主自己取**（手拼行对象会让点击下标与详情页对不上）；**先合并再过滤** —— `StgStockFilterFeature` 的过滤代理包在合并后的数据外面；成员清单收不到广播时退回手工登记的 `stId`（见 [FEATURE-STRATEGY-MERGE](FEATURE-STRATEGY-MERGE.md)） |
-| **个股详情页底栏「智能盯盘」入口** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入一颗按钮；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick`「智能盯盘」 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
+| **个股详情页底栏入口（自定义外提）** | `StockDetailBarFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调 + `OnPreDraw`）+ `PopupWindow.show*` + `WindowManagerGlobal.updateViewLayout` | 在底栏「自选」与「更多」之间注入最多两颗按钮（哪两项读 `stock_bar_items`，图标从面板项里采）；点它时触发「更多」→ 拦到面板 → 按文字 `performItemClick` 对应项 | **不碰任何约束**：只把「更多」盒子加宽让买卖让位；**面板要设透明并压住宿主调暗窗口**，否则点下去闪一下黑（见 [FEATURE-STOCK-BAR](FEATURE-STOCK-BAR.md)） |
 | **手势导航条同色** | `NavBarBlendFeature` | `Activity.onResume`（挂布局回调）+ `Activity.onConfigurationChanged` + `ViewTreeObserver.OnGlobalLayoutListener`（真正落地）+ `PixelCopy` 像素校准 | 把导航条区域填成「内容最后一行」的颜色；三键导航时保留强制对比度 | **取色带必须落在导航条之上**（`decor.height - navBarHeight`），否则取到自己上次填的色、自我循环（见 [FEATURE-NAV-BAR](FEATURE-NAV-BAR.md)） |
 | **新股申购提醒弹窗净化** | `IpoDialogCleanFeature` | `MainAct#showSgbDialog`（申购专用入口）+ `android.app.Dialog#show`（按类名兜底） | 两道都拦下弹窗**显示**：拦展示不拦构造，对象建了只是不 `show`，宿主后续流程照旧 | **判据收紧** —— `Dialog#show` 对**所有**弹窗生效，类全名或简名任一命中才拦，宁可漏也不能误伤宿主其它对话框（见 [FEATURE-IPO-DIALOG](FEATURE-IPO-DIALOG.md)） |
 | **智能盯盘价格页一键配置** | `AiStareQuickConfigFeature` | `WebView#setWebViewClient`（动态抓实际子类 `HybirdWebView$4`）→ 其 `onPageFinished` + `StockInfo` 构造器（宿主行情缓存） | URL 命中价格页 → 注入 JS（`addJavascriptInterface("gsaux")` 自建桥，不进宿主命令漏斗）→ 在「保存」右侧插「配置」按钮；点按钮 → 子线程取数（① 宿主 → ② 腾讯 → ③ 东财 → ④ 页面 DOM，按通道能力降级）→ `QuickConfigEngine` 算价 → `evaluateJavascript` 回填两个输入框并派发 input/change | **H5 页走脚本注入**（分界约定，见 [FEATURE-AISTARE-QUICK-CONFIG](FEATURE-AISTARE-QUICK-CONFIG.md) 附记）；取数失败**不写值**；套用后**不自动点保存**；关开关即时摘按钮（`init(enabled=false)`）。功能目录里的「跳过保存确认」「空数据保存」两个开关也由本功能实现（注入脚本的两个能力位），不单列功能行 |
 | **我的盯盘卡片跳个股详情页** | `AiStareCardDetailFeature` | `ListView#setAdapter`（命中 `#listMyStare` / `AIStareIndexAct`）→ 动态挂 adapter `getView` + `Activity.onResume` | 给「我的盯盘」卡片（`#layoutContent`）挂点击：从 adapter item 取 `codeAndMarket`，拿不到才退回「6 位代码 + 沪/深前缀猜市场」，`startActivity(quotes.stockDetail + IntentStockInfo)` 进详情页 | **不用 position 存股票**（复用会张冠李戴），用「卡片视图 → 代码.市场」弱表；编辑 / 删除是子视图自消费点击，不碰；只认沪 / 深，其余宁可不跳（见 [FEATURE-AISTARE-CARD-DETAIL](FEATURE-AISTARE-CARD-DETAIL.md)） |
 | **行情市场筛选涨跌与自选** | `MarketFilterFeature` | `Dialog#show`（**前置**注入，宿主自己的筛选面板）+ `PageSyncFeature` 骨架（改排行榜行） | 往宿主的「沪深京A」筛选面板里追加「涨跌与自选」三行（与策略详情页那颗面板**共用同一份状态与文案**），点确定落盘；按这三行把排行榜里不匹配的行**收起**（高度归零 + GONE） | **注入必须前置**（面板一 `show` 就量过尺寸，之后 `addView` 会被裁掉）；判定**只看视图**（`Dialog` 是框架类、全 App 都在弹）；关开关能**撤掉**注入的三行并把宿主「确定」的监听还原（规则 1.1）；**不碰**宿主自己的类型过滤那五行（见 [FEATURE-MARKET-FILTER](FEATURE-MARKET-FILTER.md)） |
-| **自选分组复制** | `ZxGroupCopyFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调）+ `#iv_top_manager` 的 `OnClickListener` / `OnLongClickListener` | 自选页顶栏的铅笔「编辑」换成复制图标；短按按**默认复制规则**执行（复制文本 / 分享 / 导出图片 / 导出 PDF），长按弹动作菜单；数据读当前分组页 `InterceptListView` 适配器的全部字段（`stkName` / `m_stkCode` / `zdf` / `money_ltsz` …） | **`#iv_top_manager` 同名 3 处** —— 先用 `#indicator_zx` 认页、上溯 `#common_top` 再取按钮；**原图 / 原点击 / 原长按挂 keyed tag**；`StockListView` **不是** ListView，要往页内找 `AbsListView`；规则解析与格式/图片/PDF 渲染放 `core/zxcopy/`，`ui/` 与目标进程共用（见 [FEATURE-ZX-COPY-RULES](FEATURE-ZX-COPY-RULES.md)） |
+| **自选分组复制** | `ZxGroupCopyFeature` | `PageSyncFeature` 骨架（`Activity.onResume` + 全局布局回调）+ `#iv_top_manager` 的 `OnClickListener` / `OnLongClickListener` | 自选页顶栏的铅笔「编辑」换成复制图标；短按按**当前分组绑定的规则**执行（没绑定就用默认规则；复制文本 / 分享 / 导出图片 / 导出 PDF），长按弹动作菜单；数据读当前分组页 `InterceptListView` 适配器的全部字段（`stkName` / `m_stkCode` / `zdf` / `money_ltsz` …） | **`#iv_top_manager` 同名 3 处** —— 先用 `#indicator_zx` 认页、上溯 `#common_top` 再取按钮；**原图 / 原点击 / 原长按挂 keyed tag**；`StockListView` **不是** ListView，要往页内找 `AbsListView`；规则解析与格式/图片/PDF 渲染放 `core/zxcopy/`，`ui/` 与目标进程共用（见 [FEATURE-ZX-COPY-RULES](FEATURE-ZX-COPY-RULES.md)） |
 
 **界面精简**（其余 6 个）**不挂钩子改行为** —— 它们挂在 `Activity.onResume` + 全局布局回调里
 **认现成的视图**再隐藏 / 压缩，走 `feature/uiclean/` 那套骨架，改动过 `ViewPatcher` 记账
@@ -317,7 +317,11 @@ BaseQuickAdapter.getView(position, convertView, parent)      ← 被 Hook（拦�
    │
    ├─ env.config  ← 内存中的不可变快照（零 IO）
    │
-   └─ setTextColor(在自选 ? 高亮色 : 原始色)
+   ├─ 判档：数据项 zdf 字段 → 行内 tv_item_stk_percent 文案 → 都读不出按「平盘」
+   │     └─ WatchlistColorStore.colorFor(watchlist_colors, color, tier)
+   │        （watchlist_colors 为空串 = 三档同色、取老的 color = 升级前的行为）
+   │
+   └─ setTextColor(在自选 ? 该档颜色 : 原始色)
 ```
 
 钩子代码（`feature/watchlist/WatchlistFeature.kt`）：
@@ -378,7 +382,8 @@ env.xposed.hook(m)
 data class ConfigSnapshot(
     val enabled: Boolean,                // 自选高亮总开关
     val watchlistBold: Boolean,          // 自选股名称加粗（与高亮是两个独立开关）
-    val color: Int,                      // 高亮色（ARGB）
+    val color: Int,                      // 高亮色（ARGB）；watchlist_colors 为空时的兜底色
+    val watchlistColors: String,         // 涨 / 跌 / 平分档配色 JSON（空串 = 三档同色取 color）
     val scopeStrategy: Boolean,          // 自选高亮：是否作用于策略详情页
     val logLevel: Int,                   // 日志等级（两进程共用，见 core/GLog.kt）
     val stgDirectQuote: Boolean,         // 策略详情点股票直达个股详情
@@ -389,7 +394,8 @@ data class ConfigSnapshot(
     val stgFilterPerStrategy: Boolean,  // 筛选状态按策略 / 聚合组分开记忆
     val stgMerge: Boolean,              // 策略详情页「策略合并」总开关
     val stgMergeGroups: String,         // 策略合并的聚合组数据（JSON）
-    val stockBarEntry: Boolean,          // 个股详情页底栏「智能盯盘」入口
+    val stockBarEntry: Boolean,          // 详情页底栏快捷入口总开关（出厂关；提哪几项见下一行）
+    val stockBarItems: String,           // 详情页底栏提了哪几项（JSON：{"v":1,"items":[...]}）
     val dockClean: Boolean,              // 底栏入口自定义总开关（出厂关）
     val dockEntries: String,             // 底栏藏了哪几格（JSON：{"v":1,"hidden":[...]}）
     val homeBannerHide: Boolean,         // 隐藏首页快捷入口下方的横幅
@@ -421,8 +427,8 @@ data class ConfigSnapshot(
 }
 ```
 
-> `ConfigSnapshot` 共 **34 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 40 个键
-> = `SNAPSHOT_KEYS` 34 个进快照 + 6 个只属模块 App 进程（桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
+> `ConfigSnapshot` 共 **36 个字段**（上面这段是全量）；`ConfigKeys.ALL_KEYS` 共 42 个键
+> = `SNAPSHOT_KEYS` 36 个进快照 + 6 个只属模块 App 进程（桌面图标 / 液态玻璃 / 玻璃光效 / 语言 / 深色模式 / 可预测返回）。
 > ⚠️ **日志等级（`LOG_LEVEL`）是例外** —— 它既不在功能键也不在参数键里，
 > 但**进快照**（目标进程用它控制日志等级，见 `ConfigKeys` 的类注释）。
 
@@ -478,7 +484,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 类别 | 键 | 谁读 | 进 `ConfigSnapshot`？ | 出厂默认 |
 |---|---|---|---|---|
 | **功能总开关** | `FEATURE_KEYS` 全表（22 个键）：`ENABLED` / `WATCHLIST_BOLD` / `STG_DIRECT_QUOTE` / `STG_SELECT_ALL` / `STG_SNAP_ADD` / `STG_STOCK_FILTER` / `STG_MERGE` / `STOCK_BAR_ENTRY` / 界面精简六项 / `MARKET_STOCK_FILTER` / `NAV_BAR_BLEND` / `IPO_DIALOG_CLEAN` / `AISTARE_QUICK_ENABLED` / `AISTARE_SKIP_SAVE_CONFIRM` / `AISTARE_EMPTY_SAVE` / `AISTARE_CARD_DETAIL` / `ZX_GROUP_COPY` | 目标进程 | ✅ | **一律 `false`** |
-| **功能参数** | `FEATURE_PARAM_KEYS` 全表（11 个键）：`COLOR` / `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `STG_FILTER_PER_STRATEGY` / `STG_MERGE_GROUPS` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` / `ZX_COPY_MENU` / `ZX_COPY_RULES` / `DOCK_ENTRIES`（底栏藏哪几格，JSON） | 目标进程 | ✅ | 开启 / 默认值 |
+| **功能参数** | `FEATURE_PARAM_KEYS` 全表（13 个键）：`COLOR` / `WATCHLIST_COLORS`（涨·跌·平三档配色，JSON）/ `SCOPE_STRATEGY` / `STG_QUOTE_SWIPE` / `STG_FILTER_PER_STRATEGY` / `STG_MERGE_GROUPS` / `AISTARE_QUICK_CONFIG`（方案 JSON）/ `AISTARE_SAVE_BACK_TO_STOCK` / `AISTARE_PICK_SCHEME` / `ZX_COPY_MENU` / `ZX_COPY_RULES` / `DOCK_ENTRIES`（底栏藏哪几格，JSON） / `STOCK_BAR_ITEMS`（详情页底栏提哪几项，JSON） | 目标进程 | ✅ | 开启 / 默认值 |
 | **模块设置** | `DESKTOP_ICON` / `LIQUID_GLASS` / `GLASS_EFFECT` / `LANGUAGE` / `THEME` / `PREDICTIVE_BACK` | **只有模块 App 进程** | ❌ | 按需 |
 
 判定标准很简单：**目标进程需不需要它**。
@@ -512,7 +518,7 @@ API 102 与传统 API 最大的行为差异：**钩子必须持有句柄才能�
 | 截图并添加 | `feature/stgsnap/StgSnapAddTargets.kt` |
 | 策略详情筛选股票 | `feature/stgfilter/StgStockFilterTargets.kt` |
 | 我的策略聚合（聚合组） | `feature/stgmerge/StrategyMergeTargets.kt` |
-| 个股详情页底栏「智能盯盘」入口 | `feature/stockbar/StockDetailBarTargets.kt` |
+| 个股详情页底栏入口 | `feature/stockbar/StockDetailBarTargets.kt` |
 | 智能盯盘价格页「一键配置」 | `feature/aistare/AiStareQuickConfigTargets.kt` |
 | 我的盯盘卡片跳个股详情页 | `feature/aistare/AiStareCardDetailTargets.kt` |
 | 新股申购提醒弹窗净化 | `feature/ipoclean/IpoCleanTargets.kt` |

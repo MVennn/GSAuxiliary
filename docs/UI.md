@@ -37,10 +37,11 @@
 | `SettingsTab.kt` | Tab 3 设置（**仅模块级设置项**） |
 | `AboutTab.kt` | Tab 4 关于：Hero + 作者卡 + 开源鸣谢 + 免责声明二级页正文 `DisclaimerContent` |
 | `AboutHero.kt` | 关于页 Hero 的绘制（渐变光场 / 负空间 mark / 滚动淡出），切到该页时顶栏上滑收起 |
-| `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 高亮颜色 / 效果预览） |
+| `WatchlistDetail.kt` | 二级页：自选股高亮的**高亮颜色设置**（作用域 / 涨·跌·平三档颜色 / 效果预览） |
 | `StrategyQuoteDetail.kt` | 二级页：策略直达标准行情的**滑动设置**（仅「左右滑动切换股票」一项，见 §4.1） |
 | `StgFilterSettingsScreen.kt` | 二级页：**筛选条件保存设置**（按策略 / 聚合组各记一份筛选条件，见 §4.5） |
 | `DockEntriesScreen.kt` | 二级页：**底栏入口设置**（六格逐格隐藏、至少留一格，入口副标题现算「已隐藏 N 个」，见 §4.2） |
+| `StockBarEntriesScreen.kt` | 二级页：**详情页底栏入口设置**（七个面板项逐项外提、最多两项，入口副标题现算「已外提 N 个」，见 §4.3） |
 | `StrategyMergeScreen.kt` | 二级页：**聚合组设置**的组列表（组行 ⋮ 排序 / 设默认 / 删除、新建组，见 §4.5） |
 | `StrategyMergeEditScreen.kt` | **三级页**：单个聚合组的编辑（组名 / 成员三类 / 设为默认 / 删除，见 §4.5） |
 | `QuickConfigScreen.kt` | 二级页：一键配置的**方案列表**（增删改排序 / 设默认，见 §4.4） |
@@ -232,7 +233,7 @@ SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 | **设置** | **模块范围内**的设置：桌面图标、材质设置（液态玻璃 / 玻璃光效）、通用（主题设置 / 语言 / 可预测返回）、数据管理（备份 / 恢复 / 重置）、日志（等级 / 导出） | 任何具体功能的开关与参数 |
 | **功能** | 每个功能一行**开关**；开关打开后在下方展开该功能的「XX设置」入口 | 具体参数（都在二级菜单里） |
 
-具体功能自己的可调项（高亮颜色设置 / 滑动设置、高亮颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
+具体功能自己的可调项（高亮颜色设置 / 滑动设置、涨·跌·平三档颜色、效果预览）**只在功能 Tab 的二级菜单里出现**。
 
 > 有二级入口的才展开 —— 「策略多选全选」没有可调参数，所以只有开关，不展开入口
 > （`FeatureSpec.hasDetail` 为 `false`）。
@@ -409,10 +410,10 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 ```
 ┌─────────────────────────────────────────┐
 │ 自选股高亮                    [开关]   │
-│ 把已加入自选的股票名称显示为高亮色        │
 ├─────────────────────────────────────────┤   ← 开关打开后才出现
 │ 高亮颜色设置                       ›     │
-│ 作用域、颜色、预览                        │
+│ 已分 3 种颜色                            │   ← 状态句，按 watchlist_colors 现算
+│                                          │      （三档同色时显示「三档同一个颜色」）
 └─────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────┐
@@ -445,7 +446,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 策略页 | 增加 截图并添加 按钮 | `stg_snap_add` | 无 |
 | 策略页 | 增加 筛选股票 菜单项 | `stg_stock_filter` | 筛选条件保存设置（`StgFilterSettingsScreen`；筛选开关本身仍在目标 App 自己的面板里） |
 | 智能选股 | 我的策略聚合 | `stg_merge` | 聚合组设置（`StrategyMergeScreen`；入口副标题的组数按配置现算，见 `FeatureTab`） |
-| 股票详情页 | 增加 智能盯盘 入口 | `stock_bar_entry` | 无 |
+| 股票详情页 | 自定义 详情页底栏 入口 | `stock_bar_entry` | 详情页底栏入口设置（`StockBarEntriesScreen`；把「更多」面板里的项提到一级、最多两项，入口副标题按 `stock_bar_items` 现算「已外提 N 个」） |
 | 智能盯盘 | 增加 配置 按钮 | `aistare_quick_config` | 方案设置 · 配置按钮设置（`QuickConfigScreen` / `QuickConfigButtonScreen`） |
 | 智能盯盘 | 优化确定逻辑 | `aistare_empty_save` | 无 |
 | 智能盯盘 | 无需确定保存盯盘 | `aistare_skip_save_confirm` | 保存后返回位置设置（`AiStareSaveBehaviorScreen`） |
@@ -457,9 +458,9 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 | 行情市场 | 市场概览高度优化 | `market_overview_compact` | 无 |
 | 行情市场 | 隐藏 指数概览 | `market_index_hide` | 无 |
 | 行情市场 | 增加 涨跌与自选 筛选项 | `market_stock_filter` | 无（筛选开关在目标 App 自己的面板里） |
-| 自选 | 自选分组复制 | `zx_group_copy` | 两个：复制设置（`ZxCopyRules`）/ 复制按钮设置（`ZxCopyButton`） |
+| 自选 | 自选分组复制 | `zx_group_copy` | 两个：复制设置（`ZxCopyRules`；每条规则可选「适用分组」，短按按当前分组挑规则）/ 复制按钮设置（`ZxCopyButton`） |
 | 显示 | 手势导航条同色 | `nav_bar_blend` | 无 |
-| 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`） |
+| 显示 | 自选股高亮 | `enabled` | 高亮颜色设置（`WatchlistDetail`；涨·跌·平三档各配一色，入口副标题按 `watchlist_colors` 现算「已分 N 种颜色」） |
 | 显示 | 自选股名称加粗 | `watchlist_bold` | 无 |
 
 > 上表第二列写的是卡片上的功能名，即 `switchTitleRes`（与 `docs/NAMING.md` §5 的
@@ -476,9 +477,10 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|
-| `WatchlistDetail.kt` | 自选股高亮 → 高亮颜色设置 | 作用于策略详情页（开关）/ 高亮颜色（4 种预设）/ 效果预览（两行示例，无说明行） |
+| `WatchlistDetail.kt` | 自选股高亮 → 高亮颜色设置 | 作用于策略详情页（开关）/ 三行选择行：上涨 · 下跌 · 平盘（4 种预设色，副标题即当前色名）/ 效果预览（四行：三档各一色 + 一行未加自选作对照，无说明行） |
 | `StrategyQuoteDetail.kt` | 直达标准行情 → 滑动设置 | 左右滑动切换股票（开关，不带副标题 —— 2.17.2 起，见 [NAMING.md](NAMING.md) §3） |
 | `DockEntriesScreen.kt` | 自定义 底栏 入口 → 底栏入口设置 | 六个开关（开 = 隐藏那一格）/ 只剩一格时该行置灰 / 即改即生效，无保存按钮 |
+| `StockBarEntriesScreen.kt` | 自定义 详情页底栏 入口 → 详情页底栏入口设置 | 七个开关（开 = 把那一项从「更多」提到一级）/ 挑满两项后其余行置灰 / 即改即生效，无保存按钮 |
 
 **二级页只放「总开关之外」的参数。**
 
@@ -508,6 +510,27 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 - **数据落在参数键 `dock_entries`**（`{"v":1,"hidden":["money"]}`，按底栏顺序输出），
   总开关仍是 `dock_clean`；键没写过时按老布尔键迁移（开着 = 藏理财一格），
   写过之后只认新键（见 [FEATURE-DOCK-ENTRIES.md](FEATURE-DOCK-ENTRIES.md) §7）。
+
+#### 4.3 二级页：「详情页底栏入口设置」
+
+| 页面 | 层级 | 结构 |
+|---|---|---|
+| `StockBarEntriesScreen.kt` | 二级 | 一张卡七个开关：外提 条件单 / 智能盯盘 / 智能K线 / 产业链 / 区间统计 / 交易明细 / 股票PK 入口 |
+
+三件事值得记：
+
+- **开关语义是「外提」**：这些项本来在详情页底栏「更多」的面板里，把某一行打开就是把那一项
+  提到一级底栏（`#fl_more` 左边并排）。每行副标题写「已放到底栏」/「仍在更多里」两套状态句
+  （见 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) 第 3.1 节），一级页入口行副标题则现算「已外提 N 个」，
+  一项都不提时写「一项都不外提」。
+- **最多两项**：每项实测 124 px + 间距 26 px，第三项就会把买 / 卖压到 96 px 以下（面板宽度不够）。
+  挑满两项后其余几行置灰、副标题换成「仍在更多里·底栏最多两个入口」；已挑中的行仍可关掉，
+  否则用户退不回来。全部关掉是合法状态 —— 等于不外提，底栏回到原样。
+- **数据落在参数键 `stock_bar_items`**（`{"v":1,"items":["aistare"]}`，按面板顺序输出），
+  总开关仍是 `stock_bar_entry`；键没写过时按老布尔键迁移（开着 = 只提智能盯盘一项），
+  写过之后只认新键（见 [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md)）。
+
+---
 
 #### 4.4 「一键配置」的方案列表页与编辑页（3.1.0 重排）
 

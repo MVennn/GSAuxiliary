@@ -675,7 +675,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 
 ## 14. 附录：两仓页面清单与专有形态
 
-### 14.1 GSAuxiliary（19 页）
+### 14.1 GSAuxiliary（20 页）
 
 | 层 | 页面 | 文件 |
 |---|---|---|
@@ -693,6 +693,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 三级 | 聚合组编辑 | `StrategyMergeEditScreen.kt` |
 | 二级 | 筛选条件保存设置 | `StgFilterSettingsScreen.kt` |
 | 二级 | 底栏入口设置 | `DockEntriesScreen.kt` |
+| 二级 | 详情页底栏入口设置 | `StockBarEntriesScreen.kt` |
 | 二级 | 免责声明 / 公告 | `AboutTab.kt` |
 
 **GS 专有事实**：
@@ -748,6 +749,7 @@ spec.onSelect(index); controller.dismiss()     // 错：动画期间落配置，
 | 2026-11-12 | 0.3 补「配置类页面照方案设置」：多套方案、逐条取值、行尾 ⋮ 管排序删除、新建行带展开动画，母版 = `QuickConfigScreen.kt` / `QuickConfigEditScreen.kt`；现役复制设置与聚合组设置按它做 |
 | 2026-11-12 | 14.1 页面清单补齐聚合组设置、聚合组编辑、筛选条件保存设置（15 → 18 页） |
 | 2026-11-14 | 14.1 页面清单补底栏入口设置（18 → 19 页）；3.1 增补「增强（自定义）」这一细分口径的出处见 `docs/NAMING.md` §2 |
+| 2026-11-14 | 14.1 页面清单补详情页底栏入口设置（19 → 20 页） |
 | 2026-11-10 | 修正 4.2 与第 2 章：搜索框**不进卡**（卡底色 + 框底色 = 框套框），左右 `CardHMargin`、上下 4dp，且不与条件行同框；记录页改为「筛选节 = SmallTitle + 裸搜索框 + 时间范围卡」 |
 
 ---

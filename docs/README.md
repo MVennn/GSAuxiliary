@@ -25,7 +25,7 @@
 |---|---|
 | [FEATURE-AISTARE-QUICK-CONFIG.md](FEATURE-AISTARE-QUICK-CONFIG.md) | 智能盯盘价格页「一键配置」：按方案自动填入涨到 / 跌到 |
 | [FEATURE-AISTARE-CARD-DETAIL.md](FEATURE-AISTARE-CARD-DETAIL.md) | 盯盘数据卡片拓展：点卡片空白处直达个股详情页 |
-| [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) | 个股详情页底栏「智能盯盘」快捷入口 |
+| [FEATURE-STOCK-BAR.md](FEATURE-STOCK-BAR.md) | 个股详情页底栏快捷入口（「更多」面板项外提，最多两项） |
 | [FEATURE-DIRECT-QUOTE.md](FEATURE-DIRECT-QUOTE.md) | 策略详情页「直达标准行情 + 左右滑动」 |
 | [FEATURE-SELECT-ALL.md](FEATURE-SELECT-ALL.md) | 策略详情页多选栏「全选 / 反选」 |
 | [FEATURE-SNAP-ADD.md](FEATURE-SNAP-ADD.md) | 策略详情多选态「截图并添加」：真实详情页逐只截图 + 宿主分组页 |

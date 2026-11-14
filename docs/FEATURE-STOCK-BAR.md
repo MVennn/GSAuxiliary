@@ -1,8 +1,11 @@
-# 个股详情页底栏「智能盯盘」快捷入口 实现方案
+# 个股详情页底栏快捷入口（「更多」面板项外提）实现方案
 
 > 目标：**个股详情页**底栏原本是 `买 / 卖 / 撤单 / +自选 / 更多`，把「更多」弹层里的
-> **智能盯盘**提到一级位置 —— 在「+自选」与「更多」之间多一颗按钮，一点直达。
-> 买 / 卖的宽度自动让位。
+> 项（条件单 / 智能盯盘 / 智能K线 / 产业链 / 区间统计 / 交易明细 / 股票PK）提到一级位置 ——
+> 在「+自选」与「更多」之间并排插 1~2 颗按钮，一点直达。买 / 卖的宽度自动让位。
+>
+> 挑哪几项由参数键 `stock_bar_items` 决定（设置页「详情页底栏入口设置」，见 §2.7）；
+> **最多两项** —— 每项 124 px + 间距 26 px，第三项会把买 / 卖压到 96 px 以下。
 >
 > 底栏是**自适应**的（个股一套、指数 / 板块另一套），本功能两套都覆盖。
 >
@@ -315,6 +318,33 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 
 ---
 
+### 2.7 多入口：一份现场记一串按钮（2026-11-14）
+
+原来「一份现场 = 一颗按钮」，`Injected` 里就一个 `button: TextView`、图标也只有一个 `entryIcon`。
+提到两项之后全部改成列表，**其余链路一个字没动**（开「更多」→ 按文字定位 → `performItemClick` 逐项复用）。
+
+| 位置 | 原来 | 现在 |
+|---|---|---|
+| `Injected` | `button: TextView` | `buttons: List<TextView>` + `targets: List<String>`（一一对应，targets 是面板文字） |
+| 按钮与面板项的对应 | 写死 `MENU_ITEM_TEXT` | 按钮上挂 keyed tag `KEY_TARGET_TEXT`，`openEntry` 直接读 |
+| 图标缓存 | `entryIcon: Drawable?` | `entryIcons: ConcurrentHashMap<String, Drawable>`（键 = 面板文字） |
+| 采集轮 | 采「智能盯盘」一项 | `pendingIconTargets()` 算出所有缺图标的项，一轮里全部采完 |
+| 点击轮 | 点「智能盯盘」 | 按 `r.target` 找到那一项再点 |
+| 外提项变了 | 不认识这个概念 | `syncBar` 比对 `live.targets`，不一致就 `detach` 后按新配置重建 |
+
+三个容易踩的点：
+
+- **`detachOrphan` 的判据仍然成立**：容器里「不带 `ENTRY_TAG` 的那个 `TextView` 就是『更多』」——
+  我们的按钮不论几颗都带这个 tag。
+- **`settled` 要按列表判**：`buttons.isEmpty()` 算没落地；任何一颗 `parent` 不对、没 attach、
+  或 `entryIcons` 里有图但按钮上没图，都算没 settled（`missingIcon`）。
+- **容量在数据层就截断**：`StockBarItemStore.decode` / `encode` 都按 `MAX = 2` 截，界面侧再把
+  未选中的行置灰 —— 目标进程不必再判一次，读进来最多两项。
+
+指数页只有两项可提（智能盯盘 / 区间统计），`desiredTargets` 按「更多」按钮的 id 判形态后
+只在 `INDEX_MENU_ITEMS` 里取；用户在个股页挑的「条件单」到指数页自动不出现在底栏，也不报错。
+
+---
 ## 3. 降级链
 
 `注入按钮 + 接力点击`（完整）
@@ -328,19 +358,23 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 
 | 文件 | 改动 |
 |---|---|
-| `feature/stockbar/StockDetailBarTargets.kt`（新增） | 全部候选 id / 文案 / 契约常量 + 实测说明 |
-| `feature/stockbar/StockDetailBarFeature.kt`（新增） | 功能本体：注入 + 接力点击 + 图标采集 |
+| `feature/stockbar/StockDetailBarTargets.kt`（新增） | 全部候选 id / 文案 / 契约常量 + 实测说明；`STOCK_MENU_ITEMS`（七项）/ `INDEX_MENU_ITEMS`（两项）key→面板文字映射表、`MAX_ENTRIES = 2` |
+| `feature/stockbar/StockDetailBarFeature.kt`（新增） | 功能本体：注入（1~2 颗按钮）+ 接力点击 + 逐项图标采集（见 §2.7） |
+| `core/StockBarItemStore.kt`（新增） | `stock_bar_items` 的 JSON 编解码：容量截断、未知 key 丢弃、老布尔键回落 |
+| `ui/StockBarEntriesScreen.kt`（新增） | 二级页「详情页底栏入口设置」：七行开关、满额置灰、即改即生效 |
 | `feature/FeatureManager.kt` | `features` 列表加一行 |
-| `core/ConfigKeys.kt` | 加 `STOCK_BAR_ENTRY` / `DEFAULT_STOCK_BAR_ENTRY`，进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS` |
-| `core/ConfigSnapshot.kt` | 加 `stockBarEntry` 字段 + 进 `fingerprint`（乘数 1877） |
+| `core/ConfigKeys.kt` | 加 `STOCK_BAR_ENTRY` / `DEFAULT_STOCK_BAR_ENTRY`（总开关，进 `ALL_KEYS` / `FEATURE_KEYS` / `DEFAULTS`）与 `STOCK_BAR_ITEMS` / `DEFAULT_STOCK_BAR_ITEMS`（参数键，进 `ALL_KEYS` / `FEATURE_PARAM_KEYS` / `SNAPSHOT_KEYS` / `DEFAULTS`） |
+| `core/ConfigSnapshot.kt` | 加 `stockBarEntry`（布尔，占低位异或）与 `stockBarItems`（字符串，`hashCode` 异或）两个字段 + 进 `fingerprint` |
 | `core/ConfigSource.kt` | `read()` 补一行 |
-| `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`，分区 `category_stock_detail`（**股票详情页**，无二级菜单） |
-| `app/DebugConfigProvider.kt` | 加 `stock_bar_entry` 列（开发期脚本化开关） |
+| `ui/FeatureCatalog.kt` | 加一条 `FeatureSpec`，分区 `category_stock_detail`（**股票详情页**）；`detailTitleRes` / `detailEntryRes` 指向「详情页底栏入口设置」 |
+| `ui/Routing.kt` | `Route.StockBarEntries` + `RouteSaver` save/restore + `"stock_bar_entry" -> Route.StockBarEntries` + 二级页分支 |
+| `ui/FeatureTab.kt` | 入口行副标题现算「已外提 N 个」/「一项都不外提」 |
+| `app/DebugConfigProvider.kt` | 加 `stock_bar_entry` / `stock_bar_items` 两列（开发期脚本化读写） |
+| `app/src/test/.../core/StockBarItemStoreTest.kt`（新增） | 12 条：迁移口径、容量截断、坏 JSON 回落、往返一致 |
 | `res/values/strings.xml`、`values-en/strings.xml` | 新增 `category_stock_detail`（股票详情页 / Stock detail page） |
 | `res/values/strings.xml` + `values-en/strings.xml` | 中英文案 |
 
-**不动**：`GszxModule.kt`、其它四个功能、`ConfigKeys.GROUP`、`scope.list`、
-`SettingsActivity`（无二级页，不需要新路由）。
+**不动**：`GszxModule.kt`、其它功能、`ConfigKeys.GROUP`、`scope.list`。
 
 ---
 
@@ -421,11 +455,16 @@ bash tools/adbw.sh logcat -d -v brief | grep -A14 "LAUNCH"
    项容器本身不保证 `clickable`。往上找可点击祖先会直接落空，
    日志表现为 `「智能盯盘」项不可点击`。必须走 `performItemClick`。
 
-4. **图标两个坑**：
+4. **图标三个坑**：
    - `setCompoundDrawables` **不会**给 drawable 设 bounds → 图标拿到了但画不出来；
      要么用 `setCompoundDrawablesWithIntrinsicBounds`，要么显式 `setBounds`。
    - 面板里的图标**比底栏的大**，直接套会把底栏文字顶掉（文字被裁一半）。
      要按「更多」图标的尺寸缩放。
+   - **补图标不能无条件调 `applyIcons`**（2026-11-14，多入口改造时踩的）：`reassert` 每次同步都跑，
+     而 `applyIcons` 里每个按钮都 `noteChange()` —— 无条件调用等于「每次同步都改一次界面」，
+     限速闸永远认为「界面刚被改过」，退化成每 200 ms 一次的补跑；真机 `logcat` 表现为
+     `stock_bar_entry：StockFragAct 本趟延后 195ms 补跑` 与 `界面刚被改过，拦下第 1 帧不画` 无限刷屏。
+     判据只有一条：**只在 `missingIcon(e)` 为真时才补**。
 
 5. **`uiautomator dump` 一次只给「当前可见」的节点。** 第一次 dump 个股页的「更多」面板时
    只看到第 2 行（区间统计 / 交易明细 / 股票PK），差点得出「个股页没有智能盯盘」的错误结论

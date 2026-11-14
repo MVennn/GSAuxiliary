@@ -379,7 +379,10 @@ Scaffold { padding ->
 2）写二级菜单内容：仿照 `ui/WatchlistDetail.kt` / `ui/StrategyQuoteDetail.kt`，
    在 `ui/` 下新建一个 `XxxDetailScreen()`，用 `SmallTitle` + `Card` 分组，
    参数项用 Miuix 的 `SwitchPreference` / `ArrowPreference`，
-   颜色选择用 `Widgets.kt` 里的 `ColorPresetItem`（带预览与选中态），
+   「从固定几个值里挑一个」（颜色 / 档位 / 周期）一律用**选择行**：`BasicComponent` +
+   当前值进 `summary` + `DownArrowIcon()` + `ChoiceDialogSpec`（见 `ui/SettingsTab.kt` 与
+   `ui/WatchlistDetail.kt` 的三档配色）—— 不要再摆一排色块：排色块横向占满一行却只装得下
+   一个参数，多档配色时排不下（3.8.x 的 `ColorPresetItem` 已按这条删掉），
    卡片注脚用 `Widgets.kt` 的 `CardNote`，
    图标用 `AppIcons`（自绘 `ImageVector`，**不要引回 `material-icons-extended`**，
    原因见 `docs/UI-HISTORY.md` §10）。

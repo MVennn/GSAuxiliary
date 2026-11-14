@@ -615,6 +615,20 @@ adb -s emulator-5556 logcat -d -s GSZXEnhance:V > .work/logcat.txt
 `策略全选：一次性点击 N 行完成（耗时 Nms，失败 0…）`。模拟器上 LSPosed 与宿主（`com.guosen.android`）
 都已装好、模块在作用域里，不必重进 LSPosed 管理器；但重装模块包后**宿主与模块 App 都要停一次**（见上）。
 
+**重装后先确认 LSPosed 还启用着这个模块**（2026-11-14 踩过一次）：`install -r` 之后
+`modules_state.enabled` 可能被置成 `0`，宿主新进程**根本不加载模块** —— 表现是宿主里一条模块日志都没有
+（`功能安装完成` / `已安装功能` / `已挂 N 个 Activity.onResume` 全不出现），看起来像「某个功能失效」，
+实际是整个模块没跑。查一行就知道：
+
+```
+adb shell sqlite3 /data/adb/lspd/config/modules_config.db "SELECT * FROM modules_state;"
+```
+
+本模块那行（`io.github.MVennn.GSAuxiliary|<user_id>|<enabled>|<blocked>`）第三列必须是 `1`。
+是 `0` 就先 `UPDATE modules_state SET enabled=1 WHERE module_pkg_name='io.github.MVennn.GSAuxiliary';`
+写回，再**重启模拟器**（`MuMuManager.exe control -v 1 shutdown` → `launch`）：只 force-stop 宿主不够，
+zygote 里那张模块表要重启才重读。
+
 ### 仍然只能靠真机的那一半
 
 **界面观感**（液态玻璃 / 深色模式 / 字体度量 / 抗锯齿）与**宿主行为**

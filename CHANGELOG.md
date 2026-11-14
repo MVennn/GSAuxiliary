@@ -7,7 +7,25 @@
 
 ## [未发布] — 2026-11-14
 
-> 性能 / 内存 / 健壮性整轮整理：没有新增开关，界面行为不变。版本号仍停 3.8.12，发版时再抬。
+> 两批改动：①四个开关升级成「一族可配置项」（新增 2 个参数键、1 个二级页，界面有变化）；
+> ②性能 / 内存 / 健壮性整轮整理（行为不变）。版本号仍停 3.8.12，发版时再抬。
+
+### 新增 四个开关升级成「一族可配置项」
+
+- `隐藏 理财 入口` → `自定义 底栏 入口`：底栏六格逐格可藏，至少留一格；二级页「底栏入口设置」六个开关。
+  参数键 `dock_entries`（`{"v":1,"hidden":["trade","mine"]}`），空串时回落老开关 `dock_clean` 的行为，老配置不用迁。
+- `自选股高亮` → 涨 / 跌 / 平三档各自配色：二级页「高亮颜色设置」三行选择行，入口副标题按「已分 N 种颜色」现算。
+  参数键 `watchlist_colors`，空串时三档仍共用老的颜色键。
+- `增加 智能盯盘 入口` → `自定义 详情页底栏 入口`：个股详情页「更多」面板七项里最多外提两项到底栏（图标与点击一并搬）。
+  参数键 `stock_bar_items`，满额时其余行置灰并说明「仍在更多里·底栏最多两个入口」。
+- `自选分组复制` 增加「适用分组」：每条规则可选只对某个分组生效（任何分组 / 全部 / 自选 / 持仓股），
+  同分组命中的规则优先，没有就回落默认规则。写进 `zx_copy_rules` 的 `rules[].groups`，不新增键、格式版本仍是 1。
+- 只升这四个、其余十八条为什么不升：判据 P1–P4 与逐条结论在 `docs/FEATURE-UPGRADE-ROADMAP.md`；
+  底栏族的定位 / 重排推导在 `docs/FEATURE-DOCK-ENTRIES.md`。
+- 文件：`core/DockEntryStore.kt`、`core/WatchlistColorStore.kt`、`core/StockBarItemStore.kt`、`core/zxcopy/ZxCopyGroups.kt`（新），
+  `ui/DockEntriesScreen.kt`、`ui/StockBarEntriesScreen.kt`（新），`ui/FeatureCatalog.kt`、`ui/FeatureTab.kt`、`ui/Routing.kt`、
+  `ui/WatchlistDetail.kt`、`ui/ZxCopyRuleEditScreen.kt`、`core/zxcopy/ZxCopyRuleStore.kt`、`feature/dock/DockCleanFeature.kt`、
+  `feature/stockbar/StockDetailBarFeature.kt`、`feature/watchlist/WatchlistFeature.kt`、`feature/zxcopy/ZxGroupCopyFeature.kt`。
 
 ### 提速 配置变更合流（一次重置不再跑 30 多趟全量读盘）
 
@@ -88,7 +106,7 @@
   全选侧原先会拿上一轮的下标表点行。
 - 文件：`feature/stgrow/RowCode.kt`（新）、`StgCountBar.kt`（新）、`StgFilterBridge.kt`、`StgStockFilterFeature.kt`。
 
-### 验证
+### 验证 整轮整理
 
 - 单测：`gradlew :app:testDebugUnitTest` → 38 个测试类 / 415 例 / 0 failures（新增 `BoundedTtlCacheTest`、`KlineCacheTest`、
   `RowCodeTest`、`StgCountBarTest`、`ZxWatchlistCamTest`，`LogMaskTest` 补 3 例）。
@@ -105,6 +123,20 @@
   模块 App 进程手里的框架 binder 已失效，值写进 remote prefs 却不推给宿主 —— 必须
   `am force-stop io.github.MVennn.GSAuxiliary` 让 `FrameworkBridge` 重新绑定。
 - 未做：手机端（非模拟器）观感复核；`docs/ARCHITECTURE.md` 已同步新增文件与 `util/ViewIds.kt`、`core/LogStore.kt` 的口径变化。
+
+### 验证 四族（MuMu 12 / Android 12 / 宿主 8.7.1 / LSPosed 2.2.1 api 102）
+
+- 单测：`gradlew :app:cleanTestDebugUnitTest :app:testDebugUnitTest --no-build-cache` → 42 个测试类 / 461 例 / 0 failures
+  （新增 `DockEntryStoreTest` 12 例、`WatchlistColorStoreTest`、`WatchlistTierTest`、`StockBarItemStoreTest`、`ZxCopyGroupsTest` 5 例，`ZxCopyRuleStoreTest` 补 6 例）。
+- 构建：`:app:assembleRelease` exit 0，产物 1.66 MB；`:app:assembleDebug` 同口径。
+- 门禁：`tools/ci/check_links.py` 76 篇 / 373 链接 / 0 断链 / 0 孤儿，`tools/hygiene.py` exit 0。
+- 底栏：藏「交易」「账户」两格后宿主底栏 6 格 → 4 格、每格 720/4=180px 均分；只剩一格时那一行置灰、副标题「显示中·底栏至少保留一个入口」。
+- 高亮：三档分别设色后进策略详情页，名称按档位染色；入口副标题「已分 3 种颜色」。
+- 复制：自选页右上角编辑按钮换成复制，点击 Toast「已复制「自选」24 只股票」；规则绑「自选」后预览串变「仅 自选 · …」。
+- 详情页底栏：外提「智能盯盘」「交易明细」两颗进底栏，图标采集成功、点击分别打开 `AIStareWebView` 与 `TradeLoginAct`；
+  「更多」面板七项照旧；改配置当场重建（换成「区间统计」后底栏立刻跟着变）。
+- 真机踩到的坑（已写进 `docs/BUILD.md`）：`install -r` 覆盖安装模块包后 LSPosed 可能把模块的 `enabled` 置 0，
+  表现是宿主进程里一条模块日志都没有；改回 1 之后必须重启模拟器，只 force-stop 宿主不够（zygote 里那张模块表不重读）。
 
 ---
 
