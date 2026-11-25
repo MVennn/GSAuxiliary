@@ -851,8 +851,8 @@ CI 里的版本号也是读 `app/build.gradle.kts`（`tools/ci/version.py`），
 和 `publish.py` 一致 —— 不另开一处能改偏的地方。
 
 ```bash
-python tools/ci/version.py          # vc=34  vn=2.14.0
-python tools/ci/version.py --tag    # 34-2.14.0
+python tools/ci/version.py          # vc=64  vn=4.0.0
+python tools/ci/version.py --tag    # 64-4.0.0
 ```
 
 `--check-tag` 是 `release.yml` 与本地发版前共用的同一份判断 ——
