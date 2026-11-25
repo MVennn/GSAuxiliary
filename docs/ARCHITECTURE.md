@@ -394,6 +394,7 @@ data class ConfigSnapshot(
     val stgFilterPerStrategy: Boolean,  // 筛选状态按策略 / 聚合组分开记忆
     val stgMerge: Boolean,              // 策略详情页「策略合并」总开关
     val stgMergeGroups: String,         // 策略合并的聚合组数据（JSON）
+    val stgMergeRefreshSec: Int,        // 聚合定格后多少秒主动重取一轮（0 = 不重取；默认 180）
     val stockBarEntry: Boolean,          // 详情页底栏快捷入口总开关（出厂关；提哪几项见下一行）
     val stockBarItems: String,           // 详情页底栏提了哪几项（JSON：{"v":1,"items":[...]}）
     val dockClean: Boolean,              // 底栏入口自定义总开关（出厂关）

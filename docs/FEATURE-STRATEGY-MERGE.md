@@ -172,6 +172,7 @@ remote prefs 一个 JSON 字符串键 `stg_merge_groups`，v1：
 ### 6.2 设置页
 
 - 「功能」页 `category_strategy` 分区一项 `stg_merge`：`GsSwitchPreference` 总开关，打开后展开一行入口「我的策略聚合设置入口」。
+- 二级页顶部另有一行「定格后重取 → 自动重取间隔」：五档 不重取 / 1 / 3 / 5 / 10 分钟，键 `stg_merge_refresh_sec`（默认 180）。理由与实测见 §9.2。
 - 二级页 `StrategyMergeScreen`、三级页 `StrategyMergeEditScreen`，照 `QuickConfigScreen` / `QuickConfigEditScreen` 的三层路由加 `Route.StrategyMerge` / `data class Route.StrategyMergeEdit(val groupId: String)`，`RouteSaver` 的 `when` 必须补分支。
 - 组列表按 [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md):201 的可配置列表行：逐条一行 `BasicComponent(title=组名, summary=条数 + 状态句)`，行尾 `✕` 用 `AppIcons.Close` 单条直删；底部「＋ 新建聚合组」用 `AppIcons.PlusThin` + `TextInputDialogSpec` 贴底弹层（:221、:316-427）；整批清空才走 `ConfirmDialogSpec`。
 - 编辑页区块顺序：`聚合组`（名称 + 启用开关）→ `成员策略` → `从组合维度导入` → `从金太阳导入` → `从聚合组导入`。
@@ -439,3 +440,31 @@ v1 数据层只在「名称与 `stId` 都为空」时才丢成员，组内按名
 | 进页面第一瞬可能闪一个偏小的分子 | 宿主列表分页懒加载，页面刚起来只有十行左右，会先写「策略个股 8/212」，看门狗 1 秒内纠正；要彻底消掉得等 `state.applied` 之后才判筛选态，权衡后保留 |
 | 头部涨跌家数始终是全量口径 | 聚合家数按并集算，不随筛选变（筛选只影响列表行与计数栏），与宿主原生策略行为一致 |
 | 组成员卡被收起期间在列表页不可见 | 点不进去，只能从聚合入口卡进；组停用即恢复 |
+
+---
+
+## 9. 定格那一刻的数据错（2026-11-25 定位并修复）
+
+用户反馈：聚合「定格」完成的那一刻，头部与列表有时是错的，只有等定时筛选刷新页面才回正。
+
+### 9.1 三条独立成因
+
+| # | 成因 | 证据 |
+|---|---|---|
+| 1 | **宿主按屏幕可见行重算「日涨跌幅」**。模块每次写完并集都会写这格，但宿主下一次列表刷新会用当前屏上那几行重算，跑动期间屏上是「刚才那一只成员」的均值 | 反复进出详情页，同一并集 48 只、家数 38/9 不变，头部在 +10.09% / +9.54% / +0.80% / +4.45% 之间跳，约 20s 后回到 +2.12% |
+| 2 | **筛选与聚合互相触发**（150ms 内十几个来回）。筛选按可见行数重写计数格并重筛，聚合又按适配器 notify 重新接管，两边共用同一个「策略个股N只」TextView；筛选把成员列表筛成 1~5 行时成因 1 被放大 | logcat 19:29:32.029—.183：「全量 12 → 保留 10 / 全量 11 → 保留 10 / 全量 7 → 保留 5」紧挨着聚合的「计数 → 策略个股 4/48」 |
+| 3 | **成员到达判据只看 `payloadGen`**。宿主只推一行行情也会让代数+1，被当成成员响应，整轮串位；新增 0 只也不置 degraded | 日志里出现「到位：0 只（新增 0）」后直接进入下一成员 |
+
+### 9.2 修法
+
+- **跑动与定稿都按并集口径写头部**：`showGrowingUnion` 写完并集后立即 `mergedZdfText` → `state.zdfText` → `writeMergedZdf`；`reapplyIfNeeded` 的快路早返回前加 `zdfOk` 自检，缺了就地补写。
+- **聚合取数期间筛选让路**：`StrategyMergeBridge.setBusy/isBusy` 由 `StrategyMergeFeature` 在 `running` 置/清时打点，`StgStockFilterFeature.applyFilter0` 见 busy 直接跳过本轮（日志「本轮筛选没生效 —— 聚合正在取数」），另留 `wroteRecently(600ms)` 一条防写回后被立刻重筛。让路条件只看 `isBusy()`，**不能**带 `mergedUnion != null` 前提 —— 取数期快照恒为 null，带前提的闸门永不生效（踩过一次）。
+- **到达判据加内容指纹**：`contentKey(list)` 只比 `camOf` 序列与只数，`payloadGen` 变了但内容没变就不算到达；宿主回了帧却一直同内容时，`sameSince` 超过 600ms 按「已并入放过」进入下一成员，不再白等 3000ms。
+- **并集值改为覆盖更新**：`absorb` / `absorbPrices` 原来 `containsKey` 才 put（保留首见 = 冻结行情），改为 `put` / 直接赋值；`sameContents` 从实例同一性改为逐项比 `camOf`，看门狗慢路先用宿主新实例替换并集同一只票再判等。
+- **定格后重取**：宿主只在本页重跑策略时才推成员行情，定格久了行情是旧的，所以按 `stg_merge_refresh_sec` 定时 `start(env, act, null)` 重取一轮（实测 48 只并集重取 7.9s，期间头部与家数不漂）。
+- **配置改动即时生效**：节拍原来只在 `start()` 读一次，改成「不重取」后再没有 start，改回 3 分钟也等不到下一次自然重取 —— `onConfigChanged` 里把新节拍写进所有活着的页面状态。真机同一进程连续切换 180000ms → 60000ms → 不重取，页面未重建。
+
+### 9.3 复验
+
+- MuMu 实例1 / Android 12 / 宿主 8.7.1：冷启动进详情，6.1s 渲染 48 只（28 成员），头部 +2.12%、家数 38/9，2 分 30 秒采样无漂移；空等从 22s 降到约 4s。
+- 调试通道可直接改档位复验：`adb shell content update --uri content://io.github.MVennn.GSAuxiliary.config/config --bind stg_merge_refresh_sec:i:60`，再用 logcat 看「重取阈值」。
