@@ -1,5 +1,6 @@
 package io.github.MVennn.GSAuxiliary.feature.stgmerge
 
+import android.os.SystemClock
 import java.lang.ref.WeakReference
 import java.util.IdentityHashMap
 
@@ -95,9 +96,53 @@ object StrategyMergeBridge {
         }
     }
 
+    /**
+     * 聚合刚写过列表 / 计数的时间点。
+     *
+     * 为什么要这个：聚合与「筛选」两边都在同一个 ListView + 同一个「策略个股N只」控件上写，
+     * 而且都靠适配器的 notify 互相触发 —— 聚合写并集 → 宿主 notify → 筛选重筛并写计数 →
+     * 又一次 notify → 聚合再写回，两边来回打乒乓（真机 2026-11-25 19:29 抓到 150ms 内几十个来回）。
+     * 结果就是用户看到的「定格数据」是错的：列表被筛成几行、宿主按可见行重算了日涨跌幅。
+     * 所以聚合每次写完打一个点，筛选侧看到「刚写过」就避让一轮。
+     */
+    @Volatile
+    private var lastWriteAt = 0L
+
+    /** 聚合侧：写完列表 / 计数时打点（只打点，不做任何写入） */
+    fun noteWrite() {
+        lastWriteAt = SystemClock.uptimeMillis()
+    }
+
+    /** 聚合侧最近 [withinMs] 毫秒内写过没有（消费侧据此避让，防乒乓） */
+    fun wroteRecently(withinMs: Long): Boolean {
+        val at = lastWriteAt
+        return at != 0L && SystemClock.uptimeMillis() - at < withinMs
+    }
+
+    /**
+     * 聚合是否正处在「一轮取数中」（对应 state.running）。
+     *
+     * 为什么筛选侧也要知道：一轮聚合每到位一个成员就重写一次列表与计数，列表行数会在
+     * 「成员列表」和「并集」之间来回跳（2026-11-25 真机日志：全量 7 只 / 全量 5 只 / 并集 48 只
+     * 交替出现）。筛选此时按行数判口径，会把成员列表当成并集筛一遍，宿主再按筛后的可见行
+     * 重算日涨跌幅 —— 这正是「定格数据错」的来源之一。取数期间筛选一律让路，等定稿再筛。
+     */
+    @Volatile
+    private var busy = false
+
+    /** 聚合侧：一轮取数开始 / 结束时置位 */
+    fun setBusy(value: Boolean) {
+        busy = value
+    }
+
+    /** 聚合一轮取数是否正在进行中 */
+    fun isBusy(): Boolean = busy
+
     /** 清空快照（关功能 / 回滚宿主 / 页面销毁时调用） */
     fun clear() {
         current = null
+        lastWriteAt = 0L
+        busy = false
     }
 
     /** 当前是否有生效的聚合快照（并集实例已被回收也算没有） */

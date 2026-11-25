@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Resources
+import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.TargetApp
 import io.github.MVennn.GSAuxiliary.feature.stgrow.StgCountBar
 import io.github.MVennn.GSAuxiliary.util.Reflect
@@ -43,6 +44,9 @@ import java.util.WeakHashMap
  *    1 次请求、列表不换）。
  */
 object StrategyMergeTargets {
+
+    /** 日志标签，与本包 Feature 用的 `策略聚合：` 保持一致，logcat 里一条线能看完 */
+    private const val LOG_TAG = "策略聚合："
 
     const val TARGET_PKG = TargetApp.PACKAGE
 
@@ -343,7 +347,52 @@ object StrategyMergeTargets {
      */
     fun field(target: Any?, vararg names: String): Any? {
         if (target == null || names.isEmpty()) return null
-        return Reflect.readField(target, *names)
+        val value = Reflect.readField(target, *names)
+        if (value == null) diagnoseMiss(target, names)
+        return value
+    }
+
+    /**
+     * 宿主版本串（`包名/versionName (versionCode)`），由 [StrategyMergeFeature.logHostVersion] 填。
+     *
+     * 放在这里是为了让「字段找不到」的诊断能带上宿主版本 —— 用户报障时只要一条 logcat 就能
+     * 判断是不是宿主改版，不用再让他去设置里翻版本号。
+     */
+    @Volatile
+    var hostVersion: String = "unknown"
+
+    /** 已经诊断过的「类名#字段名」，一条只打一次，避免一次取数几百行日志 */
+    private val diagnosedMisses = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /**
+     * 本文件名一个都没读到时的**一次性诊断**。
+     *
+     * 为什么需要：宿主改版（金太阳 8.7.x → 之后任何一版）把字段改名或改类型时，聚合链路的
+     * 表现是「什么都不发生」——字段读不到 → 成员列表空 → 整轮跳过，日志里没有任何线索。
+     * 这里把同类里**所有 List 类型字段**连同当前长度打出来，适配时照这一行就能认出新的候选名，
+     * 不用再装一次探针 APK 去 dump。
+     */
+    private fun diagnoseMiss(target: Any?, names: Array<out String>) {
+        val cls = target?.javaClass ?: return
+        val key = cls.name + "#" + names.joinToString(",")
+        // 上限 6 条：这条诊断只在「宿主改版」时才有用，正常运行时每页还会遇到几个本来就没有
+        // 该字段的适配器（策略页的标签条 AITagAd 就是，字段叫 mData），不封顶会把 logcat 刷满。
+        if (diagnosedMisses.size >= 6) return
+        if (!diagnosedMisses.add(key)) return
+        val listCandidates = runCatching {
+            generateSequence(cls) { it.superclass }
+                .flatMap { it.declaredFields.asSequence() }
+                .filter { java.util.List::class.java.isAssignableFrom(it.type) }
+                .map { f ->
+                    runCatching {
+                        f.isAccessible = true
+                        f.name + "=" + ((f.get(target) as? Collection<*>)?.size ?: "null")
+                    }.getOrDefault(f.name + "=?")
+                }
+                .take(10)
+                .toList()
+        }.getOrDefault(emptyList())
+        GLog.i("$LOG_TAG 字段读不到：${cls.simpleName}{${names.joinToString("/")}}（宿主 $hostVersion）；同类 List 字段：$listCandidates")
     }
 
     /**
@@ -401,6 +450,27 @@ object StrategyMergeTargets {
 
     /** 读 Map 字段（`priceMap`）；不是 Map 就当没读到 */
     fun mapField(target: Any?, name: String): Map<*, *>? = field(target, name) as? Map<*, *>
+
+    /**
+     * 股票数据项的**名称**候选。
+     *
+     * 只给「读不到 codeAndMarket」的行兜底用：以前直接按对象身份当键，宿主每刷新一次就换一批
+     * 新实例，同一只票会被当成新票重复并入 —— 并集只数随时间膨胀，重取一轮还会再多一份。
+     */
+    private val STOCK_NAME_FIELDS = arrayOf(
+        "name", "m_name", "stkName", "m_stkName", "secuName", "m_secuName",
+        "stockName", "m_stockName", "title", "m_title",
+    )
+
+    /** 股票数据项的名称；读不到返回 null */
+    fun nameOf(item: Any?): String? {
+        if (item == null) return null
+        for (n in STOCK_NAME_FIELDS) {
+            val v = runCatching { Reflect.findField(item.javaClass, n)?.get(item) as? String }.getOrNull()
+            if (!v.isNullOrBlank()) return v.trim()
+        }
+        return null
+    }
 
     /** 股票数据项的去重键；读不到返回 null（调用方按对象身份兜底，别丢票） */
     fun camOf(item: Any?): String? {

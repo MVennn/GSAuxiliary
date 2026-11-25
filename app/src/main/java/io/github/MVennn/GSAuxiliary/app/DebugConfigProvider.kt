@@ -79,6 +79,9 @@ class DebugConfigProvider : ContentProvider() {
         const val COL_ZX_COPY_MENU = "zx_copy_menu"
         const val COL_ZX_COPY_RULES = "zx_copy_rules"
         const val COL_WATCHLIST_COLORS = "watchlist_colors"
+
+        /** 聚合定格后的重取间隔（秒，0 = 不重取）。加这一列是为了脚本能验证「改参数立刻生效」。 */
+        const val COL_STG_MERGE_REFRESH = "stg_merge_refresh_sec"
     }
 
     override fun onCreate(): Boolean {
@@ -137,6 +140,7 @@ class DebugConfigProvider : ContentProvider() {
             COL_MARKET_OVERVIEW_COMPACT, COL_MARKET_STOCK_FILTER, COL_MARKET_INDEX_HIDE,
             COL_NAV_BAR_BLEND, COL_WATCHLIST_BOLD, COL_ZX_GROUP_COPY,
             COL_ZX_COPY_MENU, COL_ZX_COPY_RULES, COL_WATCHLIST_COLORS,
+            COL_STG_MERGE_REFRESH,
         )
         val values = arrayOf<Any>(
             if (ModulePreferences.getBoolean(ConfigKeys.ENABLED, ConfigKeys.DEFAULT_ENABLED)) 1 else 0,
@@ -174,6 +178,10 @@ class DebugConfigProvider : ContentProvider() {
             if (ModulePreferences.getBoolean(ConfigKeys.ZX_COPY_MENU, ConfigKeys.DEFAULT_ZX_COPY_MENU)) 1 else 0,
             ModulePreferences.getString(ConfigKeys.ZX_COPY_RULES, ConfigKeys.DEFAULT_ZX_COPY_RULES),
             ModulePreferences.getString(ConfigKeys.WATCHLIST_COLORS, ConfigKeys.DEFAULT_WATCHLIST_COLORS),
+            ModulePreferences.getInt(
+                ConfigKeys.STG_MERGE_REFRESH_SEC,
+                ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC,
+            ),
         )
         // 列与值必须等长 —— `MatrixCursor.addRow` 长度不等会抛 IllegalArgumentException
         if (columns.size != values.size) {
@@ -255,6 +263,7 @@ class DebugConfigProvider : ContentProvider() {
             intOf(COL_WATCHLIST_BOLD)?.let { putBoolean(ConfigKeys.WATCHLIST_BOLD, it != 0); n++ }
             intOf(COL_ZX_GROUP_COPY)?.let { putBoolean(ConfigKeys.ZX_GROUP_COPY, it != 0); n++ }
             intOf(COL_ZX_COPY_MENU)?.let { putBoolean(ConfigKeys.ZX_COPY_MENU, it != 0); n++ }
+            intOf(COL_STG_MERGE_REFRESH)?.let { putInt(ConfigKeys.STG_MERGE_REFRESH_SEC, it); n++ }
             // ⚠️ 下面这几列是**唯一能塞进任意长度字符串**的入口（其余都是 int/boolean）。
             // 本 provider 是 exported 的，虽然 uid 白名单挡住了普通应用，
             // 但一旦有人（脚本 / 误操作）往这里灌几百 KB，配置会被写到 LSPosed 的

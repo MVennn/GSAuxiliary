@@ -39,6 +39,8 @@ data class ConfigSnapshot(
     val stgMerge: Boolean,
     /** 策略合并的聚合组数据（JSON 字符串，结构见 `StrategyMergeStore`） */
     val stgMergeGroups: String,
+    /** 聚合并集定格后自动重取的间隔（秒，0 = 不重取） */
+    val stgMergeRefreshSec: Int,
     /**
      * 个股详情页底栏快捷入口的**总开关**；提哪几项见 [stockBarItems]。
      *
@@ -168,6 +170,7 @@ data class ConfigSnapshot(
         h = h xor aiStareQuickConfig.hashCode()
         h = h xor zxCopyRules.hashCode()
         h = h xor stgMergeGroups.hashCode()
+        h = h xor (stgMergeRefreshSec * 0xC2B2AE35.toInt())
         h = h xor dockEntries.hashCode()
         h = h xor stockBarItems.hashCode()
         h = h xor watchlistColors.hashCode()
@@ -190,6 +193,7 @@ data class ConfigSnapshot(
             stgFilterPerStrategy = ConfigKeys.DEFAULT_STG_FILTER_PER_STRATEGY,
             stgMerge = ConfigKeys.DEFAULT_STG_MERGE,
             stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
+            stgMergeRefreshSec = ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC,
             stockBarEntry = ConfigKeys.DEFAULT_STOCK_BAR_ENTRY,
             stockBarItems = ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
             dockClean = ConfigKeys.DEFAULT_DOCK_CLEAN,

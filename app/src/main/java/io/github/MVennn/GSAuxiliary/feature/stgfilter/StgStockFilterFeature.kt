@@ -25,6 +25,7 @@ import io.github.MVennn.GSAuxiliary.feature.filter.CodeMarketParts
 import io.github.MVennn.GSAuxiliary.feature.filter.PercentTimeline
 import io.github.MVennn.GSAuxiliary.feature.filter.StockFilters
 import io.github.MVennn.GSAuxiliary.feature.filter.StockTypes
+import io.github.MVennn.GSAuxiliary.feature.stgmerge.StrategyMergeBridge
 import io.github.MVennn.GSAuxiliary.feature.filter.describe
 import io.github.MVennn.GSAuxiliary.feature.stgrow.StgCountBar
 import io.github.MVennn.GSAuxiliary.feature.stgrow.StgRowChecked
@@ -164,6 +165,14 @@ class StgStockFilterFeature : Feature {
 
     /** 缓存资源 id（0 = 还没解析过） */
     @Volatile private var percentIdCache = 0
+
+    /**
+     * 上一次 onResume 排下、还没跑的那一枪「二次对齐」。
+     *
+     * 不记住就没法撤：来回切页 / 反复 onResume 会排队好几枪，每枪都跑一次全表
+     * applyFilter（数百次反射），返回页面肉眼可见卡一下；页面销毁后那几枪还会继续跑。
+     */
+    private var pendingRecheck: Runnable? = null
 
     /**
      * 当前停在策略详情页的 Activity。
@@ -964,6 +973,31 @@ class StgStockFilterFeature : Feature {
 
         // 宿主的全量数据：**只读，一个字节都不改**（理由见 [FilteredAdapter] 的注释）
         val full = readData(adapter) ?: return noteApplySkip("读不到适配器的 data 字段（${adapter.javaClass.name}）")
+
+        // ── 与聚合避让（真机 2026-11-25 19:29 现场）────────────────────────────
+        // 本页有聚合并集时，列表的真身是「并集」；聚合正在按成员分批写回，中途那几行不是全量。
+        // 这时候照筛一遍，会把「列表 5 行」当成全量算出保留 4 只、写回 4/48，
+        // 而聚合那边看到行数变了又重写一遍、还触发宿主按可见行重算日涨跌幅 —— 两边打乒乓，
+        // 用户停在这一刻看到的就是错的「定格数据」。所以：行数比并集少 = 正在写，本轮让路。
+        val mergedUnion = StrategyMergeBridge.mergedFor(ctx)
+        if (mergedUnion != null && full.size < mergedUnion.size) {
+            return noteApplySkip("聚合并集 ${mergedUnion.size} 只、列表此刻 ${full.size} 行（聚合正在写回），本轮不筛")
+        }
+        // 聚合正在一轮取数中（每个成员到位都会改列表 + 计数）：整轮让路，等它定稿。
+        //
+        // ⚠️ 这里**不能**再挂 mergedUnion != null 的前提（2026-11-25 真机实测踩过）：
+        // 一轮取数期间桥接快照（mergedFor）还是 null，带前提的条件等于永不成立，
+        // 日志里就露出「全量 12 → 保留 10 / 全量 11 → 保留 10 / 全量 7 → 保留 5」——
+        // 筛选把**成员列表**当成并集筛掉了，聚合吞进去的就是筛后子集，
+        // 并集缺票、涨跌家数与日涨跌幅全跟着错。让路后下一拍（TICK_MS=500ms 的动态重算）
+        // 会自己补筛，不需要额外排程。
+        if (StrategyMergeBridge.isBusy()) {
+            return noteApplySkip("聚合正在取数（一轮未定稿），本轮不筛")
+        }
+        // 聚合刚写过（计数那一步会打点）：本轮不重筛，避免「筛→写计数→聚合再写→再筛」的循环
+        if (StrategyMergeBridge.wroteRecently(MERGE_WRITE_MUTE_MS)) {
+            return noteApplySkip("聚合刚写过列表，本轮不重筛（防乒乓）")
+        }
         // 记账：这一趟算完之后，[STORM_WINDOW_MS] 内同一批数据项的连续通知不再重算（见 [skipStormNotify]）
         st.lastApplyAt = SystemClock.uptimeMillis()
         st.lastFull = full
@@ -1884,13 +1918,20 @@ class StgStockFilterFeature : Feature {
         // （宿主可能只刷新可见行），代理就永远装不回去，列表整列空着。
         // 所以延后再复查一次 —— 代理不在列表上就补装，装上了就什么都不做（幂等）。
         val handler = activity.window?.decorView?.handler ?: return
-        handler.postDelayed({
+        val recheck = Runnable {
+            // 页面已经销毁还跑这一枪：轻则白跑一次全表反射，重则碰到已回收的视图树
+            if (activity.isDestroyed || activity.isFinishing) return@Runnable
             runCatching {
-                val now = liveAdapter(activity) ?: return@runCatching
-                applyFilter(env, now, notify = true)
-                ensureClickRemap()
+                val now = liveAdapter(activity)
+                if (now != null) {
+                    applyFilter(env, now, notify = true)
+                    ensureClickRemap()
+                }
             }.onFailure { GLog.w("筛选股票：onResume 二次对齐失败", it) }
-        }, RESUME_RECHECK_MS)
+        }
+        pendingRecheck?.let { handler.removeCallbacks(it) }
+        pendingRecheck = recheck
+        handler.postDelayed(recheck, RESUME_RECHECK_MS)
     }
 
     // ------------------------------------------------------------------ 动态重算（节拍器）
@@ -2263,6 +2304,15 @@ class StgStockFilterFeature : Feature {
          * 32ms ≈ 两帧，够把一次风暴并成一次重算，又不至于让行情刷新看起来迟滞。
          */
         const val STORM_WINDOW_MS = 32L
+
+        /**
+         * 聚合刚写过后，筛选让路的毫秒数。
+         *
+         * 聚合每写完一次并集就写一次「策略个股N只」，两边都靠适配器通知互相触发；
+         * 600ms 足够让聚合把一整轮（写列表 + 写计数 + 宿主重排）走完，又不至于让手动筛选感觉卡。
+         * 依据：真机 2026-11-25 19:29 的乒乓链在 150ms 内跑了十几个来回。
+         */
+        const val MERGE_WRITE_MUTE_MS = 600L
 
         /**
          * 动态重算的节拍（见 [tick]）。

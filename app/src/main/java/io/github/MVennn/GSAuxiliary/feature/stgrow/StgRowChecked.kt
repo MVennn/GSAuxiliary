@@ -65,6 +65,14 @@ object StgRowChecked {
         }
         val header = lv.headerViewsCount
         var changed = 0
+        // 行集合变小以后，位置 M..N-1 上的旧勾选还留在 mCheckStates 里：列表再长回来
+        // （或别的页复用同一位置）就凭空多出几只勾着的票，用户点「确认添加」加错票。
+        // 勾选总数与目标对不上时先整体清空，再按代码重设 —— 这是一次全量对齐，不是增量补勾。
+        val before = lv.checkedItemCount
+        if (before != keys.size) {
+            runCatching { lv.clearChoices() }
+            if (before > 0) changed++
+        }
         for (i in 0 until count) {
             val want = keys.contains(rowKeys[i])
             if (lv.isItemChecked(header + i) == want) continue

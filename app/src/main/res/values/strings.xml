@@ -387,6 +387,15 @@
     <string name="switch_stg_filter_per_strategy_off">所有策略共用一份</string>
     <string name="detail_stg_merge_title">聚合组设置</string>
     <string name="stg_merge_entry_summary">%1$d 个聚合组</string>
+    <string name="stg_merge_section_refresh">定格后重取</string>
+    <string name="stg_merge_refresh_title">自动重取间隔</string>
+    <string-array name="stg_merge_refresh_labels">
+        <item>不重取</item>
+        <item>1 分钟</item>
+        <item>3 分钟</item>
+        <item>5 分钟</item>
+        <item>10 分钟</item>
+    </string-array>
     <string name="stg_merge_section_groups">聚合组</string>
     <string name="stg_merge_group_new">新建聚合组</string>
     <string name="stg_merge_group_new_name_prefix">聚合组</string>

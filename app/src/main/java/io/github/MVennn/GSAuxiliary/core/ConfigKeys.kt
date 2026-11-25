@@ -194,6 +194,18 @@ object ConfigKeys {
     const val STG_MERGE_GROUPS = "stg_merge_groups"
 
     /**
+     * 聚合并集**定格后**自动重取一轮行情的间隔（秒）。
+     *
+     * 为什么需要：宿主在策略详情页只重跑本页那条策略，聚合组里其它成员的行情**不会再**
+     * 被推进来；不在本页时价格就停在聚合开始那一刻。定格后过一段时间主动重取一轮，
+     * 把成员行情刷新到当下（实测 28 成员一轮约 4–8 秒）。
+     *
+     * 取值：0 = 不重取（只信首次聚合）；30–7200 之间按秒算。写死 3 分钟在
+     * 2026-11-25 之前是常量 REFRESH_TICK_MS，这里改成可配置。
+     */
+    const val STG_MERGE_REFRESH_SEC = "stg_merge_refresh_sec"
+
+    /**
      * 个股详情页底栏快捷入口：在「自选」与「更多」之间注入按钮，把原本埋在「更多」
      * 弹层里的面板项提到一级位置。
      *
@@ -535,6 +547,9 @@ object ConfigKeys {
      */
     const val DEFAULT_STG_MERGE_GROUPS = """{"v":1,"groups":[]}"""
 
+    /** 定格后自动重取的出厂值：180 秒（= 3 分钟，与改动前的常量一致） */
+    const val DEFAULT_STG_MERGE_REFRESH_SEC = 180
+
     /**
      * 默认关闭（功能总开关，同 [DEFAULT_ENABLED]）。
      *
@@ -647,6 +662,7 @@ object ConfigKeys {
         ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, STG_DIRECT_QUOTE, STG_QUOTE_SWIPE,
         STG_SELECT_ALL,
         STG_SNAP_ADD, STG_STOCK_FILTER, STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS,
+        STG_MERGE_REFRESH_SEC,
         STOCK_BAR_ENTRY, STOCK_BAR_ITEMS,
         DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
@@ -702,6 +718,7 @@ object ConfigKeys {
      */
     val FEATURE_PARAM_KEYS = arrayOf(
         COLOR, WATCHLIST_COLORS, SCOPE_STRATEGY, STG_QUOTE_SWIPE, STG_FILTER_PER_STRATEGY, STG_MERGE_GROUPS,
+        STG_MERGE_REFRESH_SEC,
         AISTARE_QUICK_CONFIG,
         AISTARE_SAVE_BACK_TO_STOCK, AISTARE_PICK_SCHEME,
         ZX_COPY_MENU, ZX_COPY_RULES, DOCK_ENTRIES, STOCK_BAR_ITEMS,
@@ -726,7 +743,8 @@ object ConfigKeys {
     val SNAPSHOT_KEYS: Set<String> = setOf(
         ENABLED, COLOR, WATCHLIST_COLORS, WATCHLIST_BOLD, SCOPE_STRATEGY, LOG_LEVEL,
         STG_DIRECT_QUOTE, STG_QUOTE_SWIPE, STG_SELECT_ALL, STG_SNAP_ADD, STG_STOCK_FILTER,
-        STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STOCK_BAR_ENTRY, STOCK_BAR_ITEMS,
+        STG_FILTER_PER_STRATEGY, STG_MERGE, STG_MERGE_GROUPS, STG_MERGE_REFRESH_SEC,
+        STOCK_BAR_ENTRY, STOCK_BAR_ITEMS,
         DOCK_CLEAN, DOCK_ENTRIES, HOME_BANNER_HIDE, MARKET_BANNER_HIDE,
         MARKET_SECTOR_COMPACT, MARKET_OVERVIEW_COMPACT, MARKET_STOCK_FILTER, MARKET_INDEX_HIDE,
         NAV_BAR_BLEND, IPO_DIALOG_CLEAN,
@@ -751,6 +769,7 @@ object ConfigKeys {
         STG_FILTER_PER_STRATEGY to DEFAULT_STG_FILTER_PER_STRATEGY,
         STG_MERGE to DEFAULT_STG_MERGE,
         STG_MERGE_GROUPS to DEFAULT_STG_MERGE_GROUPS,
+        STG_MERGE_REFRESH_SEC to DEFAULT_STG_MERGE_REFRESH_SEC,
         STOCK_BAR_ENTRY to DEFAULT_STOCK_BAR_ENTRY,
         STOCK_BAR_ITEMS to DEFAULT_STOCK_BAR_ITEMS,
         DOCK_CLEAN to DEFAULT_DOCK_CLEAN,

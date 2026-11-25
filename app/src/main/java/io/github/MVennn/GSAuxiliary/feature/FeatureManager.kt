@@ -241,11 +241,21 @@ class FeatureManager(private val env: FeatureEnv) {
                     .onFailure { GLog.w("热重载清理：功能 [${f.id}] 关闭还原失败", it) }
             }
         }
-        if (Looper.myLooper() == Looper.getMainLooper()) teardown.run()
-        else mainHandler.post(teardown)
-
-        GLog.i("卸载全部钩子（共 ${bag.size} 个）")
-        bag.unhookAll()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            teardown.run()
+            GLog.i("卸载全部钩子（共 ${bag.size} 个）")
+            bag.unhookAll()
+        } else {
+            // 还原要在主线程跑，但**钩子不能先摘**：以前是先 bag.unhookAll() 再投递还原，
+            // 热重载紧接着装上新实例的钩子，旧实例的还原动作随后才执行 —— 它拆的可能是
+            // 新实例刚挂上的过滤代理 / 布局监听，现场就被清空了（关掉再开功能不生效）。
+            // 两件事放进同一个主线程任务，顺序才是「清现场 → 摘钩子」。
+            mainHandler.post {
+                teardown.run()
+                GLog.i("卸载全部钩子（共 ${bag.size} 个）")
+                bag.unhookAll()
+            }
+        }
     }
 
     /**
@@ -266,6 +276,7 @@ class FeatureManager(private val env: FeatureEnv) {
         stgFilterPerStrategy = false,
         stgMerge = false,
         stgMergeGroups = ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
+        stgMergeRefreshSec = ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC,
         stockBarEntry = false,
         stockBarItems = ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
         dockClean = false,

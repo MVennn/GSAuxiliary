@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ListView
 import android.widget.TextView
+import io.github.MVennn.GSAuxiliary.core.ConfigKeys
 import io.github.MVennn.GSAuxiliary.core.ConfigSnapshot
 import io.github.MVennn.GSAuxiliary.core.GLog
 import io.github.MVennn.GSAuxiliary.core.HookBag
@@ -106,6 +107,12 @@ private const val LIST_WATCH_INTERVAL_MS = 800L
 /** 每个口径组合的预算：建临时策略 → 宿主取数 → 删临时策略，实测 1.5~2.5 秒，给 3 秒 */
 private const val COMBO_BUDGET_MS = 3000L
 
+/** 每个普通成员的额外预算：换 id + 发命令 + 等列表，实测 1~3 秒，按 1.5 秒摊 */
+private const val PLAIN_BUDGET_MS = 1500L
+
+/** 单轮总预算上限：再多成员也不能把「一直在取数」拖成用户眼里的卡死 */
+private const val MAX_BUDGET_MS = 45000L
+
 /**
  * 口径成员的「空列表」确认窗口。
  *
@@ -113,6 +120,17 @@ private const val COMBO_BUDGET_MS = 3000L
  * 又不至于让每个空组合都白等满 [StrategyMergeTargets.MEMBER_TIMEOUT_MS]。
  */
 private const val COMBO_EMPTY_CONFIRM_MS = 600L
+
+/**
+ * 定格之后的主动重取节拍。
+ *
+ * 并集定格在最后一次取数的价格上：宿主自己的 autoRefresh 只会重跑**本页那条策略**，
+ * 不会再把成员的列表推给我们，所以不主动重取的话，界面上并集那一列行情会一直停在
+ * 「刚才那一刻」，只有靠用户手动进出页面才更新（用户以前用「自动执行筛选」刷新页面兜底）。
+ * 三分钟一拍：比宿主的行情刷新（几秒）慢得多，不会打网络，也不会和活锁闸门冲突
+ * （[StrategyMergeTargets.RUN_WINDOW_MS] 只有 60 秒，一拍下来早过了窗口）。
+ */
+private const val REFRESH_TICK_MS = 180_000L
 
 /**
  * 建 / 删临时策略的专用线程：两步都是网络请求，绝不能上主线程。
@@ -686,6 +704,7 @@ class StrategyMergeFeature : Feature {
             "$LOG 已挂 onResume×$resumed、onPause×$paused、setAdapter×$setAdapter、" +
                 "showStg×$showStg、notify×$notify、onItemClick×$click",
         )
+
     }
 
     // ------------------------------------------------------------------ 钩子
@@ -1523,15 +1542,57 @@ class StrategyMergeFeature : Feature {
      * 看门狗：宿主会**不 notify 直接改适配器 data**（真机 21:31:36 那次：我们写回 64 只、它随后改成 47
      * 却不通知列表，界面就停在旧的 47 行），也会在我们写回之后重写头部文本。定时巡检把它纠回来。
      */
+    /** 定格已经够久、该主动重取一轮了吗（宿主自己不会再把成员的行情推给我们） */
+    private fun refreshDue(state: PageState): Boolean {
+        if (state.refreshTickMs <= 0L) return false
+        if (state.running || !state.applied || state.finishedAt <= 0L) return false
+        return System.currentTimeMillis() - state.finishedAt >= state.refreshTickMs
+    }
+
+    /** 配置里的秒 → 间隔毫秒；0 或负数 = 不重取，其余夹到 30s–2h，防手滑写个 1 秒把宿主刷爆 */
+    private fun refreshTickMsOf(sec: Int): Long {
+        if (sec <= 0) return 0L
+        return sec.coerceIn(30, 7200) * 1000L
+    }
+
     private fun startWatch(act: Activity, state: PageState) {
         stopWatch(state)
         val runnable = object : Runnable {
             override fun run() {
-                if (!state.applied || act.isFinishing || act.isDestroyed) return
+                if (act.isFinishing || act.isDestroyed) return
+                // 只让「当前登记的那个」继续跑：startWatch 换新时会顶掉指针，旧循环自己退场，
+                // 否则每轮重取都会多留一条常驻循环，头部自检互相打架。
+                if (!synchronized(state) { state.watch === this }) return
+                // 取数期间会短暂 applied=false。这里以前是直接 return —— Runnable 就此消失，
+                // 看门狗永远停摆：之后既不自检头部、也不会到点重取（真机实测 20:25 定稿后
+                // 到 20:31 再没触发过，就是死在这行）。跳过一次，下一拍再来。
+                if (!state.applied) {
+                    mainHandler.postDelayed(this, WATCH_INTERVAL_MS)
+                    return
+                }
+                // 心跳：一分钟一行，够判断「看门狗还活着、离重取还有多久」，
+                // 又不会把日志刷满（这次排查就是因为没有它，无法区分「循环死了」和「没到点」）。
+                val beat = System.currentTimeMillis()
+                if (beat - state.lastWatchLog >= 60_000L) {
+                    state.lastWatchLog = beat
+                    // finishedAt 在重取开始时会被清 0，直接相减会打出 epoch 级的假数值
+                    val idle = if (state.finishedAt > 0L) "${beat - state.finishedAt}ms" else "取数中"
+                    val tickText = if (state.refreshTickMs <= 0L) "不重取" else "${state.refreshTickMs}ms"
+                    GLog.i("$LOG 看门狗心跳：定格 $idle / 重取阈值 $tickText")
+                }
                 runCatching {
                     val adapter = synchronized(state) { state.adapterRef?.get() }
                     if (adapter != null) reapplyIfNeeded(act, adapter, throttle = false, force = true)
                 }.onFailure { GLog.w("$LOG 看门狗重套失败", it) }
+                // 定格之后的行情更新：宿主只会重跑本页那条策略，成员的行情它不会再推。
+                // 到点就在这里起一轮重取（start 内部会走「保留原值」的 keepOrigin 分支）。
+                if (refreshDue(state)) {
+                    val e = synchronized(state) { state.env }
+                    if (e != null) {
+                        GLog.i("$LOG 定格已 ${System.currentTimeMillis() - state.finishedAt}ms，主动重取一轮并集行情")
+                        runCatching { start(e, act, null) }.onFailure { GLog.w("$LOG 重取失败", it) }
+                    }
+                }
                 mainHandler.postDelayed(this, WATCH_INTERVAL_MS)
             }
         }
@@ -1562,7 +1623,7 @@ class StrategyMergeFeature : Feature {
         force: Boolean = false,
     ): Boolean {
         val state = stateOf(act)
-        val merged = (if (state.applied) state.mergedStrong else null) ?: return false
+        var merged = (if (state.applied) state.mergedStrong else null) ?: return false
         if (state.running) return true
         // 用聚合时那一个适配器：页面里不止一个 ListView，按视图树重新找容易找到别的那个，
         // 写了半天其实写给了没人用的列表（真机 21:24 重套日志成功但界面纹丝不动）。
@@ -1589,6 +1650,14 @@ class StrategyMergeFeature : Feature {
             return true
         }
         state.lastSlowAt = android.os.SystemClock.uptimeMillis()
+        // 头部「日涨跌幅」自检：宿主每次刷新列表都会按**当前可见行**重算这一格，
+        // 所以聚合跑的过程中它会变成「刚才那一只/几只成员」的均值 —— 真机 2026-11-25 连采到
+        // 10.09% → 4.45% → 9.54% → 0.80% → 1.07%，跑完才回到并集的 2.12%。
+        // 用户看到并截图抱怨的「定格那一刻数据错」就是这一幕。这里每拍复核，被改写就写回，
+        // 不等宿主下一次刷新、也不需要靠「自动执行筛选」刷新页面来兜底。
+        if (!zdfOk(state) && !state.mergedStrong.isNullOrEmpty()) {
+            writeMergedZdf(act, state)
+        }
         // 头部三处文本（策略名称 / 涨跌家数 / 策略个股N只）宿主每轮刷新都会重写，
         // 和数据有没有被改无关，所以放在早返回之前：同值 setText 不会闪。
         val model = StrategyMergeTargets.field(act, *StrategyMergeTargets.ACT_FIELD_MODEL)
@@ -1621,6 +1690,16 @@ class StrategyMergeFeature : Feature {
         // 第一项还是同一实例 → 宿主没动过数据，列表仍是并集
         // 逐项比内容：只比长度 + 首项，会把「宿主换成另一批票、票数刚好一样、首项还是同一个实例」
         // 误判成并集而不再重写。同文件启动判据用的是 sameContents，两处口径统一。
+        // 同一只票就换成宿主刚推的那份实例：并集里留着的旧实例字段停在**聚合那一刻**，
+        // 只靠「把并集顶回去」会让价格/涨跌幅一直冻着（用户看到的「定格数据不动」）。
+        // 只换实例、顺序仍按并集，勾选态按代码迁移不受影响。
+        run {
+            val fresh = withFreshInstances(merged, cur)
+            if (fresh !== merged) {
+                merged = fresh
+                synchronized(state) { state.mergedStrong = merged }
+            }
+        }
         if (sameContents(cur, merged)) return true
         val now = System.currentTimeMillis()
         synchronized(state) {
@@ -1762,8 +1841,28 @@ class StrategyMergeFeature : Feature {
         return true
     }
 
+    /** 宿主版本只打一次：字段名 / 活动类名是跟着宿主版本走的，线上对不上时先看这行 */
+    private var hostVersionLogged = false
+
+    private fun logHostVersion(act: Activity) {
+        if (hostVersionLogged) return
+        hostVersionLogged = true
+        runCatching {
+            val pm = act.packageManager
+            val info = pm.getPackageInfo(StrategyMergeTargets.TARGET_PKG, 0)
+            // 顺手给「字段读不到」的诊断留一份版本串：那边打日志时不用再拿 Activity
+            StrategyMergeTargets.hostVersion = "${StrategyMergeTargets.TARGET_PKG}/${info.versionName} (${info.longVersionCode})"
+            GLog.i(
+                "$LOG 宿主 ${StrategyMergeTargets.TARGET_PKG} 版本 ${info.versionName}" +
+                    "，Android ${android.os.Build.VERSION.RELEASE}（API ${android.os.Build.VERSION.SDK_INT}），" +
+                    "机型 ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}",
+            )
+        }.onFailure { GLog.w("$LOG 读宿主版本失败（不影响聚合）", it) }
+    }
+
     private fun onActivityResumed(env: FeatureEnv, act: Activity) {
         if (isDetailPage(act)) {
+            logHostVersion(act)
             // onPause 停掉的巡检在这里拉回来：start 命中「本页已是聚合结果」会直接 return，
             // 那条路上没有任何地方重启看门狗，列表就再也不会被纠回并集。
             val st = synchronized(states) { states[act] }
@@ -2330,14 +2429,29 @@ class StrategyMergeFeature : Feature {
      * 换成并集之后它算不出来、只能挂 `--`。等权平均与列表口径一致（不冒充指数、也不算加权）。
      */
     private fun mergedZdfText(list: List<*>): String? {
+        // 现场取证只在调试档开：正常使用时不为了打一行日志去攒最小/最大/样本。
+        val trace = GLog.isDebug
         var sum = 0.0
         var n = 0
+        var minAbs = Double.MAX_VALUE
+        var maxAbs = 0.0
+        val sample = if (trace) StringBuilder() else null
         for (e in list) {
             val p = StrategyMergeTargets.pctOf(e) ?: continue
             sum += p
             n++
+            if (sample != null) {
+                val a = kotlin.math.abs(p)
+                if (a < minAbs) minAbs = a
+                if (a > maxAbs) maxAbs = a
+                if (sample.length < 160) {
+                    sample.append(String.format(Locale.ROOT, "%.4f/%s ", p, e?.javaClass?.simpleName ?: "null"))
+                }
+            }
         }
         if (n == 0) return null
+        // pct 现场：n 少于并集只数=有行读不到；minAbs/maxAbs 跨 0.1 与 10 两档=刻度混用
+        GLog.d("$LOG pct 现场 n=$n/${list.size} minAbs=${String.format(Locale.ROOT, "%.4f", minAbs)} maxAbs=${String.format(Locale.ROOT, "%.4f", maxAbs)} 样本=$sample")
         val avg = sum / n
         if (avg > -0.005 && avg < 0.005) return "0.00%"
         return String.format(Locale.ROOT, "%+.2f%%", avg)
@@ -2666,11 +2780,18 @@ class StrategyMergeFeature : Feature {
             val stuckMs = System.currentTimeMillis() - state.runStartedAt
             if (stuckMs > STUCK_RESET_MS) {
                 GLog.w("$LOG 上一轮聚合 ${stuckMs}ms 还没收尾（疑似异常没复位 running），强制复位重来")
+                // 只清标志、不叫停旧流水线＝旧 MergeRun 的 poll 循环还在跑：它会继续 absorb、
+                // 继续 showGrowingUnion、最后 finish() 把**旧并集**写回适配器，新一轮刚写好的
+                // 结果被旧结果盖掉（用户看到「定格的那一帧是错的」就是这样来的）。
+                val stale = synchronized(state) { state.run }
                 synchronized(state) {
                     state.running = false
                     state.run = null
                     state.runStartedAt = 0L
                 }
+                // 卡死兜底也算这一轮结束：解除对筛选的避让
+                StrategyMergeBridge.setBusy(false)
+                runCatching { stale?.cancel() }.onFailure { GLog.w("$LOG 叫停上一轮失败", it) }
             }
         }
 
@@ -2683,7 +2804,10 @@ class StrategyMergeFeature : Feature {
             val idle = System.currentTimeMillis() - state.finishedAt
             if (state.running) {
                 skip = "上一轮聚合还没结束"
-            } else if (sameContents(merged, data)) {
+            } else if (sameContents(merged, data) && !refreshDue(state)) {
+                // 定格超过 state.refreshTickMs 时不再早退：宿主自己不会再把成员的行情推给我们，
+                // 一直「已是聚合结果」就等于并集行情永远停在定格那一刻（用户以前靠「自动筛选」
+                // 定时刷新页面兜底，就是绕这个早退）。
                 skip = "本页已是聚合结果（${state.mergedSize} 只）"
             } else if (state.key == key && state.finishedAt > 0L && idle >= 0L && idle < SETTLE_MS) {
                 skip = "上一轮刚结束 ${idle}ms，等宿主这轮刷新过去"
@@ -2726,10 +2850,19 @@ class StrategyMergeFeature : Feature {
             }
             state.runCount++
             state.running = true
+            StrategyMergeBridge.setBusy(true)
             state.runStartedAt = now
             state.key = key
             state.adapterRef = WeakReference<Any>(adapter)
-            captureOrigin(act, state, model, stg, adapter, pageStId)
+            state.env = env
+            state.refreshTickMs = refreshTickMsOf(cfg.stgMergeRefreshSec)
+            // 重取（不是首次进页面）：屏幕上已经是我们的并集，原值必须保留**第一次**抓到的那一份，
+            // 否则把并集当「宿主原样」记进 originalData，退出页面时还原出来的是并集、家数也是并集的。
+            val refresh = state.applied && sameContents(
+                state.mergedStrong,
+                StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA),
+            )
+            captureOrigin(act, state, model, stg, adapter, pageStId, refresh)
         }
         // 下面几步（套缓存快照、构造流水线）都可能抛：抛了必须把 running 放掉并还原宿主，
         // 否则这一页会永久停在「聚合中」—— 谁都不再接管，看门狗也只喂空数据。
@@ -2759,6 +2892,7 @@ class StrategyMergeFeature : Feature {
                 state.running = false
                 state.run = null
                 state.runStartedAt = 0L
+                StrategyMergeBridge.setBusy(false)
             }
             runCatching { releaseRollback(act, state) }
         }
@@ -2802,7 +2936,13 @@ class StrategyMergeFeature : Feature {
 
     // ------------------------------------------------------------------ 快照 / 回滚
 
-    /** 记下「动手之前」的原样：中途任何一步炸了都要能原样还回去 */
+    /**
+     * 记下「动手之前」的原样：中途任何一步炸了都要能原样还回去。
+     *
+     * [keepOrigin] = 这是定格之后的**重取**：屏幕上已经是我们的并集，原值必须保留第一次进页面
+     * 抓到的那一份 —— 否则把并集当「宿主原样」存进 originalData，退出页面时还原出来的是并集、
+     * 家数也是并集的。这里只复位本轮运行态，不动 original* 系列字段。
+     */
     private fun captureOrigin(
         act: Activity,
         state: PageState,
@@ -2810,8 +2950,22 @@ class StrategyMergeFeature : Feature {
         stg: Any,
         adapter: Any,
         pageStId: String,
+        keepOrigin: Boolean = false,
     ) {
         state.originalStId = pageStId
+        if (keepOrigin) {
+            GLog.i("$LOG 定格后重取：保留进页面时抓到的宿主原值（不覆盖 originalData / 家数）")
+            state.applied = false
+            state.touchedId = false
+            state.mergedRef = null
+            state.mergedStrong = null
+            state.mergedSize = 0
+            state.finishedAt = 0L
+            state.zdfMiss = 0
+            state.zdfNodeAbsent = false
+            state.zdfTvRef = null
+            return
+        }
         state.originalName = StrategyMergeTargets.field(stg, StrategyMergeTargets.STG_FIELD_NAME) as? String
         state.originalUp = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_UP_NUM)
         state.originalDown = StrategyMergeTargets.intField(model, StrategyMergeTargets.MODEL_FIELD_DOWN_NUM)
@@ -2903,7 +3057,34 @@ class StrategyMergeFeature : Feature {
     }
 
     /**
-     * 两个列表是不是「同一份内容」：长度相同且逐项 `===`（优先按身份直判）。
+     * 用宿主刚推的实例替换并集里「同一只票」的旧实例，返回新列表（无可换时原样返回）。
+     *
+     * 宿主每一轮刷新都会重造实例并带上最新行情；并集里留着的旧实例字段永远停在聚合那一刻，
+     * 界面就一直显示定格时的价格。只换同 codeAndMarket 的实例，顺序仍按并集。
+     */
+    private fun withFreshInstances(merged: List<Any?>, cur: List<*>?): List<Any?> {
+        if (cur.isNullOrEmpty() || merged.isEmpty()) return merged
+        val fresh = HashMap<String, Any>(cur.size * 2)
+        for (e in cur) {
+            if (e == null) continue
+            val k = StrategyMergeTargets.camOf(e) ?: continue
+            fresh[k] = e
+        }
+        if (fresh.isEmpty()) return merged
+        var out: ArrayList<Any?>? = null
+        for (i in merged.indices) {
+            val old = merged[i]
+            val k = StrategyMergeTargets.camOf(old) ?: continue
+            val n = fresh[k] ?: continue
+            if (n === old) continue
+            if (out == null) out = ArrayList<Any?>(merged)
+            out[i] = n
+        }
+        return out ?: merged
+    }
+
+    /**
+     * 两个列表是不是「同一份内容」：长度相同且逐项同 codeAndMarket（实例相同直接过）。
      *
      * 宿主每次刷新都会**重造**一份列表，只比实例身份的话每一轮刷新都会重新聚合一次
      * （8 秒一批请求）；比内容能把「宿主自己刷了但内容没变」这种情况吃掉。
@@ -2912,7 +3093,16 @@ class StrategyMergeFeature : Feature {
         if (a == null || b == null) return false
         if (a === b) return true
         if (a.size != b.size) return false
-        for (i in a.indices) if (a[i] !== b[i]) return false
+        for (i in a.indices) {
+            val x = a[i]
+            val y = b[i]
+            if (x === y) continue
+            // 宿主每轮刷新都重造实例：只比身份的话「同一份内容重推一遍」永远被判成变了，
+            // 于是每轮都重聚合、每轮都把并集重写一次（8 秒一批请求、界面来回抽）。
+            val kx = StrategyMergeTargets.camOf(x) ?: return false
+            val ky = StrategyMergeTargets.camOf(y) ?: return false
+            if (kx != ky) return false
+        }
         return true
     }
 
@@ -2931,6 +3121,7 @@ class StrategyMergeFeature : Feature {
         state.finishedAt = 0L
         state.run = null
         synchronized(state) { state.running = false }
+        StrategyMergeBridge.setBusy(false)
         if (StrategyMergeBridge.isFor(act)) StrategyMergeBridge.clear()
     }
 
@@ -2981,6 +3172,8 @@ class StrategyMergeFeature : Feature {
      * 少于并集只数就是筛选中。两边格式逐字一致，写同值互相 no-op，不会来回覆盖。
      */
     private fun writeMergedResNum(act: Activity, state: PageState, total: Int) {
+        // 打点：告诉筛选侧「聚合刚写过」，避免两边为同一个计数控件互相触发（见 StrategyMergeBridge.noteWrite）
+        StrategyMergeBridge.noteWrite()
         val cur = readResNum(act, state)
         val shown = shownStockRows(act)
         val filtered = shown != null && total > 0 && shown < total
@@ -3082,6 +3275,11 @@ class StrategyMergeFeature : Feature {
      * [Feature] 约定这个方法在**主线程**调，所以这里可以直接碰视图。
      */
     override fun onConfigChanged(env: FeatureEnv, cfg: ConfigSnapshot) {
+        // 重取节拍是「定稿之后隔多久再取」，改配置要立刻作用到活着的页面状态上：
+        // 改成「不重取」之后不会再有 start，改成别的档位也等不到下一次自然重取。
+        // 2026-11-25 真机踩到过：改成 3 分钟后心跳仍打「重取阈值 不重取」。
+        val tick = refreshTickMsOf(cfg.stgMergeRefreshSec)
+        synchronized(states) { for (state in states.values) state.refreshTickMs = tick }
         if (cfg.stgMerge) return
         val watches = synchronized(listWatches) { listWatches.keys.toList() }
         for (a in watches) stopListWatch(a)
@@ -3129,6 +3327,9 @@ class StrategyMergeFeature : Feature {
         /** 上一轮结束时刻（0 = 没跑过），配合 [SETTLE_MS] 吃掉宿主的连发刷新 */
         var finishedAt = 0L
 
+        /** 看门狗上一次打心跳的时刻（只用于观察「循环还活着、离重取还有多久」） */
+        var lastWatchLog = 0L
+
         /** 次数统计的键 / 窗口起点 / 次数：防止「宿主刷新顶掉结果 → 我们重取」的活锁 */
         var runKey: String? = null
         var runWindowStart = 0L
@@ -3148,6 +3349,23 @@ class StrategyMergeFeature : Feature {
          */
         var lvRef: WeakReference<Any>? = null
         var watch: Runnable? = null
+
+        /**
+         * 这个页面所属的功能环境。
+         *
+         * 看门狗要能自己发起「定格后重取」，而它是由 [startWatch] 起的长驻 Runnable，
+         * 手上没有 env —— 由 [start] 记在这里给它用；Activity 销毁时随 PageState 一起消失。
+         */
+        var env: FeatureEnv? = null
+
+        /**
+         * 定格后自动重取的间隔（毫秒，0 = 永不重取）。
+         *
+         * 出厂 180_000ms；用户在「策略合并」页可改（0 / 1 / 3 / 5 / 10 分钟），
+         * 配置项见 [ConfigKeys.STG_MERGE_REFRESH_SEC]。放在 PageState 上是因为
+         * 看门狗每拍都要读，每拍再去 env.config 读一次没必要。
+         */
+        var refreshTickMs: Long = REFRESH_TICK_MS
 
         /** 写回适配器的并集实例（与 `adapter.data` 同一对象即「界面上已经是聚合结果」） */
         var mergedRef: WeakReference<Any>? = null
@@ -3320,6 +3538,23 @@ class StrategyMergeFeature : Feature {
         private var lastResendAt = 0L
 
         /**
+         * 这一格发命令前的内容指纹（只看 codeAndMarket 序列，不看对象身份）。
+         *
+         * 宿主的纯行情/表头 notify 也会推进 [PageState.hostPayloadGen]，只认代次会把
+         * 「代次动了但列表还是上一格」当成到位 —— 整轮就此串位，并集少票。
+         */
+        private var memberBaseKey = ""
+
+        /** 等这一格期间宿主是否真的推进过代次（见过才敢把「内容与基线相同」判成已并入） */
+        private var memberSawFrame = false
+
+        /** 这一格「回了帧但内容与基线相同」的起算时刻（0 = 还没有），到确认窗口就按已并入放过 */
+        private var sameSince = 0L
+
+        /** 口径成员「第一次看到空列表」的时刻（0 = 还没看到）：两次间隔确认才按 0 只放过 */
+        private var comboEmptyAt = 0L
+
+        /**
          * 上一帧我们自己写进宿主字段的家数。
          *
          * 取数窗口里要把聚合家数写回 `m_stg`/`model`，宿主重画头部才是聚合口径；
@@ -3366,8 +3601,11 @@ class StrategyMergeFeature : Feature {
 
         private fun budgetMs(): Long {
             val combos = targets.count { it.first.startsWith(StrategyComboCatalog.COMBO_PREFIX) }
-            if (combos == 0) return StrategyMergeTargets.TOTAL_TIMEOUT_MS
-            return StrategyMergeTargets.TOTAL_TIMEOUT_MS + combos * COMBO_BUDGET_MS
+            val plain = targets.size - combos
+            // 普通成员也要按人数放大：一个成员实测 1~3 秒，固定 16 秒在 8 人以上的组里
+            // 必然截断在半路，表现成「聚合只出来一半、还剩几只永远等不到」。
+            val extra = combos * COMBO_BUDGET_MS + plain * PLAIN_BUDGET_MS
+            return (StrategyMergeTargets.TOTAL_TIMEOUT_MS + extra).coerceAtMost(MAX_BUDGET_MS)
         }
 
         /** 叫停流水线，**不碰视图**（页面销毁 / 关功能用，视图由 [releaseRollback] 或宿主自己收） */
@@ -3375,6 +3613,7 @@ class StrategyMergeFeature : Feature {
             cancelled = true
             state.run = null
             synchronized(state) { state.running = false }
+        StrategyMergeBridge.setBusy(false)
             MainThreadStallWatchdog.stop("取消 stId=$pageStId")
             // 取消路径也是「本轮结束」：临时策略必须在这里交出去，否则实例随页面丢掉，
             // 那条 GSZtmp 策略的 id 再没人知道（宿主 10 条策略上限，会一直占着一个名额）。
@@ -3442,10 +3681,20 @@ class StrategyMergeFeature : Feature {
             post { awaitSeed(startedAt) }
         }
 
-        /** 本页当前列表：模型里的与适配器里的取**大的那份**（回填过程中两份会短暂不一致） */
-        private fun seedList(): List<*>? {
+        /**
+         * 本页当前列表：模型里的与适配器里的取**大的那份**（回填过程中两份会短暂不一致）。
+         *
+         * [memberId] 非空时先认归属：m_stg.id 已经是这个成员 → 模型里那份就是这个成员的响应，
+         * 直接用它。以前一律取大份，id 还没切过来时会把「本页策略 / 上一格」的残影当成这个
+         * 成员的成分股并进并集（审查报告 C 条：seed 取大份不校验归属）。
+         */
+        private fun seedList(memberId: String? = null): List<*>? {
             val a = StrategyMergeTargets.listField(model, StrategyMergeTargets.MODEL_FIELD_STK_LIST)
             val b = StrategyMergeTargets.listField(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA)
+            if (memberId != null && a != null) {
+                val mid = (StrategyMergeTargets.field(stg, StrategyMergeTargets.STG_FIELD_ID) as? String)?.trim()
+                if (mid == memberId) return a
+            }
             return when {
                 a == null -> b
                 b == null -> a
@@ -3560,6 +3809,10 @@ class StrategyMergeFeature : Feature {
             // 那一枪会改 `data` —— 只靠签名会把「自己顶的那一枪」当成宿主返回。
             // 代次只由「宿主自己塞进来的那一帧」推进，判到达用它。
             val baseGen = payloadGen(state)
+            memberBaseKey = contentKey(payloadSnapshot(state))
+            memberSawFrame = false
+            comboEmptyAt = 0L
+            sameSince = 0L
             if (!StrategyMergeTargets.write(stg, StrategyMergeTargets.STG_FIELD_ID, memberStId)) {
                 GLog.w("$LOG 成员 $memberName（$memberStId）写不进 m_stg.id")
                 if (!retryOrGiveUp(memberStId, memberName, "写不进 id")) degraded = true
@@ -3651,19 +3904,34 @@ class StrategyMergeFeature : Feature {
             }
             val now = System.currentTimeMillis()
             val waited = now - startedAt
-            // 口径成员可能一只都没有（盘中某些档位确实空，量比这类字段更是常态）。
-            // 空列表不改变签名 → 只能干等满 MEMBER_TIMEOUT_MS；12 个组合就是 36 秒白等，
-            // 还会把总预算吃光。给个更短的确认窗口，到点仍为空就按「0 只」放过（不标 degraded：空是真实结果）。
-            if (waited >= COMBO_EMPTY_CONFIRM_MS && tempIds.contains(memberStId) && seedList().isNullOrEmpty()) {
-                GLog.i("$LOG 口径成员 $memberName（$memberStId）列表为空，按 0 只放过（等 ${waited}ms）")
-                fetchNext()
-                return
-            }
             // 宿主的 autoRefresh 也按 m_stg.id 取数：它一刷新就把我们写的成员 id 改回本页那条，
             // 之后到手的列表是「本页策略」的，不是这个成员的。以前无条件 absorb，等于把本页
             // 数据当成员数据并进并集 —— 这是「一时 212 只、一时 100 多只」的另一半原因。
             // 判据：id 被改回就重写 id 重发命令，这一轮绝不吃数据。
             val curId = (StrategyMergeTargets.field(stg, StrategyMergeTargets.STG_FIELD_ID) as? String)?.trim()
+            // 口径成员可能一只都没有（盘中某些档位确实空，量比这类字段更是常态）。
+            // 空列表不改变签名 → 只能干等满 MEMBER_TIMEOUT_MS；12 个组合就是 36 秒白等。
+            // 给个更短的确认窗口，到点仍为空就按「0 只」放过（不标 degraded：空是真实结果）。
+            //
+            // 以前一到窗口就放过，于是「宿主还没切到这一格（id 被改回 / 命令还在路上）」的假空
+            // 也被当成真结果，后面每个成员都串位。现在要求两条同时成立才放过：
+            // ① m_stg.id 就是我们写的成员 id；② 再隔一个确认窗口复看仍为空。
+            if (waited >= COMBO_EMPTY_CONFIRM_MS && tempIds.contains(memberStId)) {
+                val idOk = curId == null || curId == memberStId
+                if (!idOk) {
+                    comboEmptyAt = 0L
+                } else if (seedList(memberStId).isNullOrEmpty()) {
+                    if (comboEmptyAt == 0L) {
+                        comboEmptyAt = now
+                    } else if (now - comboEmptyAt >= COMBO_EMPTY_CONFIRM_MS) {
+                        GLog.i("$LOG 口径成员 $memberName（$memberStId）两次确认列表为空，按 0 只放过（等 ${waited}ms）")
+                        fetchNext()
+                        return
+                    }
+                } else {
+                    comboEmptyAt = 0L
+                }
+            }
             if (curId != null && curId != memberStId) {
                 // 重发要节流：宿主可能每 120ms 就把它改回来一次，跟着重发会把请求打成风暴
                 if (now - lastResendAt >= ID_RESEND_MIN_INTERVAL_MS) {
@@ -3693,10 +3961,15 @@ class StrategyMergeFeature : Feature {
             }
             // 到达判据：优先认「宿主自己塞进来的那一帧」（代次推进）；
             // 只有没在顶并集时才退回比签名 —— 顶住时 `data` 被我们改过，签名不可信。
+            // 代次前进 + **内容真的换了** 才算到手：宿主的纯行情/表头 notify 也推进代次，
+            // 只认代次就会把「还是上一格的数据」当成这一格的响应 —— 整轮串位，定格数据错误。
             val genMoved = payloadGen(state) != baseGen
-            val arrived = genMoved || (!holdingUnion() && signature() != base)
+            if (genMoved) memberSawFrame = true
+            val snapshot = if (genMoved) payloadSnapshot(state) else seedList(memberStId)
+            val contentMoved = contentKey(snapshot) != memberBaseKey
+            val arrived = if (genMoved) contentMoved else (!holdingUnion() && signature() != base && contentMoved)
             if (arrived) {
-                val list = if (genMoved) payloadSnapshot(state) else seedList()
+                val list = snapshot
                 val added = absorb(list)
                 absorbPrices(StrategyMergeTargets.mapField(adapter, StrategyMergeTargets.ADAPTER_FIELD_PRICE_MAP))
                 absorbTags()
@@ -3711,7 +3984,30 @@ class StrategyMergeFeature : Feature {
                 fetchNext()
                 return
             }
+            // 宿主回过帧、但内容与这一格基线逐只相同：这些票早就在并集里，没必要干等满
+            // MEMBER_TIMEOUT_MS。真机实测（20:35 定格后重取那一轮）6 个成员各白等 3.0s，
+            // 整轮从 4 秒被拖到 22 秒；现在隔一个确认窗口就放过。
+            if (memberSawFrame && !contentMoved) {
+                if (sameSince == 0L) {
+                    sameSince = now
+                } else if (now - sameSince >= COMBO_EMPTY_CONFIRM_MS) {
+                    GLog.i(
+                        "$LOG 成员 $memberName（$memberStId）宿主回了帧但内容与基线相同，按已并入放过（等 ${waited}ms）",
+                    )
+                    fetchNext()
+                    return
+                }
+            } else {
+                sameSince = 0L
+            }
             if (waited >= StrategyMergeTargets.MEMBER_TIMEOUT_MS || now > deadline) {
+                if (memberSawFrame && !contentMoved) {
+                    // 宿主确实回过帧，但内容与这一格的基线逐只相同 = 这些票早就在并集里。
+                    // 按「已并入、无新增」放过；标 degraded 反而会让整轮走「保留旧快照」的路。
+                    GLog.i("$LOG 成员 $memberName（$memberStId）内容与基线相同，按已并入放过（等 ${waited}ms）")
+                    fetchNext()
+                    return
+                }
                 GLog.i(
                     "$LOG 成员 $memberName（$memberStId）等 ${waited}ms 列表没换" +
                         "（累计 ${uniq.size} 只）",
@@ -3736,6 +4032,19 @@ class StrategyMergeFeature : Feature {
             if (!StrategyMergeTargets.writeListInPlace(adapter, StrategyMergeTargets.ADAPTER_FIELD_DATA, copy)) return
             StrategyMergeTargets.notifyAdapter(adapter)
             writeMergedResNum(act, state, copy.size)
+            // 头部日涨跌幅也要跟着这一份并集走。
+            //
+            // 宿主每换一个成员就把列表换成那一格的、并按**可见行**重算这一格，于是聚合跑的这十几秒里
+            // 头部一直在报「刚才那一只成员」的均值 —— 2026-11-25 真机连采：10.09% → 9.54% → 0.80%，
+            // 用户截到的「定格那一刻数据错」就是这一幕（并集跑完才是 2.12%）。
+            // 每吸收一个成员就把并集均值算出来写回，让过程和定稿都是并集口径。
+            runCatching {
+                val want = mergedZdfText(copy)
+                if (want != null) {
+                    state.zdfText = want
+                    writeMergedZdf(act, state)
+                }
+            }
         }
 
         /** 本轮是否把上一轮的并集顶在屏幕上（有缓存才会顶，顶住时 `data` 不算宿主响应） */
@@ -3863,29 +4172,65 @@ class StrategyMergeFeature : Feature {
             return h
         }
 
-        /** 把一份列表并进 [uniq]（按 `codeAndMarket` 保序去重，保留首次出现的实例），返回新增只数 */
+        /**
+         * 内容指纹：只由 codeAndMarket 序列与只数构成，**不看对象身份**。
+         *
+         * 宿主每次刷新都换一批新实例，按身份比等于「内容永远变了」；只看代次又会被
+         * 纯行情 notify 骗。判「这一格到底取回来没有」只能比内容。
+         * 大列表只取前 200 与后 20 只，够区分成员，又不必每次轮询都拼几百个字符串。
+         */
+        private fun contentKey(list: List<*>?): String {
+            if (list.isNullOrEmpty()) return "0"
+            val total = list.size
+            val sb = StringBuilder(64)
+            sb.append(total).append(':')
+            var i = 0
+            while (i < total && i < 200) {
+                sb.append(StrategyMergeTargets.camOf(list[i]) ?: "#").append(',')
+                i++
+            }
+            if (total > 220) {
+                sb.append("...")
+                var k = total - 20
+                while (k < total) {
+                    sb.append(StrategyMergeTargets.camOf(list[k]) ?: "#").append(',')
+                    k++
+                }
+            }
+            return sb.toString()
+        }
+
+        /**
+         * 把一份列表并进 [uniq]：按 `codeAndMarket` 保序去重，同一个键**后到的实例覆盖先到的**。
+         *
+         * 覆盖而不是保留首见：宿主每次刷新都会给出一批新实例，保留首见等于把并集每一行的行情
+         * 冻结在「第一次见到它」的那一刻，定格后价格/涨跌幅永不更新（旧实现的缺陷）。
+         * LinkedHashMap 对已存在的键 put 不改变插入位置，所以并集顺序仍然稳定。
+         */
         private fun absorb(list: List<*>?): Int {
             if (list.isNullOrEmpty()) return 0
             var added = 0
             for (e in list) {
                 if (e == null) continue
                 // 读不到 codeAndMarket 时按对象身份兜底：宁可重复一只，也不能丢票
-                val key = StrategyMergeTargets.camOf(e) ?: ("#anon:" + System.identityHashCode(e))
-                if (!uniq.containsKey(key)) {
-                    uniq[key] = e
-                    added++
-                }
+                // 读不到 codeAndMarket 时按名称兜底、最后才按对象身份：只按身份的话宿主每刷新
+                // 一次都换新实例，同一只票会被当成新票重复并入（并集只数随时间膨胀，
+                // 定格重取那一轮还会再多一份）。名称兜底能让它在换实例后仍认出是同一只。
+                val key = StrategyMergeTargets.camOf(e)
+                    ?: StrategyMergeTargets.nameOf(e)?.let { "#name:" + it }
+                    ?: ("#anon:" + System.identityHashCode(e))
+                if (uniq.put(key, e) == null) added++
             }
             return added
         }
 
-        /** 把一份 priceMap 并进 [prices]（同一个键保留先见到的，不覆盖） */
+        /** 把一份 priceMap 并进 [prices]（后到的覆盖先到的，价格必须跟着最新一帧走） */
         private fun absorbPrices(map: Map<*, *>?) {
             if (map == null || map.isEmpty()) return
             for (e in map.entries) {
                 val k = e.key ?: continue
                 val v = e.value ?: continue
-                if (!prices.containsKey(k)) prices[k] = v
+                prices[k] = v
             }
         }
 
@@ -3943,7 +4288,9 @@ class StrategyMergeFeature : Feature {
             // 主线程最重的一段（也是真机 ANR 出过事的那段），停表挪到 finally。
             // 还没删掉的临时策略在这里兜底：下面每个 return 都是「这一轮结束」，
             // 漏掉就会占着宿主名额（上限 10 条），下一轮直接建不出来。
-            cleanupTemps()
+            // 但清理本身会碰线程池与宿主反射：它一抛，后面的写回全不执行、running 也不复位，
+            // 这一页此后所有聚合都被判「上一轮没结束」。所以吃掉异常、照常往下走。
+            runCatching { cleanupTemps() }.onFailure { GLog.w("$LOG 收尾清临时策略失败", it) }
             try {
                 if (uniq.isEmpty()) {
                     GLog.i("$LOG 一只都没取到，还原宿主（成员全失败）")
@@ -4169,6 +4516,7 @@ class StrategyMergeFeature : Feature {
                 MainThreadStallWatchdog.stop("轮次结束 stId=$pageStId")
                 state.run = null
                 synchronized(state) { state.running = false }
+        StrategyMergeBridge.setBusy(false)
             }
         }
 

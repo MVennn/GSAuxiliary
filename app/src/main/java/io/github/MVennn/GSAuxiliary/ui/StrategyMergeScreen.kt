@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.MVennn.GSAuxiliary.R
@@ -70,6 +71,14 @@ internal const val DefaultMergeGroupsJson = ConfigKeys.DEFAULT_STG_MERGE_GROUPS
 internal const val MergeMinMembers = 2
 
 /**
+ * 「定格后自动重取」的档位（秒），下标与 `stg_merge_refresh_labels` 一一对应。
+ *
+ * 0 = 不重取：并集行情就停在聚合开始那一刻（宿主的自动刷新只重跑本页这条策略，
+ * 成员行情不会再推过来）。180 是出厂值，与旧常量 REFRESH_TICK_MS 一致。
+ */
+internal val MergeRefreshValues = intArrayOf(0, 60, 180, 300, 600)
+
+/**
  * 智能选股 · 我的策略聚合 → 聚合组设置（二级页）。
  *
  * 与「一键配置」的方案列表页**同一套交互**（用户不用为两个功能学两种操作）：
@@ -102,12 +111,48 @@ internal fun StrategyMergeScreen(onEdit: (String) -> Unit) {
     val namePrefix = stringResource(R.string.stg_merge_group_new_name_prefix)
     val copySuffix = stringResource(R.string.stg_merge_group_copy_suffix)
 
+    // 定格后自动重取的节拍：这条键是全局的（不是每个组一份）——它描述的是「一轮取数跑完之后
+    // 隔多久再取」，与组的成员构成无关，按组各存一份只会让同一个页面出现两套节拍。
+    val refreshSec by rememberIntPref(ConfigKeys.STG_MERGE_REFRESH_SEC, ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC)
+    val refreshLabels = stringArrayResource(R.array.stg_merge_refresh_labels)
+    val refreshIndex = MergeRefreshValues.indexOf(refreshSec).coerceAtLeast(0)
+    val dialogs = LocalDialogController.current
+    var refreshAnchor by remember { mutableStateOf<Rect?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scrollState),
     ) {
         Spacer(Modifier.height(8.dp))
+
+        SmallTitle(stringResource(R.string.stg_merge_section_refresh))
+        Card(modifier = Modifier.cardPadding()) {
+            BasicComponent(
+                title = stringResource(R.string.stg_merge_refresh_title),
+                modifier = Modifier.onGloballyPositioned { refreshAnchor = it.boundsInWindow() },
+                summary = refreshLabels.getOrElse(refreshIndex) { "" },
+                endActions = { DownArrowIcon() },
+                onClick = {
+                    dialogs?.showChoice(
+                        ChoiceDialogSpec(
+                            items = refreshLabels.toList(),
+                            selectedIndex = refreshIndex,
+                            anchor = refreshAnchor,
+                            onSelect = { idx ->
+                                val value = MergeRefreshValues.getOrNull(idx)
+                                    ?: ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC
+                                // 只写键，不在这里通知目标进程：配置变化由框架推送，
+                                // 已打开的详情页下一拍看门狗就会用新节拍。
+                                if (value != refreshSec) {
+                                    ModulePreferences.edit { putInt(ConfigKeys.STG_MERGE_REFRESH_SEC, value) }
+                                }
+                            },
+                        ),
+                    )
+                },
+            )
+        }
 
         SmallTitle(stringResource(R.string.stg_merge_section_groups))
         Card(modifier = Modifier.cardPadding()) {

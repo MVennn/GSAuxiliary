@@ -252,6 +252,9 @@ class ConfigSource(private val xposed: XposedInterface) {
                 stgMergeGroups = p.getString(
                     ConfigKeys.STG_MERGE_GROUPS, ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
                 ) ?: ConfigKeys.DEFAULT_STG_MERGE_GROUPS,
+                stgMergeRefreshSec = p.getInt(
+                    ConfigKeys.STG_MERGE_REFRESH_SEC, ConfigKeys.DEFAULT_STG_MERGE_REFRESH_SEC,
+                ),
                 stockBarEntry = p.getBoolean(ConfigKeys.STOCK_BAR_ENTRY, ConfigKeys.DEFAULT_STOCK_BAR_ENTRY),
                 stockBarItems = p.getString(ConfigKeys.STOCK_BAR_ITEMS, ConfigKeys.DEFAULT_STOCK_BAR_ITEMS)
                     ?: ConfigKeys.DEFAULT_STOCK_BAR_ITEMS,
