@@ -35,7 +35,7 @@
 
 真机日志（宿主自己的调用栈）：
 
-```
+```text
 DLG > com.guosen.quotation.ui.dialog.FilterDiaglog
 stack: FilterDiaglog#show:206 <- HSMarketsFrag$9#onTabFliter:745
        <- MarketsHsIndicatorAdapter$MarketsHsIndicatorViewHolder$1#onQuicklyClick:197
@@ -45,7 +45,7 @@ stack: FilterDiaglog#show:206 <- HSMarketsFrag$9#onTabFliter:745
 （`#tv1/#tv2/#tv3/#line1/#rv_markets/#tv_cancel/#tv_ok`，id 常量见
 `feature/filter/FilterPanelIds`）。实测结构（`aapt2 dump xmltree`）：
 
-```
+```text
 ConstraintLayout (match_parent)
  ├─ TextView #tv1  沪深京A排行榜-股票类型   marginStart 25dp
  ├─ TextView #tv2  请在下方勾选您想看的股票类型（灰底块）
@@ -79,7 +79,7 @@ hook(android.app.Dialog::class.java 的 show)  ──intercept──▶
 （`wrapWithVerticalHost`，外层容器沿用 `#rv_markets` 的 `LayoutParams` 实例，
 约束一条不丢），再在这个容器里、`#rv_markets` **后面**追加一块：
 
-```
+```text
 LinearLayout（新容器，吃掉 #rv_markets 的位置与约束）
  ├─ RecyclerView #rv_markets     ← 宿主自己的，adapter / 监听一个字都没动
  └─ LinearLayout（tag=gsaux_market_filter_block）
@@ -118,7 +118,7 @@ LinearLayout（新容器，吃掉 #rv_markets 的位置与约束）
 实测（8.6.0 / vc271）：「沪深京A」版块不是独立列表，**每一行股票都是整页纵向
 RecyclerView `#rv_markets_hs` 的一个子项**，行内 id 复用自选股那套：
 
-```
+```text
 RecyclerView #rv_markets_hs（整页纵向容器：指数概览 / 市场概览 / 滚动横幅 / 快捷入口 / 板块 / …）
   [版块头] #iv_fliter  #tv_hs「沪深京A」  #tv_hot_stk「人气股」  #rg_market_hs_type
   FrameLayout（一行股票）            ← 我们要筛的就是它
@@ -145,7 +145,7 @@ RecyclerView #rv_markets_hs（整页纵向容器：指数概览 / 市场概览 /
 
 本功能继承 `UiCleanFeature`（= `PageSyncFeature` 骨架），每趟布局回调做一遍：
 
-```
+```text
 认页（MarketTargets.onMarketPage）→ 拿 #rv_markets_hs
   → 子项里有 #tv_item_zxg_code 的才算「股票行」（其它是版块，跳过）
   → 该留的：曾被收起就还原（ViewPatcher.restore）
@@ -157,7 +157,7 @@ RecyclerView #rv_markets_hs（整页纵向容器：指数概览 / 市场概览 /
 
 判据只读行内那三个 `TextView`：
 
-```
+```text
 自选 ← ZxWatchlist.isInWatchlist(code, market)   // market 由 6 位代码前缀推（沪深北）
 涨跌 ← #tv_item_zxg_data 的文案（"+9.99%" / "--"）
 ```
@@ -190,7 +190,7 @@ RecyclerView #rv_markets_hs（整页纵向容器：指数概览 / 市场概览 /
 
 ---
 
-## 五、验收标准与实测结果（2026-10-19 真机，游客态）
+## 五、验收与实测结果（2026-10-19 真机，游客态）
 
 | # | 验收项 | 结果 |
 |---|---|---|

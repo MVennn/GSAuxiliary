@@ -9,7 +9,7 @@
 
 ---
 
-## 0. 结论先行
+## 0. 结论
 
 | 问题 | 答案 |
 |---|---|
@@ -32,7 +32,7 @@
 
 ### 1.2 关键证据（探针原样输出）
 
-```
+```yaml
 # A：自选列表 → 个股
 ========== LAUNCH ==========
 来自页面: com.guosen.app.goldsun.ui.MainAct
@@ -51,7 +51,7 @@
         adapter=com.guosen.quotation.adapter.StockFragAdapter count=33 current=2
 ```
 
-```
+```yaml
 # C：中间页「标准行情」 → 个股
 ========== LAUNCH ==========
 来自页面: com.guosen.quotation.ui.aistk.AIStkDetailFragAct
@@ -113,7 +113,7 @@
 
 ### 3.2 核心改写逻辑（路线 B）
 
-```
+```text
 EngineAct.startEngineAct(EngineIntent ei) 被调用
   │
   ├─ this 是 AIStkStgDetailAct 吗？        ── 否 ─→ 原样放行
@@ -281,7 +281,7 @@ class StgDirectQuoteFeature : Feature {
 
 ---
 
-## 6. 验收标准
+## 6. 验收
 
 1. 策略详情页点股票 → **不再出现** `AIStkDetailFragAct` → 直达 `StockFragAct`。
 2. `#vp_stocks` 的 **count = 策略股票数**（本例 7），`current` = 被点那只。
@@ -344,7 +344,7 @@ bash tools/ui.sh act               # 确认栈顶 Activity
 
 早期实现为了「保留 Bundle 原存储方式」，对这个列表做了**原地** `clear() + addAll()`：
 
-```
+```text
 首次点击
   ├─ 策略页构造 EngineIntent，adapter_key.stockList === 适配器数据列表（同一对象）
   ├─ 我们的钩子在 startEngineAct 里对它 clear() + addAll(IntentStockInfo…)
@@ -358,7 +358,7 @@ bash tools/ui.sh act               # 确认栈顶 Activity
 
 真机 `logcat -b crash`：
 
-```
+```text
 java.lang.ClassCastException: com.guosen.android.quotes.data.IntentStockInfo
         cannot be cast to com.guosen.android.quotes.data.StockInfo
   at com.guosen.quotation.ui.aistk.AIStkStgDetailAct.onItemClick(AIStkStgDetailAct.java:196)
@@ -378,7 +378,7 @@ java.lang.ClassCastException: com.guosen.android.quotes.data.IntentStockInfo
 > 但每个 value **仍然指向同一个对象**。所以"复制 Bundle"本身并不隔离 `stockList`，
 > 必须**同时**做第 1 步（新建列表）才真正隔离。这是本次最容易写错的地方。
 
-### 8.4 验证结果（真机 2.12.1 / vc32）
+### 8.4 验收（真机 2.12.1 / vc32）
 
 真机：魅族 20 / Android 16 (SDK 36) / LSPosed 2.2.1 / 金太阳 8.6.0 (vc271)，
 策略 `100e`（32 只股票）。

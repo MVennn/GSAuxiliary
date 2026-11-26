@@ -17,7 +17,7 @@
 
 ---
 
-# 第一部分 · 过程与证据
+## 第一部分 · 过程与证据
 
 ## 一、APK 基础信息
 
@@ -49,7 +49,7 @@
 
 ### 2.2 native 壳库
 
-```
+```text
 lib/arm64-v8a/libDexHelper.so         1,070,186 字节
 lib/arm64-v8a/libDexHelper-x86.so     1,237,741 字节
 lib/armeabi-v7a/libDexHelper.so         627,418 字节
@@ -61,7 +61,7 @@ lib/armeabi-v7a/libDexHelper-x86.so   1,151,229 字节
 `classes.dex` 的 header 声明 `file_size = 97,392,176`，与实际大小一致，
 看起来"正常"。但内部索引数量小得离谱：
 
-```
+```yaml
 string_ids : 515        ← 97 MB 的 dex 只有 515 个字符串
 type_ids   : 166
 proto_ids  : 91
@@ -74,7 +74,7 @@ class_defs : 53         ← 只有 53 个类
 
 壳内可见的字符串进一步印证：
 
-```
+```text
 ###HAVEX86###        ← SecNeo 保护标记
 ###HAVEX8664###      ← SecNeo 保护标记
 ```
@@ -115,7 +115,7 @@ class_defs : 53         ← 只有 53 个类
 
 探针输出的 Activity 序列：
 
-```
+```text
 MainAct                       首页
  └─ AIStkIndexAct             智能选股
      └─ AIStkStgListAct       我的策略（策略列表）
@@ -160,7 +160,7 @@ MainAct                       首页
 
 从 `ZXManager` 的私有字段 dump 里看到：
 
-```
+```text
 m_stkGrpMap (size=178)          ← 自选股票映射
 m_groupInfoDatas
   GRPINFO m_groupId=-1 m_groupName=全部
@@ -275,7 +275,7 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 
 ### 9.1 多选态底栏
 
-```
+```text
 #ll_add_zxg_bottom（1080 宽）
   ├─ "已选 "                       [0..142]
   ├─ #tv_bottom_zxg_num "N"        [142..170]
@@ -292,7 +292,7 @@ adb shell su -c "grep -i probe /data/adb/lspd/log/modules_*.log | tail -50"
 
 ### 9.2 详情页分页
 
-```
+```text
 StockFragAct
   └─ com.guosen.commonui.LockViewPager #vp_stocks
        └─ 当前页 #tv_top_stk_name_and_code
@@ -309,7 +309,7 @@ StockFragAct
 
 ### 9.3 Intent 契约
 
-```
+```text
 action=quotes.stockDetail
 component=com.guosen.quotation.ui.StockFragAct
 adapter_key=Bundle{ stockList=ArrayList<IntentStockInfo> }
@@ -331,7 +331,7 @@ stockIndex=0（顶层 extra）
 
 ---
 
-# 第二部分 · 难点与解法
+## 第二部分 · 难点与解法
 
 ## 0. 总览：难点分级
 
@@ -405,7 +405,7 @@ Activity 序列 `MainAct → AIStkIndexAct → AIStkStgListAct → AIStkStgDetai
 
 不去动数据源（容易踩到内部状态），而是在**视图渲染完成后**补一次判定：
 
-```
+```text
 列表行视图创建/复用 → 找到名称 TextView → 用国信自己的 API 判定是否在自选
                     → 命中则 setTextColor(高亮色)，否则还原
 ```
@@ -470,7 +470,7 @@ env.xposed.hook(method)
 
 同时**双保险**再挂一次目标适配器自己的 `getView`：
 
-```
+```text
 "com.guosen.quotation.adapter.aistk.AIStkAdapter"
 ```
 
@@ -561,7 +561,7 @@ if (!isPresetColor(cur)) tv.setTag(R.id.gsaux_watchlist_original_color, cur)
 
 ### 7.1 用框架托管的 remote preferences
 
-```
+```text
 设置界面（模块进程）
    └─ XposedService.getRemotePreferences("config")      ← 通过 binder 拿到框架的 prefs
 被注入进程
@@ -674,7 +674,7 @@ for (m in Reflect.methodsNamed(cls, "onResume")) {
 目标进程的日志走 `XposedInterface.log()`，**不会**进 `logcat -s <TAG>`。
 LSPosed 把它写进自己的日志文件：
 
-```
+```text
 /data/adb/lspd/log/modules_<时间戳>.log
 ```
 

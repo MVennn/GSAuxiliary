@@ -70,14 +70,14 @@ Miuix 的版本门槛是逐级递进的：
 Miuix 0.9.4 会带进 `androidx.compose.ui:ui-android:1.12.0`，
 它的 AAR 元数据里硬性声明了：
 
-```
+```text
 minCompileSdk = 37
 minAgpVersion = 9.1.0
 ```
 
 Gradle 在依赖解析阶段就会拒绝，报：
 
-```
+```text
 Dependency 'androidx.compose.ui:ui-android:1.12.0' requires AGP 9.1.0 or higher
 ```
 
@@ -101,7 +101,7 @@ Dependency 'androidx.compose.ui:ui-android:1.12.0' requires AGP 9.1.0 or higher
 
 AGP 9.0 起**内置了 Kotlin 支持**，再声明 `org.jetbrains.kotlin.android` 插件会直接报错：
 
-```
+```text
 The 'org.jetbrains.kotlin.android' plugin is no longer required
 for Kotlin support since AGP 9.0
 ```
@@ -294,7 +294,7 @@ implementation("io.github.libxposed:service:102.0.0")
 **为什么 `api` 必须 `compileOnly`**：API 类由框架在目标进程注入。
 一旦被打进 APK，LSPosed 会拒绝加载模块并报：
 
-```
+```bash
 The Xposed API classes are compiled into the module's APK.
 ```
 
@@ -319,7 +319,7 @@ dexdump -f /tmp/apkx/classes*.dex | grep "Class descriptor" | grep 'libxposed'
 
 现代 API 模块**不用 manifest meta-data**，元数据全部在 APK 内的 `META-INF/xposed/`：
 
-```
+```text
 app/src/main/resources/META-INF/xposed/
 ├── module.prop        # minApiVersion / targetApiVersion / staticScope / exceptionMode / autoHotReload
 ├── java_init.list     # 入口类，一行一个
@@ -364,7 +364,7 @@ app/src/main/resources/META-INF/xposed/
 
 **根因**（2026-10-20 在 CI 共享 runner 上真踩出来的，日志里 AGP 自己说了）：
 
-```
+```text
 This version only understands SDK XML versions up to 3
 but an SDK XML file of version 4 was encountered
 ```
@@ -374,7 +374,7 @@ AGP 8.10.1 **只认 SDK XML schema v3**（命名空间 `.../repository2/03`）�
 v4 的 `package.xml` 会被 AGP **直接跳过**。平台「装了但等于没装」，
 最后报的是那句看起来毫不相关的：
 
-```
+```bash
 Failed to find target with hash string 'android-37'
 ```
 
@@ -422,7 +422,7 @@ bash tools/probe/build.sh
 
 它走的是最原始的链路：
 
-```
+```bash
 拉取 libxposed api aar → javac → jar → d8 → aapt2
   → 打包 dex + META-INF/xposed/ → zipalign → apksigner
 ```
@@ -462,7 +462,7 @@ bash tools/probe/build.sh
 构建脚本最后会**自动校验**产物里的现代元数据，并检查没有遗留
 `assets/xposed_init`：
 
-```
+```text
 现代模块元数据:
   [OK] META-INF/xposed/java_init.list
   [OK] META-INF/xposed/module.prop
@@ -589,7 +589,7 @@ cp keystore.properties.example keystore.properties
 
 跑一轮回归的最小步骤：
 
-```
+```bash
 MuMuManager.exe control -v 1 launch      # 实例已启动时幂等
 adb -s emulator-5556 install -r app/build/outputs/apk/release/app-release.apk
 adb -s emulator-5556 shell am force-stop com.guosen.android            # 模块更新后必须重启宿主
@@ -620,7 +620,7 @@ adb -s emulator-5556 logcat -d -s GSZXEnhance:V > .work/logcat.txt
 （`功能安装完成` / `已安装功能` / `已挂 N 个 Activity.onResume` 全不出现），看起来像「某个功能失效」，
 实际是整个模块没跑。查一行就知道：
 
-```
+```bash
 adb shell sqlite3 /data/adb/lspd/config/modules_config.db "SELECT * FROM modules_state;"
 ```
 
@@ -704,7 +704,7 @@ CI 是**干净环境**，本地那些「已经手工搞定过」的东西都得�
 `platforms;android-37.0` / `37.1` / `37.2`（Android 16 之后新引入的「次要版本」命名）。
 AGP 8.10.1 只认 `platforms/android-<api>` 老式目录 + 整数 api-level，于是：
 
-```
+```bash
 Failed to find target with hash string 'android-37'
 ```
 
@@ -832,7 +832,7 @@ python tools/ci/verify_apk.py --reject-debug-cert \
 
 输出长这样：
 
-```
+```text
   [OK] 元数据 META-INF/xposed/module.prop
   [OK] 无 legacy assets/xposed_init
   [OK] 【红线】dex 无 io/github/libxposed/api 类定义（发现 0 个）

@@ -36,7 +36,7 @@ adb logcat -s GSZXEnhance
 不必对照当前数字）。每个启用功能的
 钩子日志先打，随后才是 `FeatureManager` 的「已安装功能 [id] 标题」那一行：
 
-```
+```bash
 GSZXEnhance: === GSAuxiliary v2.16.0 载入 === process=com.guosen.android pid=12345 framework=LSPosed 2.2.1 api=102 caps=0x…
 GSZXEnhance: 配置通道 = remote preferences -> ConfigSnapshot(enabled=true, color=-32768, scopeStrategy=true, logLevel=2, stgDirectQuote=true, stgQuoteSwipe=true, stgSelectAll=true, stgStockFilter=true, stockBarEntry=true, dockClean=true, homeBannerHide=true, marketBannerHide=true, marketSectorCompact=true, marketOverviewCompact=true, navBarBlend=true)
 GSZXEnhance: 已挂 com.guosen.commonui.adapter.BaseQuickAdapter.getView ×1
@@ -140,7 +140,7 @@ adb shell su -c "content query --uri content://io.github.MVennn.GSAuxiliary.conf
 
 先看日志里有没有这两行：
 
-```
+```text
 已安装功能 [stg_direct_quote] 策略详情直达标准行情
 策略直达标准行情：已挂 2 个引擎跳转点
 ```
@@ -205,13 +205,13 @@ bash tools/sh.sh --root "grep '配置已更新' /data/adb/lspd/log/modules_*.log
 
 日志里会出现：
 
-```
+```text
 GSZXEnhance: 配置通道 = remote preferences 不可用: …
 ```
 
 或
 
-```
+```text
 GSZXEnhance: 框架未声明 remote preferences 能力 (PROP_CAP_REMOTE=0)
 ```
 
@@ -367,7 +367,7 @@ adb install -r tools/probe/out/GoldSunProbe.apk
 
 判断框架新旧，看 LSPosed 日志里模块的「载入」行（`onModuleLoaded` 打印，样例见第 0 节）：
 
-```
+```bash
 === GSAuxiliary v3.1.0 载入 === process=… framework=LSPosed x.y.z api=102 caps=0x…
 ```
 

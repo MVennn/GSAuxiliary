@@ -106,7 +106,7 @@ fun applyChecked(lv: ListView, count: Int, keys: Set<String>, rowCam: (Int) -> S
 
 聚合页点一行的真实链条：
 
-```
+```text
 clickRow → performItemClick → 行点击 wrapper（旁路帧）→ 宿主 onItemClick
   → 宿主把单策略 data 塞回 + notifyDataSetChanged
       → 筛选前置钩子跑 applyFilter0 → 第一趟迁移

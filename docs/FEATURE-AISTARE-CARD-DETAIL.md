@@ -15,7 +15,7 @@
 页面是**原生** Activity：`com.guosen.quotation.aistare.ui.AIStareIndexAct`
 （顶栏「智能盯盘」+ 右上角「创建」，`uiautomator dump` 原文）：
 
-```
+```text
 ListView #listMyStare
   └ item（LinearLayout）
       ├ #layoutStock    LinearLayout  clickable=true   ← 股票名行：tvStkName / tvCodeMarket / ivStkArrow
@@ -29,7 +29,7 @@ ListView #listMyStare
 
 ## 2. 挂点
 
-```
+```text
 ListView.setAdapter（进页面 / 切「今日提醒 ↔ 我的盯盘」页签都会走）
   └ this 是 ListView 且（id == listMyStare 或宿主是 AIStareIndexAct）
       └ adapter 类名命中 AIStareMyStareAdapter → 沿继承链找 getView 的实现类挂钩子
@@ -52,7 +52,7 @@ ListView.setAdapter（进页面 / 切「今日提醒 ↔ 我的盯盘」页签�
 
 与「一键配置保存后拉起详情页」是**同一个契约**（`docs/FEATURE-DIRECT-QUOTE.md` 路径 C）：
 
-```
+```text
 Intent(action = "quotes.stockDetail")
   .setClassName(宿主包, "com.guosen.quotation.ui.StockFragAct")
   .putExtra("adapter_key", Bundle{ stockInfo = IntentStockInfo(code, market) })

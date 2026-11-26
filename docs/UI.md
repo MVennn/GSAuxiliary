@@ -50,7 +50,7 @@
 
 一级页面的骨架：
 
-```
+```text
 Scaffold
 ├── topBar
 │     · 液态玻璃 = GlassTopBar（drawBackdrop 玻璃 + 透明 SmallTopAppBar）
@@ -71,7 +71,7 @@ Scaffold
 `MainScreen` 不再是「用 `AnimatedContent` 整体替换页面」，而是叠放
 （3.1.0 起二级之上还有一层三级页）：
 
-```
+```text
 Box(根容器，铺 MiuixTheme.colorScheme.surface)
 ├── 第 0 层  底色层 —— 只铺一个 surface 色，不挂任何 graphicsLayer 变换（2.7.0 新增）
 ├── 第 1 层  一级首页 HomeScaffold —— 常驻底衬
@@ -205,7 +205,7 @@ Spacer(Modifier.height(24.dp + LocalDockInset.current))
 Miuix `Card` 本身是满宽的，必须由调用方补左右边距。统一用
 `Modifier.cardPadding()`（= 12dp）。这个值和 Miuix 的默认内边距正好对齐：
 
-```
+```text
 SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 ```
 
@@ -248,7 +248,7 @@ SmallTitle 默认内边距 28dp  ==  卡片外边距 12dp + 卡片内边距 16dp
 
 页面自上而下：
 
-```
+```bash
 概览
 ├── ① 状态卡          ← 仿 LSPosed 模块页顶部那张「已激活 + 大对勾」，内含框架版本 / API
 ├── ② 模块           版本 / 构建时间
@@ -407,7 +407,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 
 每个功能在卡片里渲染为：
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │ 自选股高亮                    [开关]   │
 ├─────────────────────────────────────────┤   ← 开关打开后才出现
@@ -473,7 +473,7 @@ private val StatusCardIconSize = 168.dp      // 3.2.1：按参照图回到 168�
 功能清单的数据源是 `FeatureCatalog.FEATURE_CATALOG`（展示元数据），
 运行期真正生效的实现类登记在 `feature/FeatureManager.features` —— 两处都要加。
 
-#### 4.1 二级页：「高亮颜色设置」与「滑动设置」
+### 4.1 二级页：「高亮颜色设置」与「滑动设置」
 
 | 二级页 | 入口（功能 Tab） | 内容 |
 |---|---|---|

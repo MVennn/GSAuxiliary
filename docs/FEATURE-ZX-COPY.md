@@ -11,7 +11,7 @@
 
 ---
 
-## 0. 结论先行
+## 0. 结论
 
 | 问题 | 答案 |
 |---|---|
@@ -31,7 +31,7 @@
 
 ### 1.1 自选页顶栏
 
-```
+```text
 MainAct
   └─ ... #common_top (0,116-1080,240)
        ├─ MagicIndicator #indicator_zx          ← 自选页独有，用来认页
@@ -46,7 +46,7 @@ MainAct
 
 ### 1.2 分组与列表
 
-```
+```text
 #layout_zx
   ├─ #indicator_zx_group              ← 分组 tab（全部 / 自选 / 持仓股）
   │    └─ #title_container → ColorBoldPagerTitleView ×3
@@ -69,7 +69,7 @@ MainAct
 
 探针 2026-10-23 实测：
 
-```
+```text
 ZXWorkflow.getAllGroups() -> 2 组（全部 / 自选）
 ZXWorkflow.getStocksByGroupId(-1) -> 206 只（StockData：m_stkCode / m_stkMarket，无名称）
 mDefaultGrpId = -1
@@ -82,7 +82,7 @@ mDefaultGrpId = -1
 
 ## 2. 流程
 
-```
+```text
 点复制按钮
   ├─ 从 View 的 Context 取 Activity（监听不捕获页面）
   ├─ 读 #vp_zx_group 当前页的分组 tab 文案 → 换成键（all / self / holding）
@@ -133,7 +133,7 @@ mDefaultGrpId = -1
 
 ---
 
-## 5. 验收清单
+## 5. 验收
 
 1. 打开开关后，自选页顶栏铅笔变成复制图标，搜索图标不变。
 2. 点复制 → Toast 带分组名与数量；剪贴板一行一只「名称 代码」。

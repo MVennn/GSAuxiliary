@@ -10,7 +10,7 @@
 
 `uiautomator dump` 原样（多选态）：
 
-```
+```text
 ListView #lvStks [0,230][1080,2205]
   └─ (header) LinearLayout [0,230][1080,820]
        └─ LinearLayout [0,648][1080,748]              ← 多选栏所在行
@@ -46,7 +46,7 @@ ListView #lvStks [0,230][1080,2205]
 
 ### 2.1 挂钩点：`Activity.onResume` + 锚点按钮的 `TextWatcher`
 
-```
+```text
 Activity.onResume（只对 AIStkStgDetailAct）
   └─ 找到 #tv_stg_add_zxg，确保挂上（幂等）一个 TextWatcher
        └─ 文案变化时 → sync()
@@ -70,7 +70,7 @@ Activity.onResume（只对 AIStkStgDetailAct）
 
 ### 2.3 全选 / 反选：先确定每行状态 + 只点要改的行 + 分帧 + 点完核对
 
-```
+```text
 toggleAll()
   ├─ takeShot()：读现场（适配器 / 总行数 / 子集→全量映射 / 每行状态）
   │     ├─ 宿主模型 checkCodes 可信（能读、行代码映射完整、条数与计数相符）→ 按它判
@@ -142,7 +142,7 @@ toggleAll()
 
 点「全选」后 0.7 秒就点「确认添加」，新建分组只进 18 只（当时首轮是 `40ms × 72 ≈ 2.9s`）—— 宿主在点击那一刻就把选中集合快照走了，后面 54 行虽继续勾上、屏幕最终显示「全选完成」，但已加不进去。首轮改成 `clickAll()` 同帧批量后这个窗口消失，但补点轮 / 宿主刷新仍可能让按钮处于「还没完全落定」的状态，所以闸门保留：
 
-```
+```text
 toggleAll()
   ├─ takeShot() / 算待点行
   ├─ gateConfirm()            ← 跑第一行之前
@@ -174,7 +174,7 @@ toggleAll()
 
 **日志关键字**（`设置 → 日志`，debug 级）：
 
-```
+```text
 策略全选：提交包核对（聚合页，宿主 0 只 / 屏幕 32 只）
 策略全选：确认添加的提交代码已按屏幕勾选校正（32 只，宿主包里没有 codes）
 策略全选：提交代码 <null> → 60****,00****,...
@@ -326,7 +326,7 @@ val parts = StgSelectAllPlan.splitCodeMarket(raw) ?: return
 
 ---
 
-## 5. 验收标准
+## 5. 验收
 
 1. 多选态下，「全选 / 反选」出现在「取消」**左侧**，**尺寸、配色、字号、内边距与「取消」一致**。
 2. 点「全选」→ **该页全部股票**被勾选（含屏外行），底部「已选 N」== 列表总行数，按钮文案变「反选」。

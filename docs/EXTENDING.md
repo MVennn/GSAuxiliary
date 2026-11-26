@@ -8,7 +8,7 @@
 
 ## 1. 架构分层速览
 
-```
+```text
 core/       与框架无关的公共层
               · 两处共用：GLog / ConfigKeys / ConfigSnapshot / TargetApp
               · 仅目标进程：ConfigSource / HookBag（可引用 api 类型）
@@ -21,7 +21,7 @@ GszxModule  入口 —— 只做编排（仅目标进程）
 
 一次功能安装的完整链路：
 
-```
+```text
 onPackageReady(classLoader)
    └─ FeatureManager.installAll()
         └─ 遍历 features，对每个「当前配置下启用」的功能调用 install(env, bag)
@@ -31,7 +31,7 @@ onPackageReady(classLoader)
 
 配置变化：
 
-```
+```text
 框架推送 → ConfigSource 监听 → FeatureManager.onConfigChanged(切主线程) → 各功能 onConfigChanged
 ```
 
@@ -58,7 +58,7 @@ static boolean isLegacyModule(PackageInfo info) {
 同理，`xposedmodule` / `xposedsharedprefs` / `xposedscope` / `xposeddescription`
 也一个都不要加。模块元数据全部在：
 
-```
+```text
 META-INF/xposed/module.prop      模块属性
 META-INF/xposed/java_init.list   入口类
 META-INF/xposed/scope.list       作用域
@@ -75,7 +75,7 @@ implementation("io.github.libxposed:service:102.0.0") // ✅ 模块 App 侧要�
 
 API 类由框架在目标进程注入。打成 `implementation` 会被 LSPosed 拒绝加载并报：
 
-```
+```bash
 The Xposed API classes are compiled into the module's APK.
 ```
 

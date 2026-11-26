@@ -11,7 +11,7 @@
 「今日新股申购提醒」是登录后由宿主主界面弹出的一层**宽版浮层** ——
 铺满屏幕、看着像页面，其实是个 Dialog：
 
-```
+```text
 MainAct#receiveBroadcast:943              收到引擎广播
   └─ MainBiz#getIPODialog:148             业务层决定「要弹这个」
        └─ EngineModel#setBizCommand:55
@@ -62,7 +62,7 @@ MainAct#receiveBroadcast:943              收到引擎广播
 **第一步：看模块日志**（目标进程的日志在 `/data/adb/lspd/log/modules_*.log`）。
 正常应该看到这两行之一或全部：
 
-```
+```text
 ipo_dialog_clean：已挂 2 个钩子
 ipo_dialog_clean：已拦下宿主展示方法 showSgbDialog
 ```

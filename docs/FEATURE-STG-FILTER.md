@@ -24,7 +24,7 @@
 
 `uiautomator dump` 抓到的树（打开菜单时 uiautomator 只报弹层这一个 window）：
 
-```
+```text
 FrameLayout [812,204][1080,459]                     ← PopupWindow 的 decor
   └─ FrameLayout
        └─ LinearLayout [812,204][1080,459]          ← pop_ai_stg.xml 的根
@@ -90,7 +90,7 @@ for (name in arrayOf("showAsDropDown", "showAtLocation")) {
 
 ### 面板结构（实测 dump）
 
-```
+```text
 ConstraintLayout
  ├─ TextView #tv1  "沪深京A排行榜-股票类型"（标题）
  ├─ TextView #tv2  "请在下方勾选您想看的股票类型"（副标题，灰底）
@@ -123,7 +123,7 @@ parent.addView(LinearLayout(ctx).apply { orientation = VERTICAL; layoutParams = 
 
 ### 2.18.0：两组八行，与行情页那颗面板共用一套
 
-```
+```text
 筛选股票                        ← tv1
 勾选后对应的条件才会生效          ← tv2
 ── 涨跌与自选 ──                ← tv3（宿主那行分组头，文案改成这组）
@@ -170,7 +170,7 @@ parent.addView(LinearLayout(ctx).apply { orientation = VERTICAL; layoutParams = 
 
 **不是藏起来，而是让列表里根本没有这些行。** 做法是给 `ListView` 装一个模块自己写的 `FilteredAdapter`，包在 `AIStkAdapter` 外面：
 
-```
+```text
 筛选生效  →  lv.adapter = FilteredAdapter(原 adapter, 全量下标表)
                 ├─ getCount()               → 子集行数
                 ├─ getView / getItem        → 用全量下标转调原 adapter
@@ -381,7 +381,7 @@ private fun tickOnce(env: FeatureEnv, act: Activity) {
 
 需求明确：**未勾选的类别，其股票一律不显示**。所以是"先归类、再看该类别的开关"，不是"几个条件取交集"：
 
-```
+```text
 类别(股票) = 自选股票（在自选股里，最高优先）
            > 涨家股票（zdf > 0）
            > 跌家股票（zdf < 0）
@@ -520,7 +520,7 @@ aapt2 dump xmltree --file res/layout/empty_ai_stk.xml base.apk
 
 ---
 
-## 七、验收标准与实测结果
+## 七、验收与实测结果
 
 验收 25 项全部通过或已列明待验（逐条过程见 [CHANGELOG.md](../CHANGELOG.md)），结论按块归并：
 
@@ -547,7 +547,7 @@ aapt2 dump xmltree --file res/layout/empty_ai_stk.xml base.apk
 
 **结论：服务端限制，客户端根本没有传条数 / 分页参数。** 把探针挂到 `com.android.org.conscrypt.ConscryptEngineSocket$SSLOutputStream` 上抓 SSL **明文**，拿到策略详情接口的完整请求（`Host: goldsundg.guosen.com.cn`，`Content-Length: 382`）：
 
-```
+```bash
 POST /gsnews/strategy/queryStrategyQuoteDetail/1.0 HTTP/1.1
 Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 

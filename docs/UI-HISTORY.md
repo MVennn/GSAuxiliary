@@ -156,7 +156,7 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 
 应当看到默认变体和 `(night)` 变体各一份，其中：
 
-```
+```text
 0x01010054=@color/window_background        # windowBackground
 0x01010451=@android:color/transparent      # statusBarColor
 0x01010452=@android:color/transparent      # navigationBarColor
@@ -186,7 +186,7 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 
 设计常量（108 网格，与矢量 viewport 同坐标系）：
 
-```
+```text
 弧线  M33.08,75.39 Q67.4,75.39 67.4,50.94      起笔水平、收笔竖直的二次贝塞尔
 箭镞  M67.4,29.79 L57.06,50.94 L77.74,50.94 Z  底边中点正是弧线收笔点
 线宽  strokeWidth 8.46（round cap）；箭镞描边 2.82（只用来把三个角磨圆）
@@ -229,7 +229,7 @@ aapt2 dump resources "$APK" | grep -A 8 "style/Theme.GSZX"
 
 坐标从源图到 108 网格经过两次变换：
 
-```
+```text
 ① 源图自身的 mask 分组   translate(120 120) scale(0.595) translate(-129 -113)
 ② 装进 108 网格          (p - 120) × 0.395 + 54
 ```

@@ -1,0 +1,19 @@
+#!/bin/sh
+# commit-msg: minimal Conventional Commits prefix check.
+# 允许 type 或 type(scope)，可带 !；Merge/Revert/fixup/squash 自动生成信息放行。
+msg="$1"
+if [ ! -f "$msg" ]; then
+  echo "[commit-msg] 找不到信息文件: $msg" >&2
+  exit 1
+fi
+line=$(head -n 1 "$msg")
+case "$line" in
+  Merge*|Revert*|fixup!*|squash!*) exit 0 ;;
+esac
+if printf '%s' "$line" | grep -Eq '^(feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert)(\([^)]+\))?!?: '; then
+  exit 0
+fi
+echo "[commit-msg] 提交信息须为 Conventional Commits: type(scope): subject" >&2
+echo "  当前: $line" >&2
+echo "  允许: feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert" >&2
+exit 1

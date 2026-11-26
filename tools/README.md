@@ -241,8 +241,10 @@ bash tools/drive.sh "stop" "launch" "waitact guosen" \
 
 ### 走桥（TBridge）—— 数量级的差别
 
+> 测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考。
+
 上面 `uifind` / `waitfor` 都绕不开 `uiautomator dump`，一轮 2.2s，等待只能按秒猜。
-`tb*` 走的是 `F:\Project\TBridge`（LSPosed 模块，在被测 App 进程内开 socket），
+`tb*` 走的是测试桥（LSPosed 模块，在被测 App 进程内开 socket），
 读的是内存里的 View 树：
 
 | | uiautomator | 桥 |
@@ -256,7 +258,7 @@ bash tools/drive.sh "stop" "launch" "waitact guosen" \
 
 ```bash
 # 勾作用域（设备上有 sqlite3，直接改库，不用点界面）
-python F:/Project/TBridge/tools/scope.py io.github.MVennn.tbridge com.guosen.android
+# 测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考（scope.py 命令已不可用）
 
 # 一条指令跑完整条链路
 bash tools/drive.sh "tbmulti act;;wait 密码登录 3;;tap 用短信验证码登录;;wait 登录 3;;tree;;shot a"

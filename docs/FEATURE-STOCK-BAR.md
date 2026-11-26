@@ -15,7 +15,7 @@
 
 ---
 
-## 0. 结论先行
+## 0. 结论
 
 | 问题 | 答案 |
 |---|---|
@@ -43,7 +43,7 @@
 
 下面这一份是**其中一页**里的样子：
 
-```
+```text
 LinearLayout #stk_detial_bottom_bar [0,2205][1080,2335]
   ├─ ImageView （1px 分隔线）
   ├─ FrameLayout #ll_bottom_stk                       ← 个股形态；指数形态下 GONE
@@ -85,7 +85,7 @@ LinearLayout #stk_detial_bottom_bar [0,2205][1080,2335]
 
 ### 1.3 「更多」弹层 = PopupWindow
 
-```
+```text
 Window #13 Window{1ab10db u0 PopupWindow:99f9dea}:
   mParentWindow=Window{2df417 u0 com.guosen.android/com.guosen.quotation.ui.StockFragAct}
   frame=[Rect(0, 1724 - 1080, 2335)]
@@ -93,7 +93,7 @@ Window #13 Window{1ab10db u0 PopupWindow:99f9dea}:
 
 内容（个股页）：
 
-```
+```text
 FrameLayout (popup content)
   LinearLayout
     LinearLayout （笔记行：iv_memo_edit_by_voice / tv_memo_edit_by_text / tv_go_stock_memo）
@@ -106,7 +106,7 @@ FrameLayout (popup content)
 
 每一项的结构固定：
 
-```
+```text
 FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 ```
 
@@ -115,7 +115,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 
 ### 1.4 「智能盯盘」的落点（探针原样输出）
 
-```
+```bash
 ========== LAUNCH ==========
 来自页面: com.guosen.quotation.ui.StockFragAct
   [LAUNCH] to = com.guosen.android  action = router_aistare_webview  flags = 0x0
@@ -145,7 +145,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 加宽它 → 链上剩余空间变少 → 买卖按权重自动各让一半。然后把新按钮和原来的「更多」
 并排塞进这个盒子里：
 
-```
+```text
 #fl_more  (96px → wrap_content，变宽 = 买卖让位)
   └ LinearLayout(横向, gravity=center_vertical)
        ├ 我们的「智能盯盘」按钮        （克隆「更多」的样式，独立 id / tag）
@@ -175,7 +175,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 
 ### 2.3 点击：复用宿主路径（三步接力）
 
-```
+```bash
 用户点我们注入的按钮
   │
   ├─ 开一轮（Round）：先看有没有在途的轮次（采集轮让位 / 上一次点击合并）
@@ -230,7 +230,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 
 `StockFragAct` 继承 `EngineAct`，引擎片段是**异步挂载**的。实测：
 
-```
+```text
 底栏入口[diag]：onResume com.guosen.quotation.ui.StockFragAct barId=2132481425
 底栏入口[diag]：findViewById -> null
 ```
@@ -253,7 +253,7 @@ FrameLayout (clk) └ TextView #tv_item_gv_menu "智能盯盘"
 现在改走 [`PageSyncFeature`](../app/src/main/java/io/github/MVennn/GSAuxiliary/feature/PageSyncFeature.kt)
 那套公共调度（与界面精简六个功能同一套骨架；涨跌筛选 `MarketFilterFeature` 也继承它，不计入那六个）：
 
-```
+```text
 Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 decorView 只挂一次）
                    └─→ 立刻 sync() 一次
 
@@ -392,7 +392,7 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 
 ---
 
-## 6. 验收标准（均已真机通过）
+## 6. 验收（均已真机通过）
 
 | # | 验证项 | 结果 |
 |---|---|---|

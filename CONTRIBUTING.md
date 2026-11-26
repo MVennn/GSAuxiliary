@@ -46,6 +46,10 @@
 | 用户可感知的改动要进 [CHANGELOG.md](CHANGELOG.md) | [docs/DOC-RULES.md](docs/DOC-RULES.md) §5 |
 | 改免责全文要同时改中英两个规范源 | [docs/MAINTENANCE.md](docs/MAINTENANCE.md) §3 L3 |
 
+## 提交信息与 Git 约定
+
+Conventional Commits（`type(scope): subject`，按对象拆行）；tag 用 `vMAJOR.MINOR.PATCH`，只在发版时创建；分支与 release 步骤见跨仓 [GIT-WORKFLOW.md](../docs/GIT-WORKFLOW.md)。
+
 ## 免责声明
 
 提交 Issue / PR 即表示你已知悉：本模块会 Hook 国信金太阳，可能违反其用户协议并导致

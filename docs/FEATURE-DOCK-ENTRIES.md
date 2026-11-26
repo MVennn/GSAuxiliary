@@ -73,7 +73,7 @@
 
 ### 2.2 二级页（底栏入口设置）
 
-```
+```text
 SubScreen(标题 = 底栏入口设置)
 └── Column(fillMaxSize + verticalScroll)
     ├── Spacer(8.dp)
@@ -222,7 +222,7 @@ A 直接落在 [DESIGN-SYSTEM](DESIGN-SYSTEM.md) §3.1（开关行）+ §7.6（`
 
 ### 7.1 新键 `dock_entries`
 
-```
+```json
 ConfigKeys.DOCK_ENTRIES = "dock_entries"
 默认值  DEFAULTS["dock_entries"] = ""
 取值    {"v":1,"hidden":["money","trade"]}
@@ -302,7 +302,7 @@ val ENTRIES = arrayOf(
 现役 `DockCleanFeature.fillRow` 的可用路径是两步：整行加宽到 `refRowW × n / k`，
 再给被藏那格**之后**的每一格一个 `-newCell` 左边距。多格只是把「之后一格」换成「前面藏了几个」：
 
-```
+```text
 n        = row.childCount           // 含被藏的，8.6.0 实测 6
 k        = 可见格数
 newCell  = refRowW / k
@@ -385,7 +385,7 @@ leftMargin(i) = -b(i) × newCell     // b(i)=0 时不动
 
 ---
 
-## 10. 验收判据
+## 10. 验收
 
 | # | 判据 |
 |---|---|

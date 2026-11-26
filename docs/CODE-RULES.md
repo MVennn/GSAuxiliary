@@ -230,7 +230,7 @@ Miuix 0.9.4 实测被 `minAgpVersion = 9.1.0` 硬拦（Compose 1.12.0 全家桶�
 
 ---
 
-# 推送前脱敏规则（通用）
+## 推送前脱敏规则（通用）
 
 > **一句话**：推送前跑一次 `python tools/check-secrets.py`；它拦的是三类东西 ——
 > 可用凭据、本机用户目录、真实邮箱。规则对 8 个仓完全一致，一处改全局同步。
@@ -310,7 +310,7 @@ Miuix 0.9.4 实测被 `minAgpVersion = 9.1.0` 硬拦（Compose 1.12.0 全家桶�
 
 ## 5. 推送前怎么做
 
-```sh
+```bash
 # 1) 扫已跟踪文件（CI 跑的就是这个，退出码 0 才能推）
 python tools/check-secrets.py
 

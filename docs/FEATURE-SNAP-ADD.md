@@ -8,7 +8,7 @@
 
 ---
 
-## 0. 结论先行
+## 0. 结论
 
 | 问题 | 答案 |
 |---|---|
@@ -28,7 +28,7 @@
 
 ### 1.1 策略详情页
 
-```
+```text
 ListView #lvStks（带 header）
 底部条 LinearLayout #ll_add_zxg_bottom
   ├─ "已选 " / #tv_bottom_zxg_num / " 只股票"
@@ -43,7 +43,7 @@ ListView #lvStks（带 header）
 
 ### 1.2 个股详情页
 
-```
+```text
 StockFragAct
   └─ com.guosen.commonui.LockViewPager #vp_stocks
        └─ 当前页 #tv_top_stk_name_and_code  "名称 代码"
@@ -62,7 +62,7 @@ StockFragAct
 
 与「策略直达标准行情」的多股票契约相同：
 
-```
+```text
 Intent(action = "quotes.stockDetail")
   .setClassName("com.guosen.android", "com.guosen.quotation.ui.StockFragAct")
   .putExtra("adapter_key", Bundle {
@@ -84,7 +84,7 @@ Intent(action = "quotes.stockDetail")
 
 ## 2. 流程
 
-```
+```text
 点「截图并添加」
   ├─ 0 只 → Toast「请先勾选股票」
   ├─ 读取选中（checked states + 筛选映射）→ 冻结列表
@@ -231,7 +231,7 @@ if (!StgSelectAllPlan.modelTrusted(codes, hostCount)) {
 
 ---
 
-## 5. 验收清单
+## 5. 验收
 
 1. 多选态出现「截图并添加」，在「确认添加」左侧；高度/配色/字号一致，
    「已选 N 只股票」始终单行（`截图并添加` 323px / `确认添加` 273px，左侧余 484px）。

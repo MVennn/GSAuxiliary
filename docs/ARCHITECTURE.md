@@ -9,7 +9,7 @@
 
 同一份 APK 里有**两套代码，跑在两个进程**：
 
-```
+```text
 ┌─────────────────────────────────────┐    ┌─────────────────────────────────────┐
 │ io.github.MVennn.GSAuxiliary（模块自己的进程）  │    │ com.guosen.android（目标 App 进程）  │
 │                                     │    │                                     │
@@ -190,7 +190,7 @@
 
 ### 3.1 框架回调顺序
 
-```
+```text
 进程启动
    │
    ▼
@@ -294,7 +294,7 @@ onHotReloaded(param)
 
 ## 3.3 染色主流程（自选高亮）
 
-```
+```text
 列表要显示一行
    │
    ▼
@@ -342,7 +342,7 @@ env.xposed.hook(m)
 
 ### 3.4 配置变更后如何自动刷新
 
-```
+```bash
 （模块进程）设置界面改动
    │
    └─ ModulePreferences.edit { … } → XposedService.getRemotePreferences("config")
@@ -592,13 +592,13 @@ autoHotReload=true
 
 **`java_init.list`**
 
-```
+```text
 io.github.MVennn.GSAuxiliary.GszxModule
 ```
 
 **`scope.list`**
 
-```
+```text
 com.guosen.android
 ```
 

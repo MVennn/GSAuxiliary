@@ -1,8 +1,10 @@
 # 通用测试桥（TBridge）设计稿
 
+> 测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考。
+
 > 目标：把「取控件树 + 注入点击 + 取像素」从跨进程的慢路径（uiautomator 2.0s / screencap 0.28s）
 > 降到**进程内**的毫秒级，并且对**任意 App 通用**，不绑定某一个被测模块。
-> 状态：设计已踩点、地基已实测验证；**实现已迁到独立仓 `TBridge`**（本仓不复制其代码，`tools/drive.sh` 只做调用方），本篇保留设计与协议说明。
+> 状态：设计已踩点、地基已实测验证；本篇保留设计与协议说明（本仓不复制桥代码，`tools/drive.sh` 只做调用方）。测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考。
 
 ## 1. 为什么必须做成独立模块
 
@@ -31,7 +33,7 @@
 
 ## 3. 架构
 
-```
+```bash
 PC 侧 (Python)                         设备侧 (目标 App 进程内)
 ┌──────────────────┐                  ┌────────────────────────────┐
 │ tbridge.py       │  adb forward     │ TBridge (LSPosed 模块)      │
@@ -134,7 +136,7 @@ v.draw(Canvas(bmp))   // 主线程
 
 ## 8. 接入一个新 App
 
-（`tbridge.py` / `scope.py` 在兄弟仓 `TBridge` 的 `tools/` 下，本仓不复制它；两仓并列摆放时把下面的 `tools/` 换成 `../TBridge/tools/`。）
+（测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考；`tbridge.py` / `scope.py` 原在兄弟仓 `TBridge` 的 `tools/` 下，本仓不复制它；以下脚本命令为设计示例，已不可直接执行。）
 
 ```bash
 # 一次性：把目标包名加进 TBridge 的 scope（模块包名 + 目标包名）
@@ -152,7 +154,7 @@ python tools/tbridge.py com.example.app tap 登录
 > 表结构已经落地（早期 pull 出来 `sqlite_master` 为空是 WAL 未落盘所致，不是库坏了）：
 > `modules_config.db` 就三张表（`modules` / `modules_state` / `scope`），设备上自带 `/system/bin/sqlite3`，
 > 直接在设备执行 SQL 即可，不用 pull-modify-push，lspd 持着连接也不会锁库。
-> 实现在 TBridge 仓的 `scope.py`（在它的 `tools/` 下；WAL 场景连带 `db-wal` / `db-shm`，改完回读作用域确认）。
+> 测试桥实现仓 TBridge 已于 2026-11-26 退役删除，本篇仅作设计参考；`scope.py` 原在 TBridge 仓的 `tools/` 下，WAL 场景连带 `db-wal` / `db-shm`，改完回读作用域确认。
 
 ## 9. 边界与已知坑
 
@@ -184,7 +186,7 @@ Flutter）本来 `uiautomator` 也覆盖不了，所以这不是退化，是平�
 
 不替换，只加速。`drive.sh` 保留全部现有指令作为兜底，新增：
 
-```
+```text
 tb tree              走 TBridge 取视图树（失败自动回退 uiscan）
 tb find TEXT         走 TBridge 找控件
 tb tap TEXT          走 TBridge 点击（失败回退 uifind）

@@ -55,7 +55,7 @@
 
 所以 `UiCleanFeature` 的调度分三层：
 
-```
+```text
 Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 decorView 只挂一次）
                    └─→ 立刻 applyTo()（从别的页面返回时不用等下一次布局）
 
@@ -80,7 +80,7 @@ Activity.onResume ─┬─→ 挂全局布局回调 + 挂首帧屏障（每个 
 `OnPreDrawListener` 恰好落在「布局完成、这一帧还没画」这个唯一可用的节点上，
 返回 `false` 就能**取消这一帧的绘制**（`ViewRootImpl` 收到后会重排一次再画）：
 
-```
+```text
 布局完成 ─► 布局回调改树 ─► 首帧屏障：动过就 return false（这一帧不画）
                                 │
                                 └─► 重新布局 ─► 再改树 ─► 没再动过 → 放行，画最终结果
@@ -182,7 +182,7 @@ if (stillAttached(lastGroup?.get())) return true
 
 底栏是「图标在上、文字在下」的一行格子（8.6.0 实测六格：首页 / 行情 / 自选 / 交易 / 理财 / 账户）。
 
-```
+```text
 ① 整行：候选 id `fl_main_tab` 直取；拿不到再按结构判据（findBottomRow）
      · 整行顶边落在屏幕高度 75% 以下
      · 一行 3~6 格，每格都是「有图标 + 有文字」（UiClean.looksLikeEntryItem）
@@ -216,7 +216,7 @@ if (stillAttached(lastGroup?.get())) return true
 
 ### 3.2 隐藏首页横幅（`HomeBannerFeature`）
 
-```
+```text
 ① 候选 id：BANNER_ID_CANDIDATES（命中且「像横幅」才动手）
 ② 结构：
      a. 认「快捷入口网格」——可见、子项 ≥ 6、每项「图标 + 文字」、整块 ≤ 240dp
@@ -255,7 +255,7 @@ if (stillAttached(lastGroup?.get())) return true
 
 **滚动横幅**初版设想用「跑马灯」特征认：
 
-```
+```bash
 ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
   → 从这个文字往上找第一个高度 ≤ 60dp 的祖先 = 那条「条」
 ```
@@ -300,7 +300,7 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 
 初版设想：
 
-```
+```text
 ① 候选 id；否则找「子树里有 ≥ 2 个柱状图视图」的最内层容器
 ② 先把**固定高度**的柱状图按同一比例压一遍
 ③ 再把整个概览容器压到 0.6 倍
@@ -338,7 +338,7 @@ ellipsize == TextUtils.TruncateAt.MARQUEE && 文案长度 ≥ 8
 
 **实测结构**（8.6.0）：
 
-```
+```text
 HorizontalRecyclerView #rv_markets_hs          ← 整页的纵向容器（每个版块 = 一个子项）
   [行1] LinearLayout  0,0-1080,229            ← 指数概览（**本功能收的就是它**）
     RecyclerView #rv_index → LinearLayout #ll_content ×4（上证 / 深证 / 北证50 …）
@@ -405,7 +405,7 @@ HorizontalRecyclerView #rv_markets_hs          ← 整页的纵向容器（每�
 
 如果功能没生效，日志里会出现（注意：**先切到目标页面**再看，快照打的是当前页）：
 
-```
+```text
 W GSZXEnhance  dock_clean：在 com.guosen.app.goldsun.ui.MainAct 上认不出目标控件（第 1 次报告）——可能是宿主改版，也可能是当前不在目标页
 I GSZXEnhance  dock_clean：com.guosen.app.goldsun.ui.MainAct 视图树快照（照着往 *Targets.kt 的候选数组里加 id）
 FrameLayout #content [0,0][1080,2205]

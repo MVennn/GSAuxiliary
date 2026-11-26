@@ -31,7 +31,7 @@
 于是屏幕被切成三块：状态栏 / **宿主内容** / 导航条。导航条那一块不属于内容区，
 由 `DecorView` 按 `window.navigationBarColor` 自己填：
 
-```
+```text
 DecorView（整窗高度）
 ├── 内容根（内容区，被系统栏 inset 让开）
 └── mNavigationColorView（底部 navBarHeight 高，填 navigationBarColor）
@@ -78,7 +78,7 @@ DecorView（整窗高度）
 
 ### 3.1 取色带画在哪（命门）
 
-```
+```text
 ┌──────────────────────────┐
 │  状态栏                   │
 ├──────────────────────────┤
@@ -202,7 +202,7 @@ adb shell su -c "grep nav_bar_blend /data/adb/lspd/log/modules_*.log | tail -50"
 
 正常会看到类似这些行（按出现顺序）：
 
-```
+```text
 已挂 N 个 Activity 回调
 结构取色 #FFFFFFFF → MainAct 导航条已同色
 像素校准 #FFF7F7F7 → MainAct 导航条已同色
