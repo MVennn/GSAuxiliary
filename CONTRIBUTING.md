@@ -48,7 +48,7 @@
 
 ## 提交信息与 Git 约定
 
-Conventional Commits（`type(scope): subject`，按对象拆行）；tag 用 `vMAJOR.MINOR.PATCH`，只在发版时创建；分支与 release 步骤见跨仓 [GIT-WORKFLOW.md](../docs/GIT-WORKFLOW.md)。
+Conventional Commits（`type(scope): subject`，按对象拆行）；tag 用 `vMAJOR.MINOR.PATCH`，只在发版时创建；分支与 release 步骤见跨仓共享文档 GIT-WORKFLOW.md（随文档库分发，单仓检出时以本节口径为准）。
 
 ## 免责声明
 
